@@ -1,0 +1,5 @@
+{
+  "name": "stack-runner",
+  "version": "0.1.0",
+  "description": "Orchestrate a stack of Linear tickets with parallel implementer and reviewer subagents, merging into the current branch."
+}
