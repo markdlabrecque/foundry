@@ -22,7 +22,7 @@ You coordinate. You do not implement or review code yourself. Subagents: `stack-
 - Show the user one short table: ticket, blocked by, ready?. Then start. Do not wait for approval unless the graph has a cycle or the goal is ambiguous.
 
 ## 2. Dispatch
-- Max 4 tickets in flight (implementing, in review, or in test). Start ready tickets up to that cap.
+- No concurrency limit. Start every ready ticket at once.
 - Spawn each implementer with `isolation: "worktree"`, in the background, all in one message when starting several. Prompt: full ticket text, integration branch name, test command, and "follow your agent instructions".
 - Track per ticket: state, implementer agent id, branch, worktree, fix round.
 
@@ -35,7 +35,7 @@ When an implementer finishes:
 4. **PASS → test.** In the ticket's worktree: merge the integration branch into the ticket branch (`git merge <integration>`), then run the test command yourself. Merge conflict or test failure: send the details to the same implementer to fix, then test again. Counts toward the same 2-round cap. No re-review for conflict/test fixes unless the change is more than a mechanical resolution.
 5. **Merge.** From the integration worktree: `git merge --ff-only <ticket-branch>`; if the integration branch moved meanwhile, repeat step 4. Merge one ticket at a time.
 6. **Close in Linear.** Set state Done. Add a comment: branch, merge commit sha.
-7. **Unblock.** Re-check blockers of every open ticket. Newly ready ones go to step 2 of section 2 right away, up to the cap.
+7. **Unblock.** Re-check blockers of every open ticket. Newly ready ones go to step 2 of section 2 right away.
 8. **Clean up.** Remove the merged worktree and delete its branch.
 
 ## 4. Finish
