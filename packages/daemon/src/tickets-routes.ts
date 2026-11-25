@@ -163,14 +163,16 @@ export const handleTickets = async (tickets: TicketService, request: IncomingMes
   }
 
   request.resume();
-  const pause = /^\/([1-9][0-9]{0,8})\/pause$/.exec(rest);
+  const action = /^\/([1-9][0-9]{0,8})\/(pause|retry)$/.exec(rest);
 
-  if (pause !== null) {
+  if (action !== null) {
     if (request.method !== "POST") {
       return { ...fail(405, "method_not_allowed", `${url.pathname} only accepts POST`), allow: "POST" };
     }
 
-    return run(tickets.pause(factory, Number(pause[1])), 200);
+    const perform = action[2] === "retry" ? tickets.retry : tickets.pause;
+
+    return run(perform(factory, Number(action[1])), 200);
   }
 
   const match = /^\/([1-9][0-9]{0,8})$/.exec(rest);

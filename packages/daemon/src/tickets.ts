@@ -24,7 +24,7 @@ import type {
 } from "@foundry/protocol/tickets-api";
 import type { FactoryConfig } from "./config/schema.js";
 import { ticketRecord, slotRecord } from "./history-records.js";
-import { SlotsError } from "./slots-error.js";
+import { interruptTicketSlot, retryTicket } from "./ticket-retry.js";
 import type { SlotInterrupter } from "./slots-error.js";
 import type { Store, StoreError } from "./store.js";
 
@@ -112,6 +112,7 @@ export const slugify = (title: string): string => {
 };
 
 export interface TicketService {
+  readonly retry: (factory: string | undefined, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   readonly pause: (factory: string | undefined, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   readonly submit: (request: SubmitTicketRequest) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   /** Without a factory, lists every factory's tickets. Oldest first within each factory. */
@@ -271,18 +272,18 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
 
   // A duplicate action must not retain a stale assignment and later interrupt its successor.
   // Reserve the ticket before the first read, through acknowledgement and durable suspension.
-  const pausing = new Set<string>();
+  const acting = new Set<string>();
 
-  const pause: TicketService["pause"] = (name, number) => Effect.gen(function* () {
+  const act = (name: string | undefined, number: number, action: (factory: string, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>) => Effect.gen(function* () {
     const factory = (yield* loadedFactory(name)).name;
     const key = JSON.stringify([factory, number]);
 
     return yield* Effect.suspend(() => {
-      if (pausing.has(key)) {return refuse("invalid_state", "The ticket is already being paused");}
+      if (acting.has(key)) {return refuse("invalid_state", "A ticket action is already in progress");}
 
-      pausing.add(key);
+      acting.add(key);
 
-      return pauseAssigned(factory, number).pipe(Effect.ensuring(Effect.sync(() => { pausing.delete(key); })));
+      return action(factory, number).pipe(Effect.ensuring(Effect.sync(() => { acting.delete(key); })));
     }).pipe(Effect.uninterruptible);
   });
 
@@ -302,17 +303,7 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
 
     if (assignment === undefined) {return yield* refuse("invalid_state", "The ticket has no active assignment");}
 
-    const interrupter = options.interrupter;
-
-    if (interrupter === undefined) {return yield* refuse("unavailable", "Worker interrupts are unavailable");}
-
-    yield* Effect.tryPromise({
-      try: () => interrupter.interrupt(assignment.slot_id, factory),
-      catch: (error) => new TicketError({
-        code: error instanceof SlotsError && (error.code === "no_live_launch" || error.code === "channel_unavailable" || error.code === "interrupt_unacknowledged") ? error.code : "internal",
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    });
+    yield* interruptTicketSlot(options.interrupter, factory, assignment.slot_id);
     yield* store.change((change) => Effect.gen(function* () {
       const rows = yield* change.query<{ stage: string }>(
         `SELECT t.stage FROM ticket t JOIN assignment a ON a.factory_id = t.factory_id AND a.ticket_number = t.number
@@ -342,6 +333,12 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
 
     return yield* show(factory, number);
   });
+
+  const pause: TicketService["pause"] = (name, number) => act(name, number, pauseAssigned);
+
+  const retry: TicketService["retry"] = (name, number) => act(name, number, (factory, ticketNumber) =>
+    show(factory, ticketNumber).pipe(Effect.flatMap(() => retryTicket(options, factory, ticketNumber)),
+      Effect.flatMap(() => show(factory, ticketNumber))));
 
   const submit: TicketService["submit"] = (request) =>
     Effect.gen(function* () {
@@ -433,5 +430,5 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       (rows) => ({ tickets: rows.map(summary) }),
     );
 
-  return { submit, list, show, pause };
+  return { submit, list, show, pause, retry };
 };

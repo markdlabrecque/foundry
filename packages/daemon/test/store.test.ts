@@ -55,6 +55,30 @@ const freeze = (store: Store, id: string) =>
     }),
   );
 
+test("request abandonment migration preserves populated request records and their message foreign keys", async () => {
+  const beforeAbandonment = foundryMigrations.filter((migration) => migration.id < 22);
+  const original = await withStore(beforeAbandonment, (store) => Effect.gen(function* () {
+    yield* store.change((change) => Effect.gen(function* () {
+      const notice = yield* acceptMessage(change, { factoryId: "f1", senderSlot: "worker/1", recipient: "floor.helper",
+        body: "Keep this question", delivery: "after_turn", kind: "request_notice", correlation: { requestId: "request-1", ticket: 1 } });
+      yield* change.query(`INSERT INTO agent_request (id, factory_id, requester_slot, recipient, recipient_slot,
+        ticket_number, notice_id, status, accepted_at, deadline) VALUES ('request-1', 'f1', 'worker/1', 'floor.helper',
+        'helper/1', 1, ?, 'open', 1, 100)`, [notice.id]);
+    }));
+
+    return yield* store.read(`SELECT * FROM agent_request`);
+  }));
+  await withStore(foundryMigrations, (store) => Effect.gen(function* () {
+    expect(yield* store.read(`SELECT * FROM agent_request`)).toEqual(original);
+    expect(yield* store.read(`PRAGMA foreign_key_check`)).toEqual([]);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE agent_request SET status = 'abandoned' WHERE id = 'request-1'`);
+      yield* change.recordHistory({ factoryId: "f1", kind: "request.abandoned", subject: "request-1" });
+    }));
+    expect(yield* store.read(`SELECT status FROM agent_request`)).toEqual([{ status: "abandoned" }]);
+  }));
+});
+
 test("a committed change survives reopening the file in WAL mode", async () => {
   const sequence = await withStore(withSlots, (store) => freeze(store, "s1"));
 
