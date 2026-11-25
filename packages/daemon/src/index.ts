@@ -11,6 +11,8 @@ export * from "./submissions.js";
 
 export * from "./agent-message.js";
 
+export * from "./operator-message.js";
+
 export * from "./agent-discover.js";
 
 export * from "./agent-status.js";

@@ -329,6 +329,36 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       ) STRICT`,
     ],
   },
+  {
+    id: 13,
+    name: "operator_message_attribution",
+    statements: [
+      `CREATE TABLE message_with_sender (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK (sequence > 0),
+        sender_kind TEXT NOT NULL DEFAULT 'agent' CHECK (sender_kind IN ('agent', 'operator')),
+        sender_slot TEXT,
+        recipient TEXT NOT NULL,
+        body TEXT NOT NULL,
+        delivery TEXT NOT NULL CHECK (delivery IN ('after_turn', 'when_idle')),
+        kind TEXT NOT NULL CHECK (kind IN ('ordinary', 'request_notice', 'delegation_notice', 'reply', 'resume_notice')),
+        ticket_number INTEGER,
+        request_id TEXT,
+        delegation_id TEXT,
+        status TEXT NOT NULL CHECK (status IN ('unbound', 'bound', 'sent', 'acknowledged', 'indeterminate', 'dropped', 'expired')),
+        accepted_at INTEGER NOT NULL,
+        CHECK ((sender_kind = 'agent' AND sender_slot IS NOT NULL) OR (sender_kind = 'operator' AND sender_slot IS NULL)),
+        UNIQUE (factory_id, sequence)
+      ) STRICT`,
+      `INSERT INTO message_with_sender (id, factory_id, sequence, sender_slot, recipient, body, delivery,
+        kind, ticket_number, request_id, delegation_id, status, accepted_at)
+       SELECT id, factory_id, sequence, sender_slot, recipient, body, delivery,
+        kind, ticket_number, request_id, delegation_id, status, accepted_at FROM message`,
+      `DROP TABLE message`,
+      `ALTER TABLE message_with_sender RENAME TO message`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

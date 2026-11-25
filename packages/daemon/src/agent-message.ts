@@ -12,9 +12,8 @@ export type MessageKind = "ordinary" | "request_notice" | "delegation_notice" | 
 export type MessageDelivery = "after_turn" | "when_idle";
 
 /** Trusted daemon input, never a decoded worker frame. Correlation is supplied by request/delegation handlers. */
-export interface MessageAcceptance {
+export type MessageAcceptance = {
   readonly factoryId: string;
-  readonly senderSlot: string;
   readonly recipient: string;
   readonly body: string;
   readonly delivery: MessageDelivery;
@@ -25,13 +24,17 @@ export interface MessageAcceptance {
     /** Explicit null preserves a correlated request's lack of ticket, rather than using an assignment. */
     readonly ticket: number | null;
   };
-}
+} & (
+  | { readonly senderKind?: "agent"; readonly senderSlot: string }
+  | { readonly senderKind: "operator"; readonly senderSlot: null }
+);
 
 export type AcceptedMessage = {
   readonly id: string;
   readonly sequence: number;
   readonly factoryId: string;
-  readonly senderSlot: string;
+  readonly senderKind: "agent" | "operator";
+  readonly senderSlot: string | null;
   readonly recipient: string;
   readonly body: string;
   readonly delivery: MessageDelivery;
@@ -58,7 +61,9 @@ export interface MessageAcceptanceGuards {
  */
 export const acceptMessage = (change: Change, input: MessageAcceptance, guards: MessageAcceptanceGuards = {}) =>
   Effect.gen(function* () {
-    const ticket = input.correlation !== undefined
+    const senderKind = input.senderKind ?? "agent";
+
+    const ticket = input.senderKind === "operator" ? null : input.correlation !== undefined
       ? input.correlation.ticket
       : guards.assignmentTicket === undefined ? null : yield* guards.assignmentTicket(change, input.factoryId, input.senderSlot);
 
@@ -72,25 +77,25 @@ export const acceptMessage = (change: Change, input: MessageAcceptance, guards: 
     const sequence = rows[0]?.sequence ?? 1;
 
     const message: AcceptedMessage = {
-      id, sequence, factoryId: input.factoryId, senderSlot: input.senderSlot,
+      id, sequence, factoryId: input.factoryId, senderKind, senderSlot: input.senderSlot,
       recipient: input.recipient, body: input.body, delivery: input.delivery, kind: input.kind,
       ticket, requestId: input.correlation?.requestId ?? null,
       delegationId: input.correlation?.delegationId ?? null, status: "unbound",
     };
 
-    if (ticket !== null && guards.budget !== undefined) {yield* guards.budget(change, message);}
+    if (senderKind === "agent" && ticket !== null && guards.budget !== undefined) {yield* guards.budget(change, message);}
 
     yield* change.query(
-      `INSERT INTO message (id, factory_id, sequence, sender_slot, recipient, body, delivery, kind,
+      `INSERT INTO message (id, factory_id, sequence, sender_kind, sender_slot, recipient, body, delivery, kind,
          ticket_number, request_id, delegation_id, status, accepted_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unbound', ?)`,
-      [id, input.factoryId, sequence, input.senderSlot, input.recipient, input.body, input.delivery,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'unbound', ?)`,
+      [id, input.factoryId, sequence, senderKind, input.senderSlot, input.recipient, input.body, input.delivery,
         input.kind, ticket, message.requestId, message.delegationId, now],
     );
     yield* change.recordHistory({
       factoryId: input.factoryId, kind: "message.accepted", subject: id,
-      detail: { sequence, senderSlot: input.senderSlot, recipient: input.recipient, kind: input.kind, delivery: input.delivery },
-      records: [slotRecord(input.senderSlot), ...(ticket === null ? [] : [ticketRecord(ticket)])],
+      detail: { sequence, senderKind, senderSlot: input.senderSlot, recipient: input.recipient, kind: input.kind, delivery: input.delivery },
+      records: [...(input.senderSlot === null ? [] : [slotRecord(input.senderSlot)]), ...(ticket === null ? [] : [ticketRecord(ticket)])],
     });
 
     return message;
