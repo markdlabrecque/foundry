@@ -27,7 +27,10 @@ const line = (...stages: Array<string>): Lines[string] => ({
 });
 
 const factory = (factoryId: string, lines: Lines, loadId?: number): StartingFactory => {
-  const config = { production_lines: lines };
+  const config = {
+    production_lines: lines,
+    rooms: { eng: { stations: { dev: { instances: 1, isolation: "none" as const } } } },
+  };
 
   return loadId === undefined ? { factoryId, config } : { factoryId, config, loadId };
 };
@@ -103,6 +106,74 @@ test("an open ticket at a removed stage refuses its factory alone; closed ticket
       },
     },
   ]);
+});
+
+/** Seed durable message state without involving delivery, workers or operator state. */
+const seedMessage = (store: Store, factoryId: string, id: string, sequence: number, recipient: string, status: string, boundSlot: string | null = null) =>
+  store.change(({ query, recordHistory }) => Effect.gen(function* () {
+    yield* query(
+      `INSERT INTO message (id, factory_id, sequence, sender_slot, recipient, body, delivery, kind,
+         status, accepted_at, bound_slot, bound_at)
+       VALUES (?, ?, ?, 'removed-sender/1', ?, 'fixture', 'after_turn', 'ordinary', ?, 0, ?, ?)`,
+      [id, factoryId, sequence, recipient, status, boundSlot, boundSlot === null ? null : 0],
+    );
+    yield* recordHistory({ factoryId, kind: "message.accepted", subject: id, records: [{ kind: "message", id }] });
+  }));
+
+test("unacknowledged messages name removed recipients and bound slots in a durable per-factory refusal", async () => {
+  const result = await withStore((store) => Effect.gen(function* () {
+    yield* seedMessage(store, "shop", "unbound", 1, "eng.removed", "unbound");
+    // Pool shrank to one; the recipient still exists, but the immutable binding does not.
+    yield* seedMessage(store, "shop", "bound", 2, "eng.dev", "bound", "dev/2");
+    yield* seedMessage(store, "shop", "sent", 3, "eng.removed", "sent", "removed/1");
+    yield* seedMessage(store, "shop", "uncertain", 4, "eng.dev", "indeterminate", "dev/3");
+    yield* seedMessage(store, "shop", "valid", 5, "eng.dev", "sent", "dev/1");
+    yield* seedMessage(store, "blog", "other", 1, "eng.dev", "bound", "dev/1");
+
+    const decision = yield* decideFactoryStarts(store, [factory("shop", {}, 9), factory("blog", {}, 10)]);
+
+    return { decision, refused: yield* refusals(store) };
+  }));
+
+  const blockers = [
+    { kind: "message", id: "unbound", missing: { kind: "station", station: "eng.removed" } },
+    { kind: "message", id: "bound", missing: { kind: "slot", slot: "dev/2" } },
+    { kind: "message", id: "sent", missing: { kind: "station", station: "eng.removed" } },
+    { kind: "message", id: "sent", missing: { kind: "slot", slot: "removed/1" } },
+    { kind: "message", id: "uncertain", missing: { kind: "slot", slot: "dev/3" } },
+  ];
+
+  expect(result.decision.started).toEqual(["blog"]);
+  expect(result.decision.refused.map((r) => [r.factoryId, r.blockers.map(describeBlocker)])).toEqual([
+    ["shop", [
+      "message unbound names station eng.removed",
+      "message bound names slot dev/2",
+      "message sent names station eng.removed",
+      "message sent names slot removed/1",
+      "message uncertain names slot dev/3",
+    ]],
+  ]);
+  expect(result.refused.map((r) => ({ ...r, detail: JSON.parse(r.detail) }))).toEqual([
+    { factory_id: "shop", subject: "shop", detail: { configLoad: "9", blockers } },
+  ]);
+});
+
+test("acknowledged and closed messages do not block; current destinations do not depend on removed senders", async () => {
+  const result = await withStore((store) => Effect.gen(function* () {
+    for (const [index, status] of ["acknowledged", "dropped", "expired"].entries()) {
+      yield* seedMessage(store, "shop", status, index + 1, "old.removed", status, "removed/9");
+    }
+
+    yield* seedMessage(store, "shop", "waiting", 4, "eng.dev", "unbound");
+    yield* seedMessage(store, "shop", "current", 5, "eng.dev", "sent", "dev/1");
+    // Identical names in a different factory cannot make this factory refuse.
+    yield* seedMessage(store, "elsewhere", "foreign", 1, "old.removed", "sent", "removed/9");
+    const decision = yield* decideFactoryStarts(store, [factory("shop", {})]);
+
+    return { decision, refused: yield* refusals(store) };
+  }));
+
+  expect(result).toEqual({ decision: { started: ["shop"], refused: [] }, refused: [] });
 });
 
 test("with no blockers every factory starts and nothing is written", async () => {
