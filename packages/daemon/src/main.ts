@@ -444,6 +444,7 @@ const main = async (): Promise<void> => {
       });
 
       const primer = createPrimer({ store, gate: freezer, freeze: (request) => freezer.freeze(request),
+        clonePath: (factoryId) => expectDefined(clones.get(factoryId), `factory clone ${factoryId}`).path,
         primeRequest: plannedPrimeRequests(factories, plannedSlots) });
 
       freezeChecks.prime_without_history = primer.recheckHistory;

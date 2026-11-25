@@ -18,12 +18,14 @@
  * the `instruction_missing` cause and a hold naming the files (PRD §5.3,
  * §5.5), waits for the operator's unfreeze, and composes the prime afresh.
  *
- * Re-sending repository context after a compaction belongs to its own lifecycle.
+ * After a compaction prime, an assigned slot receives its full repository context
+ * as an ordinary durable message.
  */
 import { randomUUID } from "node:crypto";
 import { Clock, Data, Effect, Schema } from "effect";
 import type { DaemonFrame, Hello } from "@foundry/protocol";
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
+import { resendAssignmentRepositoryContext } from "./assignment-repository-context.js";
 import { ComposePrimeResult, composePrime } from "./prime.js";
 import type { PrimeRequest, PrimeSourceProblem, Situation } from "./prime.js";
 import type { Store, StoreError } from "./store.js";
@@ -363,6 +365,8 @@ export interface PrimerOptions {
   readonly compose?: (request: PrimeRequest) => Promise<ComposePrimeResult>;
   /** Defaults to a random UUID. */
   readonly newPrimeId?: () => string;
+  /** Factory default-branch checkout; enables repository context restoration after compaction. */
+  readonly clonePath?: (factoryId: string) => string;
   /**
    * Frozen slots (PRD §5.3): nothing is written to one, the prime included, until it is unfrozen.
    * Defaults to a gate that holds nothing back.
@@ -553,6 +557,14 @@ export const createPrimer = (options: PrimerOptions): Primer => {
       await writer.sendFirst({ type: "prime", id: primeId, text: composed.prime.text });
     } catch (error) {
       return CompactionPrimingOutcome.SendFailed({ primeId, error });
+    }
+
+    // Enqueue only after the prime is written, while ordinary work is still held.
+    if (options.clonePath !== undefined) {
+      await run(resendAssignmentRepositoryContext(options.store, {
+        factoryId: slot.factoryId, slotId: slot.slotId,
+        clonePath: options.clonePath(slot.factoryId), isolation: request.isolation,
+      }));
     }
 
     return CompactionPrimingOutcome.Sent({ primeId });
