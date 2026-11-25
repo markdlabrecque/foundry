@@ -11,7 +11,8 @@ import { afterEach, expect, test } from "vitest";
 import { acknowledgeMessage, assignmentContextSlot, bindStationMessages, createAssignmentScheduler, createMessageDelivery, createTicketService, ensureFactoryClone, listOperations, loadFactoryFiles, LoadFactoriesResult, openSlotGate, openStore, planSlots, ticketFactoryFrom } from "@foundry/daemon";
 import type { DaemonFrame } from "@foundry/protocol";
 import { MessageReceiver } from "@foundry/extension";
-import type { AssignmentSchedulerOptions, Store } from "@foundry/daemon";
+import type { AssignmentSchedulerOptions, LoadedFactory, Store } from "@foundry/daemon";
+import { interruptRunningOperations, recoverInterruptedAfterCreate } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { CompactionPrimingOutcome, createPrimer, startChannelServer } from "@foundry/daemon";
 import { openChannel } from "@foundry/extension";
@@ -29,7 +30,7 @@ const roots: Array<string> = [];
 afterEach(() => { for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });} });
 
 const fixture = async <A, E>(use: (f: {
-  store: Store; root: string; clone: string; worktrees: WorktreeService;
+  store: Store; root: string; clone: string; worktrees: WorktreeService; factory: LoadedFactory;
   tickets: ReturnType<typeof createTicketService>;
   slots: ReturnType<typeof planSlots>;
   scheduler: ReturnType<typeof createAssignmentScheduler>;
@@ -86,7 +87,7 @@ ${isolation === "none" ? "      - { id: implement, station: floor.final, writing
     const worktrees = createWorktreeService({ store, stateRoot: root, hookLogIo, target: () => ({ factory, clonePath: clone.path }),
       factories: () => ["shop"], env: isolatedGitEnv() });
 
-    return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler, worktrees, tickets,
+    return yield* use({ store, root, clone: clone.path, factory, slots, scheduler: newScheduler(), newScheduler, worktrees, tickets,
       watch: (onError) => watchAssignments(schedulerOptions, onError) });
   })));
 };
@@ -1033,6 +1034,125 @@ test("a waiting after_create does not block later tickets, and watcher shutdown 
       expect(errors).toEqual([]);
       // Interrupted setup remains durable for recovery; shutdown must not fabricate success/failure.
       expect((yield* listOperations(store, "shop")).find((op) => op.kind === "hook" && op.ticket === 1)?.status).toBe("running");
+    }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+  } finally {await new Promise<void>((resolve) => { server.close(() => resolve()); });}
+});
+
+test.each([
+  { outcome: "complete", ready: true },
+  { outcome: "failed", ready: false },
+])("startup reruns an interrupted after_create in the original worktree and records the rerun's $outcome result", async ({ outcome, ready }) => {
+  const root = mkdtempSync(join(tmpdir(), "foundry-hook-rerun-"));
+  roots.push(root);
+  const socketPath = join(root, "hook.sock");
+  const server = createServer();
+  await new Promise<void>((resolve) => { server.listen(socketPath, resolve); });
+  const connected = new Promise<Socket>((resolve) => { server.once("connection", resolve); });
+
+  // First run blocks until the daemon "dies"; the rerun exits by whether the operator readied setup.
+  const command = [process.execPath, "-e", `const fs = require('node:fs'); console.log(process.cwd());
+    if (fs.existsSync('rerun')) process.exit(fs.existsSync('setup-ready') ? 0 : 17);
+    fs.writeFileSync('rerun', ''); require('node:net').connect(${JSON.stringify(socketPath)}).on('data', () => {})`];
+
+  try {
+    await fixture(({ store, root, factory, watch, newScheduler }) => Effect.gen(function* () {
+      const stop = watch(() => {});
+      const socket = yield* Effect.promise(() => connected);
+      const closed = new Promise<void>((resolve) => { socket.once("close", () => resolve()); });
+      yield* Effect.promise(stop);
+      yield* Effect.promise(() => closed);
+
+      const path = join(root, "worktrees/shop/1-build-widget");
+      const identity = yield* store.read(`SELECT worktree_path, branch, start_commit FROM ticket`);
+      writeFileSync(join(path, "preserved-work"), "kept");
+
+      if (ready) {writeFileSync(join(path, "setup-ready"), "yes");}
+
+      const [interrupted] = yield* interruptRunningOperations(store);
+      expect(interrupted).toMatchObject({ kind: "hook", status: "interrupted" });
+      const reruns = yield* recoverInterruptedAfterCreate({ store, factories: [factory], env: isolatedGitEnv() });
+
+      const operations = yield* listOperations(store, "shop");
+      expect(operations.filter((op) => op.kind === "worktree_create")).toHaveLength(1);
+      const hooks = operations.filter((op) => op.kind === "hook");
+      expect(hooks).toMatchObject([
+        { id: interrupted?.id, status: "interrupted", result: { rerun: true, rerunOperationId: reruns[0]?.id } },
+        { id: reruns[0]?.id, status: outcome, intent: { path, argv: command, rerunOf: interrupted?.id }, result: { exitStatus: ready ? 0 : 17 } },
+      ]);
+
+      // Each run logged its own cwd first; the interrupted one also logs its abort.
+      for (const hook of hooks) {expect(readFileSync(String(hook.intent["logPath"]), "utf8").split("\n")[0]).toBe(path);}
+
+      expect(yield* store.read(`SELECT worktree_path, branch, start_commit FROM ticket`)).toEqual(identity);
+      expect(readFileSync(join(path, "preserved-work"), "utf8")).toBe("kept");
+      // Recovery is settled, so a second startup has nothing to rerun.
+      expect(yield* recoverInterruptedAfterCreate({ store, factories: [factory], env: isolatedGitEnv() })).toEqual([]);
+
+      if (ready) {
+        expect(yield* newScheduler().schedule()).toMatchObject([{ stage: "develop" }]);
+        expect(yield* store.read(`SELECT id FROM operator_hold`)).toEqual([]);
+      } else {
+        expect(yield* newScheduler().schedule()).toEqual([]);
+        expect(yield* store.read(`SELECT * FROM assignment`)).toEqual([]);
+        expect(yield* store.read(`SELECT stage, status FROM ticket`)).toEqual([{ stage: "develop", status: "paused" }]);
+        const holds = yield* store.read<{ evidence: string }>(`SELECT evidence FROM operator_hold WHERE kind = 'hook_failure' AND state = 'open'`);
+        expect(JSON.parse(holds[0]?.evidence ?? "{}")).toMatchObject({ hook: "after_create", operationId: reruns[0]?.id, exitStatus: 17 });
+      }
+    }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+  } finally {await new Promise<void>((resolve) => { server.close(() => resolve()); });}
+});
+
+test.each([
+  { outcome: "complete", ready: true },
+  { outcome: "failed", ready: false },
+])("startup reruns an interrupted operator retry of after_create as a retry and settles the paused ticket ($outcome)", async ({ outcome, ready }) => {
+  const root = mkdtempSync(join(tmpdir(), "foundry-retry-rerun-"));
+  roots.push(root);
+  const socketPath = join(root, "hook.sock");
+  const server = createServer();
+  await new Promise<void>((resolve) => { server.listen(socketPath, resolve); });
+  const connected = new Promise<Socket>((resolve) => { server.once("connection", resolve); });
+
+  // Run 1 fails, run 2 (the operator retry) blocks until killed, run 3 (the rerun) exits by readiness.
+  const command = [process.execPath, "-e", `const fs = require('node:fs');
+    const run = (fs.existsSync('runs') ? Number(fs.readFileSync('runs', 'utf8')) : 0) + 1; fs.writeFileSync('runs', String(run));
+    if (run === 1) process.exit(17);
+    if (run >= 3) process.exit(fs.existsSync('setup-ready') ? 0 : 17);
+    require('node:net').connect(${JSON.stringify(socketPath)}).on('data', () => {})`];
+
+  try {
+    await fixture(({ store, root, factory, scheduler, newScheduler, tickets }) => Effect.gen(function* () {
+      expect(yield* scheduler.schedule()).toEqual([]);
+      const controller = new AbortController();
+      const resuming = Effect.runPromiseExit(tickets.resume("shop", 1), { signal: controller.signal });
+      const socket = yield* Effect.promise(() => connected);
+      const closed = new Promise<void>((resolve) => { socket.once("close", () => resolve()); });
+      controller.abort();
+      yield* Effect.promise(() => resuming);
+      yield* Effect.promise(() => closed);
+
+      if (ready) {writeFileSync(join(root, "worktrees/shop/1-build-widget/setup-ready"), "yes");}
+
+      const [interrupted] = yield* interruptRunningOperations(store);
+      const reruns = yield* recoverInterruptedAfterCreate({ store, factories: [factory], env: isolatedGitEnv() });
+      const hooks = (yield* listOperations(store, "shop")).filter((op) => op.kind === "hook");
+      expect(hooks).toMatchObject([
+        { status: "failed" },
+        { id: interrupted?.id, status: "interrupted", intent: { retryOf: hooks[0]?.id }, result: { rerun: true, rerunOperationId: reruns[0]?.id } },
+        { id: reruns[0]?.id, status: outcome, intent: { retryOf: hooks[0]?.id, rerunOf: interrupted?.id } },
+      ]);
+
+      if (ready) {
+        expect(yield* store.read(`SELECT stage, status FROM ticket`)).toEqual([{ stage: "develop", status: "queued" }]);
+        expect(yield* store.read(`SELECT id FROM operator_hold WHERE state = 'open'`)).toEqual([]);
+        expect(yield* newScheduler().schedule()).toMatchObject([{ stage: "develop" }]);
+      } else {
+        expect(yield* store.read(`SELECT stage, status FROM ticket`)).toEqual([{ stage: "develop", status: "paused" }]);
+        const holds = yield* store.read<{ evidence: string }>(`SELECT evidence FROM operator_hold WHERE kind = 'hook_failure' AND state = 'open'`);
+        expect(holds).toHaveLength(1);
+        expect(JSON.parse(holds[0]?.evidence ?? "{}")).toMatchObject({ hook: "after_create", operationId: reruns[0]?.id, exitStatus: 17 });
+        expect(yield* newScheduler().schedule()).toEqual([]);
+      }
     }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
   } finally {await new Promise<void>((resolve) => { server.close(() => resolve()); });}
 });
