@@ -166,6 +166,29 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `CREATE INDEX prime_by_conversation ON prime (factory_id, slot_id, conversation_ref)`,
     ],
   },
+  {
+    id: 6,
+    name: "run_and_config_loads",
+    statements: [
+      // One run per daemon start (PRD §10.1). `id` is the run ID the daemon log carries.
+      `CREATE TABLE run (
+        id TEXT PRIMARY KEY,
+        started_at INTEGER NOT NULL,
+        version TEXT NOT NULL
+      ) STRICT`,
+      // One row per factory per run: the validated configuration and its hash.
+      `CREATE TABLE factory_config_load (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL REFERENCES run (id),
+        factory_id TEXT NOT NULL,
+        yaml_file TEXT NOT NULL,
+        config TEXT NOT NULL,
+        config_hash TEXT NOT NULL,
+        knowledge_root TEXT NOT NULL,
+        UNIQUE (run_id, factory_id)
+      ) STRICT`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

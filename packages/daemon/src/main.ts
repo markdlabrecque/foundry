@@ -6,9 +6,14 @@
  * Once the root is claimed, diagnostics go to `logs/daemon.log` as well as stderr (PRD §15.2).
  * The database (`foundry.db` in the state root) is opened after the log and before serving; it
  * serves operator holds and the event stream. Stop order: API close, store close, log close, lock release.
- * Factory loading arrives in later tickets.
+ * Factory files named on the command line are validated read-only before the root is claimed; an
+ * invalid one refuses start with one line and exit 1. Once the store is open, each factory's empty
+ * knowledge layout is created and the run and each configuration load are recorded in it.
  */
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createKnowledgeLayout, loadFactoryFiles, recordRun, type LoadedFactory, type RecordedLoad } from "./factory-loads.js";
+import { makeTicketService, ticketFactoryFrom } from "./tickets.js";
 import { Effect, Exit, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
@@ -28,10 +33,11 @@ class UsageError extends Error {}
 interface Flags {
   home?: string;
   logLevel?: LogLevel;
+  factoryFiles: string[];
 }
 
 const parseFlags = (args: readonly string[]): Flags => {
-  const flags: Flags = {};
+  const flags: Flags = { factoryFiles: [] };
   const value = (name: string, arg: string, i: number): [string, number] => {
     const inline = arg.startsWith(`${name}=`) ? arg.slice(name.length + 1) : undefined;
     const given = inline ?? args[i + 1];
@@ -47,11 +53,18 @@ const parseFlags = (args: readonly string[]): Flags => {
       [level, i] = value("--log-level", arg, i);
       if (!isLogLevel(level)) throw new UsageError(`--log-level must be one of ${LOG_LEVELS.join(", ")}`);
       flags.logLevel = level;
+    } else if (arg.startsWith("-")) {
+      throw new UsageError(`unknown option ${arg}`);
+    } else {
+      flags.factoryFiles.push(arg);
     }
-    // Other arguments (factory files) are left for later tickets.
   }
   return flags;
 };
+
+/** This build's version, from the daemon package's manifest beside `dist/`. */
+const foundryVersion = (): string =>
+  (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
 
 const fail = (message: string): never => {
   process.stderr.write(`foundry daemon: ${message}\n`);
@@ -66,6 +79,14 @@ const main = async (): Promise<void> => {
     process.stderr.write(`foundry daemon: ${(error as Error).message}\n`);
     process.exit(EXIT_USAGE);
   }
+  // Read-only and before the claim, so an invalid factory changes nothing in the state root.
+  const loaded = loadFactoryFiles(flags.factoryFiles, { env: process.env });
+  if (loaded._tag === "Refused") {
+    fail(loaded.message);
+    return;
+  }
+  const factories: ReadonlyArray<LoadedFactory> = loaded.factories;
+
   const stateRoot = selectStateRoot({ home: flags.home, env: process.env });
   let claim;
   try {
@@ -105,6 +126,39 @@ const main = async (): Promise<void> => {
     return;
   }
 
+  const startedAt = new Date().toISOString();
+  let loads: ReadonlyArray<RecordedLoad>;
+  try {
+    // The reserved, empty knowledge layout (PRD §5.4.3); existing directories are left alone.
+    for (const factory of factories) createKnowledgeLayout(factory);
+    loads = await Effect.runPromise(
+      recordRun(store, { runId: log.runId, startedAt: Date.parse(startedAt), version: foundryVersion(), factories }),
+    );
+  } catch (error) {
+    log.error("run not recorded", { detail: { error: (error as Error).message } });
+    await closeStore();
+    log.close();
+    claim.release();
+    fail(`cannot record the run in ${stateRoot}: ${(error as Error).message}`);
+    return;
+  }
+  for (const factory of factories) {
+    const factoryLog = log.with({ factoryId: factory.factoryId });
+    for (const warning of factory.warnings) {
+      factoryLog.warn("factory configuration warning", { detail: { path: warning.path, warning: warning.message } });
+    }
+  }
+  for (const load of loads) {
+    log.info("factory configuration loaded", {
+      factoryId: load.factoryId,
+      detail: { loadId: load.loadId, configHash: load.configHash },
+    });
+  }
+  // Configuration is read only at start (PRD §4), so the loaded set is fixed for this run.
+  const ticketFactories = factories.map((f) => ticketFactoryFrom(f.config));
+  // Each factory's transitions carry this run's recorded configuration load.
+  const loadIds = new Map(loads.map((l) => [l.factoryId, String(l.loadId)]));
+
   // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
   // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
   let api: ManagementApi | undefined;
@@ -129,12 +183,17 @@ const main = async (): Promise<void> => {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
-  const startedAt = new Date().toISOString();
   try {
     api = await serveManagementApi({
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
+      tickets: makeTicketService({
+        stateRoot,
+        store,
+        factories: () => ticketFactories,
+        configLoad: (factory) => loadIds.get(factory),
+      }),
       events: storeEventSource(store),
     });
   } catch (error) {
