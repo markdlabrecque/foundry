@@ -171,12 +171,19 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
 
   pi.registerTool({
     name: AGENT_REPLY,
-    label: "Reply to a request",
-    description: "Reply by requestId from the selected recipient slot. The first reply before the deadline completes the request; late replies are recorded but not delivered.",
-    parameters: Type.Object({
-      requestId: Type.String({ minLength: 1 }),
-      body: Type.String(),
-    }, { additionalProperties: false }),
+    label: "Reply to a request or resolve a delegation",
+    description: "From the selected recipient slot, reply with requestId and body, or resolve a delegation with delegationId, an explicit outcome and evidence. A request's first reply before its deadline completes it; late replies are recorded but not delivered. A delegation result returns to its delegating slot; acknowledgement alone is not resolution.",
+    parameters: Type.Union([
+      Type.Object({
+        requestId: Type.String({ minLength: 1 }),
+        body: Type.String(),
+      }, { additionalProperties: false }),
+      Type.Object({
+        delegationId: Type.String({ minLength: 1 }),
+        outcome: Type.String({ minLength: 1 }),
+        evidence: Type.String({ minLength: 1 }),
+      }, { additionalProperties: false }),
+    ]),
     async execute(callId, args): Promise<AgentToolResult<ToolCallOutcome>> {
       const outcome = await toolCalls.call(callId, AGENT_REPLY, args);
 
