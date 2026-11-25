@@ -8,7 +8,9 @@ import type { Change, StoreError } from "./store.js";
 /**
  * Runs inside the drop's transaction, so the failure, its notification and the drop commit
  * together. Only an open request fails: one already completed, expired or closed by its
- * assignment keeps that outcome, and the requester hears nothing new.
+ * assignment keeps that outcome, and the requester hears nothing new. A request past its deadline
+ * that the expiry sweep has not reached yet becomes `failed`, not `expired`, deliberately: only
+ * failure notifies the requester.
  */
 export const failDroppedRequest = (change: Change, notice: MessageDispositionResult): Effect.Effect<void, StoreError> =>
   Effect.gen(function* () {

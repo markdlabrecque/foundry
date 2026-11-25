@@ -406,7 +406,7 @@ test("dropping a request notice fails the request and notifies the requester in 
       yield* change.recordHistory({ factoryId: "alpha", kind: "fixture.trigger", subject: requestId });
     })));
     const armed = await Effect.runPromise(snapshot(store));
-    await expect(Effect.runPromise(disposition.act(noticeId, "drop", true))).rejects.toThrow();
+    await expect(Effect.runPromise(disposition.act(noticeId, "drop", true))).rejects.toThrow(/fixture failure/);
     expect(await Effect.runPromise(snapshot(store))).toEqual(armed);
     expect(armed.requests).toEqual(before.requests);
     expect(armed.messages).toEqual(before.messages);
@@ -450,5 +450,7 @@ test("dropping the notice of an already-closed request changes no request and se
     expect(after.requests).toMatchObject([{ status: "completed" }]);
     expect(after.messages).toMatchObject([{ id: noticeId, status: "dropped" }]);
     expect(after.history.map((row) => row.kind)).not.toContain("request.failed");
+    expect(after.history.map((row) => row.kind)).toContain("message.dropped");
+    expect(await Effect.runPromise(store.read(`SELECT state FROM operator_hold`))).toEqual([{ state: "resolved" }]);
   }));
 });
