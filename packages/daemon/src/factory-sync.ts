@@ -16,6 +16,7 @@ import { Data, Effect } from "effect";
 import { messageOf } from "@foundry/protocol/errors";
 import { runCloneGit } from "./factory-clone.js";
 import { integrateApprovedCommit } from "./integration.js";
+import type { BeforeIntegrationVerify } from "./integration.js";
 import type { FactoryConfig } from "./config/schema.js";
 import type { WorktreeService } from "./worktree-cleanup.js";
 import { closeOpenHoldIn, raiseHoldIn } from "./holds.js";
@@ -160,6 +161,8 @@ export interface FactorySyncerOptions {
   readonly env?: NodeJS.ProcessEnv;
   /** Shared cleanup service, invoked only after integration completion commits and locks release. */
   readonly worktrees?: Pick<WorktreeService, "clean">;
+  /** Integration after_create seam, run in the proposed merge checkout before verify. */
+  readonly beforeVerify?: BeforeIntegrationVerify;
   /** Told about a queue run that failed outside any operation's result (a store error). */
   readonly onError?: (factory: string, cause: unknown) => void;
 }
@@ -168,7 +171,7 @@ export interface FactorySyncerOptions {
  * Runs the durable shared queue one operation at a time, including exact-SHA integrations.
  */
 const drainQueue = (store: Store, factory: string, target: SyncTarget, env: NodeJS.ProcessEnv,
-  worktrees?: Pick<WorktreeService, "clean">): Effect.Effect<void, StoreError> =>
+  worktrees?: Pick<WorktreeService, "clean">, beforeVerify?: BeforeIntegrationVerify): Effect.Effect<void, StoreError> =>
   Effect.gen(function* () {
     for (;;) {
       const next = yield* startNextOperation(store, factory);
@@ -176,7 +179,7 @@ const drainQueue = (store: Store, factory: string, target: SyncTarget, env: Node
       if (next === undefined) {return;}
 
       if (next.kind === "integration") {
-        const completed = yield* integrateApprovedCommit(store, next, target, env);
+        const completed = yield* integrateApprovedCommit(store, next, target, env, beforeVerify);
 
         if (completed && next.ticket !== null && worktrees !== undefined) {
           // The cleanup service owns its own intent/result and preserves completed state on
@@ -218,7 +221,7 @@ export const createFactorySyncer = (options: FactorySyncerOptions): FactorySynce
 
   const scheduleDrain = (factory: string, target: SyncTarget): Promise<void> => {
     const run = (runs.get(factory) ?? Promise.resolve()).then(() =>
-      Effect.runPromise(drainQueue(options.store, factory, target, env, options.worktrees)).catch((cause: unknown) => options.onError?.(factory, cause)),
+      Effect.runPromise(drainQueue(options.store, factory, target, env, options.worktrees, options.beforeVerify)).catch((cause: unknown) => options.onError?.(factory, cause)),
     );
 
     runs.set(factory, run);

@@ -1,10 +1,11 @@
-/** Exact-SHA integration for the unchanged-default path (PRD §9.3–4).
- * Moved-default conflicts are rejected from a disposable worktree. Clean moved-default
- * verification and completed-ticket worktree cleanup have separate owners.
+/** Exact-SHA integration (PRD §9.3–4).
+ * Moved-default merges are prepared and verified in a disposable worktree.
+ * Integration setup hooks and completed-ticket cleanup have separate owners.
  * Returns whether completion committed; the queue can then clean up after releasing Git locks.
  * No fetch, push, ticket-branch rewrite, or cleanup runs here.
  */
-import { closeSync, mkdirSync, mkdtempSync, openSync, rmSync, unlinkSync } from "node:fs";
+import { spawn } from "node:child_process";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, unlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { ticketApprovalLock } from "./approval-coordination.js";
@@ -19,6 +20,39 @@ import type { Operation, OperationDetail, OperationOutcome } from "./operations.
 import type { Store, StoreError } from "./store.js";
 
 class IntegrationRefused extends Data.TaggedError("IntegrationRefused")<{ readonly reason: string }> {}
+
+/** Setup seam for integration after_create. False pauses without rejecting the approval;
+ * the hook owner records its own log/hold before returning. Called even without verify. */
+export type BeforeIntegrationVerify = (context: {
+  readonly store: Store;
+  readonly operation: Operation;
+  readonly path: string;
+  readonly env: NodeJS.ProcessEnv;
+}) => Effect.Effect<boolean, StoreError>;
+
+/** Direct argv, bounded-memory output streamed outside the disposable checkout. */
+const verifyMerge = (argv: ReadonlyArray<string>, path: string, logPath: string, env: NodeJS.ProcessEnv) =>
+  Effect.acquireUseRelease(
+    Effect.try({ try: () => openSync(logPath, "wx", 0o600), catch: (cause) => new IntegrationRefused({ reason: messageOf(cause) }) }),
+    (fd) => Effect.promise((signal) => new Promise<{ exitStatus: number | null; signal: string | null; reason: string | null }>((resolve) => {
+      const command = argv[0];
+
+      if (command === undefined) {
+        resolve({ exitStatus: null, signal: null, reason: "verify command is empty" });
+
+        return;
+      }
+
+      let reason: string | null = null;
+
+      try {
+        const child = spawn(command, argv.slice(1), { cwd: path, env, shell: false, signal, killSignal: "SIGKILL", stdio: ["ignore", fd, fd] });
+        child.on("error", (error) => { reason = messageOf(error); });
+        child.on("close", (exitStatus, signal) => resolve({ exitStatus, signal, reason }));
+      } catch (cause) {resolve({ exitStatus: null, signal: null, reason: messageOf(cause) });}
+    })),
+    (fd) => Effect.sync(() => closeSync(fd)),
+  );
 
 interface IntegrationTicket {
   readonly state: string;
@@ -41,7 +75,7 @@ const integrationGit = (clonePath: string, env: NodeJS.ProcessEnv, args: Readonl
 
 /** Already admitted by the shared integration/sync queue. Git always runs outside transactions. */
 export const integrateApprovedCommit = (
-  store: Store, operation: Operation, target: SyncTarget, env: NodeJS.ProcessEnv,
+  store: Store, operation: Operation, target: SyncTarget, env: NodeJS.ProcessEnv, beforeVerify?: BeforeIntegrationVerify,
 ): Effect.Effect<boolean, StoreError> => ticketApprovalLock(store, operation.factoryId, operation.ticket ?? 0).withPermit(Effect.scoped(Effect.gen(function* () {
   const intent = decodeIntent(operation.intent);
   const clonePath = target.clonePath;
@@ -90,10 +124,17 @@ export const integrateApprovedCommit = (
     recorded = { previousHead, approvedCommit: approved };
     yield* extendOperationIntent(store, operation.id, { ...recorded, defaultBranch: target.defaultBranch });
 
+    // Refuse dirty state before preparing or running commands. Never reset or clean it.
+    if ((yield* git(["status", "--porcelain", "--untracked-files=all"])) !== "") {
+      return yield* new IntegrationRefused({ reason: "factory clone has uncommitted changes" });
+    }
+
+    let preparedHead: string | undefined;
+
     if (previousHead !== ticket.start_commit) {
       // A detached scratch checkout keeps both named branches and their worktrees untouched.
       // Disable rerere: a remembered resolution must not conceal conflicting-file evidence.
-      const conflictingFiles = yield* Effect.scoped(Effect.gen(function* () {
+      yield* Effect.scoped(Effect.gen(function* () {
         const directory = yield* Effect.acquireRelease(
           Effect.sync(() => mkdtempSync(join(tmpdir(), "foundry-integration-"))),
           (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
@@ -119,23 +160,53 @@ export const integrateApprovedCommit = (
 
         if (merged !== undefined && conflicts.length === 0) {return yield* merged;}
 
-        if (conflicts.length > 0) {yield* scratchGit(["merge", "--abort"]);}
+        if (conflicts.length > 0) {
+          recorded = { ...recorded, conflictingFiles: conflicts };
+          yield* scratchGit(["merge", "--abort"]);
 
-        return conflicts;
+          return yield* new IntegrationRefused({ reason: `Merge conflict in: ${conflicts.join(", ")}` });
+        }
+
+        // Commit the prepared tree before commands run: setup/verify artifacts must not land.
+        const tree = yield* scratchGit(["write-tree"]);
+        const common = yield* scratchGit(["merge-base", previousHead, approved]);
+
+        preparedHead = common === previousHead ? approved : yield* scratchGit(["-c", "user.name=Foundry", "-c", "user.email=foundry@foundry.invalid",
+          "commit-tree", "--no-gpg-sign", tree, "-p", previousHead, "-p", approved, "-m", `Integrate approved commit ${approved}`]);
+        const mergeHeadPath = resolve(path, yield* scratchGit(["rev-parse", "--git-path", "MERGE_HEAD"]));
+
+        if (existsSync(mergeHeadPath)) {yield* scratchGit(["merge", "--abort"]);}
+
+        yield* scratchGit(["checkout", "--detach", preparedHead]);
+
+        if (beforeVerify !== undefined && !(yield* beforeVerify({ store, operation, path, env }))) {
+          return yield* new IntegrationRefused({ reason: "integration setup failed before verification" });
+        }
+
+        const argv = target.config?.production_lines[ticket.production_line]?.verify;
+
+        if (argv === undefined) {
+          recorded = { ...recorded, verification: { status: "unchecked" } };
+
+          return;
+        }
+
+        const logDirectory = yield* Effect.try({
+          try: () => mkdtempSync(resolve(clonePath, "..", `foundry-verify-${operation.id}-`)),
+          catch: (cause) => new IntegrationRefused({ reason: messageOf(cause) }),
+        });
+
+        const logPath = join(logDirectory, "verify.log");
+
+        yield* extendOperationIntent(store, operation.id, { verification: { argv: [...argv], path, logPath } });
+
+        const result = yield* verifyMerge(argv, path, logPath, env);
+        const passed = result.exitStatus === 0 && result.reason === null && result.signal === null;
+
+        recorded = { ...recorded, verification: { status: passed ? "passed" : "failed", ...result, logPath } };
+
+        if (!passed) {return yield* new IntegrationRefused({ reason: `Verification failed: ${result.reason ?? result.signal ?? `exit ${result.exitStatus}`}` });}
       }));
-
-      if (conflictingFiles.length > 0) {
-        recorded = { ...recorded, conflictingFiles };
-
-        return yield* new IntegrationRefused({ reason: `Merge conflict in: ${conflictingFiles.join(", ")}` });
-      }
-
-      return yield* new IntegrationRefused({ reason: "default branch moved; integration requires moved-default verification" });
-    }
-
-    // Refuse dirty state rather than carrying it into the integration. Never reset or clean it.
-    if ((yield* git(["status", "--porcelain", "--untracked-files=all"])) !== "") {
-      return yield* new IntegrationRefused({ reason: "factory clone has uncommitted changes" });
     }
 
     const exact = yield* git(["rev-parse", "--verify", `${approved}^{commit}`]);
@@ -144,9 +215,9 @@ export const integrateApprovedCommit = (
 
     const common = yield* git(["merge-base", previousHead, approved]);
     const fastForward = common === previousHead;
-    let plannedHead = approved;
+    let plannedHead = preparedHead ?? approved;
 
-    if (!fastForward) {
+    if (!fastForward && preparedHead === undefined) {
       // A writing stage may have rebased before review. Build a real merge tree without
       // touching the default checkout, and preserve the exact approved SHA as second parent.
       const tree = yield* git(["merge-tree", "--write-tree", previousHead, approved]);
@@ -168,6 +239,11 @@ export const integrateApprovedCommit = (
       [intent.approvalId, operation.factoryId, operation.ticket]);
 
     if (authorized?.approved_commit !== approved) {return yield* new IntegrationRefused({ reason: "integration authorization changed before ref mutation" });}
+
+    if ((yield* git(["rev-parse", "--verify", `${ref}^{commit}`])) !== previousHead ||
+      (yield* git(["status", "--porcelain", "--untracked-files=all"])) !== "") {
+      return yield* new IntegrationRefused({ reason: "factory clone changed while preparing integration" });
+    }
 
     // From the first checkout/ref mutation onward, a subprocess error is ambiguous: Git may
     // have changed state before losing its result. Leave the operation running for recovery.
@@ -197,14 +273,15 @@ export const integrateApprovedCommit = (
 
     const complete = outcome.status === "complete";
     const conflict = Array.isArray(outcome.result["conflictingFiles"]);
+    const rejected = conflict || Schema.is(Schema.Struct({ status: Schema.Literals(["failed"]) }))(outcome.result["verification"]);
     const stages = target.config?.production_lines[ticket.production_line]?.stages ?? [];
-    const rejectedStage = conflict ? outcomeRoute(stages, ticket.stage, "rejected") : undefined;
+    const rejectedStage = rejected ? outcomeRoute(stages, ticket.stage, "rejected") : undefined;
     const nextStage = rejectedStage ?? ticket.stage;
-    const limitReached = conflict && ticket.rejections + 1 >= ticket.rejection_ceiling;
-    const nextStatus = conflict && rejectedStage !== undefined && !limitReached ? "queued" : "paused";
+    const limitReached = rejected && ticket.rejections + 1 >= ticket.rejection_ceiling;
+    const nextStatus = rejected && rejectedStage !== undefined && !limitReached ? "queued" : "paused";
     const now = yield* Clock.currentTimeMillis;
 
-    if (conflict) {
+    if (rejected) {
       yield* change.query(`UPDATE ticket SET rejections = rejections + 1 WHERE factory_id = ? AND number = ?`, [operation.factoryId, operation.ticket]);
       yield* change.query(`DELETE FROM integration_intent WHERE approval_id = ?`, [intent.approvalId]);
     }
@@ -217,9 +294,9 @@ export const integrateApprovedCommit = (
       VALUES (?, ?, ?, 'daemon', 'stage', ?, 'awaiting_approval', ?, ?, ?, ?, ?, ?, ?) RETURNING sequence`,
       [operation.factoryId, operation.ticket, now, ticket.stage, complete ? "completed" : "stage",
         complete ? null : nextStage, complete ? null : nextStatus, complete ? "Integrated approved commit" : String(outcome.result["reason"]), ticket.approved_commit,
-        conflict ? "rejected" : null, JSON.stringify(conflict ? outcome.result["conflictingFiles"] : [])]);
+        rejected ? "rejected" : null, JSON.stringify(conflict ? outcome.result["conflictingFiles"] : rejected ? [String(outcome.result["reason"])] : [])]);
 
-    if (conflict && nextStatus === "paused") {
+    if (rejected && nextStatus === "paused") {
       const transition = expectDefined(transitions[0], "integration rejection transition").sequence;
 
       const approvals = yield* change.query<{ id: number }>(`INSERT INTO approval (factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at)
