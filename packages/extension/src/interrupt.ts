@@ -43,7 +43,10 @@ export class RunInterrupter {
 
     if (!control || control.isIdle()) {return "idle";}
 
-    const settled = new Promise<boolean>((resolve) => this.waiting.push(resolve));
+    const settled = new Promise<boolean>((resolve) => {
+      this.waiting.push(resolve);
+    });
+
     control.abort();
 
     // Work that completed despite the abort (a compaction past its last abort check) was not aborted.

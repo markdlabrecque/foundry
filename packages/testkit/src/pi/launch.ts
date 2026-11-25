@@ -154,7 +154,10 @@ export function startFauxPi(options: StartFauxPiOptions = {}): FauxPi {
       }
     }
   });
-  const exited = new Promise<void>((resolve) => child.once("exit", () => resolve()));
+
+  const exited = new Promise<void>((resolve) => {
+    child.once("exit", () => resolve());
+  });
 
   return {
     root,

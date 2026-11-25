@@ -45,7 +45,10 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
     const splitter = new FrameLineSplitter();
     let settled = false;
     let heartbeat: NodeJS.Timeout | undefined;
-    const closed = new Promise<void>((done) => socket.once("close", () => done()));
+
+    const closed = new Promise<void>((done) => {
+      socket.once("close", () => done());
+    });
 
     const stop = (): void => {
       if (heartbeat) {clearInterval(heartbeat);}
@@ -53,7 +56,7 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
       heartbeat = undefined;
     };
 
-    closed.then(stop);
+    void closed.then(stop);
 
     // Rejects with the value as thrown or emitted: socket errors and splitter overflows are Errors.
     const fail = (cause: unknown): void => {
@@ -102,7 +105,11 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
           channel = {
             send: (frame) =>
               new Promise<void>((done, failed) => {
-                if (socket.destroyed || !socket.writable) {return failed(new Error("channel is closed"));}
+                if (socket.destroyed || !socket.writable) {
+                  failed(new Error("channel is closed"));
+
+                  return;
+                }
 
                 socket.write(encodeFrame(frame), (error) => (error ? failed(error) : done()));
               }),

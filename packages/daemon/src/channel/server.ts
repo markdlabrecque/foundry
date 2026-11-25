@@ -187,7 +187,9 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         send: (frame) =>
           new Promise<void>((done, failed) => {
             if (state !== "accepted" || socket.destroyed || !socket.writable) {
-              return failed(new Error("channel connection has ended"));
+              failed(new Error("channel connection has ended"));
+
+              return;
             }
 
             socket.write(encodeFrame(frame), (error) => (error ? failed(error) : done()));
@@ -263,7 +265,11 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
       new Promise<InterruptOutcome>((resolve, reject) => {
         const channel = byLaunch.get(launchId);
 
-        if (!channel) {return reject(new ChannelUnavailableError(launchId, "is not connected"));}
+        if (!channel) {
+          reject(new ChannelUnavailableError(launchId, "is not connected"));
+
+          return;
+        }
 
         const requestId = randomUUID();
         channel.pending.set(requestId, { resolve, reject });
@@ -276,7 +282,10 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
       }),
     close: async () => {
       closing = true;
-      const closed = new Promise<void>((resolve) => server.close(() => resolve()));
+
+      const closed = new Promise<void>((resolve) => {
+        server.close(() => resolve());
+      });
 
       for (const socket of connections) {socket.destroy();}
 

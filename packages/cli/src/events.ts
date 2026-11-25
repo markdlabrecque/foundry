@@ -187,7 +187,11 @@ export const runEvents = async (options: EventsOptions): Promise<EventsOutcome> 
         done({ kind: "ended" });
       };
 
-      if (options.signal?.aborted) {return onAbort();}
+      if (options.signal?.aborted) {
+        onAbort();
+
+        return;
+      }
 
       options.signal?.addEventListener("abort", onAbort);
       req.on("error", (error: NodeJS.ErrnoException) => {
@@ -235,6 +239,8 @@ export const runEvents = async (options: EventsOptions): Promise<EventsOutcome> 
       options.notice?.(`foundry: event stream dropped; reconnecting after event ${cursor}`);
     }
 
-    await new Promise<void>((resolve) => setTimeout(resolve, RECONNECT_DELAY_MS));
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, RECONNECT_DELAY_MS);
+    });
   }
 };
