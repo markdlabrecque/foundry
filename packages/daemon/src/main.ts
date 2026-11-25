@@ -30,7 +30,7 @@ import { startAfterCreateRecovery } from "./after-create-recovery.js";
 import { createTicketWorktrees } from "./worktrees.js";
 import { createWorktreeService } from "./worktree-cleanup.js";
 import { reconcileInterruptedCleanups } from "./cleanup-recovery.js";
-import { startWorktreeRecovery } from "./worktree-recovery.js";
+import { createWorktreeRecovery } from "./worktree-recovery.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Predicate, Schema, Scope } from "effect";
@@ -683,20 +683,20 @@ const main = async (): Promise<void> => {
 
   // PRD §10.2 step 3: an interrupted worktree creation is recreated when its branch is still empty,
   // or kept as created when it has commits. Its ticket is unassignable until a creation completes.
-  const stopWorktreeRecovery = startWorktreeRecovery({
-    store, factories: decision.started,
+  // Each factory's verdicts are settled in `recoverAndResume`, before its queue resumes; rebuilds and
+  // first after_create runs then finish in the background.
+  const worktreeRecovery = createWorktreeRecovery({
+    store,
     target: (factoryId) => {
       const factory = factories.find((f) => f.factoryId === factoryId);
       const clone = clones.get(factoryId);
 
       return factory === undefined || clone === undefined ? undefined : { factory, clonePath: clone.path };
     },
-    onRecovered: (operation, verdict) => {
-      const refs: LogRefs = { factoryId: operation.factoryId, operationId: String(operation.id) };
-      log.info("worktree creation recovered", { ...(operation.ticket === null ? refs : { ...refs, ticketId: String(operation.ticket) }), detail: { verdict } });
-    },
     onError: (error) => log.error("worktree recovery failed", { detail: { error: messageOf(error) } }),
   });
+
+  const stopWorktreeRecovery = worktreeRecovery.stop;
 
   const stop = (signal: NodeJS.Signals): void => {
     if (stopping) {return;}
@@ -890,7 +890,8 @@ const main = async (): Promise<void> => {
   // Resume only accepted, not-yet-started work (PRD §9.4). An empty queue does not fetch, and a
   // factory with an operation interrupted at startup admits nothing until its recovery runs.
   // PRD §10.2 step 3: interrupted syncs are reconciled from the clone alone, never rerun or fetched;
-  // interrupted cleanups and before_remove runs are rerun or finished. Every recovery result lands
+  // interrupted cleanups and before_remove runs are rerun or finished; interrupted worktree creations
+  // are settled. Every recovery result lands
   // before the queue resumes.
   const recoverAndResume = async (factory: string): Promise<void> => {
     const clone = clones.get(factory);
@@ -921,6 +922,19 @@ const main = async (): Promise<void> => {
       }
     } catch (error) {
       log.error("cleanup recovery failed", { factoryId: factory, detail: { error: messageOf(error) } });
+    }
+
+    try {
+      for (const recovered of await worktreeRecovery.settle(factory)) {
+        const refs: LogRefs = { factoryId: factory, operationId: String(recovered.operation.id) };
+        const withTicket: LogRefs = recovered.operation.ticket === null ? refs : { ...refs, ticketId: String(recovered.operation.ticket) };
+        const detail = { verdict: recovered.verdict, reason: recovered.reason ?? "" };
+
+        if (recovered.verdict === "refused") {log.warn("worktree creation not recovered", { ...withTicket, detail });}
+        else {log.info("worktree creation recovered", { ...withTicket, detail });}
+      }
+    } catch (error) {
+      log.error("worktree recovery failed", { factoryId: factory, detail: { error: messageOf(error) } });
     }
 
     await sync.resumeQueued(factory);
