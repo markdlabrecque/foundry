@@ -24,6 +24,8 @@ import { assignedSlot, assignmentContextSlot, assignmentTicket, watchAssignments
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
+import type { SyncTarget } from "./factory-sync.js";
+import { recoverInterruptedIntegrations } from "./integration-recovery.js";
 import { interruptRunningOperations } from "./operations.js";
 import { recoverInterruptedSyncs } from "./sync-recovery.js";
 import { startAfterCreateRecovery } from "./after-create-recovery.js";
@@ -33,7 +35,7 @@ import { reconcileInterruptedCleanups } from "./cleanup-recovery.js";
 import { createWorktreeRecovery } from "./worktree-recovery.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
-import { Effect, Exit, Predicate, Schema, Scope } from "effect";
+import { Cause, Effect, Exit, Predicate, Schema, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
 import { storeApprovalsReader } from "./approvals.js";
@@ -746,16 +748,18 @@ const main = async (): Promise<void> => {
     target: cleanupTarget,
   });
 
+  const syncTarget = (factory: string): SyncTarget | undefined => {
+    const clone = clones.get(factory);
+    const loaded = factories.find((f) => f.factoryId === factory);
+
+    return stopping || clone === undefined || loaded === undefined || !factoryStates.isRunning(factory)
+      ? undefined
+      : { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch, config: loaded.config };
+  };
+
   const sync = createFactorySyncer({
     store, worktrees,
-    target: (factory) => {
-      const clone = clones.get(factory);
-      const loaded = factories.find((f) => f.factoryId === factory);
-
-      return stopping || clone === undefined || loaded === undefined || !factoryStates.isRunning(factory)
-        ? undefined
-        : { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch, config: loaded.config };
-    },
+    target: syncTarget,
     onError: (factory, error) => log.error("sync queue run failed", { factoryId: factory, detail: { error: messageOf(error) } }),
   });
 
@@ -889,11 +893,25 @@ const main = async (): Promise<void> => {
 
   // Resume only accepted, not-yet-started work (PRD §9.4). An empty queue does not fetch, and a
   // factory with an operation interrupted at startup admits nothing until its recovery runs.
-  // PRD §10.2 step 3: interrupted syncs are reconciled from the clone alone, never rerun or fetched;
+  // PRD §10.2 step 3: interrupted integrations are classified landed, rerun or indeterminate first;
+  // interrupted syncs are reconciled from the clone alone, never rerun or fetched;
   // interrupted cleanups and before_remove runs are rerun or finished; interrupted worktree creations
   // are settled. Every recovery result lands
   // before the queue resumes.
   const recoverAndResume = async (factory: string): Promise<void> => {
+    try {
+      for (const { operation, verdict } of await Effect.runPromise(recoverInterruptedIntegrations({ store, worktrees, target: syncTarget,
+        onFailure: (operation, cause) => log.error("integration recovery failed", {
+          factoryId: factory, operationId: String(operation.id), detail: { error: Cause.pretty(cause) } }) }, factory))) {
+        const refs: LogRefs = { factoryId: factory, operationId: String(operation.id), ticketId: String(operation.ticket) };
+
+        if (verdict === "indeterminate") {log.warn("integration recovered", { ...refs, detail: { verdict } });}
+        else {log.info("integration recovered", { ...refs, detail: { verdict } });}
+      }
+    } catch (error) {
+      log.error("integration recovery failed", { factoryId: factory, detail: { error: messageOf(error) } });
+    }
+
     const clone = clones.get(factory);
     const loaded = factories.find((f) => f.factoryId === factory);
 
