@@ -9,6 +9,8 @@ import { chmodSync, linkSync, lstatSync, mkdtempSync, rmdirSync, unlinkSync, typ
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { join } from "node:path";
+import type { HoldsReader } from "./holds.js";
+import { HOLDS_PATH } from "@foundry/protocol/holds";
 import {
   managementSocketPath,
   STATUS_PATH,
@@ -25,6 +27,8 @@ export interface ManagementApiInputs {
   readonly stateRoot: string;
   /** Called on every status request, so each answer is current. */
   readonly status: () => StatusResult;
+  /** Operator holds (PRD §10.2). Without it the hold routes answer 503. */
+  readonly holds?: HoldsReader;
   /** Serves the ticket routes when given; without it they answer 404. */
   readonly tickets?: TicketService;
 }
@@ -208,22 +212,44 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
     );
     return;
   }
-  request.resume(); // Status reads no body; drain it so the connection stays usable.
-  if (path !== STATUS_PATH) {
+  request.resume(); // The remaining routes read no body; drain it so the connection stays usable.
+  const route = routeFor(inputs, path);
+  if (route === undefined) {
     return send(response, 404, failure("not_found", `no route for ${request.method} ${path}`));
   }
   if (request.method !== "GET") {
     response.setHeader("allow", "GET");
     return send(response, 405, failure("method_not_allowed", `${path} only accepts GET`));
   }
-  let result: StatusResult;
-  try {
-    result = inputs.status();
-  } catch (error) {
-    return send(response, 500, failure("internal", `status unavailable: ${(error as Error).message}`));
-  }
-  send(response, 200, { ok: true, result });
+  route().then(
+    ([status, body]) => send(response, status, body),
+    (error: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${describeError(error)}`)),
+  );
 };
+
+type Route = () => Promise<readonly [number, ApiResponse<unknown>]>;
+
+const HOLD_ID = new RegExp(`^${HOLDS_PATH}/([1-9][0-9]{0,15})$`);
+
+const routeFor = (inputs: ManagementApiInputs, path: string): Route | undefined => {
+  if (path === STATUS_PATH) return async () => [200, { ok: true, result: inputs.status() }];
+  if (path === HOLDS_PATH) return withHolds(inputs, async (holds) => [200, { ok: true, result: await holds.list() }]);
+  const id = HOLD_ID.exec(path)?.[1];
+  if (id === undefined) return undefined;
+  return withHolds(inputs, async (holds) => {
+    const shown = await holds.show(Number(id));
+    return shown === undefined
+      ? [404, failure("not_found", `no hold ${id}`)]
+      : [200, { ok: true, result: shown }];
+  });
+};
+
+const withHolds =
+  (inputs: ManagementApiInputs, use: (holds: HoldsReader) => ReturnType<Route>): Route =>
+  async () =>
+    inputs.holds === undefined ? [503, failure("unavailable", "holds are not served by this daemon")] : use(inputs.holds);
+
+const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 const failure = (code: string, message: string): ApiResponse<never> => ({ ok: false, error: { code, message } satisfies ApiError });
 

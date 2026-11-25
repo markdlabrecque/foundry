@@ -6,16 +6,21 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit } from "effect";
 import { foundryMigrations, openStore, type Migration, type Store } from "@foundry/daemon";
 
-// Stands in for a later ticket's current-state table, one past the migrations this build ships.
-const slotsId = Math.max(...foundryMigrations.map((m) => m.id)) + 1;
+// Stands in for a later ticket's current-state table, one past the migrations this build knows.
+const nextId = foundryMigrations.length + 1;
 const withSlots: ReadonlyArray<Migration> = [
   ...foundryMigrations,
   {
-    id: slotsId,
+    id: nextId,
     name: "test_slots",
     statements: [`CREATE TABLE slot (id TEXT PRIMARY KEY, factory_id TEXT NOT NULL, condition TEXT NOT NULL) STRICT`],
   },
 ];
+
+// Unit: parallel branches each add a migration; a merge must renumber, never repeat or skip an ID.
+test("the migrations this build ships are numbered 1..n with no gaps or repeats", () => {
+  expect(foundryMigrations.map((m) => m.id)).toEqual(foundryMigrations.map((_, i) => i + 1));
+});
 
 let dir: string;
 let filename: string;
@@ -56,7 +61,7 @@ test("a committed change survives reopening the file in WAL mode", async () => {
     }),
   );
 
-  expect(reopened.version).toBe(slotsId);
+  expect(reopened.version).toBe(nextId);
   expect(reopened.journal[0]?.journal_mode).toBe("wal");
   expect(reopened.state.slots).toEqual([{ id: "s1", condition: "frozen" }]);
   expect(reopened.state.history).toEqual([
@@ -84,7 +89,7 @@ test("an older database is migrated forward on open, keeping its history", async
     Effect.all({ version: Effect.succeed(store.schemaVersion), state: snapshot(store) }),
   );
 
-  expect(after.version).toBe(slotsId);
+  expect(after.version).toBe(nextId);
   expect(after.state.slots).toEqual([]);
   expect(after.state.history).toMatchObject([{ kind: "run.started", subject: "r1" }]);
 });

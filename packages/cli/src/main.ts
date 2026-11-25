@@ -9,6 +9,7 @@ import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { EXIT_USAGE, runStatus } from "./status.js";
 import { validateFactoryFile } from "./validate.js";
 import { runTicketList, runTicketShow, runTicketSubmit, type TicketOutcome } from "./tickets.js";
+import { runHoldList, runHoldShow, type HoldOutcome } from "./holds.js";
 
 const validate = Command.make(
   "validate",
@@ -45,7 +46,7 @@ const status = Command.make(
     }),
 ).pipe(Command.withDescription("Show the running instance's status from the daemon"));
 
-const ticketFlags = {
+const commonFlags = {
   json: Flag.Boolean("json").pipe(
     Flag.withDefault(false),
     Flag.withDescription("Print the management API response body unchanged"),
@@ -54,6 +55,36 @@ const ticketFlags = {
     Flag.optional,
     Flag.withDescription("State root of the instance (default: FOUNDRY_HOME, else ~/.foundry)"),
   ),
+};
+
+const print = (outcome: HoldOutcome) =>
+  Effect.sync(() => {
+    if (outcome.stdout !== "") process.stdout.write(outcome.stdout);
+    if (outcome.stderr !== "") process.stderr.write(outcome.stderr);
+    process.exitCode = outcome.exitCode;
+  });
+
+const holdList = Command.make("list", commonFlags, ({ json, home }) =>
+  Effect.flatMap(
+    Effect.promise(() => runHoldList({ json, home: Option.getOrUndefined(home), env: process.env })),
+    print,
+  ),
+).pipe(Command.withDescription("List the open operator holds"));
+
+const holdShow = Command.make("show", { ...commonFlags, id: Argument.String("id") }, ({ json, home, id }) =>
+  Effect.flatMap(
+    Effect.promise(() => runHoldShow({ json, home: Option.getOrUndefined(home), env: process.env, id })),
+    print,
+  ),
+).pipe(Command.withDescription("Show one operator hold, its evidence and the commands that apply"));
+
+const hold = Command.make("hold").pipe(
+  Command.withDescription("Operator holds: system state waiting on the operator"),
+  Command.withSubcommands([holdList, holdShow]),
+);
+
+const ticketFlags = {
+  ...commonFlags,
   factory: Flag.String("factory").pipe(
     Flag.optional,
     Flag.withDescription("Factory name; required only when more than one factory is loaded"),
@@ -113,7 +144,7 @@ const ticket = Command.make("ticket").pipe(
   Command.withSubcommands([ticketSubmit, ticketList, ticketShow]),
 );
 
-const foundry = Command.make("foundry").pipe(Command.withSubcommands([validate, status, ticket]));
+const foundry = Command.make("foundry").pipe(Command.withSubcommands([validate, status, hold, ticket]));
 
 Command.run(foundry, { version: "0.0.0" }).pipe(
   // effect/cli has already printed the problem and the help; PRD §11.5 makes a usage error exit 2.

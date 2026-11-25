@@ -47,3 +47,14 @@ export {
   type ManagementApiInputs,
   type ManagementSocketRefusal,
 } from "./management-api.js";
+export {
+  closeHold,
+  getHold,
+  listOpenHolds,
+  raiseHold,
+  storeHoldsReader,
+  type HoldsReader,
+  type RaiseHold,
+  type RaiseOutcome,
+  type RaiseResult,
+} from "./holds.js";
