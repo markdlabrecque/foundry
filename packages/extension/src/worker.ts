@@ -10,9 +10,10 @@
  * failing agent tools after a terminal refusal; those land with the agent tools and the RPC gates.
  */
 import { existsSync } from "node:fs";
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
-import type { Hello } from "@foundry/protocol";
+import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { AGENT_DISCOVER, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
+import type { Hello, ToolCallOutcome } from "@foundry/protocol";
+import { Type } from "typebox";
 import { openChannel } from "./channel/client.js";
 import type { OpenChannel } from "./channel/client.js";
 import { CompactionReporter } from "./compaction.js";
@@ -74,8 +75,25 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   const compactions = new CompactionReporter();
   pi.on("session_compact", () => compactions.record());
 
-  // Agent tools (PRD §6.1) submit through this client; the tools themselves ship with their tickets.
   const toolCalls = new ToolCallClient();
+
+  pi.registerTool({
+    name: AGENT_DISCOVER,
+    label: "Discover stations and slots",
+    description: "List the configured stations and slots in your factory.",
+    parameters: Type.Object({}, { additionalProperties: false }),
+    async execute(callId): Promise<AgentToolResult<ToolCallOutcome>> {
+      const outcome = await toolCalls.call(callId, AGENT_DISCOVER, {});
+
+      if (outcome.status === "committed") {
+        return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
+      }
+
+      const code = outcome.status === "refused" ? outcome.code : outcome.status;
+
+      return { content: [{ type: "text", text: `${code}: ${outcome.detail}` }], details: outcome, isError: true };
+    },
+  });
 
   const onFrame = receiveDaemonFrames({ adapter, interrupter, toolCalls });
   let channel: OpenChannel | undefined;
