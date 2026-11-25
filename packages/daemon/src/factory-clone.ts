@@ -144,12 +144,12 @@ const readMarker = (clone: string): typeof MarkerIdentity.Type | undefined => {
 
 /**
  * Runs Git with Foundry's environment (`cloneGitEnv`), in `cwd` when given, and resolves with its
- * trimmed stdout. Rejects with Git's last stderr line.
+ * trimmed stdout, or exact stdout with `rawOutput` for filename-bearing output. Rejects with Git's last stderr line.
  */
-export const runCloneGit = (args: ReadonlyArray<string>, env: NodeJS.ProcessEnv, cwd?: string): Promise<string> =>
+export const runCloneGit = (args: ReadonlyArray<string>, env: NodeJS.ProcessEnv, cwd?: string, rawOutput = false): Promise<string> =>
   new Promise((resolve, reject) => {
     execFile("git", args, { cwd, env: cloneGitEnv(env), maxBuffer: 4 * 1024 * 1024 }, (error, stdout, stderr) => {
-      if (error === null) {return resolve(stdout.trim());}
+      if (error === null) {return resolve(rawOutput ? stdout : stdout.trim());}
 
       const detail = stderr.trim().split("\n").filter((line) => line !== "").pop();
       reject(new Error(detail ?? error.message));

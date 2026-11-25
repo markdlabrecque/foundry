@@ -1,5 +1,6 @@
 // Integration tier: real disposable Git and SQLite prove creation intent, base and stage reuse.
-import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -11,13 +12,17 @@ import { MessageReceiver } from "@foundry/extension";
 import type { AssignmentSchedulerOptions, Store } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { createTicketWorktrees } from "../src/worktrees.js";
+import { createWorktreeService } from "../src/worktree-cleanup.js";
+import type { WorktreeService } from "../src/worktree-cleanup.js";
+import { serveManagementApi } from "../src/management-api.js";
+import { runWorktreeClean, runWorktreeList } from "@foundry/cli";
 
 const roots: Array<string> = [];
 
 afterEach(() => { for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });} });
 
 const fixture = async <A, E>(use: (f: {
-  store: Store; root: string; clone: string;
+  store: Store; root: string; clone: string; worktrees: WorktreeService;
   slots: ReturnType<typeof planSlots>;
   scheduler: ReturnType<typeof createAssignmentScheduler>;
   newScheduler: (overrides?: Partial<AssignmentSchedulerOptions>) => ReturnType<typeof createAssignmentScheduler>;
@@ -68,7 +73,10 @@ production_lines:
       ...overrides,
     });
 
-    return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler });
+    const worktrees = createWorktreeService({ store, target: () => ({ factory, clonePath: clone.path }),
+      factories: () => ["shop"], env: isolatedGitEnv() });
+
+    return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler, worktrees });
   })));
 };
 
@@ -348,6 +356,188 @@ test("lifecycle and readiness gates prevent creation and are rechecked after pre
     expect(yield* store.read(`SELECT * FROM assignment`)).toEqual([]);
     expect(yield* newScheduler().schedule()).toHaveLength(1);
     expect(yield* listOperations(store, "shop")).toHaveLength(1);
+  }));
+});
+
+const finishTicket = (store: Store, state: "completed" | "cancelled" = "cancelled") => store.change((change) => Effect.gen(function* () {
+  yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1`);
+  yield* change.query(`UPDATE ticket SET state = ?, stage = NULL, status = NULL`, [state]);
+  yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "finish" });
+}));
+
+test("cleanup is explicit, intent-first, removes merged worktrees and branches, and preserves ticket completion", async () => {
+  await fixture(({ store, root, clone, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    const path = join(root, "worktrees/shop/1-build-widget");
+    expect((yield* Effect.result(worktrees.clean(undefined, 1)))._tag).toBe("Failure");
+    yield* finishTicket(store, "completed");
+    expect(existsSync(path)).toBe(true);
+    expect(yield* worktrees.list()).toMatchObject({ worktrees: [{ ticket: 1, state: "completed", path }] });
+    const observed: Array<boolean> = [];
+    const unsubscribe = store.onCommit(() => observed.push(existsSync(path)));
+
+    try {expect(yield* worktrees.clean(undefined, 1)).toMatchObject({ factoryId: "shop", ticket: 1 });}
+    finally {unsubscribe();}
+
+    expect(observed).toEqual([true, false]);
+    expect(existsSync(path)).toBe(false);
+    expect(git(clone, ["branch", "--list", "ticket/1-build-widget"])).toBe("");
+    expect(yield* worktrees.list()).toEqual({ worktrees: [] });
+    expect(yield* store.read(`SELECT state, start_commit, worktree_path, branch FROM ticket`)).toEqual([
+      { state: "completed", start_commit: expect.any(String), worktree_path: null, branch: null },
+    ]);
+    expect((yield* Effect.result(worktrees.clean(undefined, 1)))._tag).toBe("Failure");
+    expect(yield* listOperations(store, "shop")).toMatchObject([{ kind: "worktree_create" }, { kind: "cleanup", status: "complete" }]);
+  }));
+});
+
+test.each(["tracked", "untracked", "unmerged", "ignored", "whitespace-untracked", "whitespace-ignored"])("cleanup refuses %s work and requires confirmation of the current losses", async (kind) => {
+  await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    const path = join(root, "worktrees/shop/1-build-widget");
+
+    if (kind === "unmerged") {git(path, ["commit", "--quiet", "--allow-empty", "-m", "unmerged work"]);}
+    else if (kind === "tracked") {writeFileSync(join(path, "README.md"), "changed tracked work");}
+    else if (kind === "ignored" || kind === "whitespace-ignored") {
+      const name = kind === "ignored" ? "ignored" : " ignored ";
+      writeFileSync(join(path, ".gitignore"), kind === "ignored" ? "ignored\n" : "*ignored*\n");
+      git(path, ["add", ".gitignore"]);
+      writeFileSync(join(path, name), "work");
+    }
+    else {writeFileSync(join(path, kind === "whitespace-untracked" ? " precious " : "new.txt"), "work");}
+
+    const inspected = yield* worktrees.inspect(undefined, 1);
+    expect(inspected.files !== "" || inspected.commits !== "").toBe(true);
+    expect((yield* Effect.result(worktrees.clean(undefined, 1)))._tag).toBe("Failure");
+    expect((yield* Effect.result(worktrees.clean(undefined, 1, true)))._tag).toBe("Failure");
+    expect(existsSync(path)).toBe(true);
+
+    if (kind === "untracked" || kind === "tracked") {
+      writeFileSync(join(path, kind === "tracked" ? "README.md" : "new.txt"), "different contents, same status");
+      expect((yield* Effect.result(worktrees.clean(undefined, 1, true, inspected.confirmation)))._tag).toBe("Failure");
+    }
+
+    writeFileSync(join(path, "another.txt"), "new loss after inspection");
+    expect((yield* Effect.result(worktrees.clean(undefined, 1, true, inspected.confirmation)))._tag).toBe("Failure");
+    const current = yield* worktrees.inspect(undefined, 1);
+    yield* worktrees.clean(undefined, 1, true, current.confirmation);
+    expect(existsSync(path)).toBe(false);
+    expect(yield* store.read(`SELECT state FROM ticket`)).toEqual([{ state: "cancelled" }]);
+  }));
+});
+
+test.each(["--assume-unchanged", "--skip-worktree"])("cleanup refuses changes hidden by %s unless confirmed force", async (flag) => {
+  await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    const path = join(root, "worktrees/shop/1-build-widget");
+    git(path, ["update-index", flag, "README.md"]);
+    writeFileSync(join(path, "README.md"), "hidden work");
+    expect(git(path, ["status", "--porcelain"])).toBe("");
+    const inspected = yield* worktrees.inspect(undefined, 1);
+    expect(inspected.files).toContain('index flag may hide tracked changes: "README.md"');
+    expect((yield* Effect.result(worktrees.clean(undefined, 1)))._tag).toBe("Failure");
+    expect(existsSync(path)).toBe(true);
+    writeFileSync(join(path, "README.md"), "changed hidden work");
+    expect((yield* Effect.result(worktrees.clean(undefined, 1, true, inspected.confirmation)))._tag).toBe("Failure");
+    const current = yield* worktrees.inspect(undefined, 1);
+    yield* worktrees.clean(undefined, 1, true, current.confirmation);
+    expect(existsSync(path)).toBe(false);
+  }));
+});
+
+test.each(["fifo", "oversized"])("inspection safely refuses %s entries without deleting work", async (kind) => {
+  await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    const path = join(root, "worktrees/shop/1-build-widget");
+    const file = join(path, "unsafe-entry");
+
+    if (kind === "fifo") {execFileSync("mkfifo", [file]);}
+    else {writeFileSync(file, ""); truncateSync(file, 16 * 1024 * 1024 + 1);}
+
+    expect((yield* Effect.result(worktrees.inspect(undefined, 1)))._tag).toBe("Failure");
+    expect((yield* Effect.result(worktrees.clean(undefined, 1, true, "forged")))._tag).toBe("Failure");
+    expect(existsSync(file)).toBe(true);
+    expect(yield* worktrees.list()).toMatchObject({ worktrees: [{ ticket: 1 }] });
+  }));
+});
+
+test("cleanup refuses a mismatched worktree identity even when forced", async () => {
+  await fixture(({ store, root, clone, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET worktree_path = ?, branch = 'main'`, [clone]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "wrong identity" });
+    }));
+    expect((yield* Effect.result(worktrees.clean(undefined, 1, true, "forged")))._tag).toBe("Failure");
+    expect(existsSync(clone)).toBe(true);
+    expect(existsSync(join(root, "worktrees/shop/1-build-widget"))).toBe(true);
+  }));
+});
+
+test("concurrent clean requests admit one operation and never delete twice", async () => {
+  await fixture(({ store, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    const results = yield* Effect.all([Effect.result(worktrees.clean(undefined, 1)), Effect.result(worktrees.clean(undefined, 1))], { concurrency: "unbounded" });
+    expect(results.map((result) => result._tag).sort()).toEqual(["Failure", "Success"]);
+    expect((yield* listOperations(store, "shop")).filter((operation) => operation.kind === "cleanup")).toHaveLength(1);
+  }));
+});
+
+test("configured removal hooks fail closed until the hook handler is available; confirmed force skips them", async () => {
+  await fixture(({ store, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    expect((yield* Effect.result(worktrees.clean(undefined, 1)))._tag).toBe("Failure");
+    const inspected = yield* worktrees.inspect(undefined, 1);
+    yield* worktrees.clean(undefined, 1, true, inspected.confirmation);
+  }), 'root: ./worktrees, before_remove: [./cleanup]');
+});
+
+test("CLI list and confirmed force traverse the management socket without deleting cancelled work automatically", async () => {
+  await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    const path = join(root, "worktrees/shop/1-build-widget");
+    writeFileSync(join(path, "precious.txt"), "keep me");
+
+    const api = yield* Effect.promise(() => serveManagementApi({ stateRoot: root, worktrees,
+      status: () => ({ instance: { stateRoot: root, daemonPid: 1, startedAt: "2026-01-01T00:00:00Z" } }),
+    }));
+
+    const disclosures: Array<string> = [];
+    const common = { home: root, env: {}, factory: undefined, json: false, notice: (text: string) => { disclosures.push(text); } };
+
+    try {
+      expect(yield* Effect.promise(() => runWorktreeList(common))).toMatchObject({ exitCode: 0, stdout: expect.stringContaining(path) });
+      expect(yield* Effect.promise(() => runWorktreeClean({ ...common, number: 1, force: false, yes: false }))).toMatchObject({ exitCode: 1 });
+      expect(yield* Effect.promise(() => runWorktreeClean({ ...common, number: 1, force: true, yes: false, terminal: false }))).toMatchObject({ exitCode: 2 });
+      let losses = "";
+      expect(yield* Effect.promise(() => runWorktreeClean({ ...common, number: 1, force: true, yes: false, terminal: true,
+        confirm: async (text) => {
+          losses = text;
+
+          return false;
+        },
+      }))).toMatchObject({ exitCode: 2 });
+      expect(losses).toContain("precious.txt");
+      expect(existsSync(path)).toBe(true);
+      disclosures.length = 0;
+      expect(yield* Effect.promise(() => runWorktreeClean({ ...common, number: 1, force: true, yes: true, json: true,
+        notice: (text) => {
+          expect(existsSync(path)).toBe(true);
+          disclosures.push(text);
+        },
+      }))).toMatchObject({ exitCode: 0, stdout: expect.stringContaining('"ok":true') });
+      expect(disclosures).toHaveLength(1);
+      expect(disclosures[0]).toContain("precious.txt");
+      expect(disclosures[0]).toContain("Unmerged commits:");
+      expect(existsSync(path)).toBe(false);
+    } finally {yield* Effect.promise(api.close);}
   }));
 });
 
