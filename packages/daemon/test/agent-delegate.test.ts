@@ -118,13 +118,21 @@ test("parent requires the same factory, selected slot, open state and active roo
 
     yield* refuse("unselected");
     yield* bindStationMessages({ store, slots });
+    expect(yield* store.read(`SELECT d.recipient_slot, m.bound_slot FROM delegation d JOIN message m ON m.id = d.notice_id`))
+      .toEqual([{ recipient_slot: "reviewer/1", bound_slot: "reviewer/1" }]);
+    expect(yield* bindStationMessages({ store, slots })).toEqual([]);
     yield* refuse("wrong-slot", childArgs, { ...recipient, slotId: "reviewer/2" });
     yield* refuse("foreign", childArgs, { ...recipient, factoryId: "other" });
     yield* refuse("missing", { ...childArgs, parentDelegationId: "missing" });
     expect(yield* Effect.promise(() => submit(store, "child", childArgs, recipient))).toMatchObject({
       status: "committed", value: { rootAssignment: parent?.root_assignment, parentDelegationId: parent?.id, depth: 2 },
     });
-    expect((yield* snapshot(store)).delegations).toHaveLength(2);
+    const child = (yield* snapshot(store)).delegations[1];
+    yield* bindStationMessages({ store, slots });
+    expect(yield* Effect.promise(() => submit(store, "grandchild", {
+      ...args, parentDelegationId: child?.id ?? "missing-child",
+    }))).toMatchObject({ status: "committed", value: { rootAssignment: parent?.root_assignment, depth: 3 } });
+    expect((yield* snapshot(store)).delegations).toHaveLength(3);
     yield* store.change((change) => Effect.gen(function* () {
       yield* change.query(`UPDATE delegation SET status = 'completed' WHERE id = ?`, [parent?.id ?? ""]);
       yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "closed" });
@@ -154,5 +162,12 @@ test("validation and transaction failures retain neither obligation, notice, sub
     expect(yield* snapshot(store)).toEqual(before);
     expect(yield* Effect.promise(() => submit(store, "retry"))).toMatchObject({ status: "committed" });
     expect((yield* snapshot(store)).delegations).toHaveLength(1);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`CREATE TRIGGER fail_delegation BEFORE INSERT ON delegation BEGIN SELECT RAISE(ABORT, 'injected SQL failure'); END`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "SQL fault" });
+    }));
+    const beforeSql = yield* snapshot(store);
+    expect(yield* Effect.promise(() => submit(store, "sql-fault"))).toMatchObject({ status: "refused", code: "not_committed" });
+    expect(yield* snapshot(store)).toEqual(beforeSql);
   }));
 });
