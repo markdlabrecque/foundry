@@ -67,7 +67,7 @@ export class ReceiptReporter {
 }
 
 export interface DaemonFrameHandlers {
-  readonly adapter: Pick<ConversationAdapter, "inject"> & Partial<Pick<ConversationAdapter, "classify">>;
+  readonly adapter: Pick<ConversationAdapter, "inject" | "classify">;
   readonly interrupter: Pick<RunInterrupter, "handle" | "handleDrain">;
   /** Receives tool results. Without one, a result is dropped: no call can be waiting on it. */
   readonly toolCalls?: Pick<ToolCallClient, "receive">;
@@ -85,9 +85,6 @@ export const receiveDaemonFrames = (handlers: DaemonFrameHandlers) => {
   return (frame: DaemonFrame, channel: OpenChannel): void => {
     switch (frame.type) {
       case "reconcile": {
-        // Older embedding adapters cannot safely assert absence: leave the gate closed.
-        if (!handlers.adapter.classify) {return;}
-
         const held = new Set(messages.pending());
 
         const answers = handlers.adapter.classify(frame.ids).map((answer) =>

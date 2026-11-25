@@ -6,6 +6,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { Type } from "typebox";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { createConversationAdapter, MessageReceiver } from "@foundry/extension";
+import type { ConversationAdapter } from "@foundry/extension";
 import { startFauxSession } from "@foundry/testkit";
 
 let root: string;
@@ -45,13 +46,15 @@ test("after_turn starts an idle Pi turn and receipts only recoverable history; h
 
 test("after_turn arriving during a tool round is pending until that round ends, then injected FIFO without a second run", async () => {
   let receiver: MessageReceiver | undefined;
+  let adapter: ConversationAdapter | undefined;
   let release!: () => void;
   let entered!: () => void;
   const blocked = new Promise<void>((resolve) => { release = resolve; });
   const toolEntered = new Promise<void>((resolve) => { entered = resolve; });
   const receipts: Array<string> = [];
   session = await startFauxSession({ root, tools: ["wait_fixture"], extensionFactories: [(pi) => {
-    receiver = new MessageReceiver(createConversationAdapter(pi, { onReceipt: (id) => receipts.push(id) }));
+    adapter = createConversationAdapter(pi, { onReceipt: (id) => receipts.push(id) });
+    receiver = new MessageReceiver(adapter);
     pi.registerTool({ name: "wait_fixture", label: "Wait", description: "Disposable tool barrier", parameters: Type.Object({}),
       async execute() {
         entered();
@@ -68,10 +71,16 @@ test("after_turn arriving during a tool round is pending until that round ends, 
   receiver.receive({ type: "message", id: "first", body: "First", delivery: "after_turn" });
   receiver.receive({ type: "message", id: "second", body: "Second", delivery: "after_turn" });
   expect(receipts).toEqual([]);
+  expect(adapter?.classify(["first", "second", "missing"])).toEqual([
+    { id: "first", status: "pending" }, { id: "second", status: "pending" }, { id: "missing", status: "absent" },
+  ]);
   expect(session.sessionManager.getEntries().filter((entry) => entry.type === "custom_message")).toEqual([]);
   release();
   await run;
   expect(receipts).toEqual(["first", "second"]);
+  expect(adapter?.classify(["first", "missing"])).toEqual([
+    { id: "first", status: "history" }, { id: "missing", status: "absent" },
+  ]);
   expect(session.sessionManager.getEntries().filter((entry) => entry.type === "custom_message")
     .map((entry) => entry.content)).toEqual(["First", "Second"]);
 });

@@ -240,8 +240,9 @@ test("reconnect compares a lost receipt and a held copy against real Pi without 
   expect(errors).toEqual([]);
 });
 
-test("absent stays separate, malformed or cross-launch answers cannot open comparison, and closure rejects", async () => {
+test("replacement-launch history acknowledges old attempts; invalid answers, absence and closure never replay", async () => {
   await seed(1);
+  await seed(2);
   delivery.attach(slot, { send: async () => {} });
   await delivery.idle();
   const reconciler = createReconciler(store);
@@ -251,7 +252,10 @@ test("absent stays separate, malformed or cross-launch answers cannot open compa
   let closed!: () => void;
   const ended = new Promise<void>((resolve) => { closed = resolve; });
 
-  const comparison = reconciler.reconcile(slot, hello, { closed: ended, send: async (frame) => {
+  const replacement = { ...slot, launchId: "replacement" };
+  expect(await Effect.runPromise(acknowledgeMessage(store, replacement, "m2"))).toBe(false);
+
+  const comparison = reconciler.reconcile(replacement, { ...hello, launchId: replacement.launchId }, { closed: ended, send: async (frame) => {
     if (frame.type !== "reconcile") {throw new Error("expected comparison");}
 
     requestId = frame.requestId;
@@ -259,15 +263,40 @@ test("absent stays separate, malformed or cross-launch answers cannot open compa
   } });
 
   await sent;
-  reconciler.receive({ ...slot, launchId: "other" }, { type: "reconciliation_answer", requestId, answers: [{ id: "m1", status: "history" }] });
-  reconciler.receive(slot, { type: "reconciliation_answer", requestId, answers: [] });
-  reconciler.receive(slot, { type: "reconciliation_answer", requestId, answers: [{ id: "unknown", status: "history" }] });
-  reconciler.receive(slot, { type: "reconciliation_answer", requestId, answers: [{ id: "m1", status: "absent" }] });
-  expect(await comparison).toEqual({ history: [], pending: [], absent: ["m1"] });
-  expect(await state()).toEqual([{ id: "m1", status: "sent", acknowledged_at: null }]);
-  expect(await attempts()).toHaveLength(1);
+
+  const valid = { type: "reconciliation_answer" as const, requestId,
+    answers: [{ id: "m1", status: "absent" as const }, { id: "m2", status: "history" as const }] };
+
+  reconciler.receive(slot, valid);
+  reconciler.receive({ ...replacement, slotId: "wrong" }, valid);
+  reconciler.receive({ ...replacement, factoryId: "wrong" }, valid);
+  reconciler.receive(replacement, { ...valid, answers: [] });
+  reconciler.receive(replacement, { ...valid, answers: [{ id: "unknown", status: "history" }, valid.answers[0]!] });
+  reconciler.receive(replacement, { ...valid, answers: [valid.answers[0]!, valid.answers[0]!] });
+  reconciler.receive(replacement, valid);
+  expect(await comparison).toEqual({ history: ["m2"], pending: [], absent: ["m1"] });
+  expect(await state()).toEqual([{ id: "m1", status: "sent", acknowledged_at: null },
+    { id: "m2", status: "acknowledged", acknowledged_at: expect.any(Number) }]);
+  expect(await attempts()).toEqual([{ message_id: "m1", acknowledged_at: null },
+    { message_id: "m2", acknowledged_at: expect.any(Number) }]);
+  expect(await Effect.runPromise(store.read(`SELECT subject FROM history WHERE kind = 'message.acknowledged'`))).toEqual([{ subject: "m2" }]);
   const interrupted = reconciler.reconcile(slot, hello, { closed: ended, send: async () => { closed(); } });
   await expect(interrupted).rejects.toThrow("channel ended during reconciliation");
+  let staleRequest = "";
+  await expect(reconciler.reconcile(slot, hello, { send: async (frame) => {
+    if (frame.type === "reconcile") {staleRequest = frame.requestId;}
+
+    throw new Error("fixture send failed");
+  } })).rejects.toThrow("fixture send failed");
+  reconciler.receive(slot, { type: "reconciliation_answer", requestId: staleRequest, answers: [{ id: "m1", status: "history" }] });
+
+  const later = await reconciler.reconcile(slot, hello, { send: async (frame) => {
+    if (frame.type === "reconcile") {
+      reconciler.receive(slot, { type: "reconciliation_answer", requestId: frame.requestId, answers: [{ id: "m1", status: "pending" }] });
+    }
+  } });
+
+  expect(later).toEqual({ history: [], pending: ["m1"], absent: [] });
 });
 
 test("a failed channel write leaves a recorded unacknowledged attempt and never retries on that connection", async () => {
