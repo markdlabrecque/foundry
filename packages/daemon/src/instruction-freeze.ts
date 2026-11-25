@@ -26,11 +26,14 @@ const isSourceUnavailable = ComposePrimeResult.$is("SourceUnavailable");
 
 /** The `instruction_missing` check: composes the slot's prime again and passes only if every file reads. */
 export const instructionFilesCheck =
-  (primeRequest: SlotPrimeRequest, compose: (request: PrimeRequest) => Promise<ComposePrimeResult> = (r) => composePrime(r)): CauseCheck =>
+  (
+    primeRequest: SlotPrimeRequest,
+    compose: (request: PrimeRequest) => Promise<ComposePrimeResult> = (r) => composePrime(r),
+  ): CauseCheck =>
   async (slot) => {
     const request = primeRequest(slot);
 
-    if (request === undefined) {return { fixed: false, evidence: { missing: [], unknownStation: true } };}
+    if (request === undefined) {return { fixed: false, evidence: { reason: "unknown_station" } };}
 
     const composed = await compose({ ...request, situation: "fresh" });
 

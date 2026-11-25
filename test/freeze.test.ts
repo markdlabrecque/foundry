@@ -1,9 +1,11 @@
 // Tier: integration. Real boundaries: the Unix-socket channel between the daemon's server and the
 // extension's client, a real SQLite store file, and the management socket driven through the
-// `foundry slot unfreeze` core. The Worker Host is a double (its launches are proved by
-// slots.test.ts) and the freeze cause's check is a test double: the causes that raise freezes
-// arrive with their own tickets. Claim: one frozen slot is sent and launched nothing while the
-// other carries on, and unfreeze is refused while its cause persists.
+// `foundry slot unfreeze` core, and (in the missing-instruction test) real prime composition and
+// its unfreeze check reading instruction files from a temp fixture. The Worker Host is a double
+// (its launches are proved by slots.test.ts); elsewhere the freeze cause's check is a test double.
+// Claims: one frozen slot is sent and launched nothing while the other carries on, unfreeze is
+// refused while its cause persists, and an instruction file missing at priming freezes the slot
+// until the file is restored and the operator unfreezes.
 import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
