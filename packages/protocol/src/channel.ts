@@ -211,8 +211,23 @@ export const ToolResult = Schema.Struct({
 
 export type ToolResult = typeof ToolResult.Type;
 
+/** Snapshot comparison, not authorization to retry an absent copy. */
+export const ReconciliationAnswer = Schema.Struct({
+  type: Schema.Literal("reconciliation_answer"),
+  requestId: Id,
+  answers: Schema.Array(Schema.Struct({ id: Id, status: Schema.Literals(["history", "pending", "absent"]) })),
+});
+
+export type ReconciliationAnswer = typeof ReconciliationAnswer.Type;
+
+export const Reconcile = Schema.Struct({
+  type: Schema.Literal("reconcile"),
+  requestId: Id,
+  ids: Schema.Array(Id),
+});
+
 /** Frames a worker sends after its hello is accepted. */
-export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck, DrainAck, ToolCall]);
+export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck, DrainAck, ToolCall, ReconciliationAnswer]);
 
 export type WorkerFrame = typeof WorkerFrame.Type;
 
@@ -239,7 +254,7 @@ export const Message = Schema.Struct({
 export type Message = typeof Message.Type;
 
 /** Frames the daemon sends on an accepted connection, after `hello_accepted`. */
-export const DaemonFrame = Schema.Union([Prime, Message, Interrupt, Drain, ToolResult]);
+export const DaemonFrame = Schema.Union([Prime, Message, Interrupt, Drain, ToolResult, Reconcile]);
 
 export type DaemonFrame = typeof DaemonFrame.Type;
 

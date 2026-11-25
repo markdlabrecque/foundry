@@ -476,6 +476,13 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `CREATE INDEX delegation_by_root ON delegation (factory_id, root_assignment, status)`,
     ],
   },
+  {
+    id: 19,
+    name: "idle_slot_recovery",
+    statements: [
+      `ALTER TABLE slot ADD COLUMN recovery_count INTEGER NOT NULL DEFAULT 0 CHECK (recovery_count >= 0)`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

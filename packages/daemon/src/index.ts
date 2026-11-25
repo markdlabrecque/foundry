@@ -23,6 +23,8 @@ export * from "./request-expiry.js";
 
 export * from "./agent-reply.js";
 
+export * from "./task-transition.js";
+
 export * from "./message-routing.js";
 
 export * from "./agent-discover.js";
@@ -230,3 +232,5 @@ export {
   type ToolSetGuardOptions,
   type ToolSetRecheckOptions,
 } from "./tool-set-check.js";
+
+export * from "./reconciliation.js";

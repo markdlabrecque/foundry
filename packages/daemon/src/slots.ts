@@ -30,13 +30,13 @@
  * records no end and counts nothing. A recorded launch unknown to a new host on the same boot is
  * not proof of anything: that slot freezes (`ownership.ts`).
  *
- * Out of scope here: the recovery limit and parking (FOU-67), the recovery prime (FOU-54) and the
- * resume notice.
+ * Unexpected ends count atomically with their record; at the ceiling the slot parks and any
+ * assignment suspends with its ticket paused. The recovery prime and resume notice are separate.
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { Clock, Effect, Schema } from "effect";
+import { Clock, Data, Effect, Schema } from "effect";
 import { buildLaunchArgs, connectHost, exitWasUnexpected, HostRefusedError, launchStderrPath, startHost } from "@foundry/host";
 import type { HostConnection, LaunchRecord, LaunchSpec, PiExecutable } from "@foundry/host";
 import { CHANNEL_SOCKET_ENV, channelSocketPath } from "@foundry/protocol";
@@ -50,6 +50,7 @@ import type { ChannelServer } from "./channel/server.js";
 import type { EffectiveStation } from "./config/index.js";
 import { slotRecord } from "./history-records.js";
 import { classifyOwnership } from "./ownership.js";
+import { countUnexpectedEndIn } from "./recovery.js";
 import type { RecordedSlot, SlotOwnership } from "./ownership.js";
 import type { CauseCheck, CauseCheckResult, FreezeRequest, SlotFreezer, SlotRef } from "./freeze.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
@@ -282,10 +283,10 @@ const classifySlot = (store: Store, slot: SlotRef, host: HostView): Effect.Effec
  * an earlier boot ended by the machine restart, or a launch this same host started for a pending
  * request, with its end if it is already gone. Other classifications need no write.
  */
-const applyOwnership = async (store: Store, slot: PlannedSlot, ownership: SlotOwnership): Promise<void> => {
+const applyOwnership = async (store: Store, slot: PlannedSlot, ownership: SlotOwnership, limit: number, configLoad: string | null): Promise<void> => {
   if (ownership.kind === "rebooted") {
     const endedAt = await Effect.runPromise(Clock.currentTimeMillis);
-    await Effect.runPromise(recordEnd(store, ownership.launchId, { reason: "machine_restarted", endedAt, code: null, signal: null }));
+    await Effect.runPromise(recordEnd(store, ownership.launchId, { reason: "machine_restarted", endedAt, code: null, signal: null }, limit, configLoad));
 
     return;
   }
@@ -295,7 +296,7 @@ const applyOwnership = async (store: Store, slot: PlannedSlot, ownership: SlotOw
   await Effect.runPromise(recordLaunch(store, slot, ownership.launch));
   const end = endOf(ownership.launch);
 
-  if (end !== undefined) {await Effect.runPromise(recordEnd(store, ownership.launch.launchId, end));}
+  if (end !== undefined) {await Effect.runPromise(recordEnd(store, ownership.launch.launchId, end, limit, configLoad));}
 };
 
 interface LaunchEnd {
@@ -311,18 +312,25 @@ interface LaunchEnd {
  * An unasked exit by a signal or a non-zero code, and a machine restart, are marked `unexpected`:
  * the event recovery accounting counts (PRD §5.3, §10.2). A clean exit or a requested stop is not.
  */
-const recordEnd = (store: Store, launchId: string, end: LaunchEnd): Effect.Effect<boolean, StoreError> =>
-  Effect.gen(function* () {
-    const known = yield* readLaunch(store, launchId);
+class NoNewEnd extends Data.TaggedError("NoNewEnd") {}
 
-    if (known === undefined || known.ended_at !== null) {return false;}
-
-    yield* store.change((change) =>
+const recordEnd = (store: Store, launchId: string, end: LaunchEnd, limit: number, configLoad: string | null): Effect.Effect<boolean, StoreError> =>
+  store.change((change) =>
       Effect.gen(function* () {
-        yield* change.query(
-          `UPDATE launch SET ended_at = ?, end_reason = ?, exit_code = ?, exit_signal = ? WHERE launch_id = ? AND ended_at IS NULL`,
+        const rows = yield* change.query<LaunchRow>(
+          `UPDATE launch SET ended_at = ?, end_reason = ?, exit_code = ?, exit_signal = ?
+           WHERE launch_id = ? AND ended_at IS NULL RETURNING ${LAUNCH_COLUMNS}`,
           [end.endedAt, end.reason, end.code, end.signal, launchId],
         );
+
+        const known = rows[0];
+
+        if (known === undefined) {return yield* new NoNewEnd();}
+
+        if (unexpectedEnd(end.reason, end.code, end.signal)) {
+          yield* countUnexpectedEndIn(change, known.factory_id, known.slot_id, launchId, limit, configLoad);
+        }
+
         yield* change.recordHistory({
           factoryId: known.factory_id,
           kind: "launch.ended",
@@ -336,11 +344,10 @@ const recordEnd = (store: Store, launchId: string, end: LaunchEnd): Effect.Effec
           },
           records: [slotRecord(known.slot_id)],
         });
-      }),
-    );
 
-    return true;
-  });
+        return true;
+      }),
+    ).pipe(Effect.catchTag("NoNewEnd", () => Effect.succeed(false)));
 
 /**
  * Whether a recorded end counts against the recovery limit: the host's rule for exits it saw
@@ -412,6 +419,9 @@ export interface SlotSchedulerOptions {
    * begun mid-schedule launches nothing more in its scope. Default: every factory.
    */
   readonly inScope?: (factoryId: string) => boolean;
+  /** Factory configuration for idle-slot accounting; assignment ceilings are already stored. */
+  readonly recoveryLimit?: (factoryId: string) => number;
+  readonly configLoad?: (factoryId: string) => string | undefined;
 }
 
 /** What handling a host-reported launch exit did. */
@@ -510,6 +520,10 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
     /** A recorded unexpected exit or reboot lets the slot continue its conversation. */
     const relaunchIfUnexpected = async (launchId: string): Promise<SlotScheduleResult> => {
+      const condition = await Effect.runPromise(readSlot(store, slot.factoryId, slot.slotId));
+
+      if (condition?.condition === "parked") {return result("held", launchId);}
+
       const recorded = await Effect.runPromise(readLaunch(store, launchId));
 
       return recorded !== undefined && unexpectedEnd(recorded.end_reason, recorded.exit_code, recorded.exit_signal)
@@ -525,12 +539,12 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
       case "rebooted":
         // Not live on the host, from an earlier boot: the machine restart proves it gone, so the
         // slot is vacant and gets an ordinary recovery launch, counted by its recorded end.
-        await applyOwnership(store, slot, ownership);
+        await applyOwnership(store, slot, ownership, options.recoveryLimit?.(slot.factoryId) ?? 3, options.configLoad?.(slot.factoryId) ?? null);
 
         return relaunchIfUnexpected(ownership.launchId);
       case "claimed":
         // This same host started it for the daemon's pending request; record it, and its end if gone.
-        await applyOwnership(store, slot, ownership);
+        await applyOwnership(store, slot, ownership, options.recoveryLimit?.(slot.factoryId) ?? 3, options.configLoad?.(slot.factoryId) ?? null);
 
         return ownership.launch.liveness === "live"
           ? result("started", ownership.launch.launchId)
@@ -613,7 +627,8 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
   const recordGone = async (launch: LaunchRecord): Promise<boolean> => {
     const end = endOf(launch);
 
-    return end === undefined ? false : Effect.runPromise(recordEnd(store, launch.launchId, end));
+    return end === undefined ? false : Effect.runPromise(recordEnd(store, launch.launchId, end,
+      options.recoveryLimit?.(launch.factoryId) ?? 3, options.configLoad?.(launch.factoryId) ?? null));
   };
 
   return {
@@ -692,6 +707,10 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
         for (const launch of inventory) {
           if (launch.liveness === "gone") {await recordGone(launch);}
         }
+
+        const row = await Effect.runPromise(readSlot(store, slot.factoryId, slot.slotId));
+
+        if (row?.condition === "parked") {throw new Error(`slot ${slot.slotId} is parked; reset is required`);}
 
         const live = inventory.find((l) => l.factoryId === slot.factoryId && l.slotId === slot.slotId && l.liveness === "live");
 
