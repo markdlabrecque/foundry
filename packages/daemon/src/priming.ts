@@ -1,5 +1,5 @@
 /**
- * Sending the fresh prime and recording its receipt (PRD §5.5, §10.1).
+ * Sending fresh and recovery primes and recording their receipts (PRD §5.5, §10.1).
  *
  * On an accepted connection the daemon decides from its own records whether a
  * fresh prime is due, records it (situation and path-and-hash list) with a
@@ -18,8 +18,7 @@
  * the `instruction_missing` cause and a hold naming the files (PRD §5.3,
  * §5.5), waits for the operator's unfreeze, and composes the prime afresh.
  *
- * Out of scope here: recovery primes (41b) and re-sending repository context
- * after a compaction. Those are reported as outcomes.
+ * Re-sending repository context after a compaction belongs to its own lifecycle.
  */
 import { randomUUID } from "node:crypto";
 import { Clock, Data, Effect, Schema } from "effect";
@@ -173,30 +172,30 @@ export const acknowledgePrime = (
 /**
  * What an accepted connection needs, from the daemon's records only (§5.5):
  * - `reconnect`: a prime was already sent to this launch, so none is sent.
- * - `not_fresh`: a prime was acknowledged for this conversation and the launch is new (recovery, 41b).
+ * - `recovery`: a prime was acknowledged for this conversation and the launch is new.
  * - `fresh`: no prime has been acknowledged for this conversation.
  */
 export const decideFreshPriming = (
   primes: ReadonlyArray<PrimeRecord>,
   launchId: string,
-): "fresh" | "reconnect" | "not_fresh" => {
+): "fresh" | "reconnect" | "recovery" => {
   if (primes.some((p) => p.launchId === launchId)) {return "reconnect";}
 
-  if (primes.some((p) => p.acknowledgedAt !== null)) {return "not_fresh";}
+  if (primes.some((p) => p.acknowledgedAt !== null)) {return "recovery";}
 
   return "fresh";
 };
 
 export type PrimingOutcome = Data.TaggedEnum<{
-  /** The fresh prime was recorded and written to the connection. */
+  /** The fresh or recovery prime was recorded and written to the connection. */
   Sent: { readonly primeId: string };
   /**
    * A reconnect from the same launch: no prime. Carries the newest prime sent
    * to this launch that is still unacknowledged, if any, for reconciliation (17a).
    */
   Reconnect: { readonly unacknowledgedPrimeId?: string };
-  /** A recovery prime is due; sending it belongs to 41b. Nothing was sent. */
-  NotFresh: Record<never, never>;
+  /** Acknowledged conversation history is lost; nothing may be sent. */
+  HistoryUnavailable: Record<never, never>;
   /** No effective station is known for the slot. Nothing was sent. */
   UnknownStation: Record<never, never>;
   /**
@@ -449,6 +448,17 @@ export const createPrimer = (options: PrimerOptions): Primer => {
 
   const decideAndSend = async (slot: ClaimedSlot, hello: Hello, connection: AcceptedConnection): Promise<PrimingOutcome> => {
     const primes = await run(primesForConversation(options.store, slot.factoryId, slot.slotId, hello.conversationRef));
+
+    // A persisted receipt proves this conversation must have recoverable history,
+    // even on a same-launch reconnect. Never replace lost history with a fresh prime.
+    if (!hello.hasRecoverableHistory && primes.some((prime) => prime.acknowledgedAt !== null)) {
+      await options.freeze?.({ ...slot, cause: "prime_without_history",
+        evidence: { launchId: slot.launchId, conversationRef: hello.conversationRef,
+          primeIds: primes.filter((prime) => prime.acknowledgedAt !== null).map((prime) => prime.id) } });
+
+      return PrimingOutcome.HistoryUnavailable();
+    }
+
     const decision = decideFreshPriming(primes, slot.launchId);
 
     if (decision === "reconnect") {
@@ -459,13 +469,11 @@ export const createPrimer = (options: PrimerOptions): Primer => {
         : PrimingOutcome.Reconnect({ unacknowledgedPrimeId: unacknowledged.id });
     }
 
-    if (decision === "not_fresh") {return PrimingOutcome.NotFresh();}
-
     const request = options.primeRequest(slot);
 
     if (request === undefined) {return PrimingOutcome.UnknownStation();}
 
-    const composed = await compose({ ...request, situation: "fresh" });
+    const composed = await compose({ ...request, situation: decision });
 
     if (isSourceUnavailable(composed)) {
       // PRD §5.5: the prime fails and the slot freezes. Once unfrozen, priming is decided afresh.
@@ -483,7 +491,7 @@ export const createPrimer = (options: PrimerOptions): Primer => {
         slotId: slot.slotId,
         launchId: slot.launchId,
         conversationRef: hello.conversationRef,
-        situation: "fresh",
+        situation: decision,
         parts: composed.prime.parts,
       }),
     );

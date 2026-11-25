@@ -276,5 +276,5 @@ test("two hellos from one launch send one fresh prime; the reconnect names it wh
   expect(await conversationPrimes()).toHaveLength(1);
 
   await primer.receipt(slot, "prime-1");
-  expect(await primer.prime(slot, hello, stub).outcome).toEqual(PrimingOutcome.Reconnect({}));
+  expect(await primer.prime(slot, { ...hello, hasRecoverableHistory: true }, stub).outcome).toEqual(PrimingOutcome.Reconnect({}));
 });
