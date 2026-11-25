@@ -9,7 +9,16 @@ import { beginOperationIn, extendOperationIntent, recordOperationResult } from "
 import type { Store } from "./store.js";
 import { TicketError } from "./tickets.js";
 
+/** Diagnostic I/O boundary: injectable without replacing filesystem/process modules. */
+export interface HookLogIo {
+  readonly write: (fd: number, text: string) => void;
+  readonly close: (fd: number) => void;
+}
+
+const defaultLogIo: HookLogIo = { write: (fd, text) => {writeSync(fd, text);}, close: closeSync };
+
 interface HookOptions {
+  readonly logIo?: HookLogIo | undefined;
   readonly store: Store;
   readonly stateRoot: string;
   readonly factoryId: string;
@@ -28,6 +37,8 @@ interface HookExit {
 /** Direct argv, no shell; file descriptors bound memory even for verbose cleanup commands. */
 const execute = async (options: HookOptions, logPath: string): Promise<HookExit> => {
   let fd: number | undefined;
+  let outcome: HookExit;
+  const logIo = options.logIo ?? defaultLogIo;
 
   try {
     mkdirSync(join(options.stateRoot, "logs", "operations"), { recursive: true });
@@ -36,25 +47,30 @@ const execute = async (options: HookOptions, logPath: string): Promise<HookExit>
 
     if (command === undefined) {throw new Error("before_remove command is empty");}
 
-    const outcome = await new Promise<HookExit>((resolve) => {
+    outcome = await new Promise<HookExit>((resolve) => {
       const child = spawn(command, options.argv.slice(1), { cwd: options.path, env: options.env, shell: false, stdio: ["ignore", fd, fd] });
       let error: string | null = null;
       child.on("error", (cause) => { error = messageOf(cause); });
       child.on("close", (exitStatus, signal) => { resolve({ exitStatus, signal, error }); });
     });
 
-    if (outcome.error !== null) {writeSync(fd, `${outcome.error}\n`);}
-
-    return outcome;
   } catch (cause) {
-    const error = messageOf(cause);
-
-    if (fd !== undefined) {writeSync(fd, `${error}\n`);}
-
-    return { exitStatus: null, signal: null, error };
-  } finally {
-    if (fd !== undefined) {closeSync(fd);}
+    outcome = { exitStatus: null, signal: null, error: messageOf(cause) };
   }
+
+  if (fd !== undefined) {
+    // A full or failing log device must not prevent durable result/hold recording.
+    try {
+      if (outcome.error !== null) {logIo.write(fd, `${outcome.error}\n`);}
+    } catch (cause) {
+      outcome = { ...outcome, error: `${outcome.error ?? ""}; log write failed: ${messageOf(cause)}` };
+    }
+
+    try {logIo.close(fd);}
+    catch (cause) {outcome = { ...outcome, error: `${outcome.error ?? ""}; log close failed: ${messageOf(cause)}` };}
+  }
+
+  return outcome;
 };
 
 export const runBeforeRemove = (options: HookOptions) => Effect.gen(function* () {

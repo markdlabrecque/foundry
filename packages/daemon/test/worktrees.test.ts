@@ -1,5 +1,5 @@
 // Integration tier: real disposable Git and SQLite prove creation intent, base and stage reuse.
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync, writeSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -14,6 +14,7 @@ import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { createTicketWorktrees } from "../src/worktrees.js";
 import { createWorktreeService } from "../src/worktree-cleanup.js";
 import type { WorktreeService } from "../src/worktree-cleanup.js";
+import type { HookLogIo } from "../src/before-remove.js";
 import { serveManagementApi } from "../src/management-api.js";
 import { runWorktreeClean, runWorktreeList } from "@foundry/cli";
 
@@ -26,7 +27,7 @@ const fixture = async <A, E>(use: (f: {
   slots: ReturnType<typeof planSlots>;
   scheduler: ReturnType<typeof createAssignmentScheduler>;
   newScheduler: (overrides?: Partial<AssignmentSchedulerOptions>) => ReturnType<typeof createAssignmentScheduler>;
-}) => Effect.Effect<A, E>, settings = "root: ./worktrees") => {
+}) => Effect.Effect<A, E>, settings = "root: ./worktrees", hookLogIo?: HookLogIo) => {
   const root = mkdtempSync(join(tmpdir(), "foundry-worktrees-"));
   roots.push(root);
   const source = join(root, "source");
@@ -73,7 +74,7 @@ production_lines:
       ...overrides,
     });
 
-    const worktrees = createWorktreeService({ store, stateRoot: root, target: () => ({ factory, clonePath: clone.path }),
+    const worktrees = createWorktreeService({ store, stateRoot: root, hookLogIo, target: () => ({ factory, clonePath: clone.path }),
       factories: () => ["shop"], env: isolatedGitEnv() });
 
     return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler, worktrees });
@@ -621,6 +622,51 @@ test("CLI list and confirmed force traverse the management socket without deleti
       expect(existsSync(path)).toBe(false);
     } finally {yield* Effect.promise(api.close);}
   }));
+});
+
+test.each(["write", "close"])("log %s failure still records a failed hook and allows confirmed force", async (failure) => {
+  await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    const error = yield* worktrees.clean(undefined, 1).pipe(Effect.match({ onFailure: (cause) => cause.message, onSuccess: () => "unexpected success" }));
+    expect(error).toContain(`log ${failure} failed`);
+    expect(existsSync(join(root, "worktrees/shop/1-build-widget"))).toBe(true);
+    expect((yield* listOperations(store, "shop")).filter((operation) => operation.kind !== "worktree_create")).toMatchObject([
+      { kind: "cleanup", status: "failed" }, { kind: "hook", status: "failed" },
+    ]);
+    expect(yield* store.read(`SELECT state, evidence FROM operator_hold`)).toEqual([
+      { state: "open", evidence: expect.stringContaining(`log ${failure} failed`) },
+    ]);
+    const inspected = yield* worktrees.inspect(undefined, 1);
+    yield* worktrees.clean(undefined, 1, true, inspected.confirmation);
+    expect(existsSync(inspected.path)).toBe(false);
+  }), 'root: ./worktrees, before_remove: [./missing-cleanup]', {
+    write: (fd, text) => {
+      if (failure === "write") {throw new Error("injected ENOSPC");}
+
+      writeSync(fd, text);
+    },
+    close: (fd) => {
+      closeSync(fd);
+
+      if (failure === "close") {throw new Error("injected close failure");}
+    },
+  });
+});
+
+test("signal-terminated before_remove keeps its signal and raises a failure hold", async () => {
+  await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    expect(yield* worktrees.clean(undefined, 1).pipe(Effect.match({ onFailure: (error) => error.message, onSuccess: () => "unexpected success" }))).toContain("signal SIGTERM");
+    expect(existsSync(join(root, "worktrees/shop/1-build-widget"))).toBe(true);
+    expect((yield* listOperations(store, "shop")).filter((operation) => operation.kind === "hook")).toMatchObject([
+      { status: "failed", result: { exitStatus: null, signal: "SIGTERM" } },
+    ]);
+    expect(yield* store.read(`SELECT state, evidence FROM operator_hold`)).toEqual([
+      { state: "open", evidence: expect.stringContaining('"signal":"SIGTERM"') },
+    ]);
+  }), `root: ./worktrees, before_remove: [${JSON.stringify(process.execPath)}, -e, "process.kill(process.pid, 'SIGTERM')"]`);
 });
 
 test("configured tilde root and branch pattern are used", async () => {

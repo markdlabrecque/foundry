@@ -11,6 +11,7 @@ import type { TicketWorktreesOptions } from "./worktrees.js";
 import { beginOperationIn, recordOperationResult } from "./operations.js";
 import { ticketRecord } from "./history-records.js";
 import { runBeforeRemove } from "./before-remove.js";
+import type { HookLogIo } from "./before-remove.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { TicketError } from "./tickets.js";
 
@@ -92,7 +93,7 @@ const fingerprintFiles = async (path: string, names: ReadonlyArray<string>): Pro
   return hash.digest("hex");
 };
 
-export const createWorktreeService = (options: TicketWorktreesOptions & { readonly stateRoot: string; readonly factories: () => ReadonlyArray<string> }) => {
+export const createWorktreeService = (options: TicketWorktreesOptions & { readonly stateRoot: string; readonly hookLogIo?: HookLogIo | undefined; readonly factories: () => ReadonlyArray<string> }) => {
   const git = (cwd: string, args: ReadonlyArray<string>, rawOutput = false) => Effect.tryPromise({
     try: () => runCloneGit(args, options.env ?? process.env, cwd, rawOutput),
     catch: (cause) => refuse(messageOf(cause)),
@@ -213,7 +214,7 @@ export const createWorktreeService = (options: TicketWorktreesOptions & { readon
 
         if (argv !== undefined) {
           yield* runBeforeRemove({ store: options.store, stateRoot: options.stateRoot,
-            factoryId: row.factory_id, ticket: number, path: inspected.path, argv, env: options.env ?? process.env });
+            factoryId: row.factory_id, ticket: number, path: inspected.path, argv, env: options.env ?? process.env, logIo: options.hookLogIo });
           // Hooks can change files or Git state. Never discard newly-created work or a changed identity.
           const afterHook = yield* inspectRow(row);
 
