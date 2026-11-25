@@ -4,6 +4,7 @@
  * stdout, then closes stdout so the starter's pipe reaches EOF. Stdin is
  * /dev/null and stderr is the host log, so no fd ties the host to its starter.
  */
+import { createHostLog } from "./log.js";
 import { serveHost } from "./server.js";
 
 const stateRoot = process.argv[2];
@@ -13,8 +14,10 @@ if (stateRoot === undefined || stateRoot === "") {
 }
 
 const host = await serveHost(stateRoot);
+const log = createHostLog(host.identity.hostId);
 
-const stop = (): void => {
+const stop = (signal: NodeJS.Signals): void => {
+  log("info", "worker host stopping", {}, { signal });
   void host.close().then(() => process.exit(0));
 };
 process.on("SIGTERM", stop);
@@ -26,4 +29,4 @@ process.stdout.on("error", () => {});
 process.stdout.write(`${JSON.stringify({ ready: true, identity: host.identity })}\n`, () => {
   process.stdout.destroy();
 });
-process.stderr.write(`worker host ${host.identity.hostId} serving ${host.socketPath}\n`);
+log("info", "worker host serving", {}, { pid: host.identity.pid, socket: host.socketPath, bootId: host.identity.bootId });
