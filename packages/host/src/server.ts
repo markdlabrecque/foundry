@@ -158,7 +158,8 @@ async function answer(
         return { id, ok: true, launch };
       } catch (error) {
         if (error instanceof LaunchRefused) {
-          log("warn", "launch refused", { factoryId, slotId }, { reason: error.message });
+          // The code only: a spawn error's message names the command.
+          log("warn", "launch refused", { factoryId, slotId }, { reason: error.code });
           return { id, ok: false, error: error.message };
         }
         throw error;

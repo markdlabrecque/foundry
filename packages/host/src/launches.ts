@@ -46,7 +46,18 @@ export type LaunchRecord = {
   | { readonly liveness: "gone"; readonly exit: LaunchExit }
 );
 
-export class LaunchRefused extends Error {}
+/**
+ * A launch the host would not or could not start. `code` names why without
+ * echoing the command, which may hold credentials or a prompt.
+ */
+export class LaunchRefused extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message);
+  }
+}
 
 export interface LaunchRegistry {
   /** Starts `spec` unless its slot already holds a live launch. */
@@ -73,7 +84,7 @@ export function createLaunchRegistry(options: {
     async launch(spec) {
       const key = slotKey(spec.factoryId, spec.slotId);
       if (occupied.has(key)) {
-        throw new LaunchRefused(`slot ${spec.slotId} of factory ${spec.factoryId} already holds a live launch`);
+        throw new LaunchRefused(`slot ${spec.slotId} of factory ${spec.factoryId} already holds a live launch`, "slot_occupied");
       }
       occupied.add(key);
 
@@ -103,7 +114,10 @@ export function createLaunchRegistry(options: {
         });
       } catch (error) {
         occupied.delete(key);
-        throw new LaunchRefused(`launch failed to start: ${(error as Error).message}`);
+        throw new LaunchRefused(
+          `launch failed to start: ${(error as Error).message}`,
+          (error as NodeJS.ErrnoException).code ?? "spawn_failed",
+        );
       }
 
       // A later ChildProcess error (for example a failed kill) must not crash the host.

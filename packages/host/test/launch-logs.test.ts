@@ -106,6 +106,10 @@ test("the host logs launches with references and keeps stderr only for unexpecte
     [...slot1.slice(1), other].map((l) => `${l.launchId}.stderr`).sort(),
   );
 
+  // A launch that cannot start is logged by its error code, never its command path.
+  const missing = join(stateRoot, "no-such-worker-binary");
+  await expect(control.launch({ ...spec("slot-3", ""), command: missing })).rejects.toThrow(/failed to start/);
+
   // host.log: JSON lines joined to the launches, with none of the launch output, args or env.
   const hostLog = await readFile(hostLogPath(stateRoot), "utf8");
   const logged = lines(hostLog);
@@ -123,5 +127,8 @@ test("the host logs launches with references and keeps stderr only for unexpecte
       detail: { code: 3, signal: null, stderr: launchStderrPath(stateRoot, failed.launchId) },
     }),
   );
-  expect(hostLog).not.toMatch(/stdout|clean-stderr|boom|sk-fixture-secret|process\.exit/);
+  expect(logged).toContainEqual(
+    expect.objectContaining({ level: "warn", msg: "launch refused", slotId: "slot-3", detail: { reason: "ENOENT" } }),
+  );
+  expect(hostLog).not.toMatch(/stdout|clean-stderr|boom|sk-fixture-secret|process\.exit|no-such-worker-binary/);
 });

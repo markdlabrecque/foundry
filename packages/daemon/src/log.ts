@@ -8,7 +8,7 @@
  * values, and keys that look like credentials or message bodies are never written.
  */
 import { randomUUID } from "node:crypto";
-import { closeSync, fchmodSync, fstatSync, mkdirSync, openSync, renameSync, unlinkSync, writeSync } from "node:fs";
+import { chmodSync, closeSync, fchmodSync, fstatSync, mkdirSync, openSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
 
 /** Path, relative to the state root, of the daemon log. Rotated copies add `.1`, `.2`, ... */
@@ -103,14 +103,26 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
   const toStderr = options.stderr ?? ((line: string) => void process.stderr.write(line));
   const now = options.now ?? (() => new Date());
 
-  mkdirSync(join(options.stateRoot, "logs"), { recursive: true, mode: 0o700 });
   const openFile = (): { fd: number; size: number } => {
+    const dir = join(options.stateRoot, "logs");
+    mkdirSync(dir, { recursive: true, mode: 0o700 });
+    // The mode above applies only on creation; an older directory is tightened too.
+    chmodSync(dir, 0o700);
     const fd = openSync(path, "a", 0o600);
     // The mode above applies only on creation; an older file is tightened too.
     fchmodSync(fd, 0o600);
     return { fd, size: fstatSync(fd).size };
   };
-  let file: { fd: number; size: number } | undefined = openFile();
+  const failure = (msg: string, error: unknown): string =>
+    `${JSON.stringify({ time: now().toISOString(), level: "error", runId, msg, detail: { error: (error as Error).message } })}\n`;
+
+  // A log file that cannot be opened is not fatal: the daemon logs to stderr only.
+  let file: { fd: number; size: number } | undefined;
+  try {
+    file = openFile();
+  } catch (error) {
+    toStderr(failure("daemon log unavailable; logging to stderr only", error));
+  }
 
   const rotate = (): void => {
     if (file === undefined) return;
@@ -142,7 +154,7 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
       file.size += bytes.length;
     } catch (error) {
       // A failing log file must not take the daemon down; stderr still has every line.
-      toStderr(`${JSON.stringify({ time: now().toISOString(), level: "error", runId, msg: "daemon log write failed", detail: { error: (error as Error).message } })}\n`);
+      toStderr(failure("daemon log write failed", error));
     }
   };
 

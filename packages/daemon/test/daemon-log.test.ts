@@ -2,7 +2,7 @@
 // root — format, references, redaction, rotation and permissions — so they need a real directory.
 // The process test proves the foreground entry point wires the log in; no cheaper tier can.
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -63,6 +63,21 @@ test("daemon log lines are JSON with the run ID and references, private, and fre
   expect(text).not.toMatch(/sk-live-123|tok-456|hello worker|prompt text/);
   expect(statSync(join(root, "logs")).mode & 0o777).toBe(0o700);
   expect(statSync(daemonLogPath(root)).mode & 0o777).toBe(0o600);
+});
+
+test("a daemon log that cannot be opened falls back to stderr with one error line", () => {
+  const root = tempRoot();
+  // A file where the logs directory belongs: unopenable for any user, root included.
+  writeFileSync(join(root, "logs"), "");
+  const echoed: string[] = [];
+  const log = openDaemonLog({ stateRoot: root, runId: "r", stderr: (l) => echoed.push(l) });
+  log.info("still logged");
+  log.close();
+
+  expect(lines(echoed.join(""))).toEqual([
+    expect.objectContaining({ level: "error", runId: "r", msg: "daemon log unavailable; logging to stderr only" }),
+    expect.objectContaining({ level: "info", runId: "r", msg: "still logged" }),
+  ]);
 });
 
 test("the daemon log rotates by size and keeps a fixed number of files", () => {

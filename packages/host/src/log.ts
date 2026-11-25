@@ -81,6 +81,8 @@ export function createLaunchStderrStore(stateRoot: string, keepPerSlot: number =
     async retain(factoryId: string, slotId: string, launchId: string, tail: Buffer): Promise<string> {
       const dir = join(stateRoot, LAUNCH_LOGS_DIR);
       await mkdir(dir, { recursive: true, mode: 0o700 });
+      // The mode above applies only on creation; an older directory is tightened too.
+      await chmod(dir, 0o700);
       const path = launchStderrPath(stateRoot, launchId);
       const file = await open(path, "w", 0o600);
       try {
