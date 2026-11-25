@@ -149,6 +149,14 @@ export const runTicketSubmit = async (options: SubmitOptions): Promise<TicketOut
 export const runTicketList = (options: Common): Promise<TicketOutcome> =>
   call(options, (root) => getFromDaemon(root, `${TICKETS_PATH}${query(options.factory)}`), isTicketListResult, renderList);
 
+export const runTicketPause = (options: ShowOptions): Promise<TicketOutcome> => {
+  if (!Number.isSafeInteger(options.number) || options.number < 1) {
+    return Promise.resolve(usage("a ticket number is a positive integer"));
+  }
+
+  return call(options, (root) => postToDaemon(root, `${ticketPath(options.number)}/pause${query(options.factory)}`, {}), isTicketDetail, renderDetail);
+};
+
 export const runTicketShow = (options: ShowOptions): Promise<TicketOutcome> => {
   if (!Number.isSafeInteger(options.number) || options.number < 1) {
     return Promise.resolve(usage("a ticket number is a positive integer"));

@@ -62,6 +62,7 @@ name: ${name}
 repository:
   source: ./repo
   default_branch: main
+worktrees: { root: ./worktrees }
 default_production_line: f
 rooms:
   eng:
@@ -154,11 +155,13 @@ const readState = (home: string) =>
             `SELECT id, run_id, factory_id, config, config_hash, knowledge_root FROM factory_config_load ORDER BY id`,
           ),
           transitions: store.read<{ factory_id: string; ticket_number: number; config_load: string | null }>(
-            `SELECT factory_id, ticket_number, config_load FROM ticket_transition ORDER BY sequence`,
+            // This assertion concerns submission provenance, not later assignment transitions.
+            `SELECT factory_id, ticket_number, config_load FROM ticket_transition WHERE from_state IS NULL ORDER BY sequence`,
           ),
-          // Slot launches are proved by the slots test; this one is about runs and loads.
+          // Scheduling and worktree history are proved separately; this one is about runs and loads.
           history: store.read<{ factory_id: string; kind: string; subject: string }>(
-            `SELECT factory_id, kind, subject FROM history WHERE kind NOT LIKE 'launch.%' ORDER BY sequence`,
+            `SELECT factory_id, kind, subject FROM history
+             WHERE kind IN ('run.started', 'factory.config_loaded', 'ticket.submitted') ORDER BY sequence`,
           ),
         }),
       ),
