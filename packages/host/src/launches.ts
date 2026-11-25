@@ -184,7 +184,13 @@ export function createLaunchRegistry(options: {
       // A later ChildProcess error (for example a failed kill) must not crash the host.
       child.on("error", () => {});
 
-      const pid = child.pid as number;
+      const pid = child.pid;
+
+      // Node sets the pid before `spawn` fires; a missing one means the process never started.
+      if (pid === undefined) {
+        occupied.delete(key);
+        throw new LaunchRefusedError("launch failed to start: no process ID", "spawn_failed");
+      }
 
       const started: LaunchRecord = {
         launchId,
@@ -269,7 +275,7 @@ export function createLaunchRegistry(options: {
 
       const termination = (async (): Promise<Termination> => {
         if (emptyGroups.has(launchId)) {
-          return { outcome: "gone", escalated: false, launch: launches.get(launchId) as LaunchRecord };
+          return { outcome: "gone", escalated: false, launch: launches.get(launchId) ?? record };
         }
 
         const result = await terminateGroup(
@@ -283,7 +289,8 @@ export function createLaunchRegistry(options: {
 
         if (result.outcome === "gone") {emptyGroups.add(launchId);}
 
-        return { ...result, launch: launches.get(launchId) as LaunchRecord };
+        // Records are never removed, so the lookup finds the latest one; `record` is the fallback.
+        return { ...result, launch: launches.get(launchId) ?? record };
       })().finally(() => terminations.delete(launchId));
 
       terminations.set(launchId, termination);

@@ -3,6 +3,8 @@
  * Unix socket in the state root. The daemon dials it; the host never dials out.
  */
 import { join } from "node:path";
+import { Schema } from "effect";
+import type { Option } from "effect";
 import type { Socket } from "node:net";
 import type { LaunchRecord, LaunchSpec, Termination } from "./launches.js";
 
@@ -74,6 +76,62 @@ export interface LaunchExitedEvent {
 }
 
 export type HostEvent = LaunchExitedEvent;
+
+const HostIdentityMessage = Schema.Struct({
+  hostId: Schema.String,
+  pid: Schema.Number,
+  startedAt: Schema.String,
+  stateRoot: Schema.String,
+  controlVersion: Schema.Number,
+  bootId: Schema.String,
+});
+
+const launchFields = {
+  launchId: Schema.String,
+  factoryId: Schema.String,
+  slotId: Schema.String,
+  pid: Schema.Number,
+  pgid: Schema.Number,
+  bootId: Schema.String,
+  startedAt: Schema.String,
+};
+
+const LaunchExitMessage = Schema.Struct({
+  code: Schema.NullOr(Schema.Number),
+  signal: Schema.NullOr(Schema.String),
+  endedAt: Schema.String,
+  requested: Schema.optionalKey(Schema.Literal(true)),
+});
+
+const LaunchRecordMessage = Schema.Union([
+  Schema.Struct({ ...launchFields, liveness: Schema.Literal("live") }),
+  Schema.Struct({ ...launchFields, liveness: Schema.Literal("gone"), exit: LaunchExitMessage }),
+]);
+
+const TerminationMessage = Schema.Struct({
+  outcome: Schema.Literals(["gone", "unconfirmed"]),
+  escalated: Schema.Boolean,
+  launch: LaunchRecordMessage,
+});
+
+/** Everything the host writes on a control connection: a response or an unsolicited event. */
+const HostMessage = Schema.Union([
+  Schema.Struct({ event: Schema.Literal("launch-exited"), launch: LaunchRecordMessage }),
+  Schema.Struct({ id: Schema.Number, ok: Schema.Literal(true), identity: HostIdentityMessage }),
+  Schema.Struct({ id: Schema.Number, ok: Schema.Literal(true), launch: LaunchRecordMessage }),
+  Schema.Struct({ id: Schema.Number, ok: Schema.Literal(true), launches: Schema.Array(LaunchRecordMessage) }),
+  Schema.Struct({ id: Schema.Number, ok: Schema.Literal(true), termination: TerminationMessage }),
+  Schema.Struct({ id: Schema.NullOr(Schema.Number), ok: Schema.Literal(false), error: Schema.String }),
+]);
+
+/** One control line from the host; `None` when it is not JSON or not a known message. */
+export const decodeHostMessage: (line: string) => Option.Option<HostResponse | HostEvent> =
+  Schema.decodeUnknownOption(Schema.fromJsonString(HostMessage));
+
+/** The host's ready line on stdout; throws when it is not one. */
+export const decodeReadyLine: (line: string) => { readonly identity: HostIdentity } = Schema.decodeUnknownSync(
+  Schema.fromJsonString(Schema.Struct({ identity: HostIdentityMessage })),
+);
 
 /** Calls `onLine` for every complete newline-terminated line read from `socket`. */
 export function readLines(socket: Socket, onLine: (line: string) => void): void {

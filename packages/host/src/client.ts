@@ -4,8 +4,9 @@ import { chmod, mkdir, open } from "node:fs/promises";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { HOST_CONTROL_VERSION, hostSocketPath, readLines } from "./control.js";
-import type { HostEvent, HostIdentity, HostRequest, HostResponse } from "./control.js";
+import { Option } from "effect";
+import { decodeHostMessage, decodeReadyLine, HOST_CONTROL_VERSION, hostSocketPath, readLines } from "./control.js";
+import type { HostIdentity, HostRequest, HostResponse } from "./control.js";
 import { DEFAULT_TERMINATE_GRACE_MS, DEFAULT_TERMINATE_KILL_WAIT_MS } from "./launches.js";
 import type { LaunchRecord, LaunchSpec, TerminateOptions, Termination } from "./launches.js";
 
@@ -79,8 +80,7 @@ export async function startHost(
         settle();
 
         try {
-          const line = JSON.parse(buffered.slice(0, newline)) as { identity: HostIdentity };
-          resolve(line.identity);
+          resolve(decodeReadyLine(buffered.slice(0, newline)).identity);
         } catch (error) {
           reject(error);
         }
@@ -152,13 +152,12 @@ export async function connectHost(
   socket.on("close", () => failAll(new Error("worker host connection closed")));
   const exitListeners: Array<(launch: LaunchRecord) => void> = [];
   readLines(socket, (line) => {
-    let message: HostResponse | HostEvent;
+    // A line that is not a known message is ignored, as an unparseable one always was.
+    const decoded = decodeHostMessage(line);
 
-    try {
-      message = JSON.parse(line) as HostResponse | HostEvent;
-    } catch {
-      return;
-    }
+    if (Option.isNone(decoded)) {return;}
+
+    const message = decoded.value;
 
     if ("event" in message) {
       if (message.event === "launch-exited") {for (const listener of exitListeners) {listener(message.launch);}}
@@ -180,7 +179,7 @@ export async function connectHost(
 
   const request = (
     op: HostRequest["op"],
-    fields: Record<string, unknown> = {},
+    fields: { readonly spec?: LaunchSpec; readonly launchId?: string } & TerminateOptions = {},
     extraTimeoutMs = 0,
   ): Promise<HostResponse> => {
     const id = nextId++;
