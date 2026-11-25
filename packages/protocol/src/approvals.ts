@@ -13,7 +13,7 @@ export const ApprovalRecord = Schema.Struct({
   assignmentId: Schema.String,
   transition: Schema.NullOr(Schema.Number),
   stage: Schema.String,
-  kind: Schema.Literals(["blocked", "worker_request"]),
+  kind: Schema.Literals(["blocked", "worker_request", "limit_reached"]),
   state: Schema.Literals(["open", "resolved"]),
   outcome: Schema.NullOr(Schema.Literals(["blocked", "rejected"])),
   reason: Schema.String,

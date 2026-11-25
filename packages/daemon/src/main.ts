@@ -65,6 +65,7 @@ import { createSubmissions } from "./submissions.js";
 import { agentDiscoverHandler } from "./agent-discover.js";
 import { agentStatusHandler } from "./agent-status.js";
 import { agentMessageHandler } from "./agent-message.js";
+import { messageBudget } from "./message-budget.js";
 import { agentDelegateHandler } from "./agent-delegate.js";
 import { agentRequestHandler } from "./agent-request.js";
 import { agentReplyHandler } from "./agent-reply.js";
@@ -470,12 +471,13 @@ const main = async (): Promise<void> => {
             [HUMAN_REQUEST, humanRequestHandler],
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
             [AGENT_STATUS, agentStatusHandler(plannedSlots)],
-            [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket })],
+            [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket, budget: messageBudget((id) => loadIds.get(id)) })],
             [AGENT_DELEGATE, agentDelegateHandler(plannedSlots, {
+              budget: messageBudget((id) => loadIds.get(id)),
               delegationDepthLimit: (factoryId) => expectDefined(factories.find((f) => f.factoryId === factoryId), `factory ${factoryId}`).config.delegation_depth_limit ?? 2,
             })],
-            [AGENT_REQUEST, agentRequestHandler(plannedSlots, { assignmentTicket })],
-            [AGENT_REPLY, agentReplyHandler()],
+            [AGENT_REQUEST, agentRequestHandler(plannedSlots, { assignmentTicket, budget: messageBudget((id) => loadIds.get(id)) })],
+            [AGENT_REPLY, agentReplyHandler({ budget: messageBudget((id) => loadIds.get(id)) })],
             [TASK_TRANSITION, taskTransitionHandler({ factories: factories.map((f) => ({ factoryId: f.factoryId, config: f.config })), configLoad: (id) => loadIds.get(id) })],
           ]),
           gate: freezer,
