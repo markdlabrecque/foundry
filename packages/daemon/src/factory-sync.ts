@@ -10,7 +10,7 @@
  *
  * A conflict is inspected before aborting the merge and restoring the recorded head. Its failed
  * result and factory hold commit together; a successful sync clears that hold. Reconciling a sync
- * interrupted by a crash is outside this module (PRD §10.2).
+ * interrupted by a crash is sync-recovery.ts (PRD §10.2); a sync run again resolves its hold.
  */
 import { Data, Effect } from "effect";
 import { messageOf } from "@foundry/protocol/errors";
@@ -196,6 +196,8 @@ const drainQueue = (store: Store, factory: string, target: SyncTarget, env: Node
 
       yield* store.change((change) => Effect.gen(function* () {
         yield* recordOperationResult(change, next.id, outcome);
+        // Running the sync again is the operator's answer to an interrupted sync (PRD §10.2).
+        yield* closeOpenHoldIn(change, { factoryId: factory, kind: "interrupted_sync", subject: factory }, "resolved");
         const hold = { factoryId: factory, kind: "sync_conflict", subject: factory } as const;
 
         if (outcome.status === "complete") {
