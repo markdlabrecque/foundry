@@ -10,7 +10,7 @@ type PiHandler = (...args: Array<any>) => void;
 const fixture = (busy = true, deferSettledInjections = false) => {
   const handlers = new Map<string, Array<PiHandler>>();
   const injected: Array<string> = [];
-  const state = { busy, emittingSettled: false };
+  const state = { busy, emittingSettled: false, disposed: false };
   const deferred: Array<() => Promise<void>> = [];
   let duringRun: (() => void) | undefined;
 
@@ -42,7 +42,11 @@ const fixture = (busy = true, deferSettledInjections = false) => {
     },
     emit: (event: string) => {
       for (const handler of handlers.get(event) ?? []) {
-        handler({}, { isIdle: () => !state.busy, abort: () => {} });
+        handler({}, { isIdle: () => {
+          if (state.disposed) {throw new Error("This extension ctx is stale after session replacement or reload.");}
+
+          return !state.busy;
+        }, abort: () => {} });
       }
     },
   };
@@ -143,6 +147,16 @@ test("settle-deferred runs cannot let a newer when_idle message overtake the old
   await settle();
   await tick();
   expect(injected).toEqual(["A", "B", "C"]);
+});
+
+test("a queued flush cannot use Pi's context after runtime disposal", async () => {
+  const { state, receive, injected, settle, receiver } = fixture();
+  receive("held");
+  await settle();
+  state.disposed = true;
+  await tick();
+  expect(injected).toEqual([]);
+  expect(receiver.pending()).toEqual(["held"]);
 });
 
 test("drain prevents a scheduled settled flush and acknowledges without starting held work", async () => {

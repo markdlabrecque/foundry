@@ -36,7 +36,19 @@ export class MessageReceiver {
 
   /** Only Pi's idle state permits a held batch, never a tool-round or run-end event. */
   settled(): void {
-    if (this.draining || !this.control?.isIdle()) {return;}
+    if (this.draining || this.held.size === 0 || !this.control) {return;}
+
+    // Pi invalidates captured contexts on dispose/reload, even when a scheduled
+    // settlement callback is still queued. Never inject into a replaced runtime.
+    try {
+      if (!this.control.isIdle()) {return;}
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.startsWith("This extension ctx is stale")) {throw error;}
+
+      this.control = undefined;
+
+      return;
+    }
 
     // Take the entire FIFO batch before injection starts a new turn. Later arrivals wait
     // for that turn to settle, rather than overtaking any member of this batch.
@@ -56,6 +68,7 @@ export class MessageReceiver {
 /** Feed Pi's actual settled state into the policy receiver, including standalone compaction. */
 export const deliverMessages = (pi: Pick<ExtensionAPI, "on">, receiver: MessageReceiver): void => {
   pi.on("session_start", (_event, ctx) => receiver.bind(ctx));
+  pi.on("session_shutdown", () => receiver.drain());
   // Pi defers triggerTurn injections made inside agent_settled and awaits each
   // resulting run separately. Leave that handler before injecting the FIFO batch.
   const settled = () => { setImmediate(() => receiver.settled()); };
