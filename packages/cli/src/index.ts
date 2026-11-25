@@ -16,7 +16,7 @@ export {
 export {
   defaultTitle,
   runTicketList,
-  runTicketShow, runTicketPause,
+  runTicketShow, runTicketPause, runTicketCancel,
   runTicketSubmit,
   type ShowOptions,
   type SubmitOptions,
