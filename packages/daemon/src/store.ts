@@ -331,6 +331,20 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
   },
   {
     id: 13,
+    name: "message_binding",
+    statements: [
+      `ALTER TABLE message ADD COLUMN bound_slot TEXT`,
+      `ALTER TABLE message ADD COLUMN bound_at INTEGER`,
+      // Binding belongs to the logical slot, never a launch. Delivery/recovery cannot reroute it.
+      `CREATE TRIGGER message_binding_immutable BEFORE UPDATE OF bound_slot, bound_at ON message
+       WHEN OLD.bound_slot IS NOT NULL AND
+         (NEW.bound_slot IS NOT OLD.bound_slot OR NEW.bound_at IS NOT OLD.bound_at)
+       BEGIN SELECT RAISE(ABORT, 'message binding is immutable'); END`,
+      `CREATE INDEX message_unbound ON message (factory_id, sequence) WHERE status = 'unbound'`,
+    ],
+  },
+  {
+    id: 14,
     name: "assignments",
     statements: [
       `CREATE TABLE assignment (

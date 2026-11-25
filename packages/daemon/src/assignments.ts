@@ -24,6 +24,13 @@ export const assignedSlot = (query: Query, factoryId: string, ticket: number) =>
     [factoryId, ticket],
   ).pipe(Effect.map((rows) => rows[0]?.slot_id ?? null));
 
+/** Context belongs to its original slot, even after that assignment ends. Never reroute it. */
+export const assignmentContextSlot = (change: Change, factoryId: string, messageId: string) =>
+  change.query<{ slot_id: string }>(
+    `SELECT slot_id FROM assignment WHERE factory_id = ? AND context_message = ?`,
+    [factoryId, messageId],
+  ).pipe(Effect.map((rows) => rows[0]?.slot_id ?? null));
+
 export const assignmentTicket = (change: Change, factoryId: string, slotId: string) =>
   change.query<{ ticket_number: number }>(
     `SELECT ticket_number FROM assignment WHERE factory_id = ? AND slot_id = ? AND status = 'active'`,

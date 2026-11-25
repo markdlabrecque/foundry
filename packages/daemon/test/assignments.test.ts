@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Schema } from "effect";
 import {
-  assignedSlot, assignmentTicket, createAssignmentScheduler, createTicketService,
+  acceptMessage, assignedSlot, assignmentContextSlot, assignmentTicket, bindStationMessages, createAssignmentScheduler, createTicketService,
   openStore, planSlots, StoreError, ticketFactoryFrom, watchAssignments,
 } from "@foundry/daemon";
-import type { Store } from "@foundry/daemon";
+import type { Change, Store } from "@foundry/daemon";
 import { FactoryConfig } from "../src/config/schema.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
@@ -27,7 +27,7 @@ const roots: Array<string> = [];
 
 afterEach(() => { for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });} });
 
-const fixture = async <A>(use: (store: Store, root: string) => Effect.Effect<A, StoreError>) => {
+const fixture = async <A, E>(use: (store: Store, root: string) => Effect.Effect<A, E>) => {
   const root = mkdtempSync(join(tmpdir(), "foundry-assignments-"));
   roots.push(root);
 
@@ -121,6 +121,56 @@ test("queued stages, frozen/parked slots and lifecycle/readiness gates are respe
       expect(yield* assignmentTicket(change, "shop", "worker/2")).toBe(1);
       yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "lookup" });
     }));
+  }));
+});
+
+test("routing uses current assignment preference but pins each context to its original slot", async () => {
+  await fixture((store) => Effect.gen(function* () {
+    const assigned = yield* createAssignmentScheduler(options(store)).schedule();
+    const first = assigned[0];
+    const second = assigned[1];
+    expect(first?.slotId).toBe("worker/1");
+    expect(second?.slotId).toBe("worker/2");
+
+    const routing = { store, slots,
+      assignedSlot: (change: Change, factoryId: string, ticket: number) => assignedSlot(change.query, factoryId, ticket),
+      contextSlot: assignmentContextSlot,
+    };
+
+    // A context cannot fall back to another normal slot when its assigned slot freezes.
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE slot SET condition = 'frozen' WHERE ordinal = 2`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "freeze" });
+    }));
+    expect(yield* bindStationMessages(routing)).toMatchObject([{ id: first?.contextMessage, slotId: "worker/1" }]);
+    expect(yield* store.read(`SELECT status, bound_slot FROM message WHERE ticket_number = 2`)).toEqual([{ status: "unbound", bound_slot: null }]);
+    yield* store.change((change) => Effect.gen(function* () {
+      // End the original assignments before binding the second context: it must still go to slot 2.
+      yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1`);
+      yield* change.query(`UPDATE slot SET condition = CASE ordinal WHEN 1 THEN 'frozen' ELSE 'normal' END`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "release" });
+    }));
+    expect(yield* bindStationMessages(routing)).toMatchObject([{ id: second?.contextMessage, slotId: "worker/2" }]);
+    // Ticket 3 takes slot 2. Restore slot 1 before routing: current assignment beats lowest ordinal.
+    expect(yield* createAssignmentScheduler(options(store)).schedule()).toMatchObject([{ ticket: 3, slotId: "worker/2" }]);
+
+    const ordinary = yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE slot SET condition = 'normal' WHERE ordinal = 1`);
+
+      return yield* acceptMessage(change, {
+        factoryId: "shop", senderSlot: "worker/1", recipient: "floor.worker", body: "ticket question",
+        kind: "ordinary", delivery: "after_turn", correlation: { ticket: 3 },
+      });
+    }));
+
+    expect(yield* bindStationMessages(routing)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: ordinary.id, slotId: "worker/2" }),
+    ]));
+    expect(yield* bindStationMessages(routing)).toEqual([]);
+    expect(yield* store.read(`SELECT ticket_number, bound_slot FROM message ORDER BY sequence`)).toEqual([
+      { ticket_number: 1, bound_slot: "worker/1" }, { ticket_number: 2, bound_slot: "worker/2" },
+      { ticket_number: 3, bound_slot: "worker/2" }, { ticket_number: 3, bound_slot: "worker/2" },
+    ]);
   }));
 });
 
