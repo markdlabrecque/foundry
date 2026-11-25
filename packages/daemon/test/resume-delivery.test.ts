@@ -132,6 +132,25 @@ test('proven absent idle copy is replaced without mutating or replaying its atte
   expect(errors).toEqual([]);
 });
 
+test('rearmed attempted notice refresh replaces its ID and retains the original attempted payload', async () => {
+  attach();
+  await delivery.idle();
+  const original = (await notices())[0];
+  // Model the durable re-arm after an operator slot reset, before the delivery pump can run.
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE message SET status = 'bound' WHERE id = ?`, [noticeId]);
+    yield* composeResumeNotice(change, { assignmentId, factoryId: 'shop', ticket: 1, stage: 'plan',
+      slotId: slot.slotId, recipient: 'floor.worker', message: 'Reset continuation' });
+  })));
+  await delivery.idle();
+  const saved = await notices();
+  expect(saved[0]).toEqual({ ...original, status: 'dropped' });
+  expect(saved[1]).toMatchObject({ status: 'sent', body: expect.stringContaining('Reset continuation') });
+  expect(frames.filter((frame) => frame.type === 'message' && frame.id === noticeId)).toHaveLength(1);
+  expect(frames[1]).toMatchObject({ type: 'message', id: saved[1]?.id, body: saved[1]?.body });
+  expect(errors).toEqual([]);
+});
+
 test.each(['pause', 'blocked', 'done'])('%s before first delivery invalidates the old continuation', async (action) => {
   if (action === 'pause') {
     await Effect.runPromise(tickets.pause('shop', 1));

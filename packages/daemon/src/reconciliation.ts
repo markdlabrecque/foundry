@@ -108,7 +108,7 @@ export const createReconciler = (store: Store) => {
 
                 if (decided !== "retry" || ended) {return yield* Effect.fail(new RetryUnchanged({ decision: decided }));}
 
-                const replacement = yield* releaseResumeReplacement(change, item.id);
+                const replacement = yield* releaseResumeReplacement(change, item.id, 'sent');
 
                 if (replacement !== null) {return decided;}
 

@@ -28,20 +28,20 @@ const acceptBoundNotice = (change: Change, input: ResumeNotice, body: string) =>
 
 /** Publish the latest desired content only after a receipt or proven absence settles the old
  * wire copy. Never mutate a payload that a recorded delivery attempt could have consumed. */
-export const releaseResumeReplacement = (change: Change, messageId: string) => Effect.gen(function* () {
+export const releaseResumeReplacement = (change: Change, messageId: string, settledStatus: 'bound' | 'sent' | 'acknowledged') => Effect.gen(function* () {
   const [pending] = yield* change.query<{
     assignment_id: string; pending_body: string; factory_id: string; ticket_number: number;
     stage: string; slot_id: string; recipient: string;
   }>(
     `SELECT n.assignment_id, n.pending_body, a.factory_id, a.ticket_number, a.stage, a.slot_id, m.recipient
      FROM resume_notice n JOIN assignment a ON a.id = n.assignment_id JOIN message m ON m.id = n.message_id
-     WHERE n.message_id = ? AND n.pending_body IS NOT NULL AND a.status = 'active'`, [messageId],
+     WHERE n.message_id = ? AND n.pending_body IS NOT NULL AND a.status = 'active' AND m.status = ?`, [messageId, settledStatus],
   );
 
   if (pending === undefined) {return null;}
 
   yield* change.query(`UPDATE resume_notice SET pending_body = NULL WHERE message_id = ?`, [messageId]);
-  yield* change.query(`UPDATE message SET status = 'dropped' WHERE id = ? AND status IN ('sent', 'indeterminate')`, [messageId]);
+  yield* change.query(`UPDATE message SET status = 'dropped' WHERE id = ? AND status IN ('bound', 'sent', 'indeterminate')`, [messageId]);
 
   const replacement = yield* acceptBoundNotice(change, {
     assignmentId: pending.assignment_id, factoryId: pending.factory_id, ticket: pending.ticket_number,
@@ -80,13 +80,13 @@ export const composeResumeNotice = (change: Change, input: ResumeNotice) => Effe
 
   const body = `Ticket ${input.ticket}\nStage: ${input.stage}\nAssignment: ${input.assignmentId}\nThe worker was interrupted or the daemon was unavailable. The last tool call may or may not have completed. Inspect the worktree and ticket directory before continuing; do not replay tool calls blindly.\nReported outcome: ${outcome?.outcome ?? 'none'}\nOpen requests: ${requests.map((row) => row.id).join(', ') || 'none'}\nOpen delegations: ${delegations.map((row) => row.id).join(', ') || 'none'}${input.message === undefined || input.message === null ? '' : `\nOperator message: ${input.message}`}`;
 
-  const [existing] = yield* change.query<{ id: string; status: string }>(
-    `SELECT m.id, m.status FROM resume_notice n JOIN message m ON m.id = n.message_id WHERE n.assignment_id = ?
+  const [existing] = yield* change.query<{ id: string; status: string; attempted: number }>(
+    `SELECT m.id, m.status, EXISTS (SELECT 1 FROM message_attempt a WHERE a.message_id = m.id) AS attempted FROM resume_notice n JOIN message m ON m.id = n.message_id WHERE n.assignment_id = ?
      AND m.status IN ('unbound', 'bound', 'sent', 'indeterminate') ORDER BY m.sequence DESC LIMIT 1`, [input.assignmentId],
   );
 
   if (existing !== undefined) {
-    if (existing.status === 'unbound' || existing.status === 'bound') {
+    if ((existing.status === 'unbound' || existing.status === 'bound') && existing.attempted === 0) {
       yield* change.query(`UPDATE message SET body = ? WHERE id = ?`, [body, existing.id]);
     } else {
       yield* change.query(`UPDATE resume_notice SET pending_body = ? WHERE message_id = ?`, [body, existing.id]);

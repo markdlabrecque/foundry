@@ -29,7 +29,7 @@ export const acknowledgeMessage = (store: Store, slot: ClaimedSlot, id: string, 
     const now = yield* Clock.currentTimeMillis;
     yield* change.query(`UPDATE message SET status = 'acknowledged', acknowledged_at = ? WHERE id = ?`, [now, id]);
     yield* change.query(`UPDATE message_attempt SET acknowledged_at = ? WHERE id = ?`, [now, attempt.id]);
-    yield* releaseResumeReplacement(change, id);
+    yield* releaseResumeReplacement(change, id, 'acknowledged');
     yield* closeOpenHoldIn(change, { factoryId: slot.factoryId, kind: "stuck_worker", subject: id }, "cleared");
     yield* change.recordHistory({ factoryId: slot.factoryId, kind: "message.acknowledged", subject: id,
       detail: { attemptId: attempt.id, slotId: slot.slotId, launchId: slot.launchId } });
@@ -81,6 +81,11 @@ export const createMessageDelivery = (options: {
             // Check inside the attempt transaction: the deadline may pass between sweeps,
             // or while this pump waits for the store writer. Never send that first copy.
             const now = yield* Clock.currentTimeMillis;
+            // A proven retry or explicit slot reset can re-arm an attempted notice. Supersede
+            // that old payload before another attempt, using its deferred replacement content.
+            const replacement = yield* releaseResumeReplacement(change, message.id, 'bound');
+
+            if (replacement !== null) {return null;}
 
             const updated = yield* change.query<BoundMessage>(
               `UPDATE message SET status = 'sent' WHERE id = ? AND status = 'bound'
