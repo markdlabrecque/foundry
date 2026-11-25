@@ -1,5 +1,5 @@
 /** Operator decision reads and worker-request answers through the daemon API. */
-import { APPROVALS_PATH, approvalPath, isApprovalListResult, isApprovalShowResult } from "@foundry/protocol/approvals";
+import { APPROVALS_PATH, approvalPath, isApprovalDecisionResult, isApprovalListResult, isApprovalShowResult } from "@foundry/protocol/approvals";
 import type { ApprovalShowResult } from "@foundry/protocol/approvals";
 import { fetchAndRender } from "./read-output.js";
 import type { ReadOptions } from "./read-output.js";
@@ -13,7 +13,7 @@ import type { StatusOutcome } from "./status.js";
 const renderShow = ({ approval: a, commands }: ApprovalShowResult): string => [
   `approval    ${a.id}`, `kind        ${a.kind}`, `factory     ${a.factoryId}`,
   `ticket      ${a.ticket}`, `stage       ${a.stage}`, `assignment  ${a.assignmentId}`,
-  `state       ${a.state}`, `outcome     ${a.outcome ?? "-"}`,  `reason      ${a.reason}`,
+  `state       ${a.state}`, `decision    ${a.decision ?? "-"}`, `outcome     ${a.outcome ?? "-"}`,  `reason      ${a.reason}`,
   `raised at   ${a.raisedAt}`, `commit      ${a.commit ?? "-"}`,
   "evidence", ...a.evidence.map((path) => `  ${path}`),
   ...(commands.length === 0 ? [] : ["commands", ...commands.map((command) => `  ${command}`)]),
@@ -54,4 +54,21 @@ export const runApprovalShow = (options: ReadOptions & { readonly id: string }):
   }
 
   return fetchAndRender(options, approvalPath(Number(options.id)), isApprovalShowResult, renderShow);
+};
+
+export const runApprovalDecision = (options: ReadOptions & {
+  readonly id: string;
+  readonly decision: "approve" | "reject";
+  readonly reason?: string;
+}): Promise<StatusOutcome> => {
+  if (!/^[1-9][0-9]{0,15}$/.test(options.id) || !Number.isSafeInteger(Number(options.id)) ||
+    (options.decision === "reject" && (options.reason === undefined || options.reason.trim() === ""))) {
+    return Promise.resolve({ exitCode: EXIT_USAGE, stdout: "", stderr: "foundry: a positive approval ID and a reason for reject are required\n" });
+  }
+
+  const body = options.reason === undefined ? {} : { reason: options.reason };
+
+  return fetchAndRender(options, `${approvalPath(Number(options.id))}/${options.decision}`, isApprovalDecisionResult,
+    (result) => `approval ${result.approvalId} ${result.decision} at ${result.commit}${result.integrationRequested ? "; integration requested" : ""}\n`,
+    (stateRoot, path) => postToDaemon(stateRoot, path, body));
 };
