@@ -76,13 +76,18 @@ export const createMessageDelivery = (options: {
           if (ended || stopped || options.gate.isFrozen(slot) || options.inScope?.(slot.factoryId) === false) {return;}
 
           const recorded = await Effect.runPromise(options.store.change((change) => Effect.gen(function* () {
+            // Check inside the attempt transaction: the deadline may pass between sweeps,
+            // or while this pump waits for the store writer. Never send that first copy.
+            const now = yield* Clock.currentTimeMillis;
+
             const updated = yield* change.query<{ id: string }>(
-              `UPDATE message SET status = 'sent' WHERE id = ? AND status = 'bound' RETURNING id`, [message.id],
+              `UPDATE message SET status = 'sent' WHERE id = ? AND status = 'bound'
+               AND NOT EXISTS (SELECT 1 FROM agent_request r WHERE r.notice_id = message.id
+                 AND (r.status = 'expired' OR r.deadline <= ?)) RETURNING id`, [message.id, now],
             );
 
             if (updated.length === 0) {return yield* Effect.fail(unchanged);}
 
-            const now = yield* Clock.currentTimeMillis;
             const attemptId = randomUUID();
             yield* change.query(
               `INSERT INTO message_attempt (id, factory_id, message_id, slot_id, launch_id, connection_id, sent_at)
