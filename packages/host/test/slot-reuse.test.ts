@@ -72,8 +72,22 @@ test("a slot whose leader exited stays occupied until the rest of its group is g
     }
   });
   const host = await startHost(stateRoot);
+  // Waits for the host to exit: while stopping it still writes under `logs/`, which would race
+  // the state root's removal (ENOTEMPTY) and outlive the test.
   cleanups.push(async () => {
-    if (isAlive(host.pid)) {process.kill(host.pid, "SIGTERM");}
+    if (!isAlive(host.pid)) {return;}
+
+    process.kill(host.pid, "SIGTERM");
+    const deadline = Date.now() + 5000;
+
+    while (isAlive(host.pid)) {
+      if (Date.now() >= deadline) {
+        process.kill(host.pid, "SIGKILL");
+        break;
+      }
+
+      await new Promise((resolve) => { setTimeout(resolve, 20); });
+    }
   });
   const control = await connectHost(stateRoot);
   cleanups.push(async () => control.close());
