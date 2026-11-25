@@ -99,6 +99,8 @@ export interface LaunchRegistry {
   terminate(launchId: string, options?: TerminateOptions): Promise<Termination>;
 }
 
+const slotKey = (factoryId: string, slotId: string): string => JSON.stringify([factoryId, slotId]);
+
 /** How long an exited launch's stderr may take to drain before its tail is taken as is. */
 const STDERR_DRAIN_MS = 1000;
 
@@ -134,7 +136,6 @@ export function createLaunchRegistry(options: {
     timer.unref();
   };
 
-  const slotKey = (factoryId: string, slotId: string): string => JSON.stringify([factoryId, slotId]);
   /** Slots with a launch that is starting or live; checked and set without awaiting, so starts serialize. */
   const occupied = new Set<string>();
 
@@ -242,7 +243,9 @@ export function createLaunchRegistry(options: {
         let drainTimer: NodeJS.Timeout | undefined;
         void Promise.race([
           stderrEnded,
-          new Promise<void>((resolve) => (drainTimer = setTimeout(resolve, STDERR_DRAIN_MS))),
+          new Promise<void>((resolve) => {
+            drainTimer = setTimeout(resolve, STDERR_DRAIN_MS);
+          }),
         ]).then(() => {
           clearTimeout(drainTimer);
           options.onExit(ended, tail.contents());

@@ -37,7 +37,11 @@ export async function terminateGroup(
   options: TerminateGroupOptions,
   deps: TerminateGroupDeps,
 ): Promise<GroupTermination> {
-  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const sleep = deps.sleep ?? ((ms: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      }));
+
   const pollMs = options.pollMs ?? 20;
   // While the leader is unreaped it holds the pgid, so the group cannot be a
   // reused one; once it is reaped, an empty group is never signalled again.

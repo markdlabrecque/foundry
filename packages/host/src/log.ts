@@ -38,11 +38,9 @@ export function createHostLog(
   write: (line: string) => void = (line) => void process.stderr.write(line),
 ): (level: HostLogLevel, msg: string, refs?: HostLogRefs, detail?: Record<string, string | number | boolean | null>) => void {
   return (level, msg, refs = {}, detail) => {
-    const line: Record<string, unknown> = { time: new Date().toISOString(), level, hostId, msg, ...refs };
+    const line = { time: new Date().toISOString(), level, hostId, msg, ...refs };
 
-    if (detail !== undefined) {line["detail"] = detail;}
-
-    write(`${JSON.stringify(line)}\n`);
+    write(`${JSON.stringify(detail === undefined ? line : { ...line, detail })}\n`);
   };
 }
 
@@ -57,8 +55,7 @@ export class StderrTail {
     this.chunks.push(chunk);
     this.size += chunk.length;
 
-    while (this.size > this.limit && this.chunks.length > 0) {
-      const head = this.chunks[0]!;
+    for (let head = this.chunks[0]; this.size > this.limit && head !== undefined; head = this.chunks[0]) {
       const excess = this.size - this.limit;
 
       if (head.length <= excess) {
@@ -103,8 +100,8 @@ export function createLaunchStderrStore(stateRoot: string, keepPerSlot: number =
       const paths = retained.get(key) ?? [];
       paths.push(path);
 
-      while (paths.length > keepPerSlot) {
-        await unlink(paths.shift()!).catch(() => {});
+      for (let oldest = paths.length > keepPerSlot ? paths.shift() : undefined; oldest !== undefined; oldest = paths.length > keepPerSlot ? paths.shift() : undefined) {
+        await unlink(oldest).catch(() => {});
       }
 
       retained.set(key, paths);
