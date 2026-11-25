@@ -17,7 +17,7 @@ import { runEvents } from "./events.js";
 import { runFactoryPath } from "./factory.js";
 import { runFactoryList } from "./factories.js";
 import { runFactoryStop } from "./factory-stop.js";
-import { runSlotInterrupt, runSlotList, runSlotShow } from "./slots.js";
+import { runSlotInterrupt, runSlotList, runSlotShow, runSlotUnfreeze } from "./slots.js";
 
 const validate = Command.make(
   "validate",
@@ -302,9 +302,21 @@ const slotInterrupt = Command.make(
     ),
 ).pipe(Command.withDescription("Abort a slot's current run, keeping its launch and conversation"));
 
+const slotUnfreeze = Command.make(
+  "unfreeze",
+  { ...ticketFlags, slot: Argument.String("station/ordinal") },
+  ({ json, home, factory, slot }) =>
+    Effect.flatMap(
+      Effect.promise(() =>
+        runSlotUnfreeze({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), slot, env: process.env }),
+      ),
+      print,
+    ),
+).pipe(Command.withDescription("Unfreeze a slot once the daemon's re-run of its freeze cause check passes"));
+
 const slot = Command.make("slot").pipe(
   Command.withDescription("Slots: each station's fixed worker positions and their launches"),
-  Command.withSubcommands([slotList, slotShow, slotInterrupt]),
+  Command.withSubcommands([slotList, slotShow, slotInterrupt, slotUnfreeze]),
 );
 
 const foundry = Command.make("foundry").pipe(

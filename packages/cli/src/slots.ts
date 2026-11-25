@@ -1,5 +1,5 @@
 /**
- * `foundry slot list | show | interrupt <station/ordinal>` (PRD §11.1–§11.3): one call each over
+ * `foundry slot list | show | interrupt | unfreeze <station/ordinal>` (PRD §11.1–§11.3): one call each over
  * the management socket. Parsing the command line belongs to `main.ts`; this module takes parsed
  * options and returns what to print and the exit code (PRD §11.5).
  */
@@ -9,13 +9,15 @@ import {
   isSlotInterruptResult,
   isSlotListResult,
   isSlotShowResult,
+  isSlotUnfreezeResult,
   parseSlotId,
   SLOT_INTERRUPT_ACK_TIMEOUT_MS,
   slotInterruptPath,
   slotPath,
   slotsPath,
+  slotUnfreezePath,
 } from "@foundry/protocol/slots-api";
-import type { SlotInterruptResult, SlotLaunch, SlotListResult, SlotShowResult, SlotSummary } from "@foundry/protocol/slots-api";
+import type { SlotInterruptResult, SlotLaunch, SlotListResult, SlotShowResult, SlotSummary, SlotUnfreezeResult } from "@foundry/protocol/slots-api";
 import { DaemonUnreachableError, getFromDaemon, postToDaemon } from "./management-client.js";
 import type { ApiReply } from "./management-client.js";
 import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, EXIT_USAGE } from "./status.js";
@@ -45,8 +47,12 @@ const launchState = (launch: SlotLaunch | null): string => {
   return `launch ${launch.launchId} ended (${launch.endReason ?? "unknown"})`;
 };
 
+/** The condition, with its cause when frozen. */
+const conditionOf = (slot: SlotSummary): string =>
+  slot.freezeCause === null ? slot.condition : `${slot.condition} (${slot.freezeCause})`;
+
 const listLine = (slot: SlotSummary): string =>
-  `${slot.factoryId}  ${slot.slotId}  ${slot.station}  ${slot.condition}  ${launchState(slot.launch)}`;
+  `${slot.factoryId}  ${slot.slotId}  ${slot.station}  ${conditionOf(slot)}  ${launchState(slot.launch)}`;
 
 const renderList = ({ slots }: SlotListResult): string =>
   slots.length === 0 ? "no slots\n" : `${slots.map(listLine).join("\n")}\n`;
@@ -64,7 +70,7 @@ const renderShow = ({ slot, launches }: SlotShowResult): string => {
     `slot        ${slot.slotId}`,
     `factory     ${slot.factoryId}`,
     `station     ${slot.station}`,
-    `condition   ${slot.condition}`,
+    `condition   ${conditionOf(slot)}`,
     "launches",
   ];
 
@@ -83,6 +89,9 @@ const renderInterrupt = ({ launchId, outcome, slot }: SlotInterruptResult): stri
   outcome === "aborted"
     ? `slot ${slot.slotId}: run aborted; launch ${launchId} and its conversation kept\n`
     : `slot ${slot.slotId}: no run was active; launch ${launchId} and its conversation kept\n`;
+
+const renderUnfreeze = ({ slot, resolvedHold }: SlotUnfreezeResult): string =>
+  resolvedHold === null ? `slot ${slot.slotId} unfrozen\n` : `slot ${slot.slotId} unfrozen; hold ${resolvedHold} resolved\n`;
 
 /** The daemon's wait for the worker's acknowledgement, plus time for the call itself. */
 const INTERRUPT_TIMEOUT_MS = SLOT_INTERRUPT_ACK_TIMEOUT_MS + 5000;
@@ -152,5 +161,23 @@ export const runSlotInterrupt = async (options: SlotOptions & { readonly slot: s
     isSlotInterruptResult,
     renderInterrupt,
     (stateRoot, path) => postToDaemon(stateRoot, path, {}, { timeoutMs: INTERRUPT_TIMEOUT_MS }),
+  );
+};
+
+/**
+ * `foundry slot unfreeze <station/ordinal>`: the daemon re-runs the check that froze the slot and
+ * unfreezes it only if the check passes; otherwise it is refused (exit 1) and stays frozen.
+ */
+export const runSlotUnfreeze = async (options: SlotOptions & { readonly slot: string }): Promise<SlotOutcome> => {
+  if (parseSlotId(options.slot) === undefined) {
+    return usage(`a slot is addressed as station/ordinal, not ${JSON.stringify(options.slot)}`);
+  }
+
+  return fetchAndRender(
+    options,
+    slotUnfreezePath(options.slot, options.factory),
+    isSlotUnfreezeResult,
+    renderUnfreeze,
+    (stateRoot, path) => postToDaemon(stateRoot, path, {}),
   );
 };

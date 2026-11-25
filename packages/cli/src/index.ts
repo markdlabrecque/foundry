@@ -33,4 +33,4 @@ export { runFactoryPath, type FactoryPathOptions } from "./factory.js";
 
 export { runFactoryStop, type FactoryStopOptions, type FactoryStopOutcome } from "./factory-stop.js";
 
-export { runSlotInterrupt, runSlotList, runSlotShow, type SlotOptions, type SlotOutcome } from "./slots.js";
+export { runSlotInterrupt, runSlotList, runSlotShow, runSlotUnfreeze, type SlotOptions, type SlotOutcome } from "./slots.js";
