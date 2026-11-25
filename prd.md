@@ -1020,6 +1020,7 @@ factory.queue_reopened
 launch.requested
 launch.started
 launch.adopted
+launch.refused
 launch.ended
 slot.frozen
 slot.unfrozen

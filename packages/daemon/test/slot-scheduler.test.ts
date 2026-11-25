@@ -9,6 +9,7 @@ import { Effect, Exit, Scope } from "effect";
 import { createSlotScheduler, openStore, planSlots } from "@foundry/daemon";
 import type { SlotHost, Store } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
+import { HostRefusedError } from "@foundry/host";
 import type { LaunchRecord, LaunchSpec } from "@foundry/host";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -41,7 +42,7 @@ const live = (launchId: string, slotId: string): LaunchRecord => ({
 });
 
 /** A host double: reports `inventory`, and records every launch asked of it. */
-const fakeHost = (inventory: Array<LaunchRecord>, fail = false) => {
+const fakeHost = (inventory: Array<LaunchRecord>, failure?: Error) => {
   const asked: Array<LaunchSpec> = [];
 
   const host: SlotHost = {
@@ -49,7 +50,7 @@ const fakeHost = (inventory: Array<LaunchRecord>, fail = false) => {
     launch: async (spec) => {
       asked.push(spec);
 
-      if (fail) {throw new Error("worker host connection closed");}
+      if (failure !== undefined) {throw failure;}
 
       const launched = live(`launch-${asked.length}`, spec.slotId);
       inventory.push(launched);
@@ -86,7 +87,7 @@ const scheduler = (store: Store, stateRoot: string, host: SlotHost, hostId: stri
 test("a launch requested of an earlier host in this boot is never requested again", async () => {
   const { stateRoot, store } = await openTempStore();
   // The first host's answer is lost: the request stays pending.
-  const lost = fakeHost([], true);
+  const lost = fakeHost([], new Error("worker host connection closed"));
   const first = await scheduler(store, stateRoot, lost.host, "host-1", [station("lead", 1)]).schedule();
   expect(first.map((r) => r.outcome)).toEqual(["refused"]);
 
@@ -96,6 +97,19 @@ test("a launch requested of an earlier host in this boot is never requested agai
 
   expect(after.map((r) => [r.slotId, r.outcome])).toEqual([["lead/1", "unconfirmed"]]);
   expect(restarted.asked).toEqual([]);
+});
+
+test("a launch the host refused is not pending: a later host in this boot launches into the slot", async () => {
+  const { stateRoot, store } = await openTempStore();
+  const refusing = fakeHost([], new HostRefusedError("launch", "launch failed to start: spawn ENOENT"));
+  const first = await scheduler(store, stateRoot, refusing.host, "host-1", [station("lead", 1)]).schedule();
+  expect(first.map((r) => r.outcome)).toEqual(["refused"]);
+
+  const restarted = fakeHost([]);
+  const after = await scheduler(store, stateRoot, restarted.host, "host-2", [station("lead", 1)]).schedule();
+
+  expect(after.map((r) => [r.slotId, r.outcome])).toEqual([["lead/1", "started"]]);
+  expect(restarted.asked.map((spec) => spec.slotId)).toEqual(["lead/1"]);
 });
 
 test("two live launches in one slot are reported, and neither is picked nor joined by a third", async () => {

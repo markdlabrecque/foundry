@@ -18,11 +18,11 @@
  */
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
-import { Clock, Effect } from "effect";
-import { buildLaunchArgs, connectHost, launchStderrPath, startHost } from "@foundry/host";
+import { Clock, Effect, Schema } from "effect";
+import { buildLaunchArgs, connectHost, HostRefusedError, launchStderrPath, startHost } from "@foundry/host";
 import type { HostConnection, LaunchRecord, LaunchSpec, PiExecutable } from "@foundry/host";
 import { codeOf, messageOf } from "@foundry/protocol/errors";
-import { slotIdOf } from "@foundry/protocol/slots-api";
+import { SlotCondition, slotIdOf } from "@foundry/protocol/slots-api";
 import type { LaunchEndReason, SlotLaunch, SlotLaunchHistoryEntry, SlotSummary } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
 import type { SlotsReader } from "./slots-error.js";
@@ -139,6 +139,27 @@ const recordRequested = (store: Store, slot: PlannedSlot, host: HostRef): Effect
   );
 
 /**
+ * Records that the host refused a requested launch, which proves it never started: the request is
+ * no longer pending, so a later host in this boot may launch into the slot.
+ */
+const recordRefused = (store: Store, slot: PlannedSlot, reason: string): Effect.Effect<void, StoreError> =>
+  store.change((change) =>
+    Effect.gen(function* () {
+      yield* change.query(`UPDATE slot SET pending_host = NULL, pending_boot = NULL WHERE factory_id = ? AND slot_id = ?`, [
+        slot.factoryId,
+        slot.slotId,
+      ]);
+      yield* change.recordHistory({
+        factoryId: slot.factoryId,
+        kind: "launch.refused",
+        subject: slot.slotId,
+        detail: { station: slot.station.address, reason },
+        records: [slotRecord(slot.slotId)],
+      });
+    }),
+  );
+
+/**
  * Records a launch the host reports as the slot's current launch: one it `started` for us, or one
  * `adopted`. A launch already recorded is not inserted again; it only becomes current. Clears any
  * pending request.
@@ -227,7 +248,7 @@ const endOf = (launch: LaunchRecord): LaunchEnd | undefined =>
  *   launch was requested of an earlier host in this boot, which may have left it running.
  * - `duplicate`: the host reports more than one live launch in the slot; nothing is picked or started.
  * - `held`: its condition is not normal; nothing is launched into it.
- * - `refused`: the launch could not be built or the host would not start it; the next scheduling tries again.
+ * - `refused`: the launch could not be built or the host would not start it; the next daemon start tries again.
  */
 export type SlotScheduleOutcome =
   | "started"
@@ -304,6 +325,13 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
     if (only !== undefined) {
       if (row?.current_launch === only.launchId) {return result("running", only.launchId);}
 
+      // A request pending on this same host whose reply was lost: the live launch is the one we started.
+      if (row?.pending_host === options.hostId) {
+        await Effect.runPromise(recordLaunch(store, slot, only, "started"));
+
+        return result("started", only.launchId);
+      }
+
       await Effect.runPromise(recordLaunch(store, slot, only, "adopted"));
 
       return result("adopted", only.launchId);
@@ -377,7 +405,10 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
     try {
       launched = await host.launch({ factoryId: slot.factoryId, slotId: slot.slotId, ...args });
     } catch (cause) {
-      // The request stays pending: if the launch did start, the next scheduling finds it on the host.
+      // A refusal proves nothing started. Any other failure (a timeout, a lost connection) may hide a
+      // started launch, so the request stays pending and the next start settles it from the host.
+      if (cause instanceof HostRefusedError) {await Effect.runPromise(recordRefused(store, slot, cause.reason));}
+
       return { ...result("refused"), error: messageOf(cause) };
     }
 
@@ -435,6 +466,8 @@ export { SlotsError, type SlotsErrorCode, type SlotsReader } from "./slots-error
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 
+const decodeCondition = Schema.decodeUnknownSync(SlotCondition);
+
 const toLaunch = (row: LaunchRow): SlotLaunch => ({
   launchId: row.launch_id,
   bootId: row.boot_id,
@@ -467,8 +500,8 @@ export const storeSlotsReader = (
       slotId: slot.slotId,
       station: slot.station.address,
       ordinal: slot.ordinal,
-      // Only normal slots exist until freezing and parking arrive with their own tickets.
-      condition: "normal",
+      // Read as stored: a condition this build does not serve yet fails loudly, not as `normal`.
+      condition: row === undefined ? "normal" : decodeCondition(row.condition),
       launch: launch === undefined ? null : toLaunch(launch),
     };
   };

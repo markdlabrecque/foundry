@@ -30,6 +30,7 @@ export {
 
 export {
   HOST_LOG_NAME,
+  HostRefusedError,
   connectHost,
   hostLogPath,
   startHost,

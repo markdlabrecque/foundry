@@ -349,7 +349,7 @@ const main = async (): Promise<void> => {
       await closeStore();
       log.close();
       claim.release();
-      fail(`cannot reach the worker host in ${stateRoot}: ${messageOf(error)}`);
+      fail(`cannot start the slots in ${stateRoot}: ${messageOf(error)}`);
 
       return;
     }
