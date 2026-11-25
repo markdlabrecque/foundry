@@ -5,6 +5,8 @@ export * from "./message-delivery.js";
 
 export * from "./stuck-workers.js";
 
+export * from "./message-disposition.js";
+
 export * from "./channel/server.js";
 
 export { channelLogEvents } from "./channel/log-events.js";

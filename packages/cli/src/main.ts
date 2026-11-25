@@ -8,7 +8,7 @@ import { Argument, CliError, Command, Flag } from "effect/cli";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { EXIT_USAGE, runStatus } from "./status.js";
 import { runLogs } from "./logs.js";
-import { runMessageSend } from "./messages.js";
+import { runMessageSend, runMessageDisposition } from "./messages.js";
 import { validateFactoryFile } from "./validate.js";
 import { runIntegrationRetry, runTicketCancel, runTicketList, runTicketPause, runTicketResume, runTicketRetry, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
@@ -236,7 +236,13 @@ const messageSend = Command.make(
   })),
 ).pipe(Command.withDescription("Accept an operator message in the daemon's durable log, without spending budget"));
 
-const message = Command.make("message").pipe(Command.withSubcommands([messageSend]));
+const messageAction = (action: "resend" | "drop") => Command.make(action, {
+  ...commonFlags,
+  id: Argument.String("id"),
+  yes: Flag.Boolean("yes").pipe(Flag.withDefault(false)),
+}, ({ json, home, id, yes }) => report(() => runMessageDisposition({ action, json, home: Option.getOrUndefined(home), id, yes, env: process.env })));
+
+const message = Command.make("message").pipe(Command.withSubcommands([messageSend, messageAction("resend"), messageAction("drop")]));
 
 const ticketSubmit = Command.make(
   "submit",

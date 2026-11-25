@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Clock, Effect } from "effect";
 import type { Message } from "@foundry/protocol";
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
-import { actionableMessage } from "./message-obligations.js";
+import { actionableMessage, actionableMessageAs } from "./message-obligations.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { releaseResumeReplacement } from "./resume-notice.js";
 import type { SlotGate } from "./freeze.js";
@@ -81,6 +81,8 @@ export const createMessageDelivery = (options: {
           const recorded = await Effect.runPromise(options.store.change((change) => Effect.gen(function* () {
             // Check inside the attempt transaction: the deadline may pass between sweeps,
             // or while this pump waits for the store writer. Never send that first copy.
+            // Already-attempted notices remain eligible for evidence-gated or explicit
+            // operator resend: expiry does not retract a sent copy (PRD §6.5).
             const now = yield* Clock.currentTimeMillis;
             // A proven retry or explicit slot reset can re-arm an attempted notice. Supersede
             // that old payload before another attempt, using its deferred replacement content.
@@ -91,8 +93,14 @@ export const createMessageDelivery = (options: {
             const updated = yield* change.query<BoundMessage>(
               `UPDATE message SET status = 'sent' WHERE id = ? AND status = 'bound'
                AND ${actionableMessage}
+               AND NOT EXISTS (SELECT 1 FROM message earlier WHERE earlier.factory_id = message.factory_id
+                 AND earlier.bound_slot = message.bound_slot AND earlier.sequence < message.sequence
+                 -- A held copy always blocks; a bound copy only while it can still be sent, so
+                 -- abandoned work an operator re-bound never starves later deliveries.
+                 AND (earlier.status = 'indeterminate' OR (earlier.status = 'bound' AND ${actionableMessageAs("earlier")})))
                AND NOT EXISTS (SELECT 1 FROM agent_request r WHERE r.notice_id = message.id
-                 AND (r.status = 'expired' OR r.deadline <= ?))
+                 AND (r.status = 'expired' OR r.deadline <= ?)
+                 AND NOT EXISTS (SELECT 1 FROM message_attempt prior WHERE prior.message_id = message.id))
                AND NOT EXISTS (SELECT 1 FROM resume_notice n JOIN assignment a ON a.id = n.assignment_id
                  WHERE n.message_id = message.id AND (a.status != 'active' OR a.slot_id != message.bound_slot))
                RETURNING id, body, delivery`, [message.id, now],

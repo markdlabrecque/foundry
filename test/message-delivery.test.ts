@@ -5,12 +5,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit, Predicate, Scope } from "effect";
-import { acknowledgeMessage, acknowledgePrime, createMessageDelivery, createPrimer, createReconciler, createSlotFreezer, openSlotGate, openStore, primesForConversation, raiseHold, recordPrime, startChannelServer } from "@foundry/daemon";
-import type { ChannelServer, Store } from "@foundry/daemon";
+import { acknowledgeMessage, acknowledgePrime, createMessageDelivery, createMessageDisposition, createPrimer, createReconciler, createSlotFreezer, expireRequests, openSlotGate, openStore, primesForConversation, raiseHold, recordPrime, serveManagementApi, startChannelServer } from "@foundry/daemon";
+import type { ChannelServer, Store, SqlValue } from "@foundry/daemon";
 import { createConversationAdapter, openChannel, receiveDaemonFrames } from "@foundry/extension";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { startFauxSession } from "@foundry/testkit";
 import type { OpenChannel } from "@foundry/extension";
+import { runMessageDisposition } from "@foundry/cli";
+import { postToDaemon } from "../packages/cli/src/management-client.js";
+import { messagePath } from "@foundry/protocol/messages-api";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { DaemonFrame, Hello } from "@foundry/protocol";
 
@@ -353,13 +356,10 @@ test("replacement-launch history acknowledges old attempts; invalid answers, abs
   let requested!: () => void;
   const sent = new Promise<void>((resolve) => { requested = resolve; });
   let requestId = "";
-  let closed!: () => void;
-  const ended = new Promise<void>((resolve) => { closed = resolve; });
-
   const replacement = { ...slot, launchId: "replacement" };
   expect(await Effect.runPromise(acknowledgeMessage(store, replacement, "m2"))).toBe(false);
 
-  const comparison = reconciler.reconcile(replacement, { ...hello, launchId: replacement.launchId }, { closed: ended, send: async (frame) => {
+  const comparison = reconciler.reconcile(replacement, { ...hello, launchId: replacement.launchId }, { send: async (frame) => {
     if (frame.type !== "reconcile") {throw new Error("expected comparison");}
 
     requestId = frame.requestId;
@@ -379,11 +379,20 @@ test("replacement-launch history acknowledges old attempts; invalid answers, abs
   reconciler.receive(replacement, { ...valid, answers: [valid.answers[0]!, valid.answers[0]!] });
   reconciler.receive(replacement, valid);
   expect(await comparison).toEqual({ history: ["m2"], pending: [], absent: ["m1"] });
-  expect(await state()).toEqual([{ id: "m1", status: "sent", acknowledged_at: null },
+  expect(await state()).toEqual([{ id: "m1", status: "indeterminate", acknowledged_at: null },
     { id: "m2", status: "acknowledged", acknowledged_at: expect.any(Number) }]);
   expect(await attempts()).toEqual([{ message_id: "m1", acknowledged_at: null },
     { message_id: "m2", acknowledged_at: expect.any(Number) }]);
   expect(await Effect.runPromise(store.read(`SELECT subject FROM history WHERE kind = 'message.acknowledged'`))).toEqual([{ subject: "m2" }]);
+});
+
+test("closed or failed comparisons cannot acknowledge or replay through a stale answer", async () => {
+  await seed(1);
+  delivery.attach(slot, { send: async () => {} });
+  await delivery.idle();
+  const reconciler = createReconciler(store);
+  let closed!: () => void;
+  const ended = new Promise<void>((resolve) => { closed = resolve; });
   const interrupted = reconciler.reconcile(slot, hello, { closed: ended, send: async () => { closed(); } });
   await expect(interrupted).rejects.toThrow("channel ended during reconciliation");
   let staleRequest = "";
@@ -464,7 +473,7 @@ test.each([
   if (recheck) {expect(requests[1]).toMatchObject({ whenIdle: true, ids: ["m1"] });}
 
   expect(result[recheck ? final : "absent"]).toEqual(["m1"]);
-  expect(await state()).toMatchObject([{ status: retry ? "bound" : final === "history" ? "acknowledged" : "sent" }]);
+  expect(await state()).toMatchObject([{ status: retry ? "bound" : final === "history" ? "acknowledged" : recheck ? "sent" : "indeterminate" }]);
   expect(await attempts()).toHaveLength(1);
 
   if (retry) {
@@ -503,4 +512,157 @@ test("receipt, attempt and stuck-worker hold clear together, and roll back toget
   expect(await Effect.runPromise(store.read(`SELECT state FROM operator_hold`))).toEqual([{ state: "cleared" }]);
   expect(await state()).toMatchObject([{ status: "acknowledged" }]);
   expect(await attempts()).toMatchObject([{ acknowledged_at: expect.any(Number) }]);
+});
+
+
+test.each(["resend", "drop"] as const)("ambiguous delivery survives restart and gates only its slot until operator %s", async (action) => {
+  await seed(1);
+  delivery.attach(slot, { send: async () => {} });
+  await delivery.idle();
+  await delivery.stop();
+  const reconciler = createReconciler(store);
+  await reconciler.reconcile(slot, hello, { send: async (frame) => {
+    if (frame.type !== "reconcile") {throw new Error("expected comparison");}
+
+    reconciler.receive(slot, { type: "reconciliation_answer", requestId: frame.requestId,
+      answers: [{ id: "m1", status: "absent" }] }); // No lifecycle proof: never retry automatically.
+  } });
+  await seed(2, "when_idle");
+  await seed(3, "after_turn", "builder/2");
+  await Effect.runPromise(Scope.close(scope, Exit.void));
+  scope = await Effect.runPromise(Scope.make());
+  store = await Effect.runPromise(openStore({ filename: join(dir, "state.db") }).pipe(Scope.provide(scope)));
+  // A later reconnect with stronger evidence still cannot silently undo an operator hold.
+  await createReconciler(store).reconcile(slot, hello, { send: async () => {throw new Error("held message must not be re-compared");} });
+  expect(await Effect.runPromise(acknowledgeMessage(store, slot, "m1"))).toBe(false);
+  delivery = createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => errors.push(cause) });
+  const frames: Array<DaemonFrame> = [];
+  delivery.attach(slot, { send: async (frame) => { frames.push(frame); } });
+  delivery.attach({ ...slot, slotId: "builder/2" }, { send: async (frame) => { frames.push(frame); } });
+  await delivery.idle();
+  expect(frames).toMatchObject([{ id: "m3" }]);
+  expect(await attempts()).toHaveLength(2);
+  const holds = await Effect.runPromise(store.read<{ state: string; evidence: string }>(`SELECT state, evidence FROM operator_hold WHERE kind = 'indeterminate_message'`));
+  expect(holds).toMatchObject([{ state: "open", evidence: expect.stringContaining('"status":"absent"') }]);
+  expect(JSON.parse(String(holds[0]?.["evidence"]))).toMatchObject({ slot: slot.slotId, messageId: "m1", attempts: [{ launch_id: slot.launchId }] });
+
+  const api = await serveManagementApi({ stateRoot: dir, messageDisposition: createMessageDisposition(store),
+    status: () => ({ instance: { stateRoot: dir, daemonPid: 1, startedAt: "2026-01-01T00:00:00Z" } }) });
+
+  try {
+    const common = { id: "m1", action, yes: false, json: false, home: dir, env: {}, terminal: false, notice: () => {} };
+
+    if (action === "drop") {
+      expect((await runMessageDisposition(common)).exitCode).toBe(2);
+      expect((await postToDaemon(dir, `${messagePath("m1")}/drop`, {})).status).toBe(409);
+      expect((await runMessageDisposition({ ...common, terminal: true, confirm: async () => false })).exitCode).toBe(2);
+      expect(await state()).toMatchObject([{ status: "indeterminate" }, { status: "bound" }, { status: "sent" }]);
+    }
+
+    expect((await runMessageDisposition({ ...common, yes: true })).exitCode).toBe(0);
+    await delivery.idle();
+    expect(frames.map((frame) => frame.type === "message" ? frame.id : frame.type)).toEqual(action === "drop" ? ["m3", "m2"] : ["m3", "m1", "m2"]);
+    expect(await Effect.runPromise(store.read(`SELECT state FROM operator_hold WHERE kind = 'indeterminate_message'`))).toEqual([{ state: "resolved" }]);
+    expect((await runMessageDisposition({ ...common, yes: true })).exitCode).toBe(1);
+    expect(errors).toEqual([]);
+  } finally {await api.close();}
+});
+
+test("resend racing a delivery snapshot still precedes later same-slot copies", async () => {
+  await seed(1);
+  await seed(2);
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE message SET status = 'indeterminate' WHERE id = 'm1'`);
+    yield* change.recordHistory({ factoryId: slot.factoryId, kind: "fixture.ambiguous", subject: "m1" });
+  })));
+  await delivery.stop();
+  let raced = false;
+
+  // Force the operator commit between the bound-message snapshot and its first attempt.
+  const read = <Row extends object>(statement: string, params?: ReadonlyArray<SqlValue>) => store.read<Row>(statement, params).pipe(Effect.tap(() => {
+    if (raced || !statement.includes("SELECT id, body, delivery FROM message")) {return Effect.void;}
+
+    raced = true;
+
+    return createMessageDisposition(store).act("m1", "resend").pipe(Effect.orDie);
+  }));
+
+  delivery = createMessageDelivery({ store: { ...store, read }, gate: openSlotGate, onError: (cause) => errors.push(cause) });
+  const frames: Array<DaemonFrame> = [];
+  delivery.attach(slot, { send: async (frame) => { frames.push(frame); } });
+  await delivery.idle();
+  expect(frames).toMatchObject([{ id: "m1" }, { id: "m2" }]);
+  expect(await attempts()).toHaveLength(2);
+  expect(errors).toEqual([]);
+});
+
+test.each(["before_resend", "before_attempt"])("attempted request expiry %s cannot strand a resend or later messages", async (expiry) => {
+  await seed(1);
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE message SET kind = 'request_notice', request_id = 'req' WHERE id = 'm1'`);
+    yield* change.query(`INSERT INTO agent_request (id, factory_id, requester_slot, recipient, notice_id, status, accepted_at, deadline)
+      VALUES ('req', ?, 'sender/1', 'eng.builder', 'm1', 'open', 1, ?)`, [slot.factoryId, Number.MAX_SAFE_INTEGER]);
+    yield* change.recordHistory({ factoryId: slot.factoryId, kind: "fixture.request", subject: "req" });
+  })));
+  delivery.attach(slot, { send: async () => {} });
+  await delivery.idle();
+  await delivery.stop();
+  const reconciler = createReconciler(store);
+  await reconciler.reconcile(slot, hello, { send: async (frame) => {
+    if (frame.type !== "reconcile") {throw new Error("expected comparison");}
+
+    reconciler.receive(slot, { type: "reconciliation_answer", requestId: frame.requestId, answers: [{ id: "m1", status: "absent" }] });
+  } });
+  await seed(2);
+
+  const elapse = () => Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE agent_request SET deadline = 2 WHERE id = 'req'`);
+    yield* change.recordHistory({ factoryId: slot.factoryId, kind: "fixture.deadline", subject: "req" });
+  })));
+
+  if (expiry === "before_resend") {await elapse(); await Effect.runPromise(expireRequests(store));}
+
+  await Effect.runPromise(createMessageDisposition(store).act("m1", "resend"));
+
+  if (expiry === "before_attempt") {await elapse();} // Deadline passed, before the expiry sweep runs.
+
+  delivery = createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => errors.push(cause) });
+  const frames: Array<DaemonFrame> = [];
+  delivery.attach(slot, { send: async (frame) => { frames.push(frame); } });
+  await delivery.idle();
+  expect(frames).toMatchObject([{ id: "m1" }, { id: "m2" }]);
+  expect(await attempts()).toHaveLength(3);
+  await Effect.runPromise(expireRequests(store));
+  expect(await Effect.runPromise(store.read(`SELECT status FROM agent_request`))).toEqual([{ status: "expired" }]);
+  expect(await state()).toMatchObject([{ status: "sent" }, { status: "sent" }]);
+  expect(errors).toEqual([]);
+});
+
+test.each(["request_notice", "delegation_notice"])("drop publishes %s correlation atomically, leaving kind-specific handling to its consumer", async (kind) => {
+  await seed(1);
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE message SET kind = ?, request_id = 'req', delegation_id = 'del', ticket_number = 42,
+      status = 'indeterminate' WHERE id = 'm1'`, [kind]);
+    yield* change.recordHistory({ factoryId: slot.factoryId, kind: "fixture.ambiguous", subject: "m1" });
+  })));
+  await Effect.runPromise(raiseHold(store, { factoryId: slot.factoryId, kind: "indeterminate_message", subject: "m1", evidence: {} }));
+  const service = createMessageDisposition(store);
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`CREATE TRIGGER refuse_drop BEFORE INSERT ON history WHEN NEW.kind = 'message.dropped'
+      BEGIN SELECT RAISE(ABORT, 'fixture failure'); END`);
+    yield* change.recordHistory({ factoryId: slot.factoryId, kind: "fixture.trigger", subject: "m1" });
+  })));
+  await expect(Effect.runPromise(service.act("m1", "drop", true))).rejects.toThrow();
+  expect(await state()).toMatchObject([{ status: "indeterminate" }]);
+  expect(await Effect.runPromise(store.read(`SELECT state FROM operator_hold`))).toEqual([{ state: "open" }]);
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`DROP TRIGGER refuse_drop`);
+    yield* change.recordHistory({ factoryId: slot.factoryId, kind: "fixture.trigger_removed", subject: "m1" });
+  })));
+  const result = await Effect.runPromise(service.act("m1", "drop", true));
+  expect(result).toMatchObject({ status: "dropped", kind, requestId: "req", delegationId: "del", ticket: 42, slot: slot.slotId });
+  const events = await Effect.runPromise(store.read<{ detail: string }>(`SELECT detail FROM history WHERE kind = 'message.dropped'`));
+  expect(events).toHaveLength(1);
+  expect(JSON.parse(events[0]!.detail)).toMatchObject(result);
+  expect(await attempts()).toEqual([]);
 });
