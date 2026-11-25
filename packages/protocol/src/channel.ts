@@ -167,16 +167,26 @@ export type Decoded<A> =
 
 const terminal = (code: string, detail: string): HelloRejectReason => ({ kind: "terminal", code, detail });
 
+/** `JSON.parse` throws a `SyntaxError`, whose message is what a rejection shows. */
+const hasMessage = Schema.is(Schema.Struct({ message: Schema.String }));
+
 const parseJson = (line: string): { ok: true; value: unknown } | { ok: false; detail: string } => {
   try {
-    return { ok: true, value: JSON.parse(line) as unknown };
+    const value: unknown = JSON.parse(line);
+
+    return { ok: true, value };
   } catch (error) {
-    return { ok: false, detail: `not JSON: ${(error as Error).message}` };
+    return { ok: false, detail: `not JSON: ${hasMessage(error) ? error.message : String(error)}` };
   }
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/**
+ * Just enough of a hello to tell "not a hello" from "a hello of another version". The version is
+ * read as given, so a missing one is reported as a mismatch.
+ */
+const isHelloHeader = Schema.is(
+  Schema.Struct({ type: Schema.Literal("hello"), protocolVersion: Schema.optionalKey(Schema.Unknown) }),
+);
 
 const decodeHelloSchema = Schema.decodeUnknownResult(Hello);
 
@@ -191,16 +201,16 @@ export const decodeHelloLine = (line: string): Decoded<Hello> => {
 
   const value = json.value;
 
-  if (!isRecord(value) || value["type"] !== "hello") {
+  if (!isHelloHeader(value)) {
     return { ok: false, reason: terminal(RejectCode.helloRequired, "the first frame must be a hello") };
   }
 
-  if (value["protocolVersion"] !== PROTOCOL_VERSION) {
+  if (value.protocolVersion !== PROTOCOL_VERSION) {
     return {
       ok: false,
       reason: terminal(
         RejectCode.protocolVersionMismatch,
-        `expected protocol version ${PROTOCOL_VERSION}, got ${JSON.stringify(value["protocolVersion"])}`,
+        `expected protocol version ${PROTOCOL_VERSION}, got ${JSON.stringify(value.protocolVersion)}`,
       ),
     };
   }
@@ -214,16 +224,12 @@ export const decodeHelloLine = (line: string): Decoded<Hello> => {
   return { ok: true, value: decoded.success };
 };
 
-const decodeWorkerFrameSchema = Schema.decodeUnknownResult(WorkerFrame);
-const decodeHelloReplySchema = Schema.decodeUnknownResult(HelloReply);
-const decodeDaemonFrameSchema = Schema.decodeUnknownResult(DaemonFrame);
-
-const decodeLine = <A>(line: string, decode: (u: unknown) => Result.Result<A, Schema.SchemaError>) => {
+const decodeLine = <S extends Schema.ConstraintDecoder<unknown>>(line: string, schema: S) => {
   const json = parseJson(line);
 
   if (!json.ok) {return { ok: false as const, detail: json.detail };}
 
-  const decoded = decode(json.value);
+  const decoded = Schema.decodeUnknownResult(schema)(json.value);
 
   return Result.isFailure(decoded)
     ? { ok: false as const, detail: String(decoded.failure) }
@@ -231,13 +237,13 @@ const decodeLine = <A>(line: string, decode: (u: unknown) => Result.Result<A, Sc
 };
 
 /** Decode a post-hello frame from a worker. */
-export const decodeWorkerFrameLine = (line: string) => decodeLine(line, decodeWorkerFrameSchema);
+export const decodeWorkerFrameLine = (line: string) => decodeLine(line, WorkerFrame);
 
 /** Decode the daemon's reply to a hello. */
-export const decodeHelloReplyLine = (line: string) => decodeLine(line, decodeHelloReplySchema);
+export const decodeHelloReplyLine = (line: string) => decodeLine(line, HelloReply);
 
 /** Decode a post-hello frame from the daemon. */
-export const decodeDaemonFrameLine = (line: string) => decodeLine(line, decodeDaemonFrameSchema);
+export const decodeDaemonFrameLine = (line: string) => decodeLine(line, DaemonFrame);
 
 /** Serialize one frame as a newline-terminated JSON line. */
 export const encodeFrame = (frame: Hello | WorkerFrame | HelloReply | DaemonFrame): string => `${JSON.stringify(frame)}\n`;

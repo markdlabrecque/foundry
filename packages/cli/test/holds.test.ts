@@ -8,6 +8,7 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
 import { closeHold, openStore, raiseHold, serveManagementApi, storeHoldsReader } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
+import type { HoldEvidence } from "@foundry/protocol/holds";
 import { EXIT_OK, EXIT_REFUSED, runHoldList, runHoldShow } from "@foundry/cli";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -32,7 +33,7 @@ const serveHolds = async (): Promise<{ home: string; store: Store }> => {
   return { home, store };
 };
 
-const frozen = (evidence: Record<string, unknown>) =>
+const frozen = (evidence: HoldEvidence) =>
   ({ factoryId: "f1", kind: "frozen_slot", subject: "impl/1", evidence }) as const;
 
 test("a repeated hold keeps one open record, refreshes its evidence, and shows it with its commands", async () => {

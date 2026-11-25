@@ -3,6 +3,8 @@
  * of it, encoded as the query string of `GET /api/v1/logs`. Shared by the daemon, which serves
  * the selection, and the CLI, which reads the same files itself when no daemon answers.
  */
+import { Schema } from "effect";
+
 import { MANAGEMENT_API_PREFIX } from "./management-api.js";
 
 /** `GET`: log lines selected by the query below. */
@@ -22,7 +24,11 @@ export interface LogQuery {
 
 export const LOG_FILTERS = ["factory", "ticket", "slot", "launch"] as const;
 
-export type LogFilter = (typeof LOG_FILTERS)[number];
+export const LogFilter = Schema.Literals(LOG_FILTERS);
+
+export type LogFilter = typeof LogFilter.Type;
+
+const isLogFilter = Schema.is(LogFilter);
 
 /** Launch IDs name a file under `logs/launches`; anything that could leave that directory is refused. */
 export const LAUNCH_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
@@ -68,8 +74,8 @@ export const decodeLogQuery = (params: URLSearchParams): LogQuery | string => {
       if (value !== "1") {return "parameter host must be 1";}
 
       query.host = true;
-    } else if ((LOG_FILTERS as ReadonlyArray<string>).includes(key)) {
-      query[key as LogFilter] = value;
+    } else if (isLogFilter(key)) {
+      query[key] = value;
     } else {
       return `unknown parameter ${key}`;
     }
@@ -79,42 +85,24 @@ export const decodeLogQuery = (params: URLSearchParams): LogQuery | string => {
 };
 
 /** A launch's retained stderr tail (PRD §15.2). */
-export interface LaunchStderr {
-  readonly launchId: string;
-  readonly path: string;
-  readonly text: string;
-}
+export const LaunchStderr = Schema.Struct({
+  launchId: Schema.String,
+  path: Schema.String,
+  text: Schema.String,
+});
+
+export type LaunchStderr = typeof LaunchStderr.Type;
 
 /** Result of `GET /api/v1/logs`. */
-export interface LogsResult {
+export const LogsResult = Schema.Struct({
   /** The log the lines come from. */
-  readonly log: "daemon" | "host";
+  log: Schema.Literals(["daemon", "host"]),
   /** Selected lines, oldest first, each exactly as written. */
-  readonly lines: ReadonlyArray<string>;
+  lines: Schema.Array(Schema.String),
   /** Present when `launch` was given and that launch's stderr was retained. */
-  readonly launchStderr?: LaunchStderr;
-}
+  launchStderr: Schema.optionalKey(LaunchStderr),
+});
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+export type LogsResult = typeof LogsResult.Type;
 
-export const isLogsResult = (value: unknown): value is LogsResult => {
-  if (!isRecord(value)) {return false;}
-
-  if (value["log"] !== "daemon" && value["log"] !== "host") {return false;}
-
-  const lines = value["lines"];
-
-  if (!Array.isArray(lines) || !lines.every((line) => typeof line === "string")) {return false;}
-
-  const stderr = value["launchStderr"];
-
-  if (stderr === undefined) {return true;}
-
-  return (
-    isRecord(stderr) &&
-    typeof stderr["launchId"] === "string" &&
-    typeof stderr["path"] === "string" &&
-    typeof stderr["text"] === "string"
-  );
-};
+export const isLogsResult = Schema.is(LogsResult);

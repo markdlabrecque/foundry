@@ -7,6 +7,7 @@
  * `{ "ok": false, "error": { "code", "message" } }` with a non-2xx HTTP status.
  */
 import { join } from "node:path";
+import { Schema } from "effect";
 
 /** File name of the management socket inside the state root. */
 export const MANAGEMENT_SOCKET_NAME = "management.sock";
@@ -20,30 +21,42 @@ export const MANAGEMENT_API_PREFIX = "/api/v1";
 export const STATUS_PATH = `${MANAGEMENT_API_PREFIX}/status`;
 
 /** The instance the answering daemon serves. */
-export interface InstanceStatus {
-  readonly stateRoot: string;
-  readonly daemonPid: number;
+export const InstanceStatus = Schema.Struct({
+  stateRoot: Schema.String,
+  daemonPid: Schema.Number,
   /** ISO 8601 time the daemon started. */
-  readonly startedAt: string;
-}
+  startedAt: Schema.String,
+});
+
+export type InstanceStatus = typeof InstanceStatus.Type;
 
 /** Result of `GET /api/v1/status`. Later tickets add factories, slots and the rest of PRD §11.2. */
-export interface StatusResult {
-  readonly instance: InstanceStatus;
-}
+export const StatusResult = Schema.Struct({
+  instance: InstanceStatus,
+});
 
-export interface ApiError {
+export type StatusResult = typeof StatusResult.Type;
+
+export const ApiError = Schema.Struct({
   /** Stable, machine-readable, e.g. `not_found`. */
-  readonly code: string;
-  readonly message: string;
-}
+  code: Schema.String,
+  message: Schema.String,
+});
+
+export type ApiError = typeof ApiError.Type;
 
 export type ApiResponse<T> =
   | { readonly ok: true; readonly result: T }
   | { readonly ok: false; readonly error: ApiError };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/** A success envelope. `result` must be present, but its shape is the caller's to check. */
+const SuccessEnvelope = Schema.Struct({ ok: Schema.Literal(true), result: Schema.Unknown });
+
+const FailureEnvelope = Schema.Struct({ ok: Schema.Literal(false), error: ApiError });
+
+const isSuccessEnvelope = Schema.is(SuccessEnvelope);
+
+const isFailureEnvelope = Schema.is(FailureEnvelope);
 
 /** Parses a response body into an envelope; `undefined` if it is not one. The result is not checked. */
 export const parseApiResponse = (body: string): ApiResponse<unknown> | undefined => {
@@ -55,26 +68,16 @@ export const parseApiResponse = (body: string): ApiResponse<unknown> | undefined
     return undefined;
   }
 
-  if (!isRecord(parsed)) {return undefined;}
+  if (isSuccessEnvelope(parsed)) {return { ok: true, result: parsed.result };}
 
-  if (parsed["ok"] === true && "result" in parsed) {return { ok: true, result: parsed["result"] };}
-
-  const error = parsed["error"];
-
-  if (parsed["ok"] === false && isRecord(error) && typeof error["code"] === "string" && typeof error["message"] === "string") {
-    return { ok: false, error: { code: error["code"], message: error["message"] } };
+  if (isFailureEnvelope(parsed)) {
+    return { ok: false, error: { code: parsed.error.code, message: parsed.error.message } };
   }
 
   return undefined;
 };
 
-export const isStatusResult = (value: unknown): value is StatusResult => {
-  if (!isRecord(value) || !isRecord(value["instance"])) {return false;}
-
-  const { stateRoot, daemonPid, startedAt } = value["instance"];
-
-  return typeof stateRoot === "string" && typeof daemonPid === "number" && typeof startedAt === "string";
-};
+export const isStatusResult = Schema.is(StatusResult);
 
 /**
  * `GET`: the event stream read by `foundry events` (PRD §13.1, §15.1), as Server-Sent Events.
@@ -86,23 +89,27 @@ export const isStatusResult = (value: unknown): value is StatusResult => {
 export const EVENTS_PATH = `${MANAGEMENT_API_PREFIX}/events`;
 
 /** A record a history row concerns, beyond its subject, e.g. `{ kind: "ticket", id: "42" }`. */
-export interface EventRecordRef {
-  readonly kind: string;
-  readonly id: string;
-}
+export const EventRecordRef = Schema.Struct({
+  kind: Schema.String,
+  id: Schema.String,
+});
+
+export type EventRecordRef = typeof EventRecordRef.Type;
 
 /** One durable history row, as streamed. The ID is the row's per-instance sequence number. */
-export interface FactoryEvent {
-  readonly id: number;
-  readonly factoryId: string;
+export const FactoryEvent = Schema.Struct({
+  id: Schema.Number,
+  factoryId: Schema.String,
   /** ISO 8601 time the change committed. */
-  readonly recordedAt: string;
+  recordedAt: Schema.String,
   /** PRD §15.1 name, e.g. `ticket.transitioned`. */
-  readonly kind: string;
-  readonly subject: string;
-  readonly records: ReadonlyArray<EventRecordRef>;
-  readonly detail: unknown;
-}
+  kind: Schema.String,
+  subject: Schema.String,
+  records: Schema.Array(EventRecordRef),
+  detail: Schema.Unknown,
+});
+
+export type FactoryEvent = typeof FactoryEvent.Type;
 
 export interface EventsQuery {
   /** Replay events with an ID greater than this; 0 replays everything. */
@@ -137,12 +144,13 @@ const parseCount = (raw: string, min: number): number | undefined => {
   return Number.isSafeInteger(value) && value >= min ? value : undefined;
 };
 
+const bad = (message: string) => ({ ok: false as const, error: { code: "bad_request", message } });
+
 /** Reads an events query from the URL and the `Last-Event-ID` header. */
 export const parseEventsQuery = (
   params: URLSearchParams,
   lastEventId: string | undefined,
 ): { readonly ok: true; readonly query: EventsQuery } | { readonly ok: false; readonly error: ApiError } => {
-  const bad = (message: string) => ({ ok: false as const, error: { code: "bad_request", message } });
   let since = 0;
   const cursor = lastEventId ?? params.get("since");
 
@@ -174,12 +182,4 @@ export const parseEventsQuery = (
   return { ok: true, query: { since, follow: followRaw === "1", factory, ticket } };
 };
 
-export const isFactoryEvent = (value: unknown): value is FactoryEvent =>
-  isRecord(value) &&
-  typeof value["id"] === "number" &&
-  typeof value["factoryId"] === "string" &&
-  typeof value["recordedAt"] === "string" &&
-  typeof value["kind"] === "string" &&
-  typeof value["subject"] === "string" &&
-  Array.isArray(value["records"]) &&
-  "detail" in value;
+export const isFactoryEvent = Schema.is(FactoryEvent);

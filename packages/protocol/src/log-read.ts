@@ -9,6 +9,8 @@
  */
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
+import { Schema } from "effect";
+import { LOG_FILTERS } from "./log-query.js";
 import type { LaunchStderr, LogFilter, LogQuery, LogsResult } from "./log-query.js";
 
 const LOGS_DIR = "logs";
@@ -24,14 +26,17 @@ const FILTER_KEYS: Readonly<Record<LogFilter, string>> = {
   launch: "launchId",
 };
 
-const isErrno = (error: unknown, code: string): boolean =>
-  error instanceof Error && (error as NodeJS.ErrnoException).code === code;
+/** A Node filesystem error for a path that does not exist. */
+const isNotFound = Schema.is(Schema.Struct({ code: Schema.Literal("ENOENT") }));
+
+/** A parsed JSON log line that is an object, so it can carry references. */
+const isLineRecord = Schema.is(Schema.Record(Schema.String, Schema.Unknown));
 
 const readIfPresent = (path: string): Buffer | undefined => {
   try {
     return readFileSync(path);
   } catch (error) {
-    if (isErrno(error, "ENOENT")) {return undefined;}
+    if (isNotFound(error)) {return undefined;}
 
     throw error;
   }
@@ -44,7 +49,7 @@ const daemonLogFiles = (stateRoot: string): Array<string> => {
   try {
     names = readdirSync(join(stateRoot, LOGS_DIR));
   } catch (error) {
-    if (isErrno(error, "ENOENT")) {return [];}
+    if (isNotFound(error)) {return [];}
 
     throw error;
   }
@@ -60,9 +65,11 @@ const daemonLogFiles = (stateRoot: string): Array<string> => {
 };
 
 const activeFilters = (query: LogQuery): Array<[string, string]> =>
-  (Object.keys(FILTER_KEYS) as Array<LogFilter>)
-    .filter((filter) => query[filter] !== undefined)
-    .map((filter) => [FILTER_KEYS[filter], query[filter]!]);
+  LOG_FILTERS.flatMap((filter): Array<[string, string]> => {
+    const value = query[filter];
+
+    return value === undefined ? [] : [[FILTER_KEYS[filter], value]];
+  });
 
 /** Whether `line` carries every reference asked for. With no filters every line is selected. */
 const selects = (line: string, filters: ReadonlyArray<[string, string]>): boolean => {
@@ -76,11 +83,9 @@ const selects = (line: string, filters: ReadonlyArray<[string, string]>): boolea
     return false; // A line that is not JSON carries no references.
   }
 
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {return false;}
+  if (!isLineRecord(parsed)) {return false;}
 
-  const record = parsed as Record<string, unknown>;
-
-  return filters.every(([key, value]) => record[key] === value);
+  return filters.every(([key, value]) => parsed[key] === value);
 };
 
 /**
@@ -91,7 +96,11 @@ const selects = (line: string, filters: ReadonlyArray<[string, string]>): boolea
 export const decodeStderrTail = (bytes: Uint8Array): string => {
   let start = 0;
 
-  while (start < bytes.length && start < 3 && (bytes[start]! & 0xc0) === 0x80) {start++;}
+  for (; start < 3; start++) {
+    const byte = bytes[start];
+
+    if (byte === undefined || (byte & 0xc0) !== 0x80) {break;}
+  }
 
   return new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(start));
 };
@@ -124,5 +133,7 @@ export const readLogs = (stateRoot: string, query: LogQuery): LogsResult => {
 
   const stderr = query.launch === undefined ? undefined : launchStderr(stateRoot, query.launch);
 
-  return { log: query.host ? "host" : "daemon", lines, ...(stderr === undefined ? {} : { launchStderr: stderr }) };
+  const result: LogsResult = { log: query.host ? "host" : "daemon", lines };
+
+  return stderr === undefined ? result : { ...result, launchStderr: stderr };
 };

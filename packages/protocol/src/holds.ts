@@ -3,6 +3,8 @@
  * that concerns the system's state, not a decision about work. Holds are a record type of their
  * own beside approvals, with at most one open per factory, kind and subject.
  */
+import { Schema } from "effect";
+
 import { MANAGEMENT_API_PREFIX } from "./management-api.js";
 
 /** `GET`: the open holds, oldest first (`foundry hold list`). */
@@ -23,46 +25,59 @@ export const HOLD_KINDS = [
   "stuck_worker",
 ] as const;
 
-export type HoldKind = (typeof HOLD_KINDS)[number];
+export const HoldKind = Schema.Literals(HOLD_KINDS);
 
-export const isHoldKind = (value: unknown): value is HoldKind => (HOLD_KINDS as ReadonlyArray<unknown>).includes(value);
+export type HoldKind = typeof HoldKind.Type;
+
+export const isHoldKind = Schema.is(HoldKind);
 
 /** `resolved` by an operator command on the subject; `cleared` by the daemon when its cause went away. */
-export type HoldState = "open" | "resolved" | "cleared";
+export const HoldState = Schema.Literals(["open", "resolved", "cleared"]);
+
+export type HoldState = typeof HoldState.Type;
 
 /** The evidence a hold shows: kind-specific fields, JSON-serialisable. */
-export type HoldEvidence = Readonly<Record<string, unknown>>;
+export const HoldEvidence = Schema.Record(Schema.String, Schema.Json);
 
-export interface HoldRecord {
-  readonly id: number;
-  readonly factoryId: string;
-  readonly kind: HoldKind;
+export type HoldEvidence = typeof HoldEvidence.Type;
+
+export const HoldRecord = Schema.Struct({
+  id: Schema.Number,
+  factoryId: Schema.String,
+  kind: HoldKind,
   /** What the hold concerns: a slot (`station/ordinal`), ticket number, message ID or factory. */
-  readonly subject: string;
-  readonly state: HoldState;
-  readonly evidence: HoldEvidence;
+  subject: Schema.String,
+  state: HoldState,
+  evidence: HoldEvidence,
   /** ISO 8601. */
-  readonly raisedAt: string;
+  raisedAt: Schema.String,
   /** ISO 8601 time the evidence was last refreshed. */
-  readonly updatedAt: string;
+  updatedAt: Schema.String,
   /** ISO 8601, or `null` while open. */
-  readonly closedAt: string | null;
-}
+  closedAt: Schema.NullOr(Schema.String),
+});
+
+export type HoldRecord = typeof HoldRecord.Type;
 
 /** Result of `GET /api/v1/holds`. */
-export interface HoldListResult {
-  readonly holds: ReadonlyArray<HoldRecord>;
-}
+export const HoldListResult = Schema.Struct({
+  holds: Schema.Array(HoldRecord),
+});
+
+export type HoldListResult = typeof HoldListResult.Type;
 
 /** Result of `GET /api/v1/holds/:id`. */
-export interface HoldShowResult {
-  readonly hold: HoldRecord;
+export const HoldShowResult = Schema.Struct({
+  hold: HoldRecord,
   /** The exact commands that act on the subject, the default first (PRD §11.2, §11.3). */
-  readonly commands: ReadonlyArray<string>;
-}
+  commands: Schema.Array(Schema.String),
+});
 
-const text = (value: unknown, fallback: string): string =>
-  typeof value === "string" && value !== "" ? value : fallback;
+export type HoldShowResult = typeof HoldShowResult.Type;
+
+const isNonEmptyText = Schema.is(Schema.NonEmptyString);
+
+const text = (value: Schema.Json | undefined, fallback: string): string => (isNonEmptyText(value) ? value : fallback);
 
 /**
  * The commands that resolve a hold (PRD §10.2). Holds have no `resolve` verb; each command acts on
@@ -101,32 +116,8 @@ export const holdCommands = (hold: Pick<HoldRecord, "kind" | "subject" | "eviden
   }
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+export const isHoldRecord = Schema.is(HoldRecord);
 
-export const isHoldRecord = (value: unknown): value is HoldRecord => {
-  if (!isRecord(value)) {return false;}
+export const isHoldListResult = Schema.is(HoldListResult);
 
-  const { id, factoryId, kind, subject, state, evidence, raisedAt, updatedAt, closedAt } = value;
-
-  return (
-    typeof id === "number" &&
-    typeof factoryId === "string" &&
-    isHoldKind(kind) &&
-    typeof subject === "string" &&
-    (state === "open" || state === "resolved" || state === "cleared") &&
-    isRecord(evidence) &&
-    typeof raisedAt === "string" &&
-    typeof updatedAt === "string" &&
-    (closedAt === null || typeof closedAt === "string")
-  );
-};
-
-export const isHoldListResult = (value: unknown): value is HoldListResult =>
-  isRecord(value) && Array.isArray(value["holds"]) && value["holds"].every(isHoldRecord);
-
-export const isHoldShowResult = (value: unknown): value is HoldShowResult =>
-  isRecord(value) &&
-  isHoldRecord(value["hold"]) &&
-  Array.isArray(value["commands"]) &&
-  value["commands"].every((c) => typeof c === "string");
+export const isHoldShowResult = Schema.is(HoldShowResult);

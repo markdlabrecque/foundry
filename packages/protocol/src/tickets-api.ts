@@ -9,6 +9,8 @@
  * `factory` may be left out only when exactly one factory is loaded (PRD §11.1); listing without
  * it lists every factory's tickets.
  */
+import { Schema } from "effect";
+
 import { MANAGEMENT_API_PREFIX } from "./management-api.js";
 
 export const TICKETS_PATH = `${MANAGEMENT_API_PREFIX}/tickets`;
@@ -30,86 +32,94 @@ export interface SubmitTicketRequest {
 }
 
 /** Where a ticket is (PRD §8.2): in the backlog, at a stage, completed or cancelled. */
-export type TicketState = "backlog" | "stage" | "completed" | "cancelled";
+export const TicketState = Schema.Literals(["backlog", "stage", "completed", "cancelled"]);
+
+export type TicketState = typeof TicketState.Type;
 
 /** A ticket's status at a stage; null outside a stage. */
-export type TicketStatus = "queued" | "assigned" | "awaiting_approval" | "paused";
+export const TicketStatus = Schema.Literals(["queued", "assigned", "awaiting_approval", "paused"]);
 
-export interface TicketPosition {
-  readonly state: TicketState;
-  readonly stage: string | null;
-  readonly status: TicketStatus | null;
-}
+export type TicketStatus = typeof TicketStatus.Type;
 
-export interface TicketSummary extends TicketPosition {
-  readonly factory: string;
-  readonly number: number;
-  readonly title: string;
-  readonly slug: string;
-  readonly line: string;
+const positionFields = {
+  state: TicketState,
+  stage: Schema.NullOr(Schema.String),
+  status: Schema.NullOr(TicketStatus),
+};
+
+export const TicketPosition = Schema.Struct(positionFields);
+
+export type TicketPosition = typeof TicketPosition.Type;
+
+const summaryFields = {
+  ...positionFields,
+  factory: Schema.String,
+  number: Schema.Number,
+  title: Schema.String,
+  slug: Schema.String,
+  line: Schema.String,
   /** ISO 8601. */
-  readonly submittedAt: string;
-}
+  submittedAt: Schema.String,
+};
 
-export interface TicketCounter {
-  readonly spent: number;
-  readonly ceiling: number;
-}
+export const TicketSummary = Schema.Struct(summaryFields);
 
-export interface Ticket extends TicketSummary {
+export type TicketSummary = typeof TicketSummary.Type;
+
+export const TicketCounter = Schema.Struct({
+  spent: Schema.Number,
+  ceiling: Schema.Number,
+});
+
+export type TicketCounter = typeof TicketCounter.Type;
+
+export const Ticket = Schema.Struct({
+  ...summaryFields,
   /** The ticket directory (PRD §8.3), holding `spec.md` and `evidence/`. */
-  readonly directory: string;
-  readonly specPath: string;
-  readonly evidencePath: string;
-  readonly rejections: TicketCounter;
-  readonly messages: TicketCounter;
+  directory: Schema.String,
+  specPath: Schema.String,
+  evidencePath: Schema.String,
+  rejections: TicketCounter,
+  messages: TicketCounter,
   /** Recorded when the worktree is created; null until then. */
-  readonly worktree: { readonly path: string; readonly branch: string; readonly startCommit: string } | null;
-}
+  worktree: Schema.NullOr(
+    Schema.Struct({ path: Schema.String, branch: Schema.String, startCommit: Schema.String }),
+  ),
+});
+
+export type Ticket = typeof Ticket.Type;
 
 /** One change to a ticket's stage or status (PRD §8.2). `from` is null for submission. */
-export interface TicketTransition {
+export const TicketTransition = Schema.Struct({
   /** ISO 8601. */
-  readonly at: string;
-  readonly actor: string;
-  readonly from: TicketPosition | null;
-  readonly to: TicketPosition;
-  readonly outcome: string | null;
-  readonly reason: string | null;
-  readonly commit: string | null;
-  readonly evidence: ReadonlyArray<string>;
-  readonly configLoad: string | null;
-}
+  at: Schema.String,
+  actor: Schema.String,
+  from: Schema.NullOr(TicketPosition),
+  to: TicketPosition,
+  outcome: Schema.NullOr(Schema.String),
+  reason: Schema.NullOr(Schema.String),
+  commit: Schema.NullOr(Schema.String),
+  evidence: Schema.Array(Schema.String),
+  configLoad: Schema.NullOr(Schema.String),
+});
+
+export type TicketTransition = typeof TicketTransition.Type;
 
 /** Result of submit and show. */
-export interface TicketDetail {
-  readonly ticket: Ticket;
-  readonly transitions: ReadonlyArray<TicketTransition>;
-}
+export const TicketDetail = Schema.Struct({
+  ticket: Ticket,
+  transitions: Schema.Array(TicketTransition),
+});
+
+export type TicketDetail = typeof TicketDetail.Type;
 
 /** Result of list. */
-export interface TicketListResult {
-  readonly tickets: ReadonlyArray<TicketSummary>;
-}
+export const TicketListResult = Schema.Struct({
+  tickets: Schema.Array(TicketSummary),
+});
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+export type TicketListResult = typeof TicketListResult.Type;
 
-const isSummary = (value: unknown): value is TicketSummary =>
-  isRecord(value) &&
-  typeof value["factory"] === "string" &&
-  typeof value["number"] === "number" &&
-  typeof value["title"] === "string" &&
-  typeof value["line"] === "string" &&
-  typeof value["state"] === "string";
+export const isTicketListResult = Schema.is(TicketListResult);
 
-export const isTicketListResult = (value: unknown): value is TicketListResult =>
-  isRecord(value) && Array.isArray(value["tickets"]) && value["tickets"].every(isSummary);
-
-export const isTicketDetail = (value: unknown): value is TicketDetail => {
-  if (!isRecord(value) || !Array.isArray(value["transitions"])) {return false;}
-
-  const ticket = value["ticket"];
-
-  return isSummary(ticket) && isRecord(ticket) && typeof ticket["directory"] === "string";
-};
+export const isTicketDetail = Schema.is(TicketDetail);
