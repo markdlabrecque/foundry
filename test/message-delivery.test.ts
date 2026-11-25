@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit, Predicate, Scope } from "effect";
-import { acknowledgeMessage, acknowledgePrime, createMessageDelivery, createMessageDisposition, createPrimer, createReconciler, createSlotFreezer, openSlotGate, openStore, primesForConversation, raiseHold, recordPrime, serveManagementApi, startChannelServer } from "@foundry/daemon";
+import { acknowledgeMessage, acknowledgePrime, createMessageDelivery, createMessageDisposition, createPrimer, createReconciler, createSlotFreezer, expireRequests, openSlotGate, openStore, primesForConversation, raiseHold, recordPrime, serveManagementApi, startChannelServer } from "@foundry/daemon";
 import type { ChannelServer, Store, SqlValue } from "@foundry/daemon";
 import { createConversationAdapter, openChannel, receiveDaemonFrames } from "@foundry/extension";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
@@ -593,6 +593,48 @@ test("resend racing a delivery snapshot still precedes later same-slot copies", 
   await delivery.idle();
   expect(frames).toMatchObject([{ id: "m1" }, { id: "m2" }]);
   expect(await attempts()).toHaveLength(2);
+  expect(errors).toEqual([]);
+});
+
+test.each(["before_resend", "before_attempt"])("attempted request expiry %s cannot strand a resend or later messages", async (expiry) => {
+  await seed(1);
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE message SET kind = 'request_notice', request_id = 'req' WHERE id = 'm1'`);
+    yield* change.query(`INSERT INTO agent_request (id, factory_id, requester_slot, recipient, notice_id, status, accepted_at, deadline)
+      VALUES ('req', ?, 'sender/1', 'eng.builder', 'm1', 'open', 1, ?)`, [slot.factoryId, Number.MAX_SAFE_INTEGER]);
+    yield* change.recordHistory({ factoryId: slot.factoryId, kind: "fixture.request", subject: "req" });
+  })));
+  delivery.attach(slot, { send: async () => {} });
+  await delivery.idle();
+  await delivery.stop();
+  const reconciler = createReconciler(store);
+  await reconciler.reconcile(slot, hello, { send: async (frame) => {
+    if (frame.type !== "reconcile") {throw new Error("expected comparison");}
+
+    reconciler.receive(slot, { type: "reconciliation_answer", requestId: frame.requestId, answers: [{ id: "m1", status: "absent" }] });
+  } });
+  await seed(2);
+
+  const elapse = () => Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE agent_request SET deadline = 2 WHERE id = 'req'`);
+    yield* change.recordHistory({ factoryId: slot.factoryId, kind: "fixture.deadline", subject: "req" });
+  })));
+
+  if (expiry === "before_resend") {await elapse(); await Effect.runPromise(expireRequests(store));}
+
+  await Effect.runPromise(createMessageDisposition(store).act("m1", "resend"));
+
+  if (expiry === "before_attempt") {await elapse();} // Deadline passed, before the expiry sweep runs.
+
+  delivery = createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => errors.push(cause) });
+  const frames: Array<DaemonFrame> = [];
+  delivery.attach(slot, { send: async (frame) => { frames.push(frame); } });
+  await delivery.idle();
+  expect(frames).toMatchObject([{ id: "m1" }, { id: "m2" }]);
+  expect(await attempts()).toHaveLength(3);
+  await Effect.runPromise(expireRequests(store));
+  expect(await Effect.runPromise(store.read(`SELECT status FROM agent_request`))).toEqual([{ status: "expired" }]);
+  expect(await state()).toMatchObject([{ status: "sent" }, { status: "sent" }]);
   expect(errors).toEqual([]);
 });
 

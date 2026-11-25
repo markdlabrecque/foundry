@@ -81,6 +81,8 @@ export const createMessageDelivery = (options: {
           const recorded = await Effect.runPromise(options.store.change((change) => Effect.gen(function* () {
             // Check inside the attempt transaction: the deadline may pass between sweeps,
             // or while this pump waits for the store writer. Never send that first copy.
+            // Already-attempted notices remain eligible for evidence-gated or explicit
+            // operator resend: expiry does not retract a sent copy (PRD §6.5).
             const now = yield* Clock.currentTimeMillis;
             // A proven retry or explicit slot reset can re-arm an attempted notice. Supersede
             // that old payload before another attempt, using its deferred replacement content.
@@ -94,7 +96,8 @@ export const createMessageDelivery = (options: {
                AND NOT EXISTS (SELECT 1 FROM message earlier WHERE earlier.factory_id = message.factory_id
                  AND earlier.bound_slot = message.bound_slot AND earlier.sequence < message.sequence AND earlier.status IN ('indeterminate', 'bound'))
                AND NOT EXISTS (SELECT 1 FROM agent_request r WHERE r.notice_id = message.id
-                 AND (r.status = 'expired' OR r.deadline <= ?))
+                 AND (r.status = 'expired' OR r.deadline <= ?)
+                 AND NOT EXISTS (SELECT 1 FROM message_attempt prior WHERE prior.message_id = message.id))
                AND NOT EXISTS (SELECT 1 FROM resume_notice n JOIN assignment a ON a.id = n.assignment_id
                  WHERE n.message_id = message.id AND (a.status != 'active' OR a.slot_id != message.bound_slot))
                RETURNING id, body, delivery`, [message.id, now],
