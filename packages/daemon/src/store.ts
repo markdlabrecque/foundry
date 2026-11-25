@@ -329,6 +329,33 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       ) STRICT`,
     ],
   },
+  {
+    id: 13,
+    name: "assignments",
+    statements: [
+      `CREATE TABLE assignment (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        stage TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active', 'suspended', 'ended')),
+        recovery_count INTEGER NOT NULL DEFAULT 0,
+        recovery_ceiling INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        end_reason TEXT,
+        context_message TEXT NOT NULL REFERENCES message (id),
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket (factory_id, number),
+        FOREIGN KEY (factory_id, slot_id) REFERENCES slot (factory_id, slot_id),
+        CHECK ((status = 'ended') = (ended_at IS NOT NULL))
+      ) STRICT`,
+      `CREATE UNIQUE INDEX assignment_one_unended_ticket ON assignment (factory_id, ticket_number)
+       WHERE status != 'ended'`,
+      `CREATE UNIQUE INDEX assignment_one_active_slot ON assignment (factory_id, slot_id)
+       WHERE status = 'active'`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

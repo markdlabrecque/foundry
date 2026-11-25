@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { createKnowledgeLayout, LoadFactoriesResult, loadFactoryFiles, recordRun } from "./factory-loads.js";
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
 import { createTicketService, ticketFactoryFrom } from "./tickets.js";
+import { assignmentTicket, watchAssignments } from "./assignments.js";
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
@@ -422,7 +423,7 @@ const main = async (): Promise<void> => {
           handlers: new Map([
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
             [AGENT_STATUS, agentStatusHandler(plannedSlots)],
-            [AGENT_MESSAGE, agentMessageHandler(plannedSlots)],
+            [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket })],
           ]),
           gate: freezer,
         }),
@@ -501,6 +502,12 @@ const main = async (): Promise<void> => {
   let api: ManagementApi | undefined;
   let stopping = false;
 
+  const stopAssignments = watchAssignments({
+    store, factories, slots: plannedSlots,
+    configLoad: (factoryId) => loadIds.get(factoryId),
+    inScope: (factoryId) => !stopping && factoryStates.isRunning(factoryId),
+  }, (error) => log.error("tickets not assigned", { detail: { error: messageOf(error) } }));
+
   const stop = (signal: NodeJS.Signals): void => {
     if (stopping) {return;}
 
@@ -517,6 +524,7 @@ const main = async (): Promise<void> => {
       try {
         try {
           // Closing the connections leaves the host and its launches running (PRD §3.2).
+          await stopAssignments?.();
           await channel?.close().catch(() => {});
           host?.close();
           await served.close();
@@ -609,6 +617,7 @@ const main = async (): Promise<void> => {
       slotControl: storeSlotControl(slotsReader, freezer),
     });
   } catch (error) {
+    await stopAssignments();
     await channel?.close().catch(() => {});
     host?.close();
 
