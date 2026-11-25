@@ -63,3 +63,4 @@ export { readEvents, storeEventSource, type EventPageQuery, type EventSource } f
 export { formatEvent } from "./events-stream.js";
 export * from "./factory-loads.js";
 export * from "./start-refusal.js";
+export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";
