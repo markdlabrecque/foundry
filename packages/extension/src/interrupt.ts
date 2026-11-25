@@ -55,8 +55,8 @@ export class RunInterrupter {
 
   /**
    * Resolve once Pi is idle, without aborting anything (PRD §3.2 `drain`). The
-   * extension injects no held work of its own yet, so draining is waiting for
-   * the current run to settle.
+   * frame dispatcher stops held-message injection before calling this, so
+   * draining waits for the current run without starting queued work.
    */
   async drain(): Promise<void> {
     const control = this.control;
