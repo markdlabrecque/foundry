@@ -22,13 +22,15 @@ interface AssignedTicket {
   readonly slot_id: string;
   readonly stage: string;
   readonly production_line: string;
+  readonly rejections: number;
+  readonly rejection_ceiling: number;
   readonly worktree_path: string | null;
   readonly branch: string | null;
   readonly expected_commit: string | null;
 }
 
 const assignedTicket = (query: Query, call: ToolCallContext, assignmentId: string) => query<AssignedTicket>(
-  `SELECT a.ticket_number, a.slot_id, a.stage, t.production_line, t.worktree_path, t.branch,
+  `SELECT a.ticket_number, a.slot_id, a.stage, t.production_line, t.rejections, t.rejection_ceiling, t.worktree_path, t.branch,
      COALESCE((SELECT git_commit FROM ticket_transition tr
        WHERE tr.factory_id = t.factory_id AND tr.ticket_number = t.number AND tr.git_commit IS NOT NULL
        ORDER BY tr.sequence DESC LIMIT 1), t.start_commit) AS expected_commit
@@ -172,10 +174,11 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
     return yield* new ToolRefusal({ code: "open_delegations", detail: "outcome is refused while the assignment has open delegations" });
   }
 
+  const limitReached = args.outcome === "rejected" && assignment.rejections + 1 >= assignment.rejection_ceiling;
+  const status = gated ? "awaiting_approval" : limitReached ? "paused" : "queued";
   const now = yield* Clock.currentTimeMillis;
   yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = ?, end_reason = ? WHERE id = ?`,
     [now, args.outcome, args.assignmentId]);
-  const status = gated ? "awaiting_approval" : "queued";
   yield* change.query(`UPDATE ticket SET stage = ?, status = ?, rejections = rejections + ? WHERE factory_id = ? AND number = ?`,
     [target, status, args.outcome === "rejected" ? 1 : 0, call.factoryId, assignment.ticket_number]);
 
@@ -189,26 +192,32 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
 
   let approvalId: number | undefined;
 
-  if (gated) {
-    const transition = expectDefined(transitions[0], "gate transition").sequence;
+  if (gated || limitReached) {
+    const transition = expectDefined(transitions[0], "the gate or rejection limit transition").sequence;
 
     const approvals = yield* change.query<{ id: number }>(
       `INSERT INTO approval (factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at)
-       VALUES (?, ?, ?, ?, 'stage_gate', 'open', ?) RETURNING id`,
-      [call.factoryId, assignment.ticket_number, args.assignmentId, transition, now],
+       VALUES (?, ?, ?, ?, ?, 'open', ?) RETURNING id`,
+      [call.factoryId, assignment.ticket_number, args.assignmentId, transition, gated ? "stage_gate" : "limit_reached", now],
     );
 
-    approvalId = expectDefined(approvals[0], "stage approval").id;
-    yield* change.recordHistory({ factoryId: call.factoryId, kind: "approval.requested", subject: String(approvalId),
-      detail: { kind: "stage_gate", ticket: assignment.ticket_number, transition },
-      records: [ticketRecord(assignment.ticket_number), slotRecord(call.slotId)] });
+    approvalId = expectDefined(approvals[0], "the rejection limit approval").id;
   }
 
   yield* change.recordHistory({
     factoryId: call.factoryId, kind: "ticket.transitioned", subject: String(assignment.ticket_number),
-    detail: { assignment: args.assignmentId, outcome: args.outcome, fromStage: assignment.stage, stage: target, status },
+    detail: { assignment: args.assignmentId, outcome: args.outcome, fromStage: assignment.stage, stage: target, status, approvalId },
     records: [ticketRecord(assignment.ticket_number), slotRecord(call.slotId)],
   });
+
+  if (approvalId !== undefined) {
+    yield* change.recordHistory({
+      factoryId: call.factoryId, kind: "approval.requested", subject: String(approvalId),
+      detail: { kind: gated ? "stage_gate" : "limit_reached", ticket: assignment.ticket_number,
+        transition: expectDefined(transitions[0], "the rejection limit transition").sequence },
+      records: [ticketRecord(assignment.ticket_number), slotRecord(call.slotId)],
+    });
+  }
 
   if (observation !== undefined) {yield* observation.validate();}
 

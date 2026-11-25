@@ -29,6 +29,8 @@ interface GateRow {
   readonly evaluated_stage: string;
   readonly git_commit: string | null;
   readonly evidence: string;
+  readonly rejections: number;
+  readonly rejection_ceiling: number;
 }
 
 export interface ApprovalDecisionOptions {
@@ -45,7 +47,8 @@ export const createApprovalDecisions = (options: ApprovalDecisionOptions): Appro
 
     const rows = yield* change.query<GateRow>(
       `SELECT a.factory_id, a.ticket_number, a.kind, a.state, t.production_line, t.stage,
-         t.state AS ticket_state, t.status, tr.from_stage AS evaluated_stage, tr.git_commit, tr.evidence
+         t.state AS ticket_state, t.status, tr.from_stage AS evaluated_stage, tr.git_commit, tr.evidence,
+         t.rejections, t.rejection_ceiling
        FROM approval a JOIN ticket t ON t.factory_id = a.factory_id AND t.number = a.ticket_number
        LEFT JOIN ticket_transition tr ON tr.sequence = a.transition_sequence WHERE a.id = ?`, [id],
     );
@@ -71,13 +74,14 @@ export const createApprovalDecisions = (options: ApprovalDecisionOptions): Appro
 
     const integrationRequested = decision === "approved" && index === (stages?.length ?? 0) - 1;
     const target = outcomeRoute(stages ?? [], gate.stage, decision === "approved" ? "done" : "rejected");
-    const paused = decision === "rejected" && target === undefined;
-    const status = integrationRequested ? "awaiting_approval" : paused ? "paused" : "queued";
+    const unroutable = decision === "rejected" && target === undefined;
+    const limitReached = decision === "rejected" && target !== undefined && gate.rejections + 1 >= gate.rejection_ceiling;
+    const status = integrationRequested ? "awaiting_approval" : unroutable || limitReached ? "paused" : "queued";
     const nextStage = target ?? gate.stage;
     const now = yield* Clock.currentTimeMillis;
 
     yield* change.query(`UPDATE ticket SET stage = ?, status = ?, rejections = rejections + ? WHERE factory_id = ? AND number = ?`,
-      [nextStage, status, decision === "rejected" && !paused ? 1 : 0, gate.factory_id, gate.ticket_number]);
+      [nextStage, status, decision === "rejected" && !unroutable ? 1 : 0, gate.factory_id, gate.ticket_number]);
 
     const transitions = yield* change.query<{ sequence: number }>(
       `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
@@ -92,15 +96,16 @@ export const createApprovalDecisions = (options: ApprovalDecisionOptions): Appro
     yield* change.query(`UPDATE approval SET state = 'resolved', closed_at = ?, decision = ?, resolution_transition = ? WHERE id = ?`,
       [now, decision, transition, id]);
 
-    if (paused) {
+    if (unroutable || limitReached) {
       // The ended assignment stays ended; resume/retry owns any subsequent assignment lifecycle.
       const approvals = yield* change.query<{ id: number }>(`INSERT INTO approval (factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at)
-        SELECT factory_id, ticket_number, assignment_id, ?, 'blocked', 'open', ? FROM approval WHERE id = ? RETURNING id`, [transition, now, id]);
+        SELECT factory_id, ticket_number, assignment_id, ?, ?, 'open', ? FROM approval WHERE id = ? RETURNING id`,
+        [transition, limitReached ? "limit_reached" : "blocked", now, id]);
 
-      const blockedId = expectDefined(approvals[0], "blocked approval").id;
+      const blockedId = expectDefined(approvals[0], "operator decision follow-up approval").id;
 
       yield* change.recordHistory({ factoryId: gate.factory_id, kind: "approval.requested", subject: String(blockedId),
-        detail: { kind: "blocked", ticket: gate.ticket_number, transition }, records: [ticketRecord(gate.ticket_number)] });
+        detail: { kind: limitReached ? "limit_reached" : "blocked", ticket: gate.ticket_number, transition }, records: [ticketRecord(gate.ticket_number)] });
     }
 
     if (integrationRequested) {
