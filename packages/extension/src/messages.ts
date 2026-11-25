@@ -84,6 +84,11 @@ export class MessageReceiver {
     for (const message of batch) {this.inject(message, message === tail);}
   }
 
+  lifecycle(): "idle" | "working" | "unknown" {
+    try { return this.control ? (this.control.isIdle() ? "idle" : "working") : "unknown"; }
+    catch { return "unknown"; }
+  }
+
   pending(): ReadonlyArray<string> { return [...this.held.keys()]; }
 
   private inject(message: Message, triggerTurn = true): void {
