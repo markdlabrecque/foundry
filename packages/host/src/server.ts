@@ -1,5 +1,6 @@
 /** The Worker Host control server: serves identity, launches, inventory and termination on the host socket. */
 import { randomUUID } from "node:crypto";
+import { messageOf } from "@foundry/protocol/errors";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { connect, createServer } from "node:net";
 import type { Socket } from "node:net";
@@ -92,10 +93,10 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
         .retain(launch.factoryId, launch.slotId, launch.launchId, stderrTail)
         .then(
           (path) => log("warn", "launch ended unexpectedly", refs, { ...exit, stderr: path }),
-          (error: unknown) =>
+          (cause: unknown) =>
             log("error", "launch ended unexpectedly; stderr not retained", refs, {
               ...exit,
-              error: error instanceof Error ? error.message : String(error),
+              error: messageOf(cause),
             }),
         )
         .then(report);
@@ -110,10 +111,10 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
     readLines(socket, (line) => {
       // An unexpected failure answers this request; it must not take the host down.
       void answer(line, identity, registry, log)
-        .catch((error: unknown): HostResponse => ({
+        .catch((cause: unknown): HostResponse => ({
           id: requestId(line),
           ok: false,
-          error: `internal error: ${error instanceof Error ? error.message : String(error)}`,
+          error: `internal error: ${messageOf(cause)}`,
         }))
         .then((response) => send(socket, response));
     });

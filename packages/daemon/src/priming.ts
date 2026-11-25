@@ -213,7 +213,7 @@ export type CompactionPrimingOutcome =
 interface QueuedFrame {
   readonly frame: DaemonFrame;
   readonly resolve: () => void;
-  readonly reject: (error: unknown) => void;
+  readonly reject: (cause: unknown) => void;
 }
 
 /**
@@ -243,7 +243,7 @@ class PrimedWriter {
 
         return true;
       },
-      (error: unknown) => this.refuse(new Error(`priming did not complete: ${String(error)}`)),
+      (cause: unknown) => this.refuse(new Error(`priming did not complete: ${String(cause)}`)),
     );
   }
 

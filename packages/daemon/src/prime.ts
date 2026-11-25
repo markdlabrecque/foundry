@@ -15,6 +15,7 @@
  * callers' job.
  */
 import { createHash } from "node:crypto";
+import { codeOf } from "@foundry/protocol/errors";
 import { readFile } from "node:fs/promises";
 import { relative, sep } from "node:path";
 
@@ -74,8 +75,8 @@ const toSource = (baseDir: string, path: string): string => relative(baseDir, pa
 
 const hashOf = (bytes: Uint8Array): string => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
-const isMissing = (error: unknown): boolean => {
-  const code = (error as { code?: unknown } | null)?.code;
+const isMissing = (cause: unknown): boolean => {
+  const code = codeOf(cause);
 
   return code === "ENOENT" || code === "ENOTDIR";
 };

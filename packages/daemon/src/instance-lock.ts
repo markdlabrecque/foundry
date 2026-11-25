@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { codeOf } from "@foundry/protocol/errors";
 import { linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -70,8 +71,7 @@ interface OwnerFile {
   readonly owner: OwnerContent | undefined;
 }
 
-const isErrno = (error: unknown, code: string): boolean =>
-  error instanceof Error && (error as NodeJS.ErrnoException).code === code;
+const isErrno = (cause: unknown, code: string): boolean => codeOf(cause) === code;
 
 const unlinkIfPresent = (path: string): void => {
   try {

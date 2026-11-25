@@ -268,9 +268,9 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         channel.pending.set(requestId, { resolve, reject });
         // Written straight to the connection, not through the primer's queue: an
         // interrupt is a control frame, outside §5.5's prime-before-messages ordering.
-        channel.connection.send({ type: "interrupt", requestId }).catch((error: unknown) => {
+        channel.connection.send({ type: "interrupt", requestId }).catch((cause: unknown) => {
           channel.pending.delete(requestId);
-          reject(new ChannelUnavailableError(launchId, `could not be written to (${String(error)})`));
+          reject(new ChannelUnavailableError(launchId, `could not be written to (${String(cause)})`));
         });
       }),
     close: async () => {

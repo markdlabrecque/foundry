@@ -6,7 +6,7 @@
  * socket probes and then unlinks, which is only safe with one starter per root.
  */
 import { chmodSync, linkSync, lstatSync, mkdtempSync, rmdirSync, unlinkSync } from "node:fs";
-import { messageOf } from "@foundry/protocol/errors";
+import { codeOf, messageOf } from "@foundry/protocol/errors";
 import type { Stats } from "node:fs";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
@@ -72,8 +72,7 @@ export class ManagementSocketError extends Error {
   }
 }
 
-const isErrno = (error: unknown, code: string): boolean =>
-  error instanceof Error && (error as NodeJS.ErrnoException).code === code;
+const isErrno = (cause: unknown, code: string): boolean => codeOf(cause) === code;
 
 const lstatIfPresent = (path: string): Stats | undefined => {
   try {
@@ -236,7 +235,7 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
         send(response, reply.status, reply.body);
       },
-      (error: unknown) => send(response, 500, failure("internal", `ticket request failed: ${String(error)}`)),
+      (cause: unknown) => send(response, 500, failure("internal", `ticket request failed: ${String(cause)}`)),
     );
 
     return;
@@ -262,7 +261,7 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
   route().then(
     ([status, body]) => send(response, status, body),
-    (error: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${messageOf(error)}`)),
+    (cause: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${messageOf(cause)}`)),
   );
 };
 

@@ -258,14 +258,14 @@ export interface CloneRefusal {
 }
 
 /** The refusal an `ensureFactoryClone` failure means; any unexpected error is `clone_failed`. */
-export const cloneRefusalOf = (stateRoot: string, factoryId: string, error: unknown): CloneRefusal =>
-  error instanceof FactoryCloneError
-    ? { factoryId, reason: error.reason, clonePath: error.clonePath, message: error.message }
+export const cloneRefusalOf = (stateRoot: string, factoryId: string, cause: unknown): CloneRefusal =>
+  cause instanceof FactoryCloneError
+    ? { factoryId, reason: cause.reason, clonePath: cause.clonePath, message: cause.message }
     : {
         factoryId,
         reason: "clone_failed",
         clonePath: factoryClonePath(stateRoot, factoryId),
-        message: `cannot prepare the clone of factory "${factoryId}": ${error instanceof Error ? error.message : String(error)}`,
+        message: `cannot prepare the clone of factory "${factoryId}": ${messageOf(cause)}`,
       };
 
 /**

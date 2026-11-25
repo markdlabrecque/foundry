@@ -120,8 +120,8 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
     return { fd, size: fstatSync(fd).size };
   };
 
-  const failure = (msg: string, error: unknown): string =>
-    `${JSON.stringify({ time: now().toISOString(), level: "error", runId, msg, detail: { error: messageOf(error) } })}\n`;
+  const failure = (msg: string, cause: unknown): string =>
+    `${JSON.stringify({ time: now().toISOString(), level: "error", runId, msg, detail: { error: messageOf(cause) } })}\n`;
 
   // A log file that cannot be opened is not fatal: the daemon logs to stderr only.
   let file: { fd: number; size: number } | undefined;
