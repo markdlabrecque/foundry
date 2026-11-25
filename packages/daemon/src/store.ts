@@ -329,6 +329,25 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       ) STRICT`,
     ],
   },
+  {
+    id: 13,
+    name: "request_acceptance",
+    statements: [
+      `CREATE TABLE agent_request (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        requester_slot TEXT NOT NULL,
+        recipient TEXT NOT NULL,
+        recipient_slot TEXT,
+        ticket_number INTEGER,
+        notice_id TEXT NOT NULL UNIQUE REFERENCES message(id),
+        status TEXT NOT NULL CHECK (status IN ('open', 'completed', 'expired', 'failed')),
+        accepted_at INTEGER NOT NULL,
+        deadline INTEGER NOT NULL CHECK (deadline > accepted_at)
+      ) STRICT`,
+      `CREATE INDEX agent_request_deadline ON agent_request (deadline) WHERE status = 'open'`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */
