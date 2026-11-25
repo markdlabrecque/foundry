@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import type { Server, Socket } from "node:net";
 import { CHANNEL_LOST_AFTER_MS, decodeHelloLine, decodeWorkerFrameLine, encodeFrame, FrameLineSplitter, PROTOCOL_VERSION, ToolRefusalCode } from "@foundry/protocol";
-import type { DaemonFrame, Hello, HelloRejectReason, InterruptOutcome, ToolCall, ToolCallOutcome, WorkerFrame } from "@foundry/protocol";
+import type { DaemonFrame, Hello, HelloRejectReason, InterruptOutcome, ToolCall, DaemonToolOutcome, WorkerFrame } from "@foundry/protocol";
 
 /** The slot a connection was authorized for, as decided by the slot claim. */
 export interface ClaimedSlot {
@@ -79,7 +79,7 @@ export const REJECTED_SOCKET_GRACE_MS = 1000;
  * written to the worker after it resolves, so success is never reported before the commit.
  */
 export interface ToolCallHandler {
-  submit(slot: ClaimedSlot, call: ToolCall): Promise<ToolCallOutcome>;
+  submit(slot: ClaimedSlot, call: ToolCall): Promise<DaemonToolOutcome>;
 }
 
 export interface ChannelServerOptions extends ChannelEvents {
@@ -286,10 +286,12 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
 
       const outcome = options.toolCalls
         ? options.toolCalls.submit(claimed, call)
-        : Promise.resolve<ToolCallOutcome>({ status: "refused", code: ToolRefusalCode.notCommitted, detail: "the daemon serves no agent tools" });
+        : Promise.resolve<DaemonToolOutcome>({ status: "refused", code: ToolRefusalCode.notCommitted, detail: "the daemon serves no agent tools" });
 
+      // Only a defect raised before the commit can reach this catch (`submit` maps every store
+      // failure itself), so reporting nothing committed stays true.
       void outcome
-        .catch((cause: unknown): ToolCallOutcome => ({ status: "refused", code: ToolRefusalCode.notCommitted, detail: String(cause) }))
+        .catch((cause: unknown): DaemonToolOutcome => ({ status: "refused", code: ToolRefusalCode.notCommitted, detail: String(cause) }))
         .then((settled) => connection?.send({ type: "tool_result", callId: call.callId, outcome: settled }))
         .catch(() => {});
     };

@@ -156,8 +156,9 @@ export const Receipt = Schema.Struct({
 export type Receipt = typeof Receipt.Type;
 
 /**
- * An agent tool call (PRD §6.1): one request frame, answered by one `tool_result`. The daemon keys
- * its submission record by the launch the connection was claimed for plus Pi's tool call ID, so
+ * An agent tool call (PRD §6.1): one request frame, answered by one `tool_result`. The frame carries
+ * only Pi's tool call ID; the daemon adds the launch ID from the slot claim, so a worker can never
+ * name another launch's submission. The daemon keys its submission record by that pair, so
  * re-sending the same call after a lost result changes nothing, while two calls with equal
  * arguments stay distinct.
  */
@@ -171,21 +172,25 @@ export const ToolCall = Schema.Struct({
 export type ToolCall = typeof ToolCall.Type;
 
 /**
- * What a tool call came to.
+ * What the daemon answers a tool call with.
  * - `committed`: the submission, its effects and this stored value are in the database; a retry
  *   returns the same value.
- * - `refused`: the daemon answered and nothing of the call was committed.
- * - `not_accepted`: set by the extension, never sent by the daemon. No result arrived within the
- *   bounded wait, so the call may or may not have committed (PRD §6.1). Re-issuing it under a new
- *   call ID could repeat its effect; the worker must inspect before acting again.
+ * - `refused`: nothing of the call was committed.
  */
-export const ToolCallOutcome = Schema.Union([
+export const DaemonToolOutcome = Schema.Union([
   Schema.Struct({ status: Schema.Literal("committed"), value: Schema.Json }),
   Schema.Struct({ status: Schema.Literal("refused"), code: Id, detail: Schema.String }),
-  Schema.Struct({ status: Schema.Literal("not_accepted"), detail: Schema.String }),
 ]);
 
-export type ToolCallOutcome = typeof ToolCallOutcome.Type;
+export type DaemonToolOutcome = typeof DaemonToolOutcome.Type;
+
+/**
+ * What a tool call came to, as the extension reports it: the daemon's answer, or `not_accepted`,
+ * which only the extension sets. No result arrived within the bounded wait, so the call may or may
+ * not have committed (PRD §6.1). Re-issuing it under a new call ID could repeat its effect; the
+ * worker must inspect before acting again.
+ */
+export type ToolCallOutcome = DaemonToolOutcome | { readonly status: "not_accepted"; readonly detail: string };
 
 /** Why a tool call was refused. */
 export const ToolRefusalCode = {
@@ -201,7 +206,7 @@ export const ToolRefusalCode = {
 export const ToolResult = Schema.Struct({
   type: Schema.Literal("tool_result"),
   callId: Id,
-  outcome: ToolCallOutcome,
+  outcome: DaemonToolOutcome,
 });
 
 export type ToolResult = typeof ToolResult.Type;

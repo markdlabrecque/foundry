@@ -10,7 +10,7 @@
  */
 import { Clock, Data, Effect, Schema } from "effect";
 import { ToolRefusalCode } from "@foundry/protocol";
-import type { ToolCall, ToolCallOutcome } from "@foundry/protocol";
+import type { ToolCall, DaemonToolOutcome } from "@foundry/protocol";
 import type { ClaimedSlot } from "./channel/server.js";
 import { openSlotGate } from "./freeze.js";
 import type { SlotGate } from "./freeze.js";
@@ -38,8 +38,7 @@ export class ToolRefusal extends Data.TaggedError("ToolRefusal")<{
  * value is the result stored and returned. It must record any history its effects need.
  *
  * It runs holding the store's only write lock, so it must not wait on anything outside the store
- * (the network, a worker, a timer): every other daemon write waits behind it. Refusal codes must be
- * non-empty, or the result frame cannot be encoded and the worker's call never settles.
+ * (the network, a worker, a timer): every other daemon write waits behind it.
  */
 export type ToolHandler = (change: Change, call: ToolCallContext) => Effect.Effect<Schema.Json, ToolRefusal | StoreError>;
 
@@ -54,7 +53,7 @@ export interface SubmissionsOptions {
 /** Answers tool calls arriving on accepted channels; pass as the channel server's `toolCalls`. */
 export interface Submissions {
   /** Resolves only once the outcome is final: committed (and durable) or refused (nothing kept). */
-  submit(slot: ClaimedSlot, call: ToolCall): Promise<ToolCallOutcome>;
+  submit(slot: ClaimedSlot, call: ToolCall): Promise<DaemonToolOutcome>;
 }
 
 /** The call was committed earlier; its stored result is the answer. Rolls back the empty change. */
@@ -62,9 +61,9 @@ class AlreadyCommitted extends Data.TaggedError("AlreadyCommitted")<{ readonly v
 
 const decodeStored = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
 
-const committed = (value: Schema.Json): ToolCallOutcome => ({ status: "committed", value });
+const committed = (value: Schema.Json): DaemonToolOutcome => ({ status: "committed", value });
 
-const refused = (code: string, detail: string): ToolCallOutcome => ({ status: "refused", code, detail });
+const refused = (code: string, detail: string): DaemonToolOutcome => ({ status: "refused", code, detail });
 
 const storedResult = (query: Query, launchId: string, callId: string) =>
   Effect.map(
@@ -75,7 +74,7 @@ const storedResult = (query: Query, launchId: string, callId: string) =>
 export const createSubmissions = (options: SubmissionsOptions): Submissions => {
   const gate = options.gate ?? openSlotGate;
 
-  const submit = (slot: ClaimedSlot, call: ToolCall): Promise<ToolCallOutcome> => {
+  const submit = (slot: ClaimedSlot, call: ToolCall): Promise<DaemonToolOutcome> => {
     const context: ToolCallContext = {
       factoryId: slot.factoryId,
       slotId: slot.slotId,
@@ -124,7 +123,8 @@ export const createSubmissions = (options: SubmissionsOptions): Submissions => {
       .pipe(
         Effect.map(committed),
         Effect.catchTag("AlreadyCommitted", (e) => Effect.succeed(committed(e.value))),
-        Effect.catchTag("ToolRefusal", (e) => Effect.succeed(refused(e.code, e.detail))),
+        // An empty code could not be encoded in the result frame, leaving the call unsettled.
+        Effect.catchTag("ToolRefusal", (e) => Effect.succeed(refused(e.code === "" ? ToolRefusalCode.notCommitted : e.code, e.detail))),
         // A failed statement or commit rolls the whole call back; nothing of it was kept.
         Effect.catchTag("StoreError", (e) => Effect.succeed(refused(ToolRefusalCode.notCommitted, e.message))),
       );
