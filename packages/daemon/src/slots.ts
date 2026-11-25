@@ -354,6 +354,8 @@ const recordEnd = (store: Store, launchId: string, end: LaunchEnd, limit: number
  * Whether a recorded end counts against the recovery limit: the host's rule for exits it saw
  * unasked, and every launch a machine restart ended (PRD §10.2).
  */
+const refuseRestart = (message: string): never => { throw new SlotsError("restart_refused", message); };
+
 const unexpectedEnd = (reason: LaunchEndReason | null, code: number | null, signal: string | null): boolean =>
   reason === "machine_restarted" || (reason === "exited" && exitWasUnexpected({ code, signal }));
 
@@ -460,6 +462,8 @@ export interface SlotScheduler {
    * slot's conversation has changed, or if the launch is refused.
    */
   relaunch(slot: { readonly factoryId: string; readonly slotId: string }, conversationRef: string): Promise<{ readonly launchId: string }>;
+  /** Operator restart: terminate the owned group, then continue the current conversation. */
+  restart(slot: SlotRef): Promise<{ readonly launchId: string }>;
   /** Discards a held slot's conversation only after proving old groups gone, unless forced. */
   reset(slot: SlotRef, force?: boolean): Promise<{ readonly launchId: string }>;
   /** Resolves once scheduling and exit reports queued so far have finished. */
@@ -736,6 +740,51 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
         return { launchId: started.launchId };
       }),
+    restart: (ref) => serial(async () => {
+      const slot = options.slots.find((s) => s.factoryId === ref.factoryId && s.slotId === ref.slotId);
+
+      if (slot === undefined) {throw new SlotsError("slot_not_found", `slot ${ref.slotId} is not configured`);}
+
+      if (options.inScope?.(ref.factoryId) === false || pendingFreezes.has(slot)) {
+        return refuseRestart(`slot ${ref.slotId} is stopped or being frozen`);
+      }
+
+      const row = await Effect.runPromise(readSlot(store, ref.factoryId, ref.slotId));
+
+      if (row?.condition !== "normal") {return refuseRestart(`slot ${ref.slotId} is not normal; unfreeze or reset it instead`);}
+
+      const inventory = await host.inventory();
+
+      const ownership = await Effect.runPromise(classifySlot(store, ref, {
+        hostId: options.hostId, bootId: options.bootId, inventory,
+      }));
+
+      if (ownership.kind !== "running") {return refuseRestart(`slot ${ref.slotId} has no proven running launch`);}
+
+      if (options.terminate === undefined) {return refuseRestart("host termination is unavailable");}
+
+      const termination = await options.terminate(ownership.launchId);
+
+      // A reaped leader alone is insufficient: the host must confirm its entire owned group gone.
+      if (termination.outcome !== "gone") {return refuseRestart(`process group for launch ${ownership.launchId} is not confirmed gone`);}
+
+      await recordGone(termination.launch);
+
+      // Stop may have begun while termination was in flight. Keep the existing conversation and
+      // ended launch on record, but never create a replacement for a stopping factory.
+      if (options.inScope?.(ref.factoryId) === false) {return refuseRestart(`factory ${ref.factoryId} is stopping`);}
+
+      const current = await Effect.runPromise(readSlot(store, ref.factoryId, ref.slotId));
+
+      if (current?.condition !== "normal" || pendingFreezes.has(slot)) {return refuseRestart(`slot ${ref.slotId} is held`);}
+
+      options.revokeSlot?.(ref.factoryId, ref.slotId);
+      const started = await launchInto(slot, "relaunched");
+
+      if (started.launchId === undefined) {return refuseRestart(started.error ?? `slot ${ref.slotId} was not relaunched`);}
+
+      return { launchId: started.launchId };
+    }),
     reset: (ref, force = false) => {
       if (options.freezer.reset === undefined) {return Promise.reject(new Error("reset gate is not configured"));}
 

@@ -13,7 +13,7 @@ import { validateFactoryFile } from "./validate.js";
 import { runTicketList, runTicketPause, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow } from "./holds.js";
-import { runApprovalAnswer, runApprovalList, runApprovalShow } from "./approvals.js";
+import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow } from "./approvals.js";
 import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath, runFactorySync } from "./factory.js";
@@ -21,7 +21,7 @@ import { runFactoryList } from "./factories.js";
 import { runWorktreeClean, runWorktreeList } from "./worktrees.js";
 import { runFactoryStop } from "./factory-stop.js";
 import { runShutdown } from "./shutdown.js";
-import { runSlotInterrupt, runSlotList, runSlotReset, runSlotShow, runSlotUnfreeze } from "./slots.js";
+import { runSlotInterrupt, runSlotList, runSlotReset, runSlotRestart, runSlotShow, runSlotUnfreeze } from "./slots.js";
 
 const validate = Command.make(
   "validate",
@@ -132,9 +132,19 @@ const approvalAnswer = Command.make("answer", { ...commonFlags, id: Argument.Str
   Effect.flatMap(Effect.promise(() => runApprovalAnswer({ json, home: Option.getOrUndefined(home), env: process.env, id, body })), print),
 );
 
+const approvalApprove = Command.make("approve", { ...commonFlags, id: Argument.String("id") }, ({ json, home, id }) =>
+  Effect.flatMap(Effect.promise(() => runApprovalDecision({ json, home: Option.getOrUndefined(home), env: process.env, id, decision: "approve" })), print),
+);
+
+const approvalReject = Command.make("reject", {
+  ...commonFlags, id: Argument.String("id"), reason: Flag.String("reason"),
+}, ({ json, home, id, reason }) =>
+  Effect.flatMap(Effect.promise(() => runApprovalDecision({ json, home: Option.getOrUndefined(home), env: process.env, id, decision: "reject", reason })), print),
+);
+
 const approval = Command.make("approval").pipe(
   Command.withDescription("Operator decisions about work"),
-  Command.withSubcommands([approvalList, approvalShow, approvalAnswer]),
+  Command.withSubcommands([approvalList, approvalShow, approvalAnswer, approvalApprove, approvalReject]),
 );
 
 const holdList = Command.make("list", commonFlags, ({ json, home }) =>
@@ -366,6 +376,15 @@ const slotUnfreeze = Command.make(
     ),
 ).pipe(Command.withDescription("Unfreeze a slot once the daemon's re-run of its freeze cause check passes"));
 
+const slotRestart = Command.make(
+  "restart",
+  { ...ticketFlags, slot: Argument.String("station/ordinal") },
+  ({ json, home, factory, slot }) => Effect.flatMap(
+    Effect.promise(() => runSlotRestart({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), slot, env: process.env })),
+    print,
+  ),
+).pipe(Command.withDescription("Replace a slot's launch through the host, keeping its conversation"));
+
 const slotReset = Command.make(
   "reset",
   { ...ticketFlags, slot: Argument.String("station/ordinal"), force: Flag.Boolean("force").pipe(Flag.withDefault(false)) },
@@ -377,7 +396,7 @@ const slotReset = Command.make(
 
 const slot = Command.make("slot").pipe(
   Command.withDescription("Slots: each station's fixed worker positions and their launches"),
-  Command.withSubcommands([slotList, slotShow, slotInterrupt, slotUnfreeze, slotReset]),
+  Command.withSubcommands([slotList, slotShow, slotInterrupt, slotRestart, slotUnfreeze, slotReset]),
 );
 
 const shutdown = Command.make(
