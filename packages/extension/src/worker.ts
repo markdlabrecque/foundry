@@ -11,7 +11,7 @@
  */
 import { existsSync } from "node:fs";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { AGENT_DISCOVER, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
+import { AGENT_DISCOVER, AGENT_MESSAGE, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello, ToolCallOutcome } from "@foundry/protocol";
 import { Type } from "typebox";
 import { openChannel } from "./channel/client.js";
@@ -97,6 +97,28 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
       },
     });
   }
+
+  pi.registerTool({
+    name: AGENT_MESSAGE,
+    label: "Send a durable message",
+    description: "Send a durable ordinary message to a station in your factory. Acceptance is not delivery or completion.",
+    parameters: Type.Object({
+      recipient: Type.String({ minLength: 1 }),
+      body: Type.String(),
+      delivery: Type.Optional(Type.Union([Type.Literal("after_turn"), Type.Literal("when_idle")])),
+    }, { additionalProperties: false }),
+    async execute(callId, args): Promise<AgentToolResult<ToolCallOutcome>> {
+      const outcome = await toolCalls.call(callId, AGENT_MESSAGE, args);
+
+      if (outcome.status === "committed") {
+        return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
+      }
+
+      const code = outcome.status === "refused" ? outcome.code : outcome.status;
+
+      return { content: [{ type: "text", text: `${code}: ${outcome.detail}` }], details: outcome, isError: true };
+    },
+  });
 
   const onFrame = receiveDaemonFrames({ adapter, interrupter, toolCalls });
   let channel: OpenChannel | undefined;

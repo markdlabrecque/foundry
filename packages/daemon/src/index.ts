@@ -9,6 +9,8 @@ export * from "./channel/slot-claim.js";
 
 export * from "./submissions.js";
 
+export * from "./agent-message.js";
+
 export * from "./agent-discover.js";
 
 export * from "./agent-status.js";
