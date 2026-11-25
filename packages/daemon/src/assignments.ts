@@ -66,6 +66,8 @@ export interface AssignmentSchedulerOptions {
   readonly inScope?: (factoryId: string) => boolean;
   /** Worktree creation is separate; false leaves this ticket queued, without reserving capacity. */
   readonly ready?: (ticket: QueuedTicket, slot: PlannedSlot) => boolean;
+  /** Registers a wakeup for when `ready` may have turned true without a commit. Returns an unsubscribe. */
+  readonly readinessChanged?: (wake: () => void) => () => void;
   readonly onApprovalError?: (cause: unknown) => void;
   /** Runs outside the assignment transaction, only for an eligible isolated assignment. */
   readonly prepareWorktree?: (ticket: QueuedTicket) => Effect.Effect<void, StoreError>;
@@ -361,12 +363,14 @@ export const watchAssignments = (
 
   const unsubscribe = options.store.onCommit(wake);
   const unreserve = onAssignmentSlotReleased(options.store, wake);
+  const unready = options.readinessChanged?.(wake);
   wake();
 
   return async () => {
     stopped = true;
     unsubscribe();
     unreserve();
+    unready?.();
     await running;
     const pending = [...preparations.values()];
 

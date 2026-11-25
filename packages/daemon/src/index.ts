@@ -160,6 +160,10 @@ export * from "./factory-sync.js";
 
 export * from "./sync-recovery.js";
 
+export * from "./factory-recovery.js";
+
+export * from "./channel-assignment-gate.js";
+
 export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";
 
 export {
