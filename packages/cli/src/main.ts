@@ -10,7 +10,7 @@ import { EXIT_USAGE, runStatus } from "./status.js";
 import { runLogs } from "./logs.js";
 import { runMessageSend } from "./messages.js";
 import { validateFactoryFile } from "./validate.js";
-import { runTicketCancel, runTicketList, runTicketPause, runTicketShow, runTicketSubmit } from "./tickets.js";
+import { runTicketCancel, runTicketList, runTicketPause, runTicketRetry, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow } from "./holds.js";
 import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow } from "./approvals.js";
@@ -282,6 +282,10 @@ const ticketPause = Command.make("pause", { ...ticketFlags, number: Argument.Int
   report(() => runTicketPause({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), number, env: process.env })),
 ).pipe(Command.withDescription("Pause an assigned ticket, preserving its assignment"));
 
+const ticketRetry = Command.make("retry", { ...ticketFlags, number: Argument.Int("n") }, ({ json, home, factory, number }) =>
+  report(() => runTicketRetry({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), number, env: process.env })),
+).pipe(Command.withDescription("Abandon the assignment and queue a fresh attempt"));
+
 const ticketCancel = Command.make("cancel", { ...ticketFlags, number: Argument.Int("n"),
   yes: Flag.Boolean("yes").pipe(Flag.withDefault(false), Flag.withDescription("Confirm cancellation without a prompt")),
 }, ({ json, home, factory, number, yes }) =>
@@ -290,7 +294,7 @@ const ticketCancel = Command.make("cancel", { ...ticketFlags, number: Argument.I
 
 const ticket = Command.make("ticket").pipe(
   Command.withDescription("Submit and inspect tickets"),
-  Command.withSubcommands([ticketSubmit, ticketList, ticketShow, ticketPause, ticketCancel]),
+  Command.withSubcommands([ticketSubmit, ticketList, ticketShow, ticketPause, ticketRetry, ticketCancel]),
 );
 
 const factoryList = Command.make("list", commonFlags, ({ json, home }) =>

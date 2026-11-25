@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Clock, Effect } from "effect";
 import type { Message } from "@foundry/protocol";
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
+import { actionableMessage } from "./message-obligations.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { releaseResumeReplacement } from "./resume-notice.js";
 import type { SlotGate } from "./freeze.js";
@@ -89,6 +90,7 @@ export const createMessageDelivery = (options: {
 
             const updated = yield* change.query<BoundMessage>(
               `UPDATE message SET status = 'sent' WHERE id = ? AND status = 'bound'
+               AND ${actionableMessage}
                AND NOT EXISTS (SELECT 1 FROM agent_request r WHERE r.notice_id = message.id
                  AND (r.status = 'expired' OR r.deadline <= ?))
                AND NOT EXISTS (SELECT 1 FROM resume_notice n JOIN assignment a ON a.id = n.assignment_id

@@ -723,7 +723,7 @@ const main = async (): Promise<void> => {
         },
       }),
       tickets: createTicketService(ticketOptions),
-      worktrees: createWorktreeService({ store, factories: () => factories.map((f) => f.factoryId),
+      worktrees: createWorktreeService({ store, stateRoot, factories: () => factories.map((f) => f.factoryId),
         target: (factoryId) => {
           const factory = factories.find((f) => f.factoryId === factoryId);
           const clone = clones.get(factoryId);
