@@ -10,6 +10,7 @@ import type { OpenChannel } from "./channel/client.js";
 import type { ConversationAdapter } from "./conversation/adapter.js";
 import type { RunInterrupter } from "./interrupt.js";
 import type { ToolCallClient } from "./tool-calls.js";
+import { MessageReceiver } from "./messages.js";
 
 /**
  * Sends receipts over the attached channel, holding them while there is none.
@@ -78,12 +79,17 @@ export interface DaemonFrameHandlers {
  * the run interrupter, which answers on the channel the frame arrived on, and
  * a drain to the same interrupter, which answers once Pi settles.
  */
-export const receiveDaemonFrames =
-  (handlers: DaemonFrameHandlers) =>
-  (frame: DaemonFrame, channel: OpenChannel): void => {
+export const receiveDaemonFrames = (handlers: DaemonFrameHandlers) => {
+  const messages = new MessageReceiver(handlers.adapter);
+
+  return (frame: DaemonFrame, channel: OpenChannel): void => {
     switch (frame.type) {
       case "prime":
         handlers.adapter.inject({ id: frame.id, kind: "prime", content: frame.text });
+
+        return;
+      case "message":
+        messages.receive(frame);
 
         return;
       case "interrupt":
@@ -104,3 +110,4 @@ export const receiveDaemonFrames =
       }
     }
   };
+};

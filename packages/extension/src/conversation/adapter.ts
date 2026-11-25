@@ -60,7 +60,7 @@ export const createConversationAdapter = (pi: ExtensionAPI, options: Conversatio
       const details: FoundryMessageDetails = { foundryId: injection.id, kind: injection.kind };
       pi.sendMessage(
         { customType: FOUNDRY_MESSAGE_TYPE, content: injection.content, display: true, details },
-        { triggerTurn: injection.kind === "prime" ? false : (injectOptions.triggerTurn ?? false) },
+        { deliverAs: "steer", triggerTurn: injection.kind === "prime" ? false : (injectOptions.triggerTurn ?? false) },
       );
       // An idle session appends at once; if its file already exists the entry is now recoverable.
       issuer.check();

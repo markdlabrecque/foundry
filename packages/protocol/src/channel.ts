@@ -228,8 +228,18 @@ export const Prime = Schema.Struct({
 
 export type Prime = typeof Prime.Type;
 
+/** A bound durable message. The extension, not daemon liveness, applies its policy. */
+export const Message = Schema.Struct({
+  type: Schema.Literal("message"),
+  id: Id,
+  body: Schema.String,
+  delivery: Schema.Literals(["after_turn", "when_idle"]),
+});
+
+export type Message = typeof Message.Type;
+
 /** Frames the daemon sends on an accepted connection, after `hello_accepted`. */
-export const DaemonFrame = Schema.Union([Prime, Interrupt, Drain, ToolResult]);
+export const DaemonFrame = Schema.Union([Prime, Message, Interrupt, Drain, ToolResult]);
 
 export type DaemonFrame = typeof DaemonFrame.Type;
 

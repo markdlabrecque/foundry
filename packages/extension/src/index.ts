@@ -1,6 +1,8 @@
 /** The Foundry Pi extension: plain TypeScript with promises, no Effect runtime. */
 export const packageName = "@foundry/extension" as const;
 
+export * from "./messages.js";
+
 export * from "./channel/client.js";
 
 export * from "./compaction.js";
