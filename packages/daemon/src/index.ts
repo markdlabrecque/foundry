@@ -2,7 +2,7 @@
 export const packageName = "@foundry/daemon" as const;
 
 export * from "./channel/server.js";
-export { selectStateRoot, type StateRootInputs } from "./state-root.js";
+export { selectStateRoot, type StateRootInputs } from "@foundry/protocol/state-root";
 export {
   claimStateRoot,
   LOCK_FILE_NAME,
@@ -20,3 +20,10 @@ export {
 } from "./repository-context.js";
 export * from "./store.js";
 export * from "./prime.js";
+export {
+  ManagementSocketError,
+  serveManagementApi,
+  type ManagementApi,
+  type ManagementApiInputs,
+  type ManagementSocketRefusal,
+} from "./management-api.js";
