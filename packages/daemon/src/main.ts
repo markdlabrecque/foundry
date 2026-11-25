@@ -22,6 +22,7 @@ import { assignedSlot, assignmentContextSlot, assignmentTicket, watchAssignments
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
+import { createTicketWorktrees } from "./worktrees.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Predicate, Schema, Scope } from "effect";
@@ -562,6 +563,15 @@ const main = async (): Promise<void> => {
 
   const stopAssignments = watchAssignments({
     store, factories, slots: plannedSlots,
+    prepareWorktree: createTicketWorktrees({
+      store,
+      target: (factoryId) => {
+        const factory = factories.find((f) => f.factoryId === factoryId);
+        const clone = clones.get(factoryId);
+
+        return factory === undefined || clone === undefined ? undefined : { factory, clonePath: clone.path };
+      },
+    }),
     configLoad: (factoryId) => loadIds.get(factoryId),
     inScope: (factoryId) => !stopping && factoryStates.isRunning(factoryId),
   }, (error) => log.error("tickets not assigned", { detail: { error: messageOf(error) } }));
