@@ -301,7 +301,6 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
         factory_id TEXT NOT NULL,
         slot_id TEXT NOT NULL,
         tool TEXT NOT NULL,
-        args TEXT NOT NULL,
         result TEXT NOT NULL,
         committed_at INTEGER NOT NULL,
         PRIMARY KEY (launch_id, call_id)

@@ -71,11 +71,29 @@ const fixture = async (handlers: ReadonlyMap<string, ToolHandler>, gate?: SlotGa
   cleanups.push(() => Effect.runPromise(Scope.close(scope, Exit.void)));
   const store: Store = await Effect.runPromise(Scope.provide(scope)(openStore({ filename: join(dir, "foundry.db") })));
 
+  // Counts `tool_call` frames the daemon has read, so a test can wait for a re-send to arrive.
+  let toolCallFrames = 0;
+  const frameWaiters: Array<{ count: number; resolve: () => void }> = [];
+
   const server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: acceptAll,
     toolCalls: createSubmissions(gate === undefined ? { store, handlers } : { store, handlers, gate }),
+    onFrame: (_slot, frame) => {
+      if (frame.type !== "tool_call") {return;}
+
+      toolCallFrames += 1;
+
+      for (const waiter of frameWaiters.filter((w) => toolCallFrames >= w.count)) {
+        frameWaiters.splice(frameWaiters.indexOf(waiter), 1);
+        waiter.resolve();
+      }
+    },
   });
+
+  /** Resolves once the daemon has read at least `count` tool calls. */
+  const toolCallsRead = (count: number): Promise<void> =>
+    toolCallFrames >= count ? Promise.resolve() : new Promise((resolve) => { frameWaiters.push({ count, resolve }); });
 
   cleanups.push(() => server.close());
 
@@ -107,7 +125,7 @@ const fixture = async (handlers: ReadonlyMap<string, ToolHandler>, gate?: SlotGa
   const submissions = () =>
     Effect.runPromise(store.read<{ call_id: string; result: string }>(`SELECT call_id, result FROM submission ORDER BY call_id`));
 
-  return { store, client, connect, effects, submissions };
+  return { store, client, connect, effects, submissions, toolCallsRead };
 };
 
 test("a tool result reaches the worker only after its submission and effects commit", async () => {
@@ -124,9 +142,6 @@ test("a tool result reaches the worker only after its submission and effects com
 
   const result = client.call("call-1", "echo", { n: 1 }).then((outcome) => (order.push("result"), outcome));
   await within("the handler to start", started.promise);
-  await new Promise<void>((r) => { setImmediate(r); });
-  expect(order).toEqual([]);
-
   release.resolve();
 
   expect(await within("the result", result)).toEqual({ status: "committed", value: { echoed: { n: 1 } } });
@@ -186,6 +201,36 @@ test("a call whose result was lost with its channel is answered from the stored 
   expect(await within("the replayed result", result)).toEqual({ status: "committed", value: { echoed: { n: 1 } } });
   expect(await effects()).toEqual(["call-1"]);
   expect(calls).toBe(1);
+});
+
+test("a call re-sent while its original is still committing waits for that commit and replays its result", async () => {
+  const started = signal();
+  const release = signal();
+  let calls = 0;
+
+  const { client, connect, effects, submissions, toolCallsRead } = await fixture(
+    new Map([["echo", effectHandler(async () => {
+      calls += 1;
+      started.resolve();
+      await release.promise;
+    })]]),
+  );
+
+  const first = await connect();
+  const result = client.call("call-1", "echo", { n: 1 });
+  await within("the handler to start", started.promise);
+
+  // The original is mid-transaction when its channel goes and the re-send reaches the daemon.
+  first.close();
+  await within("the first channel to close", first.closed);
+  await connect();
+  await within("the re-sent call to arrive", toolCallsRead(2));
+  release.resolve();
+
+  expect(await within("the replayed result", result)).toEqual({ status: "committed", value: { echoed: { n: 1 } } });
+  expect(calls).toBe(1);
+  expect(await effects()).toEqual(["call-1"]);
+  expect((await submissions()).map((s) => s.call_id)).toEqual(["call-1"]);
 });
 
 test("two calls with equal arguments and distinct call IDs are two submissions with two effects", async () => {

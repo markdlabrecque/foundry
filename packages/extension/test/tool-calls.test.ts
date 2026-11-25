@@ -52,7 +52,7 @@ test("a call with no channel within the bounded wait settles as not accepted", a
   const outcome = client.call("call-1", "echo", {});
   wait.expire();
 
-  expect(await outcome).toEqual({ status: "refused", code: "not_accepted", detail: expect.any(String) });
+  expect(await outcome).toEqual({ status: "not_accepted", detail: expect.any(String) });
   expect(client.pendingCallIds()).toEqual([]);
 });
 
@@ -101,7 +101,7 @@ test("a call whose write fails waits for another channel and settles as not acce
   await Promise.resolve();
   wait.expire();
 
-  expect(await outcome).toEqual({ status: "refused", code: "not_accepted", detail: expect.any(String) });
+  expect(await outcome).toEqual({ status: "not_accepted", detail: expect.any(String) });
 });
 
 test("a repeated call ID while the first is pending shares one send and one outcome", async () => {

@@ -36,6 +36,10 @@ export class ToolRefusal extends Data.TaggedError("ToolRefusal")<{
 /**
  * Serves one tool inside the submission's transaction. Its writes are the call's effects; its
  * value is the result stored and returned. It must record any history its effects need.
+ *
+ * It runs holding the store's only write lock, so it must not wait on anything outside the store
+ * (the network, a worker, a timer): every other daemon write waits behind it. Refusal codes must be
+ * non-empty, or the result frame cannot be encoded and the worker's call never settles.
  */
 export type ToolHandler = (change: Change, call: ToolCallContext) => Effect.Effect<Schema.Json, ToolRefusal | StoreError>;
 
@@ -102,9 +106,9 @@ export const createSubmissions = (options: SubmissionsOptions): Submissions => {
           const value = yield* handler(change, context);
           const now = yield* Clock.currentTimeMillis;
           yield* change.query(
-            `INSERT INTO submission (launch_id, call_id, factory_id, slot_id, tool, args, result, committed_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-            [slot.launchId, call.callId, slot.factoryId, slot.slotId, call.tool, JSON.stringify(call.args), JSON.stringify(value), now],
+            `INSERT INTO submission (launch_id, call_id, factory_id, slot_id, tool, result, committed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [slot.launchId, call.callId, slot.factoryId, slot.slotId, call.tool, JSON.stringify(value), now],
           );
           yield* change.recordHistory({
             factoryId: slot.factoryId,

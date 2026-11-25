@@ -3,12 +3,13 @@
  * Pi's tool call ID, answered by one `tool_result` the daemon sends only after its commit, so a
  * call never reports success before the daemon has committed it.
  *
- * While no channel is attached, a call waits up to a bounded time for one, then settles with an
- * explicit `not_accepted` refusal. A call whose channel ends before its result arrives is re-sent
+ * While no channel is attached, a call waits up to a bounded time for one, then settles as
+ * `not_accepted`: the call may or may not have committed, which is never reported as a refusal. A
+ * call whose channel ends before its result arrives is re-sent
  * on the next attached channel with the same call ID; the daemon returns the stored result of a
  * call it already committed and changes nothing.
  */
-import { TOOL_CALL_CHANNEL_WAIT_MS, ToolRefusalCode } from "@foundry/protocol";
+import { TOOL_CALL_CHANNEL_WAIT_MS } from "@foundry/protocol";
 import type { Schema } from "effect";
 import type { ToolCallOutcome, ToolResult } from "@foundry/protocol";
 import type { OpenChannel } from "./channel/client.js";
@@ -52,8 +53,12 @@ export class ToolCallClient {
   }
 
   /**
-   * Submit one call. Resolves with the daemon's outcome, or a `not_accepted` refusal if no channel
-   * carried the call and its result within the bounded wait. A second call with the same ID while
+   * Submit one call. Resolves with the daemon's outcome, or `not_accepted` if no channel carried
+   * the call and its result within the bounded wait.
+   *
+   * Once written to a live channel, a call waits for its result without a bound: PRD §3.2 bounds
+   * only the wait for a channel, and a lost channel is detected by its heartbeat lapse, after which
+   * the bounded wait applies again. A second call with the same ID while
    * the first is pending shares its outcome rather than sending twice.
    */
   call(callId: string, tool: string, args: Schema.Json): Promise<ToolCallOutcome> {
@@ -115,8 +120,7 @@ export class ToolCallClient {
       entry.cancelWait ??= this.timer(this.waitMs, () => {
         entry.cancelWait = undefined;
         this.finish(entry, {
-          status: "refused",
-          code: ToolRefusalCode.notAccepted,
+          status: "not_accepted",
           detail: `no channel to the daemon within ${this.waitMs} ms; the call may or may not have been committed`,
         });
       });

@@ -171,12 +171,18 @@ export const ToolCall = Schema.Struct({
 export type ToolCall = typeof ToolCall.Type;
 
 /**
- * What a tool call came to. `committed`: the submission, its effects and this stored value are in
- * the database; a retry returns the same value. `refused`: nothing was committed.
+ * What a tool call came to.
+ * - `committed`: the submission, its effects and this stored value are in the database; a retry
+ *   returns the same value.
+ * - `refused`: the daemon answered and nothing of the call was committed.
+ * - `not_accepted`: set by the extension, never sent by the daemon. No result arrived within the
+ *   bounded wait, so the call may or may not have committed (PRD §6.1). Re-issuing it under a new
+ *   call ID could repeat its effect; the worker must inspect before acting again.
  */
 export const ToolCallOutcome = Schema.Union([
   Schema.Struct({ status: Schema.Literal("committed"), value: Schema.Json }),
   Schema.Struct({ status: Schema.Literal("refused"), code: Id, detail: Schema.String }),
+  Schema.Struct({ status: Schema.Literal("not_accepted"), detail: Schema.String }),
 ]);
 
 export type ToolCallOutcome = typeof ToolCallOutcome.Type;
@@ -189,8 +195,6 @@ export const ToolRefusalCode = {
   unknownTool: "unknown_tool",
   /** The daemon tried and rolled back: nothing from the call was kept. */
   notCommitted: "not_committed",
-  /** Set by the extension: no channel carried the call, or its result, within the bounded wait. */
-  notAccepted: "not_accepted",
 } as const;
 
 /** The daemon's answer to a `tool_call`, sent only after the commit. */
