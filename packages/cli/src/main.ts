@@ -16,6 +16,7 @@ import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath } from "./factory.js";
 import { runFactoryList } from "./factories.js";
+import { runFactoryStop } from "./factory-stop.js";
 import { runSlotInterrupt, runSlotList, runSlotShow } from "./slots.js";
 
 const validate = Command.make(
@@ -249,9 +250,23 @@ const factoryPath = Command.make("path", { ...commonFlags, name: Argument.String
   ),
 ).pipe(Command.withDescription("Print the path of a factory's dedicated clone, to add as a Git remote"));
 
+const factoryStop = Command.make(
+  "stop",
+  {
+    ...commonFlags,
+    name: Argument.String("name"),
+    force: Flag.Boolean("force").pipe(Flag.withDefault(false), Flag.withDescription("Skip the drain and the grace period")),
+  },
+  ({ json, home, name, force }) =>
+    Effect.flatMap(
+      Effect.promise(() => runFactoryStop({ json, home: Option.getOrUndefined(home), env: process.env, name, force })),
+      print,
+    ),
+).pipe(Command.withDescription("Stop one factory's workers, leaving the other factories running"));
+
 const factory = Command.make("factory").pipe(
   Command.withDescription("Factories loaded by the daemon and their dedicated clones"),
-  Command.withSubcommands([factoryList, factoryPath]),
+  Command.withSubcommands([factoryList, factoryPath, factoryStop]),
 );
 
 const slotList = Command.make("list", ticketFlags, ({ json, home, factory }) =>

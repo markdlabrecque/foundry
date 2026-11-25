@@ -103,6 +103,19 @@ export * from "./operations.js";
 export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";
 
 export {
+  createFactoryStates,
+  createFactoryStopper,
+  DEFAULT_STOP_GRACE_MS,
+  DEFAULT_STOP_KILL_WAIT_MS,
+  FactoryStopError,
+  type FactoryStates,
+  type FactoryStopErrorCode,
+  type FactoryStopper,
+  type FactoryStopperOptions,
+  type StopHost,
+} from "./factory-stop.js";
+
+export {
   connectOrStartHost,
   createSlotScheduler,
   planSlots,

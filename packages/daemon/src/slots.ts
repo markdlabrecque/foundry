@@ -251,6 +251,7 @@ const endOf = (launch: LaunchRecord): LaunchEnd | undefined =>
  *   launch was requested of an earlier host in this boot, which may have left it running.
  * - `duplicate`: the host reports more than one live launch in the slot; nothing is picked or started.
  * - `held`: its condition is not normal; nothing is launched into it.
+ * - `stopped`: its factory is stopping or stopped (PRD §10.3); the slot is not touched.
  * - `refused`: the launch could not be built or the host would not start it; the next daemon start tries again.
  */
 export type SlotScheduleOutcome =
@@ -261,6 +262,7 @@ export type SlotScheduleOutcome =
   | "unconfirmed"
   | "duplicate"
   | "held"
+  | "stopped"
   | "refused";
 
 export interface SlotScheduleResult {
@@ -286,6 +288,11 @@ export interface SlotSchedulerOptions {
   readonly foundryExtension: string;
   /** The configured slots of the started factories. */
   readonly slots: ReadonlyArray<PlannedSlot>;
+  /**
+   * Whether a factory may still be assigned new launches; checked per slot, so a factory stop
+   * begun mid-schedule launches nothing more in its scope. Default: every factory.
+   */
+  readonly inScope?: (factoryId: string) => boolean;
 }
 
 export interface SlotScheduler {
@@ -293,6 +300,8 @@ export interface SlotScheduler {
   schedule(): Promise<ReadonlyArray<SlotScheduleResult>>;
   /** Records a launch exit the host reported; true when it ended a recorded launch. */
   recordExit(launch: LaunchRecord): Promise<boolean>;
+  /** Resolves once scheduling and exit reports queued so far have finished. */
+  idle(): Promise<void>;
 }
 
 /** Scheduling and exit reports run one at a time, so a slot is never launched into twice. */
@@ -312,6 +321,8 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
       launchId === undefined
         ? { factoryId: slot.factoryId, slotId: slot.slotId, outcome }
         : { factoryId: slot.factoryId, slotId: slot.slotId, outcome, launchId };
+
+    if (options.inScope !== undefined && !options.inScope(slot.factoryId)) {return result("stopped");}
 
     const row = await Effect.runPromise(readSlot(store, slot.factoryId, slot.slotId));
 
@@ -449,6 +460,7 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
         return results;
       }),
     recordExit: (launch) => serial(() => recordGone(launch)),
+    idle: () => serial(async () => {}),
   };
 };
 

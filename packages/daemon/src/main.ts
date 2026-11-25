@@ -42,6 +42,9 @@ import { startChannelServer } from "./channel/server.js";
 import type { ChannelServer } from "./channel/server.js";
 import { createHostSlotClaim } from "./channel/slot-claim.js";
 import { channelLogEvents } from "./channel/log-events.js";
+import type { SlotScheduler } from "./slots.js";
+import { createFactoryStates, createFactoryStopper } from "./factory-stop.js";
+import type { FactoryStopperOptions } from "./factory-stop.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -313,11 +316,16 @@ const main = async (): Promise<void> => {
   // step 2), before serving. The host is started only when there is a slot to run.
   let host: HostConnection | undefined;
   let channel: ChannelServer | undefined;
+  let scheduler: SlotScheduler | undefined;
+  let stopHost: FactoryStopperOptions["host"];
+  // Each started factory's state for this run (PRD §10.3); a stopped one returns on the next start.
+  const factoryStates = createFactoryStates(decision.started);
 
   if (plannedSlots.length > 0) {
     try {
       host = await connectOrStartHost(stateRoot);
       const identity = await host.identify();
+      stopHost = { connection: host, hostId: identity.hostId, bootId: identity.bootId };
 
       // Served before any launch, so a worker dialling at its session start finds the daemon. A hello
       // is accepted only for the launch the host reports current in that slot (PRD §3.2).
@@ -327,7 +335,7 @@ const main = async (): Promise<void> => {
         ...channelLogEvents(log),
       });
 
-      const scheduler = createSlotScheduler({
+      scheduler = createSlotScheduler({
         store,
         stateRoot,
         host,
@@ -336,10 +344,12 @@ const main = async (): Promise<void> => {
         pi: resolvePiExecutable(process.env),
         foundryExtension: foundryExtensionPath(),
         slots: plannedSlots,
+        inScope: (factoryId) => factoryStates.isRunning(factoryId),
       });
+      const recorder = scheduler;
 
       host.onLaunchExited((launch) => {
-        void scheduler.recordExit(launch).then(
+        void recorder.recordExit(launch).then(
           (ended) => {
             if (ended) {log.info("launch ended", { factoryId: launch.factoryId, slotId: launch.slotId, launchId: launch.launchId });}
           },
@@ -422,7 +432,16 @@ const main = async (): Promise<void> => {
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,
       // Read from the recorded run and its configuration loads, not from memory.
-      factories: storeFactoriesReader(store, log.runId),
+      factories: storeFactoriesReader(store, log.runId, (factoryId) => factoryStates.get(factoryId)),
+      // No channel server runs in the daemon yet, so a stop has no drain to send and goes straight
+      // to the host's bounded terminate.
+      stopper: createFactoryStopper(
+        stopHost === undefined
+          ? { store, states: factoryStates }
+          : scheduler === undefined
+            ? { store, states: factoryStates, host: stopHost }
+            : { store, states: factoryStates, host: stopHost, scheduler },
+      ),
       slots: storeSlotsReader(store, stateRoot, decision.started, plannedSlots),
     });
   } catch (error) {
