@@ -23,6 +23,7 @@ import { assignedSlot, assignmentContextSlot, assignmentTicket, watchAssignments
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
+import { interruptRunningOperations } from "./operations.js";
 import { createTicketWorktrees } from "./worktrees.js";
 import { createWorktreeService } from "./worktree-cleanup.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
@@ -209,6 +210,16 @@ const main = async (): Promise<void> => {
   try {
     const { openStore } = await importStoreQuietly();
     store = await Effect.runPromise(Scope.provide(storeScope)(openStore({ filename: databaseFile })));
+
+    // PRD §10.2 step 1, before the Worker Host is asked about slots: nothing runs in this daemon
+    // yet, so whatever is recorded as running was interrupted. Each affected factory's queue stays
+    // closed until its recovery reconciles them; other factories keep admitting work.
+    for (const operation of await Effect.runPromise(interruptRunningOperations(store))) {
+      const refs: LogRefs = { factoryId: operation.factoryId, operationId: String(operation.id) };
+      const withTicket: LogRefs = operation.ticket === null ? refs : { ...refs, ticketId: String(operation.ticket) };
+      log.warn("operation interrupted", { ...withTicket, detail: { kind: operation.kind } });
+    }
+
     stopExpiry = await startRequestExpiry(store, (cause) => log.error("request expiry failed", { detail: { error: messageOf(cause) } }));
   } catch (error) {
     log.error("database open failed", { detail: { file: databaseFile, error: messageOf(error) } });
@@ -824,7 +835,7 @@ const main = async (): Promise<void> => {
   }
 
   // Resume only accepted, not-yet-started work (PRD §9.4). An empty queue does not fetch, and a
-  // running operation still blocks admission until interrupted-operation recovery handles it.
+  // factory with an operation interrupted at startup admits nothing until its recovery runs.
   for (const factory of decision.started) {void sync.resumeQueued(factory);}
 
   log.info("daemon started", {
