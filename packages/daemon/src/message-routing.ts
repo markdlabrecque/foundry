@@ -103,6 +103,12 @@ export const bindStationMessages = (options: MessageRoutingOptions): Effect.Effe
 
       if (updated.length === 0) {continue;}
 
+      // The notice and request acquire the same selected slot in this transaction.
+      yield* change.query(
+        `UPDATE agent_request SET recipient_slot = ? WHERE factory_id = ? AND notice_id = ? AND recipient_slot IS NULL`,
+        [slotId, message.factory_id, message.id],
+      );
+
       yield* change.recordHistory({ factoryId: message.factory_id, kind: "message.bound", subject: message.id,
         detail: { sequence: message.sequence, slotId },
         records: [slotRecord(slotId), ...(message.ticket_number === null ? [] : [ticketRecord(message.ticket_number)])],
