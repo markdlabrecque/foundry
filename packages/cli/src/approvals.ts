@@ -1,9 +1,13 @@
-/** `foundry approval list | show <id>`: decisions and the exact ticket actions that resolve them. */
+/** Operator decision reads and worker-request answers through the daemon API. */
 import { APPROVALS_PATH, approvalPath, isApprovalListResult, isApprovalShowResult } from "@foundry/protocol/approvals";
 import type { ApprovalShowResult } from "@foundry/protocol/approvals";
 import { fetchAndRender } from "./read-output.js";
 import type { ReadOptions } from "./read-output.js";
-import { EXIT_USAGE } from "./status.js";
+import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, EXIT_USAGE } from "./status.js";
+import { approvalAnswerPath, isApprovalAnswerResult } from "@foundry/protocol/approvals";
+import { messageOf } from "@foundry/protocol/errors";
+import { selectStateRoot } from "@foundry/protocol/state-root";
+import { DaemonUnreachableError, postToDaemon } from "./management-client.js";
 import type { StatusOutcome } from "./status.js";
 
 const renderShow = ({ approval: a, commands }: ApprovalShowResult): string => [
@@ -15,6 +19,29 @@ const renderShow = ({ approval: a, commands }: ApprovalShowResult): string => [
   ...(commands.length === 0 ? [] : ["commands", ...commands.map((command) => `  ${command}`)]),
   "",
 ].join("\n");
+
+export const runApprovalAnswer = async (options: ReadOptions & { readonly id: string; readonly body: string }): Promise<StatusOutcome> => {
+  if (!/^[1-9][0-9]{0,15}$/.test(options.id) || !Number.isSafeInteger(Number(options.id)) || options.body === "" || options.home === "") {
+    return { exitCode: EXIT_USAGE, stdout: "", stderr: "foundry: answer needs a positive safe integer ID, non-empty text and a valid home\n" };
+  }
+
+  try {
+    const reply = await postToDaemon(selectStateRoot(options), approvalAnswerPath(Number(options.id)), { body: options.body });
+
+    if (options.json) {return { exitCode: reply.envelope.ok ? EXIT_OK : EXIT_REFUSED, stdout: `${reply.body.trimEnd()}\n`, stderr: "" };}
+
+    if (!reply.envelope.ok) {return { exitCode: EXIT_REFUSED, stdout: "", stderr: `foundry: ${reply.envelope.error.message}\n` };}
+
+    if (!isApprovalAnswerResult(reply.envelope.result)) {return { exitCode: EXIT_REFUSED, stdout: "", stderr: "foundry: unexpected approval answer response\n" };}
+
+    const result = reply.envelope.result;
+
+    return { exitCode: EXIT_OK, stdout: `approval ${result.approvalId} answered by message ${result.messageId} to ${result.slotId}\n`, stderr: "" };
+  } catch (error) {
+    return { exitCode: error instanceof DaemonUnreachableError ? EXIT_UNREACHABLE : EXIT_REFUSED,
+      stdout: "", stderr: `foundry: ${messageOf(error)}\n` };
+  }
+};
 
 export const runApprovalList = (options: ReadOptions): Promise<StatusOutcome> =>
   fetchAndRender(options, APPROVALS_PATH, isApprovalListResult, ({ approvals }) =>

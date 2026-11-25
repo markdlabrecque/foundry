@@ -29,6 +29,8 @@ export * from "./task-transition.js";
 
 export * from "./approvals.js";
 
+export * from "./approval-answer.js";
+
 export * from "./human-request.js";
 
 export * from "./message-routing.js";
