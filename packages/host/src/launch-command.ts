@@ -40,8 +40,18 @@ export const PI_BIN_ENV = "FOUNDRY_PI_BIN";
 /**
  * Flags that stop Pi loading anything the operator or a repository supplies ambiently.
  * Explicit `--extension`/`--skill` paths still load with these set.
+ *
+ * The empty `--system-prompt` and `--append-system-prompt` stop Pi 1.6.0 discovering
+ * `<agentDir>/SYSTEM.md` and `APPEND_SYSTEM.md`, which load regardless of every other
+ * flag here (`--no-approve` only blocks the project copies). Pi resolves `""` to no
+ * custom prompt, so the worker still gets Pi's default coding prompt, not an empty one
+ * (confirmed in Pi 1.6.0's resource loader and system-prompt builder).
  */
 export const SUPPRESSION_FLAGS: readonly string[] = [
+  "--system-prompt",
+  "", // skip global/project SYSTEM.md discovery; falls back to Pi's default prompt
+  "--append-system-prompt",
+  "", // skip global/project APPEND_SYSTEM.md discovery
   "--no-extensions", // global/project/package extensions and Pi's built-in extensions (codemode, tool search, MCP)
   "--no-mcp", // MCP servers and their tools, even if discovery changes
   "--no-skills",
@@ -93,11 +103,17 @@ export interface LaunchCommand {
 /**
  * Resolves the pinned Pi: `FOUNDRY_PI_BIN` when set, otherwise the pinned package's
  * RPC entry run by this Node.
+ *
+ * Rule shared with the testkit's `resolvePiBin`/`startFauxPi`: an override ending in
+ * `.js`, `.mjs` or `.cjs` runs through this Node (`process.execPath`); any other
+ * override is executed directly.
  */
 export function resolvePiExecutable(env: Readonly<Record<string, string | undefined>>): PiExecutable {
   const override = env[PI_BIN_ENV];
   if (override !== undefined && override !== "") {
-    return { command: override, args: [] };
+    return /\.[cm]?js$/.test(override)
+      ? { command: process.execPath, args: [override] }
+      : { command: override, args: [] };
   }
   const entry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent/rpc-entry"));
   return { command: process.execPath, args: [entry] };
@@ -125,6 +141,8 @@ export function buildLaunchCommand(
 
   const args = [
     ...pi.args,
+    // Passed even though the default `rpc-entry` already prepends `--mode rpc` (so it
+    // appears twice there, harmlessly): a `FOUNDRY_PI_BIN` override is a plain `pi`.
     "--mode",
     "rpc",
     ...SUPPRESSION_FLAGS,

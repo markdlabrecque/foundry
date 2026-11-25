@@ -64,6 +64,8 @@ test("suppresses every inherited global and repository resource", () => {
     noThemes: true,
     noContextFiles: true,
     projectTrustOverride: false,
+    systemPrompt: "",
+    appendSystemPrompt: [""],
   });
   expect(parsed.promptTemplates).toBeUndefined();
   expect(parsed.themes).toBeUndefined();
@@ -121,6 +123,9 @@ test.each([
 
 test("FOUNDRY_PI_BIN overrides the pinned Pi, otherwise the pinned RPC entry runs under this Node", () => {
   expect(resolvePiExecutable({ FOUNDRY_PI_BIN: "/tmp/stub-pi" })).toEqual({ command: "/tmp/stub-pi", args: [] });
+  for (const script of ["/tmp/stub-pi.js", "/tmp/stub-pi.mjs", "/tmp/stub-pi.cjs"]) {
+    expect(resolvePiExecutable({ FOUNDRY_PI_BIN: script })).toEqual({ command: process.execPath, args: [script] });
+  }
 
   const pinned = resolvePiExecutable({});
   expect(pinned.command).toBe(process.execPath);
