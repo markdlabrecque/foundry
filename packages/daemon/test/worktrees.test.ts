@@ -6,7 +6,7 @@ import { createServer } from "node:net";
 import type { Socket } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { Effect } from "effect";
+import { Effect, Exit } from "effect";
 import { afterEach, expect, test } from "vitest";
 import { acknowledgeMessage, assignmentContextSlot, bindStationMessages, createAssignmentScheduler, createMessageDelivery, createTicketService, ensureFactoryClone, listOperations, loadFactoryFiles, LoadFactoriesResult, openSlotGate, openStore, planSlots, ticketFactoryFrom } from "@foundry/daemon";
 import type { DaemonFrame } from "@foundry/protocol";
@@ -30,6 +30,7 @@ afterEach(() => { for (const root of roots.splice(0)) {rmSync(root, { recursive:
 
 const fixture = async <A, E>(use: (f: {
   store: Store; root: string; clone: string; worktrees: WorktreeService;
+  tickets: ReturnType<typeof createTicketService>;
   slots: ReturnType<typeof planSlots>;
   scheduler: ReturnType<typeof createAssignmentScheduler>;
   newScheduler: (overrides?: Partial<AssignmentSchedulerOptions>) => ReturnType<typeof createAssignmentScheduler>;
@@ -85,7 +86,7 @@ ${isolation === "none" ? "      - { id: implement, station: floor.final, writing
     const worktrees = createWorktreeService({ store, stateRoot: root, hookLogIo, target: () => ({ factory, clonePath: clone.path }),
       factories: () => ["shop"], env: isolatedGitEnv() });
 
-    return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler, worktrees,
+    return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler, worktrees, tickets,
       watch: (onError) => watchAssignments(schedulerOptions, onError) });
   })));
 };
@@ -863,6 +864,129 @@ test.each([
     expect(yield* store.read(`SELECT to_state, to_status, reason FROM ticket_transition ORDER BY sequence DESC LIMIT 1`))
       .toEqual([{ to_state: "stage", to_status: "paused", reason: "after_create failed" }]);
   }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+});
+
+test("resume retries first setup in the original worktree, records fresh failures and only assigns after success", async () => {
+  const command = [process.execPath, '-e', `const fs = require('node:fs'); console.log(process.cwd()); if (!fs.existsSync('setup-ready')) process.exit(17); fs.writeFileSync('setup-complete', 'yes')`];
+  await fixture(({ store, root, scheduler, newScheduler, tickets }) => Effect.gen(function* () {
+    expect(yield* scheduler.schedule()).toEqual([]);
+    const identity = yield* store.read(`SELECT worktree_path, branch, start_commit FROM ticket`);
+    const path = join(root, 'worktrees/shop/1-build-widget');
+    writeFileSync(join(path, 'preserved-work'), 'operator repair');
+    const observer = new DatabaseSync(join(root, 'foundry.db'), { readOnly: true });
+    const scans: Array<Promise<ReadonlyArray<unknown>>> = [];
+    const duplicateResumes: Array<Promise<Exit.Exit<unknown, unknown>>> = [];
+    const seen = new Set<number>();
+
+    const unsubscribe = store.onCommit(() => {
+      const hook = observer.prepare(`SELECT id FROM operation WHERE kind = 'hook' AND status = 'running'`).get();
+
+      if (hook !== undefined && !seen.has(Number(hook['id']))) {
+        seen.add(Number(hook['id']));
+        expect(observer.prepare(`SELECT count(*) AS n FROM assignment`).get()?.['n']).toBe(0);
+        expect(observer.prepare(`SELECT status FROM ticket`).get()?.['status']).toBe('paused');
+        scans.push(Effect.runPromise(newScheduler().schedule()));
+        duplicateResumes.push(Effect.runPromise(Effect.exit(tickets.resume('shop', 1))));
+      }
+    });
+
+    try {
+      expect((yield* tickets.resume('shop', 1)).ticket.status).toBe('paused');
+      expect(yield* Effect.promise(() => Promise.all(scans))).toEqual([[]]);
+      expect((yield* Effect.promise(() => Promise.all(duplicateResumes))).every(Exit.isFailure)).toBe(true);
+      expect(yield* store.read(`SELECT * FROM assignment`)).toEqual([]);
+      expect(yield* store.read(`SELECT * FROM message`)).toEqual([]);
+      expect(yield* store.read(`SELECT state FROM operator_hold ORDER BY id`)).toEqual([{ state: 'resolved' }, { state: 'open' }]);
+      const failed = (yield* listOperations(store, 'shop')).filter((op) => op.kind === 'hook');
+      expect(failed).toHaveLength(2);
+      expect(failed.map((op) => op.status)).toEqual(['failed', 'failed']);
+      const [hold] = yield* store.read<{ evidence: string }>(`SELECT evidence FROM operator_hold WHERE state = 'open'`);
+      expect(JSON.parse(hold?.evidence ?? '{}')).toMatchObject({ operationId: failed[1]?.id, exitStatus: 17 });
+      writeFileSync(join(path, 'setup-ready'), 'repaired');
+      expect((yield* tickets.resume('shop', 1)).ticket.status).toBe('queued');
+      expect(yield* Effect.promise(() => Promise.all(scans))).toEqual([[], []]);
+      expect((yield* Effect.promise(() => Promise.all(duplicateResumes))).every(Exit.isFailure)).toBe(true);
+    } finally {unsubscribe(); observer.close();}
+
+    expect(seen.size).toBe(2);
+    expect(yield* store.read(`SELECT worktree_path, branch, start_commit FROM ticket`)).toEqual(identity);
+    expect(readFileSync(join(path, 'preserved-work'), 'utf8')).toBe('operator repair');
+    expect(readFileSync(join(path, 'setup-complete'), 'utf8')).toBe('yes');
+    expect(yield* store.read(`SELECT state FROM operator_hold ORDER BY id`)).toEqual([{ state: 'resolved' }, { state: 'resolved' }]);
+    const operations = yield* listOperations(store, 'shop');
+    expect(operations.filter((op) => op.kind === 'worktree_create')).toHaveLength(1);
+    const hooks = operations.filter((op) => op.kind === 'hook');
+    expect(hooks.map((op) => op.status)).toEqual(['failed', 'failed', 'complete']);
+    expect(new Set(hooks.map((op) => op.intent['logPath'])).size).toBe(3);
+
+    for (const hook of hooks) {
+      expect(hook.intent).toMatchObject({ path, argv: command });
+      expect(readFileSync(String(hook.intent['logPath']), 'utf8').trim()).toBe(path);
+    }
+
+    // A concurrent scan may already have assigned the now-successful setup.
+    yield* newScheduler().schedule();
+    expect(yield* store.read(`SELECT ticket_number, status FROM assignment`)).toEqual([{ ticket_number: 1, status: 'active' }]);
+    expect(yield* store.read(`SELECT to_status FROM ticket_transition WHERE from_status = 'paused' AND to_status = 'queued'`))
+      .toEqual([{ to_status: 'queued' }]);
+    expect((yield* listOperations(store, 'shop')).filter((op) => op.kind === 'hook')).toEqual(hooks);
+  }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+});
+
+test.each([0, 17])('cancellation during setup resume stays final when the retry exits %i', async (exitStatus) => {
+  const root = mkdtempSync(join(tmpdir(), 'foundry-resume-cancel-'));
+  roots.push(root);
+  const socketPath = join(root, 'hook.sock');
+  const server = createServer();
+  await new Promise<void>((resolve) => { server.listen(socketPath, resolve); });
+  const connected = new Promise<Socket>((resolve) => { server.once('connection', resolve); });
+  const command = [process.execPath, '-e', `if (!require('node:fs').existsSync('setup-ready')) process.exit(17); const c = require('node:net').connect(${JSON.stringify(socketPath)}); c.on('close', () => process.exit(${exitStatus})); c.resume()`];
+
+  try {
+    await fixture(({ store, root, scheduler, newScheduler, tickets }) => Effect.gen(function* () {
+      expect(yield* scheduler.schedule()).toEqual([]);
+      writeFileSync(join(root, 'worktrees/shop/1-build-widget/setup-ready'), 'retry');
+      const resuming = Effect.runPromise(tickets.resume('shop', 1));
+      const socket = yield* Effect.promise(() => connected);
+
+      try {
+        const cancellation = yield* tickets.inspectCancellation('shop', 1);
+        yield* tickets.cancel('shop', 1, cancellation.confirmation);
+      } finally {socket.end();}
+
+      expect((yield* Effect.promise(() => resuming)).ticket.state).toBe('cancelled');
+      expect(yield* newScheduler().schedule()).toEqual([]);
+      expect(yield* store.read(`SELECT * FROM assignment`)).toEqual([]);
+      expect(yield* store.read(`SELECT id FROM operator_hold WHERE state = 'open'`)).toEqual([]);
+      expect((yield* listOperations(store, 'shop')).filter((op) => op.kind === 'hook').map((op) => op.status))
+        .toEqual(['failed', exitStatus === 0 ? 'complete' : 'failed']);
+    }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+  } finally {await new Promise<void>((resolve) => { server.close(() => resolve()); });}
+});
+
+test("first setup can resume after an earlier non-isolated stage has ended", async () => {
+  const command = [process.execPath, '-e', `if (!require('node:fs').existsSync('setup-ready')) process.exit(17)`];
+  await fixture(({ store, root, scheduler, newScheduler, tickets }) => Effect.gen(function* () {
+    expect(yield* scheduler.schedule()).toMatchObject([{ stage: 'develop', slotId: 'worker/1' }]);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1`);
+      yield* change.query(`UPDATE ticket SET stage = 'implement', status = 'queued'`);
+      yield* change.query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition)
+        VALUES ('shop', 'final/1', 'floor.final', 1, 'normal')`);
+      yield* change.recordHistory({ factoryId: 'shop', kind: 'fixture', subject: 'next stage' });
+    }));
+    expect(yield* newScheduler().schedule()).toEqual([]);
+    expect(yield* store.read(`SELECT stage, status FROM ticket`)).toEqual([{ stage: 'implement', status: 'paused' }]);
+    expect(yield* store.read(`SELECT stage, status FROM assignment`)).toEqual([{ stage: 'develop', status: 'ended' }]);
+    const identity = yield* store.read(`SELECT worktree_path, branch, start_commit FROM ticket`);
+    writeFileSync(join(root, 'worktrees/shop/1-build-widget/setup-ready'), 'repaired');
+    expect((yield* tickets.resume('shop', 1)).ticket.status).toBe('queued');
+    expect(yield* store.read(`SELECT worktree_path, branch, start_commit FROM ticket`)).toEqual(identity);
+    expect(yield* store.read(`SELECT state FROM operator_hold`)).toEqual([{ state: 'resolved' }]);
+    expect(yield* newScheduler().schedule()).toMatchObject([{ stage: 'implement', slotId: 'final/1' }]);
+    expect((yield* listOperations(store, 'shop')).filter((op) => op.kind === 'hook').map((op) => op.status))
+      .toEqual(['failed', 'complete']);
+  }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`, 'none');
 });
 
 test("a waiting after_create does not block later tickets, and watcher shutdown terminates it", async () => {

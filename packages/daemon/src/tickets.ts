@@ -31,6 +31,7 @@ import type { SlotInterrupter } from "./slots-error.js";
 import type { Query, Store, StoreError } from "./store.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { reserveAssignmentSlot } from "./assignment-reservation.js";
+import { resumeFirstAfterCreate } from "./after-create-resume.js";
 import { restoreRejectionAllowance } from "./rejection-allowance.js";
 import { restoreMessageAllowance } from "./message-allowance.js";
 
@@ -568,6 +569,9 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
   const resume: TicketService["resume"] = (name, number, message, allowAbandon = false) => Effect.gen(function* () {
     const loaded = yield* loadedFactory(name);
     const factory = loaded.name;
+
+    if (yield* resumeFirstAfterCreate(store, factory, number, options.configLoad?.(factory))) {return yield* show(factory, number);}
+
     yield* store.change((change) => Effect.gen(function* () {
       if (yield* restoreRejectionAllowance(change, options, factory, number, "resume")) {return;}
 
