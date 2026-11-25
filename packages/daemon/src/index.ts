@@ -2,3 +2,9 @@
 export const packageName = "@foundry/daemon" as const;
 
 export * from "./channel/server.js";
+export {
+  discoverRepositoryContext,
+  type RepositoryContext,
+  type RepositoryContextFile,
+  type SkillHeader,
+} from "./repository-context.js";
