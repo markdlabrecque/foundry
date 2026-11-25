@@ -8,6 +8,14 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./management-api": {
+      "types": "./dist/management-api.d.ts",
+      "default": "./dist/management-api.js"
+    },
+    "./state-root": {
+      "types": "./dist/state-root.d.ts",
+      "default": "./dist/state-root.js"
     }
   },
   "files": ["dist"],
