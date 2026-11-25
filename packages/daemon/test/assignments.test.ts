@@ -6,9 +6,9 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Schema } from "effect";
 import {
   acceptMessage, agentDelegateHandler, agentMessageHandler, agentReplyHandler, agentRequestHandler, assignedSlot, assignmentContextSlot, assignmentTicket, bindStationMessages, createAssignmentScheduler, createTicketService,
-  messageBudget, openStore, planSlots, StoreError, storeApprovalsReader, ticketFactoryFrom, watchAssignments,
+  foundryMigrations, messageBudget, openStore, planSlots, StoreError, storeApprovalsReader, taskTransitionHandler, ticketFactoryFrom, watchAssignments,
 } from "@foundry/daemon";
-import type { Change, MessageAcceptance, Store } from "@foundry/daemon";
+import type { Change, MessageAcceptance, Migration, Store } from "@foundry/daemon";
 import { FactoryConfig } from "../src/config/schema.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
@@ -27,12 +27,12 @@ const roots: Array<string> = [];
 
 afterEach(() => { for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });} });
 
-const fixture = async <A, E>(use: (store: Store, root: string) => Effect.Effect<A, E>) => {
+const fixture = async <A, E>(use: (store: Store, root: string) => Effect.Effect<A, E>, migrations: ReadonlyArray<Migration> = foundryMigrations) => {
   const root = mkdtempSync(join(tmpdir(), "foundry-assignments-"));
   roots.push(root);
 
   return Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const store = yield* openStore({ filename: join(root, "foundry.db") });
+    const store = yield* openStore({ filename: join(root, "foundry.db"), migrations });
     yield* store.change((change) => Effect.gen(function* () {
       for (const slot of slots) {
         yield* change.query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition) VALUES ('shop', ?, 'worker', ?, 'normal')`, [slot.slotId, slot.ordinal]);
@@ -406,6 +406,31 @@ test("message threshold commits with suspension and readable approval; exempt se
     expect(yield* store.read(`SELECT messages_spent FROM ticket WHERE number = 3`)).toEqual([{ messages_spent: 1 }]);
     expect(yield* store.read(`SELECT ticket_number FROM message WHERE body = ?`, [call.args.body])).toEqual([{ ticket_number: 3 }]);
   }));
+});
+
+test("message limit migration preserves existing blocked and worker-request decisions", async () => {
+  const saved = await fixture((store, root) => Effect.gen(function* () {
+    const [assignment] = yield* createAssignmentScheduler(options(store)).schedule();
+
+    if (assignment === undefined) {throw new Error("assignment missing");}
+
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`INSERT INTO approval (factory_id, ticket_number, assignment_id, kind, state, raised_at, request_body, request_stage)
+        VALUES ('shop', ?, ?, 'worker_request', 'open', 1, 'operator question', 'plan')`, [assignment.ticket, assignment.id]);
+      yield* taskTransitionHandler(options(store))(change, { factoryId: "shop", slotId: assignment.slotId, launchId: "fixture", callId: "blocked", tool: "task_transition",
+        args: { assignmentId: assignment.id, outcome: "blocked", reason: "needs decision", evidence: [] } });
+    }));
+
+    return { root, approvals: yield* store.read(`SELECT * FROM approval ORDER BY id`) };
+  }), foundryMigrations.filter((migration) => migration.id <= 22));
+
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    expect(yield* store.read(`SELECT * FROM approval ORDER BY id`)).toEqual(saved.approvals);
+    expect(yield* store.read(`PRAGMA foreign_key_check`)).toEqual([]);
+    expect((yield* Effect.promise(() => storeApprovalsReader(store).list())).approvals.map((approval) => approval.kind))
+      .toEqual(["worker_request", "blocked"]);
+  })));
 });
 
 test("a selected delegation reply reaches the ceiling while the root is suspended", async () => {
