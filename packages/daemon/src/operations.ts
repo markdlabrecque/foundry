@@ -11,8 +11,11 @@
  *   so an approved integration or a requested sync survives a restart. At most one of them runs
  *   per factory at a time: admission checks and claims in one change, and a partial unique index
  *   backs that up.
- * - On reopen the stored records are read as they are; nothing is rebuilt by replay. Marking
- *   running operations interrupted and reconciling them is recovery's job (PRD §10.2).
+ * - On reopen the stored records are read as they are; nothing is rebuilt by replay. At startup,
+ *   before host reconciliation, `interruptRunningOperations` marks every running operation
+ *   interrupted (PRD §10.2 step 1). An interrupted operation with no result is awaiting recovery
+ *   and keeps its factory's queue closed; per-kind recovery closes it by recording a result
+ *   (step 3). Other factories' queues are unaffected.
  */
 import { Clock, Data, Effect, Schema } from "effect";
 import { expectDefined } from "@foundry/protocol/errors";
@@ -178,10 +181,17 @@ export const beginOperation = (
 /** Rolls back an admission that found nothing to start; never leaves this module. */
 class NothingAdmitted extends Data.TaggedError("NothingAdmitted") {}
 
+/** Rolls back an interruption pass that found nothing running; never leaves this module. */
+class NothingInterrupted extends Data.TaggedError("NothingInterrupted") {}
+
+/** An interrupted operation with no recorded result: recovery has not reconciled it yet. */
+const AWAITING_RECOVERY_SQL = `status = 'interrupted' AND result IS NULL`;
+
 /**
  * Admits the factory's oldest queued integration or sync: commits it as running and returns it.
- * Returns `undefined`, writing nothing, while one of them is already running there or none is
- * queued. The check and the claim are one transaction.
+ * Returns `undefined`, writing nothing, while one of them is already running there, while any of
+ * the factory's operations is interrupted and awaiting recovery (PRD §10.2 step 3), or when none
+ * is queued. The check and the claim are one transaction.
  */
 export const startNextOperation = (store: Store, factoryId: string): Effect.Effect<Operation | undefined, StoreError> =>
   store
@@ -199,9 +209,11 @@ export const startNextOperation = (store: Store, factoryId: string): Effect.Effe
              WHERE factory_id = ? AND kind IN (${QUEUED_KINDS_SQL}) AND status = 'queued'
                AND NOT EXISTS (
                  SELECT 1 FROM operation WHERE factory_id = ? AND kind IN (${QUEUED_KINDS_SQL}) AND status = 'running')
+               AND NOT EXISTS (
+                 SELECT 1 FROM operation WHERE factory_id = ? AND ${AWAITING_RECOVERY_SQL})
              ORDER BY id LIMIT 1)
            RETURNING ${COLUMNS}`,
-          [now, factoryId, factoryId],
+          [now, factoryId, factoryId, factoryId],
         );
 
         const row = claimed[0];
@@ -311,6 +323,93 @@ export const extendOperationIntent = (
       return yield* mustExist(change.query, id);
     }),
   );
+
+/**
+ * Startup recovery, PRD §10.2 step 1: marks every operation recorded as running, in every factory,
+ * as interrupted, in one change with an `operation.interrupted` history row each. Runs once the
+ * database is open and before the Worker Host is asked about slots, while nothing can be running
+ * in this daemon. Queued operations are untouched. Each affected factory's queue stays closed
+ * until its interrupted operations are reconciled (`listOperationsAwaitingRecovery`); other
+ * factories keep admitting work. Returns the interrupted operations, oldest first; writes nothing
+ * when none was running.
+ */
+export const interruptRunningOperations = (store: Store): Effect.Effect<ReadonlyArray<Operation>, StoreError> =>
+  store
+    .change(({ query, recordHistory }) =>
+      Effect.gen(function* () {
+        const rows = yield* query<OperationRow>(
+          `UPDATE operation SET status = 'interrupted' WHERE status = 'running' RETURNING ${COLUMNS}`,
+        );
+
+        if (rows.length === 0) {return yield* new NothingInterrupted();}
+
+        const operations = rows.map(toOperation).toSorted((a, b) => a.id - b.id);
+
+        for (const operation of operations) {
+          yield* recordHistory({
+            factoryId: operation.factoryId,
+            kind: "operation.interrupted",
+            subject: String(operation.id),
+            detail: { operationId: operation.id, kind: operation.kind, intent: operation.intent },
+            records: recordsOf(operation.ticket),
+          });
+        }
+
+        return operations;
+      }),
+    )
+    .pipe(Effect.catchTag("NothingInterrupted", () => Effect.succeed([])));
+
+/**
+ * A factory's interrupted operations that recovery has not reconciled yet, oldest first. While
+ * any is listed, the factory's integration and sync queue admits nothing (PRD §10.2 step 3).
+ */
+export const listOperationsAwaitingRecovery = (
+  store: Store,
+  factoryId: string,
+): Effect.Effect<ReadonlyArray<Operation>, StoreError> =>
+  Effect.map(
+    store.read<OperationRow>(
+      `SELECT ${COLUMNS} FROM operation WHERE factory_id = ? AND ${AWAITING_RECOVERY_SQL} ORDER BY id`,
+      [factoryId],
+    ),
+    (rows) => rows.map(toOperation),
+  );
+
+/**
+ * Records recovery's verdict on an interrupted operation that awaits recovery, inside `change`, so
+ * it lands with everything the verdict causes. `interrupted` keeps the status (a sync that is never
+ * rerun) but, with its result recorded, no longer closes the queue. Dies if the operation is not
+ * awaiting recovery: a verdict for anything else is a bug. `indeterminate` and rerun-from-start are
+ * deliberately not accepted: PRD §10.2 keeps the queue closed until the operator declares an
+ * indeterminate integration, so those verdicts belong to the per-kind recovery drafts.
+ */
+export const recordRecoveryResultIn = (
+  change: Change,
+  id: number,
+  outcome: { readonly status: "complete" | "failed" | "interrupted"; readonly result: OperationDetail },
+): Effect.Effect<Operation, StoreError> =>
+  Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+
+    const rows = yield* change.query<OperationRow>(
+      `UPDATE operation SET status = ?, result = ?, finished_at = ? WHERE id = ? AND ${AWAITING_RECOVERY_SQL}
+       RETURNING ${COLUMNS}`,
+      [outcome.status, JSON.stringify(outcome.result), now, id],
+    );
+
+    const operation = toOperation(expectDefined(rows[0], `operation ${id} awaiting recovery`));
+
+    yield* change.recordHistory({
+      factoryId: operation.factoryId,
+      kind: "operation.recovered",
+      subject: String(id),
+      detail: { operationId: id, kind: operation.kind, status: outcome.status, result: outcome.result },
+      records: recordsOf(operation.ticket),
+    });
+
+    return operation;
+  });
 
 /** One operation by ID, in any status. */
 export const getOperation = (store: Store, id: number): Effect.Effect<Operation | undefined, StoreError> =>

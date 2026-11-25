@@ -12,9 +12,12 @@ import {
   beginOperation,
   enqueueOperation,
   getOperation,
+  interruptRunningOperations,
   listOperations,
+  listOperationsAwaitingRecovery,
   openStore,
   recordOperationResult,
+  recordRecoveryResultIn,
   runOperation,
   startNextOperation,
 } from "@foundry/daemon";
@@ -169,4 +172,59 @@ test("an action that fails leaves its operation running, so the queue stays clos
   expect(result.failed).toEqual(Exit.fail("git died"));
   expect(result.first).toMatchObject({ status: "running", result: null });
   expect(result.next).toBeUndefined();
+});
+
+test("startup interrupts running operations, keeps queued work, and closes only the affected factory's queue", async () => {
+  await withStore((store) =>
+    Effect.gen(function* () {
+      yield* enqueueOperation(store, integration("f1", 1));
+      yield* enqueueOperation(store, { factoryId: "f1", kind: "sync", intent: { recordedHead: "h0" } });
+      yield* startNextOperation(store, "f1");
+      yield* beginOperation(store, { factoryId: "f2", kind: "hook", ticket: 4, intent: { hook: "after_create" } });
+      yield* enqueueOperation(store, integration("f2", 5));
+      yield* enqueueOperation(store, integration("f3", 6));
+      // The daemon dies here: f1's integration and f2's hook have no result.
+    }),
+  );
+
+  const restarted = await withStore((store) =>
+    Effect.gen(function* () {
+      const interrupted = yield* interruptRunningOperations(store);
+      const again = yield* interruptRunningOperations(store);
+      const awaiting = yield* listOperationsAwaitingRecovery(store, "f1");
+      const admitted = { f1: yield* startNextOperation(store, "f1"), f2: yield* startNextOperation(store, "f2"), f3: yield* startNextOperation(store, "f3") };
+
+      // Recovery's verdict on f1's integration reopens f1's queue, and only then.
+      yield* store.change((change) => recordRecoveryResultIn(change, 1, { status: "complete", result: { landed: true } }));
+      const afterRecovery = yield* startNextOperation(store, "f1");
+
+      return {
+        interrupted: interrupted.map((op) => [op.factoryId, op.id, op.status]),
+        again,
+        awaiting: awaiting.map((op) => op.id),
+        admitted: { f1: admitted.f1?.id, f2: admitted.f2?.id, f3: admitted.f3?.id },
+        afterRecovery: afterRecovery?.id,
+        history: yield* store.read(`SELECT factory_id, kind, subject FROM history WHERE kind IN ('operation.interrupted', 'operation.recovered') ORDER BY sequence`),
+      };
+    }),
+  );
+
+  expect(restarted.interrupted).toEqual([["f1", 1, "interrupted"], ["f2", 3, "interrupted"]]);
+  expect(restarted.again).toEqual([]);
+  expect(restarted.awaiting).toEqual([1]);
+  // f1 and f2 stay closed with their queued work intact; f3 had nothing interrupted and admits.
+  expect(restarted.admitted).toEqual({ f1: undefined, f2: undefined, f3: 5 });
+  expect(restarted.afterRecovery).toBe(2);
+  expect(restarted.history).toEqual([
+    { factory_id: "f1", kind: "operation.interrupted", subject: "1" },
+    { factory_id: "f2", kind: "operation.interrupted", subject: "3" },
+    { factory_id: "f1", kind: "operation.recovered", subject: "1" },
+  ]);
+  expect(committedOperations()).toMatchObject([
+    { id: 1, status: "complete" },
+    { id: 2, kind: "sync", status: "running" },
+    { id: 3, kind: "hook", status: "interrupted" },
+    { id: 4, factory_id: "f2", status: "queued" },
+    { id: 5, factory_id: "f3", status: "running" },
+  ]);
 });
