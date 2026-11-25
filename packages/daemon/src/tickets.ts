@@ -30,6 +30,7 @@ import { SlotsError } from "./slots-error.js";
 import type { SlotInterrupter } from "./slots-error.js";
 import type { Query, Store, StoreError } from "./store.js";
 import { closeOpenHoldIn } from "./holds.js";
+import { reserveAssignmentSlot } from "./assignment-reservation.js";
 
 /** What submission needs to know about a loaded factory's production line. */
 export interface TicketLine {
@@ -394,7 +395,10 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
     }).pipe(Effect.uninterruptible);
   });
 
-  const cancelTicket = (factory: string, number: number, confirmation: string) => Effect.gen(function* () {
+  const cancelTicket = (factory: string, number: number, confirmation: string) => Effect.suspend(() => {
+    let release: (() => void) | undefined;
+
+    return Effect.gen(function* () {
     const before = yield* cancellationSnapshot(store.read, factory, number);
 
     if (before.disclosure.confirmation !== confirmation) {return yield* refuse("invalid_state", "Ticket changed; inspect and confirm cancellation again");}
@@ -402,6 +406,20 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
     const active = before.assignments.find((a) => a.status === "active");
 
     if (active !== undefined) {
+      // Serialize acquisition with the scheduler's writer transaction. This read-only change
+      // deliberately rolls back: the only reservation is process-local, not a durable action.
+      const reserved = Symbol("slot reserved");
+      yield* store.change((change) => Effect.gen(function* () {
+        const current = yield* cancellationSnapshot(change.query, factory, number);
+
+        if (current.disclosure.confirmation !== confirmation) {return yield* refuse("invalid_state", "Assignment changed before interruption; confirm again");}
+
+        release = reserveAssignmentSlot(store, factory, active.slot_id);
+
+        if (release === undefined) {return yield* refuse("invalid_state", "The assignment's slot is already reserved");}
+
+        return yield* Effect.fail(reserved);
+      })).pipe(Effect.catchIf((error) => error === reserved, () => Effect.void));
       const interrupter = options.interrupter;
 
       if (interrupter === undefined) {return yield* refuse("unavailable", "Worker interrupts are unavailable");}
@@ -436,13 +454,16 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
         from_state, from_stage, from_status, to_state, config_load)
         VALUES (?, ?, ?, 'operator', ?, ?, ?, 'cancelled', ?)`,
       [factory, number, now, current.row.state, current.row.stage, current.row.status, options.configLoad?.(factory) ?? null]);
-      yield* change.recordHistory({ factoryId: factory, kind: "ticket.cancelled", subject: String(number),
-        detail: { assignments: current.assignments.map((a) => a.id), requests: current.disclosure.requests,
+      yield* change.recordHistory({ factoryId: factory, kind: "ticket.transitioned", subject: String(number),
+        detail: { from: { state: current.row.state, stage: current.row.stage, status: current.row.status },
+          to: { state: "cancelled", stage: null, status: null }, outcome: null, actor: "operator", reason: null,
+          assignments: current.assignments.map((a) => a.id), requests: current.disclosure.requests,
           delegations: current.disclosure.delegations, worktreeKept: current.row.worktree_path },
         records: [ticketRecord(number), ...current.assignments.map((a) => slotRecord(a.slot_id))] });
     }));
 
     return yield* show(factory, number);
+    }).pipe(Effect.ensuring(Effect.sync(() => { release?.(); })));
   });
 
   const submit: TicketService["submit"] = (request) =>

@@ -40,7 +40,10 @@ export class ToolRefusal extends Data.TaggedError("ToolRefusal")<{
  * It runs holding the store's only write lock, so it must not wait on anything outside the store
  * (the network, a worker, a timer): every other daemon write waits behind it.
  */
-export type ToolHandler = (change: Change, call: ToolCallContext) => Effect.Effect<Schema.Json, ToolRefusal | StoreError>;
+export type ToolHandler = ((change: Change, call: ToolCallContext) => Effect.Effect<Schema.Json, ToolRefusal | StoreError>) & {
+  /** Read external state without holding the write lock; the returned handler rechecks authority. */
+  readonly prepare?: (query: Query, call: ToolCallContext) => Effect.Effect<ToolHandler, ToolRefusal | StoreError>;
+};
 
 export interface SubmissionsOptions {
   readonly store: Store;
@@ -85,7 +88,15 @@ export const createSubmissions = (options: SubmissionsOptions): Submissions => {
     };
 
     // Checked inside the transaction, so a retry racing the original sees its committed row.
-    const program = options.store
+    const selected = options.handlers.get(call.tool);
+
+    const preparation: Effect.Effect<ToolHandler | undefined, ToolRefusal | StoreError> =
+      selected?.prepare?.(options.store.read, context) ?? Effect.succeed(selected);
+
+    const program = preparation.pipe(Effect.match({
+      onSuccess: (handler) => ({ handler, error: undefined }),
+      onFailure: (error) => ({ handler: undefined, error }),
+    }), Effect.flatMap((prepared) => options.store
       .change((change) =>
         Effect.gen(function* () {
           const previous = yield* storedResult(change.query, slot.launchId, call.callId);
@@ -96,7 +107,9 @@ export const createSubmissions = (options: SubmissionsOptions): Submissions => {
             return yield* new ToolRefusal({ code: ToolRefusalCode.slotFrozen, detail: `slot ${slot.slotId} is frozen` });
           }
 
-          const handler = options.handlers.get(call.tool);
+          if (prepared.error !== undefined) {return yield* Effect.fail(prepared.error);}
+
+          const handler = prepared.handler;
 
           if (handler === undefined) {
             return yield* new ToolRefusal({ code: ToolRefusalCode.unknownTool, detail: `no tool named ${call.tool}` });
@@ -119,7 +132,7 @@ export const createSubmissions = (options: SubmissionsOptions): Submissions => {
 
           return value;
         }),
-      )
+      )))
       .pipe(
         Effect.map(committed),
         Effect.catchTag("AlreadyCommitted", (e) => Effect.succeed(committed(e.value))),
