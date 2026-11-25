@@ -29,9 +29,9 @@ import { FACTORIES_PATH, FactoryStopRequest, matchFactoryStopPath } from "@found
 import type { FactoriesReader } from "./factories.js";
 import { FactoryStopError } from "./factory-stop.js";
 import type { FactoryStopErrorCode, FactoryStopper } from "./factory-stop.js";
-import { matchSlotInterruptPath, matchSlotPath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
+import { matchSlotInterruptPath, matchSlotPath, matchSlotUnfreezePath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
-import type { SlotInterrupter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
+import type { SlotControl, SlotInterrupter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
 
 /** What the API reports, injected so the server is independent of where status comes from. */
 export interface ManagementApiInputs {
@@ -52,6 +52,8 @@ export interface ManagementApiInputs {
   readonly slots?: SlotsReader;
   /** Interrupts a slot's worker over its channel (PRD §5.3). Without it the route answers 503. */
   readonly slotInterrupter?: SlotInterrupter;
+  /** The slot verbs (`foundry slot unfreeze`). Without it they answer 503. */
+  readonly slotControl?: SlotControl;
   /** Stops one named factory (PRD §10.3). Without it the stop route answers 503. */
   readonly stopper?: FactoryStopper;
 }
@@ -266,6 +268,10 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
   if (path === EVENTS_PATH) {return handleEvents(inputs, url, request, response);}
 
+  const unfreezing = matchSlotUnfreezePath(path);
+
+  if (unfreezing !== undefined) {return handleUnfreeze(inputs, unfreezing, url.searchParams, request, response);}
+
   const interruptSlot = matchSlotInterruptPath(path);
 
   if (interruptSlot !== undefined) {return handleSlotInterrupt(inputs, interruptSlot, url.searchParams, request, response);}
@@ -397,6 +403,37 @@ const handleFactoryStop = (
   );
 };
 
+/** `POST /api/v1/slots/<station>/<ordinal>/unfreeze`: an action, so it answers only `POST`. */
+const handleUnfreeze = (
+  inputs: ManagementApiInputs,
+  slotId: string,
+  params: URLSearchParams,
+  request: IncomingMessage,
+  response: ServerResponse,
+): void => {
+  if (request.method !== "POST") {
+    response.setHeader("allow", "POST");
+
+    return send(response, 405, failure("method_not_allowed", "unfreeze only accepts POST"));
+  }
+
+  const control = inputs.slotControl;
+
+  if (control === undefined) {return send(response, 503, failure("unavailable", "slot unfreeze is not served by this daemon"));}
+
+  const factory = params.get(SLOT_FACTORY_PARAM) ?? undefined;
+
+  if (factory === "") {return send(response, 400, failure("bad_request", "factory must not be empty"));}
+
+  control.unfreeze(slotId, factory).then(
+    (result) => send(response, 200, { ok: true, result }),
+    (cause: unknown) =>
+      cause instanceof SlotsError
+        ? send(response, SLOT_ERROR_STATUS[cause.code], failure(cause.code, cause.message))
+        : send(response, 500, failure("internal", `unfreeze failed: ${messageOf(cause)}`)),
+  );
+};
+
 const handleEvents = (inputs: ManagementApiInputs, url: URL, request: IncomingMessage, response: ServerResponse): void => {
   if (request.method !== "GET") {
     response.setHeader("allow", "GET");
@@ -448,6 +485,9 @@ const SLOT_ERROR_STATUS: Record<SlotsErrorCode, number> = {
   no_live_launch: 409,
   channel_unavailable: 409,
   interrupt_unacknowledged: 504,
+  not_frozen: 409,
+  cause_persists: 409,
+  no_cause_check: 409,
 };
 
 const slotRoute = (inputs: ManagementApiInputs, path: string, params: URLSearchParams): Route | undefined => {

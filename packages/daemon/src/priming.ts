@@ -24,6 +24,8 @@ import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
 import { ComposePrimeResult, composePrime } from "./prime.js";
 import type { PrimeRequest, PrimeSourceProblem, Situation } from "./prime.js";
 import type { Store, StoreError } from "./store.js";
+import { openSlotGate, whenSendable } from "./freeze.js";
+import type { SlotGate, SlotRef } from "./freeze.js";
 
 /** What the daemon records about each composed part: never its content. */
 export const PrimePartRecord = Schema.Struct({
@@ -243,13 +245,21 @@ class PrimedWriter {
   private holds = 0;
   private writing = false;
   private state: "pending" | "open" | Error = "pending";
+  /** Removes this writer's unfreeze listener; nothing more is written once it is refused. */
+  private readonly stopWatching: () => void;
   /** Settles `true` once priming opens the connection, `false` if it never will. */
   readonly opened: Promise<boolean>;
 
   constructor(
     private readonly connection: AcceptedConnection,
     outcome: Promise<PrimingOutcome>,
+    private readonly gate: SlotGate,
+    private readonly slot: SlotRef,
   ) {
+    // A frozen slot is sent nothing (PRD §5.3); its queued frames stay bound and go out once unfrozen.
+    this.stopWatching = gate.onUnfrozen((unfrozen) => {
+      if (unfrozen.factoryId === slot.factoryId && unfrozen.slotId === slot.slotId) {this.pump();}
+    });
     this.opened = outcome.then(
       (settled) => {
         if (!opensConnection(settled)) {return this.refuse(new Error(`priming did not complete: ${settled._tag}`));}
@@ -302,6 +312,7 @@ class PrimedWriter {
 
   private refuse(error: Error): false {
     this.state = error;
+    this.stopWatching();
 
     for (const queued of [...this.first.splice(0), ...this.work.splice(0)]) {queued.reject(error);}
 
@@ -309,7 +320,7 @@ class PrimedWriter {
   }
 
   private pump(): void {
-    if (this.state !== "open" || this.writing) {return;}
+    if (this.state !== "open" || this.writing || this.gate.isFrozen(this.slot)) {return;}
 
     const next = this.first.shift() ?? (this.holds === 0 ? this.work.shift() : undefined);
 
@@ -334,6 +345,11 @@ export interface PrimerOptions {
   readonly compose?: (request: PrimeRequest) => Promise<ComposePrimeResult>;
   /** Defaults to a random UUID. */
   readonly newPrimeId?: () => string;
+  /**
+   * Frozen slots (PRD §5.3): nothing is written to one, the prime included, until it is unfrozen.
+   * Defaults to a gate that holds nothing back.
+   */
+  readonly gate?: SlotGate;
 }
 
 export interface PrimedConnection {
@@ -368,6 +384,7 @@ const slotKey = (slot: ClaimedSlot): string => JSON.stringify([slot.factoryId, s
 export const createPrimer = (options: PrimerOptions): Primer => {
   const compose = options.compose ?? ((request: PrimeRequest) => composePrime(request));
   const newPrimeId = options.newPrimeId ?? (() => `prime-${randomUUID()}`);
+  const gate = options.gate ?? openSlotGate;
   // Decide-and-send runs one at a time per slot, so two hellos from one launch
   // cannot both read "no prime yet" and both send a fresh prime.
   const slotTurns = new Map<string, Promise<unknown>>();
@@ -476,8 +493,9 @@ export const createPrimer = (options: PrimerOptions): Primer => {
 
   return {
     prime(slot, hello, connection) {
-      const outcome = serialized(slot, () => decideAndSend(slot, hello, connection));
-      const writer = new PrimedWriter(connection, outcome);
+      // A frozen slot's prime waits for its unfreeze; it is decided afresh then.
+      const outcome = serialized(slot, () => whenSendable(gate, slot).then(() => decideAndSend(slot, hello, connection)));
+      const writer = new PrimedWriter(connection, outcome, gate, slot);
       live.set(slotKey(slot), { launchId: slot.launchId, conversationRef: hello.conversationRef, writer });
 
       return { outcome, connection: { send: (frame: DaemonFrame) => writer.send(frame) } };
@@ -491,7 +509,11 @@ export const createPrimer = (options: PrimerOptions): Primer => {
 
       // Held now, not once composition starts, so no work frame slips out ahead of the prime.
       const release = current.writer.hold();
-      const outcome = serialized(slot, () => sendCompactionPrime(slot, current.conversationRef, current.writer));
+
+      const outcome = serialized(slot, () =>
+        whenSendable(gate, slot).then(() => sendCompactionPrime(slot, current.conversationRef, current.writer)),
+      );
+
       void outcome.then(release, release);
 
       return outcome;

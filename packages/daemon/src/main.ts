@@ -45,6 +45,7 @@ import { channelLogEvents } from "./channel/log-events.js";
 import type { SlotScheduler } from "./slots.js";
 import { createFactoryStates, createFactoryStopper } from "./factory-stop.js";
 import type { FactoryStopperOptions } from "./factory-stop.js";
+import { createSlotFreezer, storeSlotControl } from "./freeze.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -427,7 +428,14 @@ const main = async (): Promise<void> => {
     return server === undefined ? base : { ...base, drain: (launchId: string) => server.drain(launchId) };
   };
 
+  const slotsReader = storeSlotsReader(store, stateRoot, decision.started, plannedSlots);
+
   try {
+    // Frozen slots are read back from the store, so a freeze survives a daemon restart (PRD §5.3).
+    // Each freeze cause registers its own unfreeze check with the ticket that raises it; until
+    // then an unfreeze is refused rather than trusted.
+    const freezer = await createSlotFreezer({ store, checks: {} });
+
     api = await serveManagementApi({
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
@@ -444,7 +452,8 @@ const main = async (): Promise<void> => {
       factories: storeFactoriesReader(store, log.runId, (factoryId) => factoryStates.get(factoryId)),
       // A graceful stop sends `drain` on each live worker's channel before the host terminates it.
       stopper: createFactoryStopper(stopperOptions()),
-      slots: storeSlotsReader(store, stateRoot, decision.started, plannedSlots),
+      slots: slotsReader,
+      slotControl: storeSlotControl(slotsReader, freezer),
     });
   } catch (error) {
     await channel?.close().catch(() => {});

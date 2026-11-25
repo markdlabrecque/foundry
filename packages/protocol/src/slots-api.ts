@@ -85,12 +85,35 @@ export const matchSlotInterruptPath = (path: string): string | null | undefined 
 };
 
 /**
- * A slot's condition (PRD §5.3). Only `normal` is served until freezing (FOU-125) and parking
- * arrive with their own tickets.
+ * A slot's condition (PRD §5.3). `frozen`: the daemon sends it nothing and launches nothing into
+ * it until the operator unfreezes or resets it. Parking arrives with its own ticket.
  */
-export const SlotCondition = Schema.Literal("normal");
+export const SlotCondition = Schema.Literals(["normal", "frozen"]);
 
 export type SlotCondition = typeof SlotCondition.Type;
+
+/** Why a slot is frozen (PRD §5.3), as stable API codes. */
+export const FREEZE_CAUSES = [
+  "host_lost",
+  "unknown_ownership",
+  "conversation_changed",
+  "prime_without_history",
+  "instruction_missing",
+  "tool_set_mismatch",
+] as const;
+
+export const FreezeCause = Schema.Literals(FREEZE_CAUSES);
+
+export type FreezeCause = typeof FreezeCause.Type;
+
+const SLOT_UNFREEZE = new RegExp(`^${SLOTS_PATH}/([a-z][a-z0-9-]*/[1-9][0-9]{0,5})/unfreeze$`);
+
+/** `POST`: unfreeze a slot once the daemon's re-run of its cause check passes (`foundry slot unfreeze`). */
+export const slotUnfreezePath = (slotId: string, factory?: string): string =>
+  withFactory(`${SLOTS_PATH}/${slotId}/unfreeze`, factory);
+
+/** The slot an unfreeze request path names; `undefined` when the path is not one. */
+export const matchSlotUnfreezePath = (path: string): string | undefined => SLOT_UNFREEZE.exec(path)?.[1];
 
 /**
  * Why a launch is recorded as ended: it `exited` on its own, the host ended it on `requested`
@@ -127,6 +150,8 @@ export const SlotSummary = Schema.Struct({
   station: Schema.String,
   ordinal: Schema.Number,
   condition: SlotCondition,
+  /** Why the slot is frozen, or `null` when it is not. */
+  freezeCause: Schema.NullOr(FreezeCause),
   /** The slot's latest launch, or `null` if it has never had one. */
   launch: Schema.NullOr(SlotLaunch),
 });
@@ -171,6 +196,17 @@ export const SlotInterruptResult = Schema.Struct({
 export type SlotInterruptResult = typeof SlotInterruptResult.Type;
 
 export const isSlotInterruptResult = Schema.is(SlotInterruptResult);
+
+/** Result of `POST /api/v1/slots/<station>/<ordinal>/unfreeze`: the slot, now normal. */
+export const SlotUnfreezeResult = Schema.Struct({
+  slot: SlotSummary,
+  /** The frozen-slot hold the unfreeze resolved, if one was open. */
+  resolvedHold: Schema.NullOr(Schema.Number),
+});
+
+export type SlotUnfreezeResult = typeof SlotUnfreezeResult.Type;
+
+export const isSlotUnfreezeResult = Schema.is(SlotUnfreezeResult);
 
 export const isSlotListResult = Schema.is(SlotListResult);
 
