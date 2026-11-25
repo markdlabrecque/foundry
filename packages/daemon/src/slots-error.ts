@@ -20,7 +20,8 @@ export type SlotsErrorCode =
   | "cause_persists"
   /** The slot's freeze cause has no check to re-run, so it is never unfrozen on trust. */
   | "no_cause_check"
-  | "reset_refused";
+  | "reset_refused"
+  | "restart_refused";
 
 /** A slot request the daemon refuses, with a stable API code. */
 export class SlotsError extends Error {
@@ -45,6 +46,10 @@ export interface SlotsReader {
 export interface SlotInterrupter {
   /** Aborts the slot's current run, keeping its launch and conversation; refuses with `SlotsError`. */
   readonly interrupt: (slotId: string, factory: string | undefined) => Promise<SlotInterruptResult>;
+}
+
+export interface SlotRestarter {
+  readonly restart: (slotId: string, factory: string | undefined) => Promise<SlotShowResult>;
 }
 
 export interface SlotResetter {

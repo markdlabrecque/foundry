@@ -15,6 +15,7 @@ import {
   slotInterruptPath,
   slotPath,
   slotResetPath,
+  slotRestartPath,
   slotsPath,
   slotUnfreezePath,
 } from "@foundry/protocol/slots-api";
@@ -135,6 +136,15 @@ const fetchAndRender = async <A>(
   if (!is(result)) {return refused("the daemon answered with an unexpected shape");}
 
   return { exitCode: EXIT_OK, stdout: render(result), stderr: "" };
+};
+
+/** Restart retains the conversation and waits for host-confirmed process-group termination. */
+export const runSlotRestart = async (options: SlotOptions & { readonly slot: string }): Promise<SlotOutcome> => {
+  if (parseSlotId(options.slot) === undefined) {return usage(`a slot is addressed as station/ordinal, not ${JSON.stringify(options.slot)}`);}
+
+  return fetchAndRender(options, slotRestartPath(options.slot, options.factory), isSlotShowResult,
+    ({ slot }) => `slot ${slot.slotId} restarted; conversation kept\n`,
+    (root, path) => postToDaemon(root, path, {}, { timeoutMs: 60_000 }));
 };
 
 /** Reset is destructive to the conversation; force explicitly accepts unknown old ownership. */
