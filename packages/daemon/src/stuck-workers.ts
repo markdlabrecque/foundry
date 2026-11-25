@@ -77,9 +77,14 @@ export const startStuckWorkerDetection = (store: Store, onError: (cause: unknown
   timer.unref();
 
   return {
-    accepted(slot: ClaimedSlot): void { connected.set(slotKey(slot), slot); },
-    lost(slot: ClaimedSlot): void {
-      if (connected.get(slotKey(slot))?.launchId === slot.launchId) {connected.delete(slotKey(slot));}
+    /** Return a loss callback tied to this connection, not merely its launch. */
+    accepted(slot: ClaimedSlot): () => void {
+      const connection = { ...slot };
+      connected.set(slotKey(slot), connection);
+
+      return () => {
+        if (connected.get(slotKey(slot)) === connection) {connected.delete(slotKey(slot));}
+      };
     },
     async stop(): Promise<void> { clearInterval(timer); connected.clear(); await running; },
   };

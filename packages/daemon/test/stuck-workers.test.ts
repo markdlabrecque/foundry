@@ -162,8 +162,8 @@ test("restart preserves injection time; periodic sweep waits for a live channel 
 
     try {
       expect(await Effect.runPromise(detectStuckWorkers(store, () => false))).toBe(0);
-      detection.accepted(slot);
-      detection.lost(slot);
+      const lost = detection.accepted(slot);
+      lost();
       await vi.advanceTimersByTimeAsync(1000);
       await detection.stop();
       expect(await holds(store)).toEqual([]);
@@ -172,7 +172,9 @@ test("restart preserves injection time; periodic sweep waits for a live channel 
     const restarted = startStuckWorkerDetection(store, (cause) => errors.push(cause));
 
     try {
-      restarted.accepted(slot);
+      const lostOld = restarted.accepted(slot);
+      const lostCurrent = restarted.accepted(slot);
+      lostOld(); // A late close from the same launch must not erase its replacement.
 
       const committed = new Promise<void>((resolve) => {
         const off = store.onCommit(() => { off(); resolve(); });
@@ -180,6 +182,13 @@ test("restart preserves injection time; periodic sweep waits for a live channel 
 
       await vi.advanceTimersByTimeAsync(1000);
       await committed;
+      expect(await holds(store)).toEqual([{ subject: "injected", state: "open" }]);
+      lostCurrent();
+      // A second injected message must not raise a hold after the current connection closes.
+      await Effect.runPromise(recordMessageInjection(store, slot, "released"));
+      vi.setSystemTime(now + 2 * STUCK_WORKER_AFTER_MS + 3000);
+      await vi.advanceTimersByTimeAsync(1000);
+      await restarted.stop();
       expect(await holds(store)).toEqual([{ subject: "injected", state: "open" }]);
       expect(errors).toEqual([]);
     } finally { await restarted.stop(); }
