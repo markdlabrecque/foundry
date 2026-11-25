@@ -17,7 +17,7 @@ export type { LaunchExit, LaunchRecord, LaunchSpec, TerminateOptions, Terminatio
 
 export { createLaunchRegistry, type LaunchRegistry } from "./launches.js";
 
-export { endedUnexpectedly, serveHost, type RunningHost } from "./server.js";
+export { endedUnexpectedly, exitWasUnexpected, serveHost, type RunningHost } from "./server.js";
 
 export { terminateGroup, type GroupSignal, type GroupTermination, type TerminateGroupDeps } from "./terminate.js";
 
@@ -30,6 +30,7 @@ export {
 
 export {
   HOST_LOG_NAME,
+  HostRefusedError,
   connectHost,
   hostLogPath,
   startHost,
@@ -45,8 +46,16 @@ export {
   PI_BIN_ENV,
   PI_BUILTIN_TOOLS,
   SUPPRESSION_FLAGS,
+  buildLaunchArgs,
   buildLaunchCommand,
   resolvePiExecutable,
 } from "./launch-command.js";
 
-export type { ConfiguredExtension, LaunchCommand, LaunchInputs, PiExecutable } from "./launch-command.js";
+export type {
+  ConfiguredExtension,
+  LaunchArgs,
+  LaunchCommand,
+  LaunchInputs,
+  PiExecutable,
+  SlotLaunchInputs,
+} from "./launch-command.js";

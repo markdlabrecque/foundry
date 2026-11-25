@@ -30,3 +30,9 @@ export { runFactoryList, type FactoryListOptions, type FactoryOutcome } from "./
 export { renderEvent, runEvents, sseParser, type EventsOptions, type EventsOutcome } from "./events.js";
 
 export { runFactoryPath, runFactorySync, type FactoryPathOptions, type FactorySyncOptions } from "./factory.js";
+
+export { runFactoryStop, type FactoryStopOptions, type FactoryStopOutcome } from "./factory-stop.js";
+
+export { runShutdown, type ShutdownOptions, type ShutdownOutcome } from "./shutdown.js";
+
+export { runSlotInterrupt, runSlotList, runSlotShow, runSlotUnfreeze, type SlotOptions, type SlotOutcome } from "./slots.js";

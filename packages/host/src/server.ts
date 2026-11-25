@@ -9,7 +9,7 @@ import { readBootId } from "./boot.js";
 import { HOST_CONTROL_VERSION, hostSocketPath, readLines } from "./control.js";
 import type { HostEvent, HostIdentity, HostResponse } from "./control.js";
 import { LaunchRefusedError, TerminateRefusedError, createLaunchRegistry } from "./launches.js";
-import type { LaunchRecord, LaunchRegistry, TerminateOptions } from "./launches.js";
+import type { LaunchExit, LaunchRecord, LaunchRegistry, TerminateOptions } from "./launches.js";
 import { createHostLog, createLaunchStderrStore } from "./log.js";
 
 /** Upper bound on a terminate's grace and kill wait, each; keeps client timers in range. */
@@ -70,9 +70,17 @@ const isLaunchSpec = Schema.is(
  * code is unexpected.
  */
 export function endedUnexpectedly(launch: LaunchRecord): boolean {
-  if (launch.exit === undefined || launch.exit.requested === true) {return false;}
+  return launch.exit !== undefined && exitWasUnexpected(launch.exit);
+}
 
-  return launch.exit.signal !== null || launch.exit.code !== 0;
+/**
+ * The rule behind `endedUnexpectedly`, for an exit alone: one the host was not asked for, by a
+ * signal or with a non-zero code. The daemon applies the same rule to the exits it records.
+ */
+export function exitWasUnexpected(exit: Pick<LaunchExit, "code" | "signal" | "requested">): boolean {
+  if (exit.requested === true) {return false;}
+
+  return exit.signal !== null || exit.code !== 0;
 }
 
 export interface RunningHost {
@@ -90,8 +98,16 @@ const send = (socket: Socket, message: HostResponse | HostEvent): void => {
   if (socket.writable) {socket.write(`${JSON.stringify(message)}\n`);}
 };
 
+export interface ServeHostOptions {
+  /**
+   * Called once the host has accepted a `shutdown` request and written its answer. The process
+   * entry closes the server and exits; without it the host only stops accepting launches.
+   */
+  readonly onShutdown?: () => void;
+}
+
 /** Serves the host control socket in `stateRoot` from the current process. */
-export async function serveHost(stateRoot: string): Promise<RunningHost> {
+export async function serveHost(stateRoot: string, serveOptions: ServeHostOptions = {}): Promise<RunningHost> {
   const socketPath = hostSocketPath(stateRoot);
   await mkdir(stateRoot, { recursive: true, mode: 0o700 });
   await clearStaleSocket(socketPath);
@@ -110,6 +126,8 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
   const log = createHostLog(identity.hostId);
   const stderrStore = createLaunchStderrStore(stateRoot);
   const clients = new Set<Socket>();
+  // Set when a shutdown is accepted: from then on no launch starts, so no group can appear.
+  const lifecycle = { shuttingDown: false };
 
   const registry = createLaunchRegistry({
     bootId,
@@ -161,13 +179,23 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
     socket.on("error", () => {});
     readLines(socket, (line) => {
       // An unexpected failure answers this request; it must not take the host down.
-      void answer(line, identity, registry, log)
+      void answer(line, identity, registry, log, lifecycle)
         .catch((cause: unknown): HostResponse => ({
           id: requestId(line),
           ok: false,
           error: `internal error: ${messageOf(cause)}`,
         }))
-        .then((response) => send(socket, response));
+        .then((response) => {
+          if (!("shutdown" in response)) {
+            send(socket, response);
+
+            return;
+          }
+
+          // Answer first, so the caller learns the shutdown was accepted before the socket closes.
+          if (socket.writable) {socket.write(`${JSON.stringify(response)}\n`, () => serveOptions.onShutdown?.());}
+          else {serveOptions.onShutdown?.();}
+        });
     });
   });
 
@@ -200,6 +228,7 @@ async function answer(
   identity: HostIdentity,
   registry: LaunchRegistry,
   log: ReturnType<typeof createHostLog>,
+  lifecycle: { shuttingDown: boolean },
 ): Promise<HostResponse> {
   let request: unknown;
 
@@ -232,6 +261,12 @@ async function answer(
       }
 
       const { factoryId, slotId } = spec;
+
+      if (lifecycle.shuttingDown) {
+        log("warn", "launch refused", { factoryId, slotId }, { reason: "shutting_down" });
+
+        return { id, ok: false, error: "the worker host is shutting down" };
+      }
 
       try {
         const launch = await registry.launch(spec);
@@ -280,6 +315,21 @@ async function answer(
 
         throw error;
       }
+    }
+
+    case "shutdown": {
+      const occupied = registry.occupiedSlots();
+
+      if (occupied.length > 0) {
+        const named = occupied.map((slot) => `${slot.factoryId}/${slot.slotId}`).join(", ");
+
+        return { id, ok: false, error: `shutdown refused: owned process groups not confirmed gone in ${named}` };
+      }
+
+      lifecycle.shuttingDown = true;
+      log("info", "worker host shutdown accepted", {}, {});
+
+      return { id, ok: true, shutdown: true };
     }
 
     default:

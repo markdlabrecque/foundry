@@ -29,7 +29,7 @@ export interface LaunchInventory {
  * The conversation reference each slot is bound to. A conversation outlives a
  * launch, so this is keyed by slot, not by launch.
  *
- * Operator reset and unfreeze (11b, 43a) will need an `unbind`/`rebind` here.
+ * Used only when no `storedConversation` is given. Operator reset will need an `unbind` here.
  */
 export interface SlotConversations {
   get(factoryId: string, slotId: string): string | undefined;
@@ -60,6 +60,8 @@ export const SlotClaimRejectCode = {
   conversationChanged: "conversation_changed",
   /** The host could not be asked; nothing is known about the launch. */
   hostUnreachable: "host_unreachable",
+  /** The host and the daemon's records disagree on which launch holds the slot. */
+  ownershipUnknown: "ownership_unknown",
 } as const;
 
 const terminal = (code: string, detail: string): SlotClaimResult => ({
@@ -71,8 +73,42 @@ const retryable = (code: string, detail: string): HelloRejectReason => ({ kind: 
 
 export interface HostSlotClaimOptions {
   readonly host: LaunchInventory;
-  /** Defaults to process-local bindings. */
+  /** Defaults to process-local bindings. Ignored when `storedConversation` is given. */
   readonly conversations?: SlotConversations;
+  /**
+   * The conversation the daemon issued the slot and recorded (PRD §10.1), read afresh on each hello,
+   * so a changed conversation is recognized after a daemon restart. When given, a hello must present
+   * it; a slot with none recorded yet accepts any. Nothing is bound by the claim.
+   */
+  readonly storedConversation?: (factoryId: string, slotId: string) => Promise<string | undefined>;
+  /**
+   * Called before a hello presenting a changed conversation is refused, so the slot can be frozen
+   * (PRD §3.2: P0 cannot adopt a changed conversation). The refusal waits for it.
+   */
+  readonly onConversationChanged?: (change: ConversationChange) => Promise<void>;
+  /**
+   * The launch the daemon records as the slot's current one, or `null`. When given, only that launch
+   * speaks for the slot (PRD §3.2). A host-live launch that is not it, or a recorded launch the host
+   * does not know, is unknown ownership: refused as retryable, and its conversation is not bound. At
+   * start the scheduler freezes such slots; freezing on a host lost while the daemon keeps running
+   * is not handled here. Default: any launch the host reports live is accepted.
+   */
+  readonly currentLaunch?: (factoryId: string, slotId: string) => Promise<string | null>;
+  /**
+   * Resolves once scheduling queued so far has recorded what it launched or claimed. Awaited before
+   * `currentLaunch` is read, so a worker that dials between the host's start reply and its record
+   * is not refused (the extension does not redial yet). Default: nothing to wait for.
+   */
+  readonly settled?: () => Promise<void>;
+}
+
+/** A hello that presented a different conversation than the one its slot is bound to. */
+export interface ConversationChange {
+  readonly factoryId: string;
+  readonly slotId: string;
+  readonly launchId: string;
+  readonly boundRef: string;
+  readonly presentedRef: string;
 }
 
 export const createHostSlotClaim = (options: HostSlotClaimOptions): SlotClaim => {
@@ -93,9 +129,17 @@ export const createHostSlotClaim = (options: HostSlotClaimOptions): SlotClaim =>
 
       const record = launches.find((launch) => launch.launchId === hello.launchId);
 
-      // A host restart that lost its registry could make a live launch look unknown here;
-      // PRD §3.2 treats unknown ownership as retryable, which 43a will distinguish.
+      if (options.currentLaunch !== undefined) {await options.settled?.();}
+
       if (record === undefined) {
+        // A host that lost its registry cannot vouch for a launch the daemon recorded: unknown, not refused.
+        if (options.currentLaunch !== undefined && (await options.currentLaunch(hello.factoryId, hello.slotId)) === hello.launchId) {
+          return {
+            accepted: false,
+            reason: retryable(SlotClaimRejectCode.ownershipUnknown, `the worker host does not know launch ${hello.launchId}, which the daemon recorded`),
+          };
+        }
+
         return terminal(SlotClaimRejectCode.launchUnknown, `the worker host reports no launch ${hello.launchId}`);
       }
 
@@ -114,17 +158,39 @@ export const createHostSlotClaim = (options: HostSlotClaimOptions): SlotClaim =>
         );
       }
 
-      // Checked and bound without awaiting, so concurrent hellos for one slot cannot both bind.
-      const bound = conversations.get(record.factoryId, record.slotId);
+      // An orphan the host reports live is never accepted in the slot's name, nor its conversation bound.
+      if (options.currentLaunch !== undefined && (await options.currentLaunch(record.factoryId, record.slotId)) !== record.launchId) {
+        return {
+          accepted: false,
+          reason: retryable(
+            SlotClaimRejectCode.ownershipUnknown,
+            `launch ${record.launchId} is live on the worker host but is not the recorded launch of slot ${record.slotId}`,
+          ),
+        };
+      }
+
+      // In-memory bindings are checked and set without awaiting, so concurrent hellos cannot both bind.
+      const bound =
+        options.storedConversation === undefined
+          ? conversations.get(record.factoryId, record.slotId)
+          : await options.storedConversation(record.factoryId, record.slotId);
 
       if (bound !== undefined && bound !== hello.conversationRef) {
+        await options.onConversationChanged?.({
+          factoryId: record.factoryId,
+          slotId: record.slotId,
+          launchId: record.launchId,
+          boundRef: bound,
+          presentedRef: hello.conversationRef,
+        });
+
         return terminal(
           SlotClaimRejectCode.conversationChanged,
           `slot ${record.slotId} is bound to a different conversation than the one presented`,
         );
       }
 
-      if (bound === undefined) {conversations.bind(record.factoryId, record.slotId, hello.conversationRef);}
+      if (bound === undefined && options.storedConversation === undefined) {conversations.bind(record.factoryId, record.slotId, hello.conversationRef);}
 
       return {
         accepted: true,

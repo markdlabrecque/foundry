@@ -15,8 +15,8 @@ import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import type { Server, Socket } from "node:net";
-import { CHANNEL_LOST_AFTER_MS, decodeHelloLine, decodeWorkerFrameLine, encodeFrame, FrameLineSplitter, PROTOCOL_VERSION } from "@foundry/protocol";
-import type { DaemonFrame, Hello, HelloRejectReason, InterruptOutcome, WorkerFrame } from "@foundry/protocol";
+import { CHANNEL_LOST_AFTER_MS, decodeHelloLine, decodeWorkerFrameLine, encodeFrame, FrameLineSplitter, PROTOCOL_VERSION, ToolRefusalCode } from "@foundry/protocol";
+import type { DaemonFrame, Hello, HelloRejectReason, InterruptOutcome, ToolCall, DaemonToolOutcome, WorkerFrame } from "@foundry/protocol";
 
 /** The slot a connection was authorized for, as decided by the slot claim. */
 export interface ClaimedSlot {
@@ -53,6 +53,11 @@ export type ChannelLostCause = "heartbeat_lapse" | "peer_closed" | "protocol_err
 export interface AcceptedConnection {
   /** Resolves once written to the socket; rejects if the connection has ended. */
   send(frame: DaemonFrame): Promise<void>;
+  /**
+   * Resolves once the connection has ended, whatever the cause. Real connections must provide it:
+   * without it, a prime waiting on a frozen slot is released only by an unfreeze.
+   */
+  readonly closed?: Promise<void>;
 }
 
 export interface ChannelEvents {
@@ -69,9 +74,19 @@ export interface ChannelEvents {
 /** How long a refused peer gets to read its `hello_rejected` before the socket is destroyed. */
 export const REJECTED_SOCKET_GRACE_MS = 1000;
 
+/**
+ * Answers agent tool calls (PRD §6.1). Must resolve only once the outcome is final: the result is
+ * written to the worker after it resolves, so success is never reported before the commit.
+ */
+export interface ToolCallHandler {
+  submit(slot: ClaimedSlot, call: ToolCall): Promise<DaemonToolOutcome>;
+}
+
 export interface ChannelServerOptions extends ChannelEvents {
   readonly socketPath: string;
   readonly slotClaim: SlotClaim;
+  /** Without one, every tool call is refused as not committed. */
+  readonly toolCalls?: ToolCallHandler;
   readonly channelLostAfterMs?: number;
   readonly lapseTimer?: LapseTimer;
 }
@@ -94,6 +109,12 @@ export interface ChannelServer {
    * lost before the ack. Callers bound the wait themselves.
    */
   interrupt(launchId: string): Promise<InterruptOutcome>;
+  /**
+   * Ask the worker on `launchId`'s accepted channel to drain before a graceful stop (PRD §3.2,
+   * §10.3): stop injecting held work and answer once Pi settles, without aborting the run.
+   * Rejects with `ChannelUnavailableError` like `interrupt`. Callers bound the wait themselves.
+   */
+  drain(launchId: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -109,6 +130,7 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
     /** The one writer for this connection; `interrupt()` and the primer both write through it. */
     readonly connection: AcceptedConnection;
     readonly pending: Map<string, { resolve: (o: InterruptOutcome) => void; reject: (e: Error) => void }>;
+    readonly drains: Map<string, { resolve: () => void; reject: (e: Error) => void }>;
   }
 
   const byLaunch = new Map<string, Accepted>();
@@ -121,12 +143,18 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
     let slot: ClaimedSlot | undefined;
     let cancelLapse: (() => void) | undefined;
     let accepted: Accepted | undefined;
+    let markClosed!: () => void;
+
+    const closed = new Promise<void>((resolve) => {
+      markClosed = resolve;
+    });
 
     const end = (cause: ChannelLostCause): void => {
       if (state === "ended") {return;}
 
       const wasAccepted = state === "accepted";
       state = "ended";
+      markClosed();
       cancelLapse?.();
       socket.destroy();
 
@@ -138,6 +166,12 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         }
 
         accepted.pending.clear();
+
+        for (const { reject } of accepted.drains.values()) {
+          reject(new ChannelUnavailableError(slot.launchId, `was lost before the drain was acknowledged (${cause})`));
+        }
+
+        accepted.drains.clear();
       }
 
       if (wasAccepted && slot) {options.onChannelLost?.(slot, cause);}
@@ -194,9 +228,10 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
 
             socket.write(encodeFrame(frame), (error) => (error ? failed(error) : done()));
           }),
+        closed,
       };
 
-      accepted = { connection, pending: new Map() };
+      accepted = { connection, pending: new Map(), drains: new Map() };
       byLaunch.set(slot.launchId, accepted);
       socket.write(encodeFrame({ type: "hello_accepted", protocolVersion: PROTOCOL_VERSION }));
       armLapse();
@@ -227,9 +262,38 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         waiter?.resolve(decoded.value.outcome);
       }
 
+      if (decoded.value.type === "drain_ack") {
+        const waiter = accepted?.drains.get(decoded.value.requestId);
+        accepted?.drains.delete(decoded.value.requestId);
+        waiter?.resolve();
+      }
+
+      if (decoded.value.type === "tool_call") {answerToolCall(slot, decoded.value);}
+
       options.onFrame?.(slot, decoded.value);
 
       return Promise.resolve();
+    };
+
+    /**
+     * Not awaited, so a slow call never holds back heartbeats or receipts. Written straight to the
+     * connection, not through the primer's queue: a result answers the worker's own request, and a
+     * frozen slot's refusal must still reach it. A result lost with the connection is recovered by
+     * the worker re-sending the call, which returns the stored result.
+     */
+    const answerToolCall = (claimed: ClaimedSlot, call: ToolCall): void => {
+      const connection = accepted?.connection;
+
+      const outcome = options.toolCalls
+        ? options.toolCalls.submit(claimed, call)
+        : Promise.resolve<DaemonToolOutcome>({ status: "refused", code: ToolRefusalCode.notCommitted, detail: "the daemon serves no agent tools" });
+
+      // Only a defect raised before the commit can reach this catch (`submit` maps every store
+      // failure itself), so reporting nothing committed stays true.
+      void outcome
+        .catch((cause: unknown): DaemonToolOutcome => ({ status: "refused", code: ToolRefusalCode.notCommitted, detail: String(cause) }))
+        .then((settled) => connection?.send({ type: "tool_result", callId: call.callId, outcome: settled }))
+        .catch(() => {});
     };
 
     // A peer that never completes its hello is dropped on the same deadline; no slot is reported lost.
@@ -277,6 +341,23 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         // interrupt is a control frame, outside §5.5's prime-before-messages ordering.
         channel.connection.send({ type: "interrupt", requestId }).catch((cause: unknown) => {
           channel.pending.delete(requestId);
+          reject(new ChannelUnavailableError(launchId, `could not be written to (${String(cause)})`));
+        });
+      }),
+    drain: (launchId) =>
+      new Promise<void>((resolve, reject) => {
+        const channel = byLaunch.get(launchId);
+
+        if (!channel) {
+          reject(new ChannelUnavailableError(launchId, "is not connected"));
+
+          return;
+        }
+
+        const requestId = randomUUID();
+        channel.drains.set(requestId, { resolve, reject });
+        channel.connection.send({ type: "drain", requestId }).catch((cause: unknown) => {
+          channel.drains.delete(requestId);
           reject(new ChannelUnavailableError(launchId, `could not be written to (${String(cause)})`));
         });
       }),

@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Schema } from "effect";
 import { DATABASE_FILE_NAME, openStore } from "@foundry/daemon";
-import { isolatedGitEnv, makeGitSource } from "@foundry/testkit";
+import { isolatedGitEnv, makeGitSource, stopHost, writeStubPi } from "@foundry/testkit";
 import { runFactoryList } from "@foundry/cli";
 
 const isNumber = Schema.is(Schema.Number);
@@ -39,8 +39,13 @@ const foundry = (args: ReadonlyArray<string>, home: string): Promise<{ code: num
 const roots: Array<string> = [];
 const children: Array<ChildProcess> = [];
 
-afterEach(() => {
+/** State roots a daemon ran in: each may have left a detached Worker Host behind. */
+const homes: Array<string> = [];
+
+afterEach(async () => {
   for (const child of children.splice(0)) {if (child.exitCode === null && child.signalCode === null) {child.kill("SIGKILL");}}
+
+  for (const home of homes.splice(0)) {await stopHost(home);}
 
   for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });}
 });
@@ -93,10 +98,14 @@ interface Run {
 }
 
 const startDaemon = (home: string, files: ReadonlyArray<string>, env: Record<string, string> = {}): Run => {
+  homes.push(home);
+  // Slots launch through the host; a stub stands in for Pi so no real worker starts.
+  const piBin = writeStubPi(tempRoot());
+
   // FOUNDRY_HOME points elsewhere so the operator's root is never used.
   const child = spawn(process.execPath, [daemonMain, "--home", home, ...files], {
     // Isolated Git: start clones the source, and the operator's Git config and hooks stay out of it.
-    env: { ...isolatedGitEnv(), ...env, FOUNDRY_HOME: join(home, "not-this-one") },
+    env: { ...isolatedGitEnv(), ...env, FOUNDRY_HOME: join(home, "not-this-one"), FOUNDRY_PI_BIN: piBin },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -147,8 +156,9 @@ const readState = (home: string) =>
           transitions: store.read<{ factory_id: string; ticket_number: number; config_load: string | null }>(
             `SELECT factory_id, ticket_number, config_load FROM ticket_transition ORDER BY sequence`,
           ),
+          // Slot launches are proved by the slots test; this one is about runs and loads.
           history: store.read<{ factory_id: string; kind: string; subject: string }>(
-            `SELECT factory_id, kind, subject FROM history ORDER BY sequence`,
+            `SELECT factory_id, kind, subject FROM history WHERE kind NOT LIKE 'launch.%' ORDER BY sequence`,
           ),
         }),
       ),

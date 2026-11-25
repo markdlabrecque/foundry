@@ -12,7 +12,7 @@
  * acknowledged only when some later work settles.
  */
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import type { Interrupt, InterruptOutcome } from "@foundry/protocol";
+import type { Drain, Interrupt, InterruptOutcome } from "@foundry/protocol";
 import type { OpenChannel } from "./channel/client.js";
 
 /** The part of Pi's extension context an interrupt needs. */
@@ -51,6 +51,28 @@ export class RunInterrupter {
 
     // Work that completed despite the abort (a compaction past its last abort check) was not aborted.
     return (await settled) ? "aborted" : "idle";
+  }
+
+  /**
+   * Resolve once Pi is idle, without aborting anything (PRD §3.2 `drain`). The
+   * extension injects no held work of its own yet, so draining is waiting for
+   * the current run to settle.
+   */
+  async drain(): Promise<void> {
+    const control = this.control;
+
+    if (!control || control.isIdle()) {return;}
+
+    await new Promise<boolean>((resolve) => {
+      this.waiting.push(resolve);
+    });
+  }
+
+  /** Answer a `drain` frame on the channel it arrived on, once Pi settles. A dead channel drops the ack. */
+  handleDrain(frame: Drain, channel: OpenChannel): void {
+    void this.drain()
+      .then(() => channel.send({ type: "drain_ack", requestId: frame.requestId }))
+      .catch(() => {});
   }
 
   /** Answer an `interrupt` frame on the channel it arrived on. A dead channel drops the ack. */

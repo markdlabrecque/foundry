@@ -92,6 +92,8 @@ const connect = async (interrupter: RunInterrupter, frames: Array<WorkerFrame> =
     heartbeatIntervalMs: 60_000,
     onFrame: (frame, channel) => {
       if (frame.type === "interrupt") {interrupter.handle(frame, channel);}
+
+      if (frame.type === "drain") {interrupter.handleDrain(frame, channel);}
     },
   });
 
@@ -137,6 +139,37 @@ test("an interrupt with no active run is acknowledged as idle without aborting",
 
   expect(await server.interrupt("launch-1")).toBe("idle");
   expect(run.aborts()).toBe(0);
+});
+
+test("a drain is acknowledged once the run settles, without aborting it", async () => {
+  const interrupter = new RunInterrupter();
+  const run = fakeRun(interrupter, true);
+  interrupter.bind(run.control);
+  const frames: Array<WorkerFrame> = [];
+  const { server } = await connect(interrupter, frames);
+
+  let resolved = false;
+  const pending = server.drain("launch-1").then(() => (resolved = true));
+  await tick();
+  await tick();
+  expect(resolved).toBe(false);
+
+  run.settle();
+  await pending;
+
+  expect(run.aborts()).toBe(0);
+  expect(frames).toEqual([{ type: "drain_ack", requestId: expect.any(String) }]);
+});
+
+test("a drain is refused if the channel is lost before the ack", async () => {
+  const interrupter = new RunInterrupter();
+  interrupter.bind({ isIdle: () => false, abort: () => {} });
+  const { server, channel } = await connect(interrupter);
+
+  const pending = server.drain("launch-1");
+  channel.close();
+
+  await expect(pending).rejects.toBeInstanceOf(ChannelUnavailableError);
 });
 
 test("an interrupt for a launch with no accepted channel is refused", async () => {

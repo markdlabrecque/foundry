@@ -97,6 +97,11 @@ export interface LaunchRegistry {
    * one launch share a single termination.
    */
   terminate(launchId: string, options?: TerminateOptions): Promise<Termination>;
+  /**
+   * Slots whose launch is starting, live, or whose process group is not yet confirmed empty. The
+   * host may stop only when this is empty: otherwise it would leave an owned group behind.
+   */
+  occupiedSlots(): Array<{ readonly factoryId: string; readonly slotId: string }>;
 }
 
 const slotKey = (factoryId: string, slotId: string): string => JSON.stringify([factoryId, slotId]);
@@ -122,22 +127,34 @@ export function createLaunchRegistry(options: {
   const watchMs = options.groupWatchMs ?? 200;
 
   /**
+   * Slots with a launch that is starting, live, or whose group is not yet confirmed empty; checked
+   * and set without awaiting, so starts serialize. A slot is free for reuse only once its last
+   * launch's whole group is confirmed gone (PRD §10.3), not merely its leader.
+   */
+  const occupied = new Map<string, { readonly factoryId: string; readonly slotId: string }>();
+
+  /** Records a launch's group as confirmed empty, once, and frees its slot. */
+  const markEmpty = (launch: LaunchRecord): void => {
+    if (emptyGroups.has(launch.launchId)) {return;}
+
+    emptyGroups.add(launch.launchId);
+    occupied.delete(slotKey(launch.factoryId, launch.slotId));
+  };
+
+  /**
    * Probes a group whose leader has exited until it has no process left, then
    * records it empty. A reuse of the ID can slip in only within one interval.
    */
-  const watchUntilEmpty = (launchId: string, pgid: number): void => {
+  const watchUntilEmpty = (launch: LaunchRecord): void => {
     const timer = setInterval(() => {
-      if (emptyGroups.has(launchId) || !signalGroup(pgid, 0)) {
-        emptyGroups.add(launchId);
+      if (emptyGroups.has(launch.launchId) || !signalGroup(launch.pgid, 0)) {
+        markEmpty(launch);
         clearInterval(timer);
       }
     }, watchMs);
 
     timer.unref();
   };
-
-  /** Slots with a launch that is starting or live; checked and set without awaiting, so starts serialize. */
-  const occupied = new Set<string>();
 
   return {
     async launch(spec) {
@@ -147,7 +164,7 @@ export function createLaunchRegistry(options: {
         throw new LaunchRefusedError(`slot ${spec.slotId} of factory ${spec.factoryId} already holds a live launch`, "slot_occupied");
       }
 
-      occupied.add(key);
+      occupied.set(key, { factoryId: spec.factoryId, slotId: spec.slotId });
 
       const launchId = randomUUID();
 
@@ -234,10 +251,10 @@ export function createLaunchRegistry(options: {
         // Learn now, while the ID cannot yet have been reused, whether the
         // group emptied with its leader; if not, keep watching until it does,
         // so a later reuse of the ID is never mistaken for this group.
-        if (!signalGroup(pid, 0)) {emptyGroups.add(launchId);}
-        else {watchUntilEmpty(launchId, pid);}
+        // The slot stays occupied until then.
+        if (!signalGroup(pid, 0)) {markEmpty(ended);}
+        else {watchUntilEmpty(ended);}
 
-        occupied.delete(key);
         // Let the last stderr bytes arrive before reporting; a descendant
         // still holding the pipe open must not delay the report for long.
         let drainTimer: NodeJS.Timeout | undefined;
@@ -256,6 +273,9 @@ export function createLaunchRegistry(options: {
     },
     inventory() {
       return [...launches.values()];
+    },
+    occupiedSlots() {
+      return [...occupied.values()];
     },
     terminate(launchId, terminateOptions = {}) {
       const record = launches.get(launchId);
@@ -290,7 +310,7 @@ export function createLaunchRegistry(options: {
           { signalGroup, leaderReaped },
         );
 
-        if (result.outcome === "gone") {emptyGroups.add(launchId);}
+        if (result.outcome === "gone") {markEmpty(record);}
 
         // Records are never removed, so the lookup finds the latest one; `record` is the fallback.
         return { ...result, launch: launches.get(launchId) ?? record };

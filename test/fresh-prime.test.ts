@@ -183,7 +183,7 @@ test("a reconnect from the same launch is not primed again, and a missing instru
   expect(await (await daemon.nextAccepted()).outcome).toEqual(PrimingOutcome.Reconnect({ unacknowledgedPrimeId: "prime-1" }));
   expect(await conversationPrimes()).toHaveLength(1);
 
-  // A fresh conversation on another slot whose instruction file is gone (freezing is 11c).
+  // A fresh conversation on another slot whose instruction file is gone, with no freezer configured.
   await rm(join(dir, "factory", "instructions", "builder.md"));
   await connect(() => {}, { ...hello, slotId: "builder-2", launchId: "launch-2", conversationRef: "conv-2" });
   const missing = await daemon.nextAccepted();

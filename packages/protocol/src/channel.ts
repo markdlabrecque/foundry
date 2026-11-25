@@ -92,6 +92,27 @@ export const InterruptAck = Schema.Struct({
 
 export type InterruptAck = typeof InterruptAck.Type;
 
+/**
+ * Daemon-initiated control (PRD §3.2, §10.3): a graceful stop is coming. The
+ * extension stops injecting held work and answers once Pi settles. Unlike
+ * `interrupt`, the current run is not aborted. Termination still belongs to
+ * the Worker Host and never travels on the channel.
+ */
+export const Drain = Schema.Struct({
+  type: Schema.Literal("drain"),
+  requestId: Id,
+});
+
+export type Drain = typeof Drain.Type;
+
+/** The worker's answer to a `drain`, sent once Pi is idle. */
+export const DrainAck = Schema.Struct({
+  type: Schema.Literal("drain_ack"),
+  requestId: Id,
+});
+
+export type DrainAck = typeof DrainAck.Type;
+
 /** Why the daemon refused a hello. A terminal refusal stops the extension reconnecting. */
 export const HelloRejectReason = Schema.Struct({
   kind: Schema.Literals(["terminal", "retryable"]),
@@ -134,8 +155,64 @@ export const Receipt = Schema.Struct({
 
 export type Receipt = typeof Receipt.Type;
 
+/**
+ * An agent tool call (PRD §6.1): one request frame, answered by one `tool_result`. The frame carries
+ * only Pi's tool call ID; the daemon adds the launch ID from the slot claim, so a worker can never
+ * name another launch's submission. The daemon keys its submission record by that pair, so
+ * re-sending the same call after a lost result changes nothing, while two calls with equal
+ * arguments stay distinct.
+ */
+export const ToolCall = Schema.Struct({
+  type: Schema.Literal("tool_call"),
+  callId: Id,
+  tool: Id,
+  args: Schema.Json,
+});
+
+export type ToolCall = typeof ToolCall.Type;
+
+/**
+ * What the daemon answers a tool call with.
+ * - `committed`: the submission, its effects and this stored value are in the database; a retry
+ *   returns the same value.
+ * - `refused`: nothing of the call was committed.
+ */
+export const DaemonToolOutcome = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("committed"), value: Schema.Json }),
+  Schema.Struct({ status: Schema.Literal("refused"), code: Id, detail: Schema.String }),
+]);
+
+export type DaemonToolOutcome = typeof DaemonToolOutcome.Type;
+
+/**
+ * What a tool call came to, as the extension reports it: the daemon's answer, or `not_accepted`,
+ * which only the extension sets. No result arrived within the bounded wait, so the call may or may
+ * not have committed (PRD §6.1). Re-issuing it under a new call ID could repeat its effect; the
+ * worker must inspect before acting again.
+ */
+export type ToolCallOutcome = DaemonToolOutcome | { readonly status: "not_accepted"; readonly detail: string };
+
+/** Why a tool call was refused. */
+export const ToolRefusalCode = {
+  /** The worker's slot is frozen (PRD §5.3); the daemon refuses its calls. */
+  slotFrozen: "slot_frozen",
+  /** The daemon serves no tool by that name. */
+  unknownTool: "unknown_tool",
+  /** The daemon tried and rolled back: nothing from the call was kept. */
+  notCommitted: "not_committed",
+} as const;
+
+/** The daemon's answer to a `tool_call`, sent only after the commit. */
+export const ToolResult = Schema.Struct({
+  type: Schema.Literal("tool_result"),
+  callId: Id,
+  outcome: DaemonToolOutcome,
+});
+
+export type ToolResult = typeof ToolResult.Type;
+
 /** Frames a worker sends after its hello is accepted. */
-export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck]);
+export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck, DrainAck, ToolCall]);
 
 export type WorkerFrame = typeof WorkerFrame.Type;
 
@@ -152,7 +229,7 @@ export const Prime = Schema.Struct({
 export type Prime = typeof Prime.Type;
 
 /** Frames the daemon sends on an accepted connection, after `hello_accepted`. */
-export const DaemonFrame = Schema.Union([Prime, Interrupt]);
+export const DaemonFrame = Schema.Union([Prime, Interrupt, Drain, ToolResult]);
 
 export type DaemonFrame = typeof DaemonFrame.Type;
 

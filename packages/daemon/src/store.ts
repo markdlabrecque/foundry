@@ -216,6 +216,97 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `CREATE INDEX operation_queue ON operation (factory_id, status, id)`,
     ],
   },
+  {
+    id: 8,
+    name: "slots_and_launches",
+    statements: [
+      // PRD §5.2, §10.1: one row per configured slot (`station/ordinal`), with its condition and
+      // current launch. Freezing and parking (§5.3) add their causes with their own tickets.
+      `CREATE TABLE slot (
+        factory_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        station TEXT NOT NULL,
+        ordinal INTEGER NOT NULL CHECK (ordinal > 0),
+        condition TEXT NOT NULL CHECK (condition IN ('normal', 'frozen', 'parked')),
+        current_launch TEXT,
+        -- A launch requested of the host but not yet recorded: which host process and boot it was
+        -- asked of, so a daemon that died mid-request never launches into the slot twice.
+        pending_host TEXT,
+        pending_boot TEXT,
+        PRIMARY KEY (factory_id, slot_id),
+        CHECK ((pending_host IS NULL) = (pending_boot IS NULL))
+      ) STRICT`,
+      // Launch history: the daemon's copy of what the Worker Host reported. The host wins on
+      // liveness, the database on everything else.
+      `CREATE TABLE launch (
+        launch_id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        boot_id TEXT NOT NULL,
+        pid INTEGER NOT NULL,
+        started_at INTEGER NOT NULL,
+        origin TEXT NOT NULL CHECK (origin IN ('started', 'adopted')),
+        ended_at INTEGER,
+        end_reason TEXT CHECK (end_reason IS NULL OR end_reason IN ('exited', 'requested', 'machine_restarted')),
+        exit_code INTEGER,
+        exit_signal TEXT,
+        CHECK ((ended_at IS NULL) = (end_reason IS NULL)),
+        FOREIGN KEY (factory_id, slot_id) REFERENCES slot (factory_id, slot_id)
+      ) STRICT`,
+      `CREATE INDEX launch_by_slot ON launch (factory_id, slot_id, started_at)`,
+    ],
+  },
+  {
+    id: 9,
+    name: "slot_freeze_cause",
+    statements: [
+      // PRD §5.3: why a frozen slot is frozen, so unfreeze re-runs the same check. Set only while
+      // the slot is frozen; its frozen-slot hold carries the evidence.
+      `ALTER TABLE slot ADD COLUMN freeze_cause TEXT CHECK (freeze_cause IS NULL OR freeze_cause IN (
+        'host_lost', 'unknown_ownership', 'conversation_changed', 'prime_without_history',
+        'instruction_missing', 'tool_set_mismatch'))`,
+    ],
+  },
+  {
+    id: 10,
+    name: "conversation",
+    statements: [
+      // PRD §10.1: a slot's conversation, with its opaque reference and a status of current or
+      // discarded. It outlives a launch: every launch of the slot opens the current one, so a
+      // relaunch after an unexpected end continues it (§10.2). Reset (later) discards it. A slot
+      // launched before this migration gets its conversation at its next launch, so that launch
+      // starts a new Pi session: acceptable before any release, with no operator state to keep.
+      `CREATE TABLE conversation (
+        factory_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        ref TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('current', 'discarded')),
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (factory_id, slot_id, ref),
+        FOREIGN KEY (factory_id, slot_id) REFERENCES slot (factory_id, slot_id)
+      ) STRICT`,
+      `CREATE UNIQUE INDEX conversation_one_current ON conversation (factory_id, slot_id) WHERE status = 'current'`,
+    ],
+  },
+  {
+    id: 11,
+    name: "submission",
+    statements: [
+      // PRD §6.1, §10.1: one row per agent tool call, keyed by the launch the channel was claimed
+      // for plus Pi's tool call ID. Written in the transaction that applies the call's effects, with
+      // the result returned, so a retry returns `result` and changes nothing.
+      `CREATE TABLE submission (
+        launch_id TEXT NOT NULL,
+        call_id TEXT NOT NULL,
+        factory_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        result TEXT NOT NULL,
+        committed_at INTEGER NOT NULL,
+        PRIMARY KEY (launch_id, call_id)
+      ) STRICT`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

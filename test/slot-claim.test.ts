@@ -7,8 +7,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { createHostSlotClaim, startChannelServer } from "@foundry/daemon";
-import type { ChannelServer, ClaimedSlot, LaunchInventory, SlotClaim } from "@foundry/daemon";
+import { createHostSlotClaim, inMemorySlotConversations, startChannelServer } from "@foundry/daemon";
+import type { ChannelServer, ClaimedSlot, ConversationChange, LaunchInventory, SlotClaim } from "@foundry/daemon";
 import { openChannel } from "@foundry/extension";
 import type { ChannelOpenResult } from "@foundry/extension";
 import type { HostConnection, LaunchRecord } from "@foundry/host";
@@ -138,4 +138,44 @@ test("a host that cannot answer gets a retryable refusal", async () => {
     accepted: false,
     reason: expect.objectContaining({ kind: "retryable", code: "host_unreachable" }),
   });
+});
+
+test("a hello must present the conversation the daemon recorded for the slot; a changed one is reported, then refused", async () => {
+  const changes: Array<ConversationChange> = [];
+
+  // A fresh claim, as after a daemon restart: the conversation comes from the daemon's records, not memory.
+  const claim = createHostSlotClaim({
+    host: reports([live("launch-2")]),
+    storedConversation: async () => "conv-1",
+    onConversationChanged: async (change) => void changes.push(change),
+  });
+
+  expect(await claim.claim(hello())).toMatchObject({ accepted: true });
+  expect(await claim.claim(hello({ conversationRef: "conv-2" }))).toEqual({
+    accepted: false,
+    reason: expect.objectContaining({ kind: "terminal", code: "conversation_changed" }),
+  });
+  expect(changes).toEqual([{ factoryId: "f1", slotId: "builder-1", launchId: "launch-2", boundRef: "conv-1", presentedRef: "conv-2" }]);
+});
+
+test("a launch the host does not know but the daemon recorded is refused as retryable unknown ownership", async () => {
+  const claim = createHostSlotClaim({ host: reports([]), currentLaunch: async () => "launch-2" });
+
+  expect(await claim.claim(hello())).toEqual({ accepted: false, reason: expect.objectContaining({ kind: "retryable", code: "ownership_unknown" }) });
+  expect(await claim.claim(hello({ launchId: "launch-9" }))).toEqual({
+    accepted: false,
+    reason: expect.objectContaining({ kind: "terminal", code: "launch_unknown" }),
+  });
+});
+
+test("an orphan the host reports live is refused as unknown ownership and its conversation is not bound", async () => {
+  const conversations = inMemorySlotConversations();
+  // The host has launch-9 live in the slot; the daemon recorded launch-2 as its current launch.
+  const claim = createHostSlotClaim({ host: reports([live("launch-9")]), conversations, currentLaunch: async () => "launch-2" });
+
+  expect(await claim.claim(hello({ launchId: "launch-9", conversationRef: "orphan-conv" }))).toEqual({
+    accepted: false,
+    reason: expect.objectContaining({ kind: "retryable", code: "ownership_unknown" }),
+  });
+  expect(conversations.get("f1", "builder-1")).toBeUndefined();
 });

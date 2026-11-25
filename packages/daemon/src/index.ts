@@ -7,6 +7,8 @@ export { channelLogEvents } from "./channel/log-events.js";
 
 export * from "./channel/slot-claim.js";
 
+export * from "./submissions.js";
+
 export { selectStateRoot, type StateRootInputs } from "@foundry/protocol/state-root";
 
 export {
@@ -62,9 +64,11 @@ export {
 
 export {
   closeHold,
+  closeOpenHoldIn,
   getHold,
   listOpenHolds,
   raiseHold,
+  raiseHoldIn,
   storeHoldsReader,
   type HoldsReader,
   type RaiseHold,
@@ -104,3 +108,104 @@ export * from "./operations.js";
 export * from "./factory-sync.js";
 
 export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";
+
+export {
+  createFactoryStates,
+  createFactoryStopper,
+  DEFAULT_STOP_GRACE_MS,
+  DEFAULT_STOP_KILL_WAIT_MS,
+  FactoryStopError,
+  type FactoryStates,
+  type FactoryStopErrorCode,
+  type FactoryStopper,
+  type FactoryStopperOptions,
+  type StopHost,
+} from "./factory-stop.js";
+
+export {
+  createInstanceShutdown,
+  ShutdownError,
+  type InstanceShutdown,
+  type InstanceShutdownOptions,
+  type ShutdownErrorCode,
+  type ShutdownHost,
+} from "./shutdown.js";
+
+export {
+  connectOrStartHost,
+  createSlotScheduler,
+  ownershipCheck,
+  planSlots,
+  recordedCurrentLaunch,
+  storedConversation,
+  slotDirectory,
+  SlotsError,
+  SLOTS_DIR_NAME,
+  storeSlotInterrupter,
+  storeSlotsReader,
+  type LaunchExitResult,
+  type SlotChannel,
+  type SlotInterrupter,
+  type SlotInterrupterOptions,
+  type PlannedSlot,
+  type SlotHost,
+  type SlotScheduleOutcome,
+  type SlotScheduleResult,
+  type SlotScheduler,
+  type SlotSchedulerOptions,
+  type SlotsErrorCode,
+  type SlotsReader,
+} from "./slots.js";
+
+export {
+  createSlotFreezer,
+  openSlotGate,
+  storeSlotControl,
+  whenSendable,
+  type CauseCheck,
+  type CauseCheckResult,
+  type FreezeChecks,
+  type FreezeOutcome,
+  type FreezeRequest,
+  type SlotFreezer,
+  type SlotFreezerOptions,
+  type SlotGate,
+  type SlotRef,
+  type UnfreezeResult,
+} from "./freeze.js";
+
+export {
+  instructionFilesCheck,
+  instructionMissingEvidence,
+  plannedPrimeRequests,
+  type SlotPrimeRequest,
+} from "./instruction-freeze.js";
+
+export type { SlotControl } from "./slots-error.js";
+
+export {
+  classifyOwnership,
+  type HostReport,
+  type RecordedLaunch,
+  type RecordedSlot,
+  type SlotOwnership,
+  type UnprovenReason,
+} from "./ownership.js";
+
+export {
+  canonicalSource,
+  compareToolSet,
+  createToolSetGuard,
+  createToolSetRecheck,
+  expectedToolSet,
+  frozenConversation,
+  isMatch,
+  TOOL_SET_MISMATCH,
+  type ExpectedTool,
+  type HelloCheck,
+  type ReplacedTool,
+  type ToolSetDiscrepancy,
+  type ToolSetGuard,
+  type ToolSetGuardOptions,
+  type ToolSetRecheckOptions,
+} from "./tool-set-check.js";

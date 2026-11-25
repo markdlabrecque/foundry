@@ -12,7 +12,7 @@
  * fetched) after (PRD §9.1), and the run and each configuration load are recorded in it.
  */
 import { readFileSync } from "node:fs";
-import { expectDefined, messageOf } from "@foundry/protocol/errors";
+import { codeOf, expectDefined, messageOf } from "@foundry/protocol/errors";
 import { join } from "node:path";
 import { createKnowledgeLayout, LoadFactoriesResult, loadFactoryFiles, recordRun } from "./factory-loads.js";
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
@@ -30,10 +30,32 @@ import { importStoreQuietly } from "./quiet-store.js";
 import type { Store } from "./store.js";
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
 import { isLogLevel, LOG_LEVELS, openDaemonLog } from "./log.js";
-import type { DaemonLogger, LogLevel } from "./log.js";
+import type { DaemonLogger, LogLevel, LogRefs } from "./log.js";
 import { ManagementSocketError, serveManagementApi } from "./management-api.js";
 import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
+import { channelSocketPath } from "@foundry/protocol";
+import { fileURLToPath } from "node:url";
+import { connectHost, resolvePiExecutable } from "@foundry/host";
+import type { HostConnection } from "@foundry/host";
+import { connectOrStartHost, createSlotScheduler, ownershipCheck, planSlots, recordedCurrentLaunch, storedConversation, storeSlotsReader } from "./slots.js";
+import { startChannelServer } from "./channel/server.js";
+import type { ChannelServer } from "./channel/server.js";
+import { createHostSlotClaim } from "./channel/slot-claim.js";
+import { channelLogEvents } from "./channel/log-events.js";
+import type { SlotScheduler } from "./slots.js";
+import { createFactoryStates, createFactoryStopper } from "./factory-stop.js";
+import type { FactoryStopperOptions } from "./factory-stop.js";
+import { createSlotFreezer, storeSlotControl } from "./freeze.js";
+import type { FreezeChecks, SlotFreezer } from "./freeze.js";
+import { instructionFilesCheck, plannedPrimeRequests } from "./instruction-freeze.js";
+import { createInstanceShutdown } from "./shutdown.js";
+import type { ShutdownHost } from "./shutdown.js";
+import { createToolSetGuard, createToolSetRecheck, expectedToolSet, frozenConversation } from "./tool-set-check.js";
+import { createSubmissions } from "./submissions.js";
+
+/** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
+const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
 
 const EXIT_USAGE = 2;
 const EXIT_INSTANCE_FAILURE = 1;
@@ -293,6 +315,178 @@ const main = async (): Promise<void> => {
 
   void refusedFactories;
 
+  // The configured slots of the started factories (PRD §5.2), fixed for this run like the configuration.
+  const plannedSlots = factories.flatMap((f) =>
+    decision.started.includes(f.factoryId) ? planSlots(f.factoryId, f.stations) : [],
+  );
+
+  // Ask the Worker Host which launch holds each slot: keep proven launches, freeze unproven
+  // ownership, and launch into each vacant one (PRD §10.2 step 2), before serving. The host is
+  // started only when there is a slot to run.
+  let host: HostConnection | undefined;
+  let channel: ChannelServer | undefined;
+  let scheduler: SlotScheduler | undefined;
+  let markSchedulerReady!: (ready: SlotScheduler) => void;
+
+  const schedulerReady = new Promise<SlotScheduler>((resolve) => {
+    markSchedulerReady = resolve;
+  });
+
+  let stopHost: FactoryStopperOptions["host"];
+  // Each started factory's state for this run (PRD §10.3); a stopped one returns on the next start.
+  const factoryStates = createFactoryStates(decision.started);
+
+  // Frozen slots are read back from the store, so a freeze survives a daemon restart (PRD §5.3).
+  // Each freeze cause registers its own unfreeze check with the ticket that raises it; until
+  // then an unfreeze is refused rather than trusted. Whichever ticket wires the primer in here
+  // must pass `gate: freezer` and `freeze: freezer.freeze` to `createPrimer`, with the same
+  // `plannedPrimeRequests` as its `primeRequest`. Checks are read at unfreeze time, so one
+  // registered below, once the scheduler exists, is honoured.
+  // Made before the channel is served, so agent tool calls from a frozen slot are refused from
+  // the first frame.
+  const freezeChecks: FreezeChecks = {
+    // PRD §5.5: a missing instruction file clears only once the slot's prime composes again.
+    instruction_missing: instructionFilesCheck(plannedPrimeRequests(factories, plannedSlots)),
+  };
+
+  let freezer: SlotFreezer;
+
+  try {
+    freezer = await createSlotFreezer({ store, checks: freezeChecks });
+  } catch (error) {
+    log.error("frozen slots not read", { detail: { error: messageOf(error) } });
+    await closeStore();
+    log.close();
+    claim.release();
+    fail(`cannot read frozen slots in ${stateRoot}: ${messageOf(error)}`);
+
+    return;
+  }
+
+  if (plannedSlots.length > 0) {
+    try {
+      host = await connectOrStartHost(stateRoot);
+      const identity = await host.identify();
+      stopHost = { connection: host, hostId: identity.hostId, bootId: identity.bootId };
+      // PRD §10.2 step 2: unfreezing a lost host or unknown ownership re-runs the ownership classification.
+      const checkOwnership = ownershipCheck(store, host, { hostId: identity.hostId, bootId: identity.bootId }, plannedSlots);
+      freezeChecks.host_lost = checkOwnership;
+      freezeChecks.unknown_ownership = checkOwnership;
+
+      // Served before any launch, so a worker dialling at its session start finds the daemon. A hello
+      // is accepted only for the launch the host reports current in that slot (PRD §3.2).
+      // Every accepted hello is also checked against the slot's Tool Set (PRD §3.2, §14): a
+      // mismatch freezes the slot and has the host stop the launch.
+      const connection = host;
+      const foundryExtension = foundryExtensionPath();
+      const expected = new Map(plannedSlots.map((s) => [JSON.stringify([s.factoryId, s.slotId]), expectedToolSet(s.station, foundryExtension)]));
+
+      const guard = createToolSetGuard({
+        // Only the recorded current launch speaks for a slot, in the conversation the daemon issued it;
+        // a changed conversation freezes the slot (PRD §3.2). Both are read from the store, so they
+        // survive a restart.
+        claim: createHostSlotClaim({
+          host,
+          storedConversation: storedConversation(store),
+          currentLaunch: recordedCurrentLaunch(store),
+          // The channel is served before the scheduler exists; a hello waits for it, then for its queue.
+          settled: async () => (await schedulerReady).idle(),
+          onConversationChanged: async (changed) => {
+            const outcome = await freezer.freeze({
+              factoryId: changed.factoryId,
+              slotId: changed.slotId,
+              cause: "conversation_changed",
+              evidence: { launchId: changed.launchId, conversationRef: changed.boundRef, presentedRef: changed.presentedRef },
+            });
+
+            const refs = { factoryId: changed.factoryId, slotId: changed.slotId, launchId: changed.launchId };
+
+            if (outcome === "frozen") {log.warn("slot frozen: conversation changed", refs);}
+            else {log.error("conversation changed on a slot with no record; not frozen", refs);}
+          },
+        }),
+        expected: (slot) => expected.get(JSON.stringify([slot.factoryId, slot.slotId])),
+        freezer,
+        stop: async (launchId) => {
+          await connection.terminate(launchId);
+        },
+        onStopFailed: (launchId, cause) => log.error("mismatched launch not stopped", { launchId, detail: { error: messageOf(cause) } }),
+        onFreezeFailed: (slot, cause) =>
+          log.error("tool set mismatch not frozen", { factoryId: slot.factoryId, slotId: slot.slotId, detail: { error: messageOf(cause) } }),
+      });
+
+      channel = await startChannelServer({
+        socketPath: channelSocketPath(stateRoot),
+        slotClaim: guard,
+        // Each agent tool registers its handler with its own ticket; until then calls are refused.
+        toolCalls: createSubmissions({ store, handlers: new Map(), gate: freezer }),
+        ...channelLogEvents(log),
+      });
+
+      scheduler = createSlotScheduler({
+        store,
+        stateRoot,
+        host,
+        hostId: identity.hostId,
+        bootId: identity.bootId,
+        pi: resolvePiExecutable(process.env),
+        foundryExtension: foundryExtensionPath(),
+        slots: plannedSlots,
+        freezer,
+        inScope: (factoryId) => factoryStates.isRunning(factoryId),
+      });
+      const recorder = scheduler;
+      markSchedulerReady(scheduler);
+
+      freezeChecks.tool_set_mismatch = createToolSetRecheck({
+        guard,
+        conversationOf: (slot) => frozenConversation(store, slot),
+        relaunch: (slot, conversationRef) => recorder.relaunch(slot, conversationRef),
+        stop: async (launchId) => {
+          await connection.terminate(launchId);
+        },
+        onStopFailed: (launchId, cause) => log.error("recheck launch not stopped", { launchId, detail: { error: messageOf(cause) } }),
+      });
+
+      // Only the host's exit report is death evidence; a lost channel never relaunches a slot (PRD §5.3).
+      host.onLaunchExited((launch) => {
+        void recorder.launchExited(launch).then(
+          ({ ended, recovery }) => {
+            if (ended) {log.info("launch ended", { factoryId: launch.factoryId, slotId: launch.slotId, launchId: launch.launchId });}
+
+            if (recovery?.outcome === "relaunched" && recovery.launchId !== undefined) {
+              log.info("slot relaunched", { factoryId: recovery.factoryId, slotId: recovery.slotId, launchId: recovery.launchId });
+            } else if (recovery?.outcome === "refused") {
+              log.warn("slot relaunch refused", { factoryId: recovery.factoryId, slotId: recovery.slotId, detail: { error: recovery.error ?? "" } });
+            }
+          },
+          (cause: unknown) =>
+            log.error("launch end not recorded", { factoryId: launch.factoryId, launchId: launch.launchId, detail: { error: messageOf(cause) } }),
+        );
+      });
+
+      for (const result of await scheduler.schedule()) {
+        const refs: LogRefs =
+          result.launchId === undefined
+            ? { factoryId: result.factoryId, slotId: result.slotId }
+            : { factoryId: result.factoryId, slotId: result.slotId, launchId: result.launchId };
+
+        if (result.outcome === "refused") {log.warn("slot launch refused", { ...refs, detail: { error: result.error ?? "" } });}
+        else {log.info(`slot ${result.outcome}`, refs);}
+      }
+    } catch (error) {
+      log.error("slots not scheduled", { detail: { error: messageOf(error) } });
+      await channel?.close().catch(() => {});
+      host?.close();
+      await closeStore();
+      log.close();
+      claim.release();
+      fail(`cannot start the slots in ${stateRoot}: ${messageOf(error)}`);
+
+      return;
+    }
+  }
+
   // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
   // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
   let api: ManagementApi | undefined;
@@ -313,6 +507,9 @@ const main = async (): Promise<void> => {
     void (async () => {
       try {
         try {
+          // Closing the connections leaves the host and its launches running (PRD §3.2).
+          await channel?.close().catch(() => {});
+          host?.close();
           await served.close();
         } finally {
           await closeStore();
@@ -334,12 +531,42 @@ const main = async (): Promise<void> => {
       const clone = clones.get(factory);
       const loaded = factories.find((f) => f.factoryId === factory);
 
-      return clone === undefined || loaded === undefined || !decision.started.includes(factory)
+      return stopping || clone === undefined || loaded === undefined || !factoryStates.isRunning(factory)
         ? undefined
         : { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch };
     },
     onError: (factory, error) => log.error("sync queue run failed", { factoryId: factory, detail: { error: messageOf(error) } }),
   });
+
+  const stopperOptions = (): FactoryStopperOptions => {
+    if (stopHost === undefined || scheduler === undefined) {return { store, states: factoryStates };}
+
+    const server = channel;
+    const base = { store, states: factoryStates, host: stopHost, scheduler };
+
+    return server === undefined ? base : { ...base, drain: (launchId: string) => server.drain(launchId) };
+  };
+
+  const slotsReader = storeSlotsReader(store, stateRoot, decision.started, plannedSlots);
+  const stopper = createFactoryStopper(stopperOptions());
+
+  // The host this run connected to, else one a previous run left behind; none answering means none to stop.
+  const shutdownHost = async (): Promise<ShutdownHost | undefined> => {
+    if (host !== undefined) {return host;}
+
+    try {
+      const adopted = await connectHost(stateRoot);
+      host = adopted;
+
+      return adopted;
+    } catch (cause) {
+      const code = codeOf(cause);
+
+      if (code === "ENOENT" || code === "ECONNREFUSED") {return undefined;}
+
+      throw cause;
+    }
+  };
 
   try {
     api = await serveManagementApi({
@@ -356,9 +583,26 @@ const main = async (): Promise<void> => {
       clonePath: (factory) => clones.get(factory)?.path,
       sync,
       // Read from the recorded run and its configuration loads, not from memory.
-      factories: storeFactoriesReader(store, log.runId),
+      factories: storeFactoriesReader(store, log.runId, (factoryId) => factoryStates.get(factoryId)),
+      // A graceful stop sends `drain` on each live worker's channel before the host terminates it.
+      stopper,
+      // Every factory with the scoped stop, then the Worker Host; the daemon exits 0 once answered.
+      shutdown: createInstanceShutdown({ stopper, states: factoryStates, factories: decision.started, host: shutdownHost }),
+      onShutdown: () => {
+        if (stopping) {return;}
+
+        stopping = true;
+        log.info("daemon stopping", { detail: { signal: "shutdown" } });
+
+        if (api !== undefined) {finish(api);}
+      },
+      slots: slotsReader,
+      slotControl: storeSlotControl(slotsReader, freezer),
     });
   } catch (error) {
+    await channel?.close().catch(() => {});
+    host?.close();
+
     if (error instanceof ManagementSocketError) {
       log.error("management API refused", { detail: { reason: error.reason, socket: error.socketPath } });
     } else {

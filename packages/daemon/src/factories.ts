@@ -3,7 +3,7 @@
  * configuration loads recorded for it at start (`factory-loads.ts`). Nothing here re-reads YAML.
  */
 import { Effect } from "effect";
-import type { FactoryListResult, FactorySummary } from "@foundry/protocol/factories-api";
+import type { FactoryListResult, FactoryState, FactorySummary } from "@foundry/protocol/factories-api";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Store, StoreError } from "./store.js";
 
@@ -20,10 +20,14 @@ export class RunNotRecordedError extends Error {
   override readonly name = "RunNotRecordedError";
 }
 
-/** The factories loaded in run `runId`, in load order. Fails if the run has no record. */
+/**
+ * The factories loaded in run `runId`, in load order. Fails if the run has no record. `stateOf`
+ * gives each factory's state in this run; one it does not know is `running`.
+ */
 export const listLoadedFactories = (
   store: Store,
   runId: string,
+  stateOf: (factoryId: string) => FactoryState | undefined = () => undefined,
 ): Effect.Effect<FactoryListResult, StoreError | RunNotRecordedError> =>
   Effect.gen(function* () {
     const runs = yield* store.read<{ started_at: number }>(`SELECT started_at FROM run WHERE id = ?`, [runId]);
@@ -40,8 +44,8 @@ export const listLoadedFactories = (
     const factories = rows.map(
       (row): FactorySummary => ({
         factoryId: row.factory_id,
-        // Every factory loaded in the served run is running until factory stop exists (47a).
-        state: "running",
+        // A stop changes the state for this run only; the next daemon start runs the factory again.
+        state: stateOf(row.factory_id) ?? "running",
         loadId: row.id,
         yamlFile: row.yaml_file,
         configHash: row.config_hash,
@@ -58,6 +62,10 @@ export interface FactoriesReader {
 }
 
 /** Serves the factories of run `runId` from the store, read afresh on each request. */
-export const storeFactoriesReader = (store: Store, runId: string): FactoriesReader => ({
-  list: () => Effect.runPromise(listLoadedFactories(store, runId)),
+export const storeFactoriesReader = (
+  store: Store,
+  runId: string,
+  stateOf?: (factoryId: string) => FactoryState | undefined,
+): FactoriesReader => ({
+  list: () => Effect.runPromise(listLoadedFactories(store, runId, stateOf)),
 });

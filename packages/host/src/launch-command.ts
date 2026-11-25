@@ -7,18 +7,13 @@
  */
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FIXED_TOOLS, isPlainToolName } from "@foundry/protocol";
+import { FIXED_TOOLS, isPlainToolName, LAUNCH_ENV } from "@foundry/protocol";
 
 // The fixed tools live in @foundry/protocol, shared with the daemon and the extension.
 export { AGENT_TOOLS, FIXED_TOOLS, PI_BUILTIN_TOOLS } from "@foundry/protocol";
 
-/** Environment variables carrying launch identity to the Foundry extension (PRD §3.2). */
-export const LAUNCH_ENV = {
-  factoryId: "FOUNDRY_FACTORY_ID",
-  /** Also the slot marker: its presence means "running inside a worker". */
-  slotId: "FOUNDRY_SLOT",
-  launchId: "FOUNDRY_LAUNCH_ID",
-} as const;
+// Launch identity variables live in @foundry/protocol too: the extension reads them.
+export { LAUNCH_ENV } from "@foundry/protocol";
 
 /** Environment variable overriding the pinned Pi executable, for tests (P0 build plan). */
 export const PI_BIN_ENV = "FOUNDRY_PI_BIN";
@@ -69,6 +64,12 @@ export interface LaunchInputs {
   readonly slotDir: string;
   readonly factoryId: string;
   readonly slotId: string;
+  /**
+   * The slot's conversation, which outlives a launch (PRD §5.3, §10.2). Every launch of the slot
+   * opens it with `--session-id`, so Pi reopens the slot folder's session with this ID, or starts
+   * it with this ID when none exists yet.
+   */
+  readonly conversationRef: string;
   readonly launchId: string;
 }
 
@@ -78,11 +79,21 @@ export interface PiExecutable {
   readonly args: ReadonlyArray<string>;
 }
 
-/** Everything `child_process.spawn` needs for one worker launch. */
-export interface LaunchCommand {
+/**
+ * The inputs for a slot's launch before the host issues its launch ID. The host sets the
+ * identity variables itself (`LAUNCH_ENV`), so the daemon builds a launch spec from these.
+ */
+export type SlotLaunchInputs = Omit<LaunchInputs, "launchId">;
+
+/** The executable, argv and cwd of a slot's launch; identity travels in the environment. */
+export interface LaunchArgs {
   readonly command: string;
   readonly args: ReadonlyArray<string>;
   readonly cwd: string;
+}
+
+/** Everything `child_process.spawn` needs for one worker launch. */
+export interface LaunchCommand extends LaunchArgs {
   readonly env: Readonly<Record<string, string>>;
 }
 
@@ -114,6 +125,29 @@ export function buildLaunchCommand(
   pi: PiExecutable,
   hostEnv: Readonly<Record<string, string | undefined>>,
 ): LaunchCommand {
+  const launch = buildLaunchArgs(inputs, pi);
+  requireValue("launchId", inputs.launchId);
+
+  // The host's full environment, unfiltered (an allowlist is P1); identity always wins
+  // over any inherited value, e.g. when the host itself was started from a worker.
+  const env: Record<string, string> = {};
+
+  for (const [name, value] of Object.entries(hostEnv)) {
+    if (value !== undefined) {env[name] = value;}
+  }
+
+  env[LAUNCH_ENV.factoryId] = inputs.factoryId;
+  env[LAUNCH_ENV.slotId] = inputs.slotId;
+  env[LAUNCH_ENV.launchId] = inputs.launchId;
+
+  return { ...launch, env };
+}
+
+/**
+ * Builds a slot launch's executable, argv and cwd, which do not depend on the launch ID.
+ * Throws on inputs that cannot map to argv safely.
+ */
+export function buildLaunchArgs(inputs: SlotLaunchInputs, pi: PiExecutable): LaunchArgs {
   requireValue("model", inputs.model);
   requireAbsolute("slotDir", inputs.slotDir);
   requireAbsolute("foundryExtension", inputs.foundryExtension);
@@ -128,7 +162,7 @@ export function buildLaunchCommand(
 
   requireValue("factoryId", inputs.factoryId);
   requireValue("slotId", inputs.slotId);
-  requireValue("launchId", inputs.launchId);
+  requireSessionId(inputs.conversationRef);
 
   const tools = [...FIXED_TOOLS, ...inputs.extensions.flatMap((extension) => extension.tools)];
 
@@ -139,6 +173,8 @@ export function buildLaunchCommand(
     "--mode",
     "rpc",
     ...SUPPRESSION_FLAGS,
+    "--session-id",
+    inputs.conversationRef,
     "--model",
     inputs.model,
     "--tools",
@@ -149,24 +185,21 @@ export function buildLaunchCommand(
     ...inputs.skills.flatMap((skill) => ["--skill", skill]),
   ];
 
-  // The host's full environment, unfiltered (an allowlist is P1); identity always wins
-  // over any inherited value, e.g. when the host itself was started from a worker.
-  const env: Record<string, string> = {};
-
-  for (const [name, value] of Object.entries(hostEnv)) {
-    if (value !== undefined) {env[name] = value;}
-  }
-
-  env[LAUNCH_ENV.factoryId] = inputs.factoryId;
-  env[LAUNCH_ENV.slotId] = inputs.slotId;
-  env[LAUNCH_ENV.launchId] = inputs.launchId;
-
-  return { command: pi.command, args, cwd: inputs.slotDir, env };
+  return { command: pi.command, args, cwd: inputs.slotDir };
 }
 
 function requireValue(field: string, value: string): void {
   if (value === "" || value.startsWith("-")) {
     throw new Error(`launch input ${field} must be non-empty and not start with "-": ${JSON.stringify(value)}`);
+  }
+}
+
+/** Pi 1.6.0's own session ID rule, so Pi never refuses the launch for its conversation. */
+const SESSION_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
+
+function requireSessionId(ref: string): void {
+  if (!SESSION_ID.test(ref)) {
+    throw new Error(`launch input conversationRef must be a Pi session ID: ${JSON.stringify(ref)}`);
   }
 }
 

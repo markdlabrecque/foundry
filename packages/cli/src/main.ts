@@ -16,6 +16,9 @@ import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath, runFactorySync } from "./factory.js";
 import { runFactoryList } from "./factories.js";
+import { runFactoryStop } from "./factory-stop.js";
+import { runShutdown } from "./shutdown.js";
+import { runSlotInterrupt, runSlotList, runSlotShow, runSlotUnfreeze } from "./slots.js";
 
 const validate = Command.make(
   "validate",
@@ -259,13 +262,90 @@ const factorySync = Command.make(
     report(() => runFactorySync({ json, home: Option.getOrUndefined(home), env: process.env, name, wait })),
 ).pipe(Command.withDescription("Fetch the source's default branch and merge it into the factory's clone"));
 
+const factoryStop = Command.make(
+  "stop",
+  {
+    ...commonFlags,
+    name: Argument.String("name"),
+    force: Flag.Boolean("force").pipe(Flag.withDefault(false), Flag.withDescription("Skip the drain and the grace period")),
+  },
+  ({ json, home, name, force }) =>
+    Effect.flatMap(
+      Effect.promise(() => runFactoryStop({ json, home: Option.getOrUndefined(home), env: process.env, name, force })),
+      print,
+    ),
+).pipe(Command.withDescription("Stop one factory's workers, leaving the other factories running"));
+
 const factory = Command.make("factory").pipe(
   Command.withDescription("Factories loaded by the daemon and their dedicated clones"),
-  Command.withSubcommands([factoryList, factoryPath, factorySync]),
+  Command.withSubcommands([factoryList, factoryPath, factorySync, factoryStop]),
 );
 
+const slotList = Command.make("list", ticketFlags, ({ json, home, factory }) =>
+  Effect.flatMap(
+    Effect.promise(() =>
+      runSlotList({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), env: process.env }),
+    ),
+    print,
+  ),
+).pipe(Command.withDescription("List the configured slots with their condition and latest launch"));
+
+const slotShow = Command.make(
+  "show",
+  { ...ticketFlags, slot: Argument.String("station/ordinal") },
+  ({ json, home, factory, slot }) =>
+    Effect.flatMap(
+      Effect.promise(() =>
+        runSlotShow({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), slot, env: process.env }),
+      ),
+      print,
+    ),
+).pipe(Command.withDescription("Show one slot and its launch history"));
+
+const slotInterrupt = Command.make(
+  "interrupt",
+  { ...ticketFlags, slot: Argument.String("station/ordinal") },
+  ({ json, home, factory, slot }) =>
+    Effect.flatMap(
+      Effect.promise(() =>
+        runSlotInterrupt({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), slot, env: process.env }),
+      ),
+      print,
+    ),
+).pipe(Command.withDescription("Abort a slot's current run, keeping its launch and conversation"));
+
+const slotUnfreeze = Command.make(
+  "unfreeze",
+  { ...ticketFlags, slot: Argument.String("station/ordinal") },
+  ({ json, home, factory, slot }) =>
+    Effect.flatMap(
+      Effect.promise(() =>
+        runSlotUnfreeze({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), slot, env: process.env }),
+      ),
+      print,
+    ),
+).pipe(Command.withDescription("Unfreeze a slot once the daemon's re-run of its freeze cause check passes"));
+
+const slot = Command.make("slot").pipe(
+  Command.withDescription("Slots: each station's fixed worker positions and their launches"),
+  Command.withSubcommands([slotList, slotShow, slotInterrupt, slotUnfreeze]),
+);
+
+const shutdown = Command.make(
+  "shutdown",
+  {
+    ...commonFlags,
+    force: Flag.Boolean("force").pipe(Flag.withDefault(false), Flag.withDescription("Skip the drain and the grace period")),
+  },
+  ({ json, home, force }) =>
+    Effect.flatMap(
+      Effect.promise(() => runShutdown({ json, home: Option.getOrUndefined(home), env: process.env, force })),
+      print,
+    ),
+).pipe(Command.withDescription("Stop every factory's workers, then the Worker Host, then the daemon"));
+
 const foundry = Command.make("foundry").pipe(
-  Command.withSubcommands([validate, status, hold, logs, ticket, events, factory]),
+  Command.withSubcommands([validate, status, shutdown, hold, logs, ticket, events, factory, slot]),
 );
 
 Command.run(foundry, { version: "0.0.0" }).pipe(

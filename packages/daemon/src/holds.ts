@@ -10,7 +10,7 @@ import { Clock, Effect, Schema } from "effect";
 import { expectDefined } from "@foundry/protocol/errors";
 import { HoldEvidence, HoldKind, HoldState, holdCommands } from "@foundry/protocol/holds";
 import type { HoldListResult, HoldRecord, HoldShowResult } from "@foundry/protocol/holds";
-import type { Query, Store, StoreError } from "./store.js";
+import type { Change, Query, Store, StoreError } from "./store.js";
 
 export interface RaiseHold {
   readonly factoryId: string;
@@ -68,50 +68,88 @@ const byId = (query: Query, id: number) =>
     rows[0] === undefined ? undefined : toRecord(rows[0]),
   );
 
+const openRow = (query: Query, hold: Pick<RaiseHold, "factoryId" | "kind" | "subject">) =>
+  Effect.map(
+    query<HoldRow>(
+      `SELECT ${COLUMNS} FROM operator_hold WHERE factory_id = ? AND kind = ? AND subject = ? AND state = 'open'`,
+      [hold.factoryId, hold.kind, hold.subject],
+    ),
+    (rows) => rows[0],
+  );
+
+/**
+ * Raises a hold inside a change, or refreshes the one already open for its factory, kind and
+ * subject. Identical evidence writes nothing, so the caller's change must record its own history.
+ */
+export const raiseHoldIn = ({ query, recordHistory }: Change, hold: RaiseHold): Effect.Effect<RaiseResult, StoreError> =>
+  Effect.gen(function* () {
+    const evidence = JSON.stringify(hold.evidence);
+    const existing = yield* openRow(query, hold);
+
+    if (existing !== undefined && existing.evidence === evidence) {
+      return { outcome: "unchanged", hold: toRecord(existing) } as const;
+    }
+
+    const now = yield* Clock.currentTimeMillis;
+
+    const id =
+      existing === undefined
+        ? (yield* query<{ id: number }>(
+            `INSERT INTO operator_hold (factory_id, kind, subject, state, evidence, raised_at, updated_at)
+             VALUES (?, ?, ?, 'open', ?, ?, ?) RETURNING id`,
+            [hold.factoryId, hold.kind, hold.subject, evidence, now, now],
+          ).pipe(Effect.map((rows) => expectDefined(rows[0], "the inserted hold's id").id)))
+        : (yield* query(`UPDATE operator_hold SET evidence = ?, updated_at = ? WHERE id = ?`, [evidence, now, existing.id]),
+          existing.id);
+
+    yield* recordHistory({
+      factoryId: hold.factoryId,
+      kind: "hold.raised",
+      subject: hold.subject,
+      detail: { holdId: id, kind: hold.kind, refreshed: existing !== undefined, evidence: hold.evidence },
+    });
+
+    return { outcome: existing === undefined ? "raised" : "refreshed", hold: expectDefined(yield* byId(query, id), `hold ${id}`) } as const;
+  });
+
 /** Raises a hold, or refreshes the one already open for its factory, kind and subject. */
 export const raiseHold = (store: Store, hold: RaiseHold): Effect.Effect<RaiseResult, StoreError> =>
   Effect.gen(function* () {
-    const evidence = JSON.stringify(hold.evidence);
-
-    const open = yield* store.read<HoldRow>(
-      `SELECT ${COLUMNS} FROM operator_hold WHERE factory_id = ? AND kind = ? AND subject = ? AND state = 'open'`,
-      [hold.factoryId, hold.kind, hold.subject],
-    );
-
     // The daemon is the only writer, so this read cannot be raced; the unique index backs it up.
-    if (open[0] !== undefined && open[0].evidence === evidence) {
-      return { outcome: "unchanged", hold: toRecord(open[0]) } as const;
+    const open = yield* openRow(store.read, hold);
+
+    if (open !== undefined && open.evidence === JSON.stringify(hold.evidence)) {
+      return { outcome: "unchanged", hold: toRecord(open) } as const;
     }
 
-    return yield* store.change(({ query, recordHistory }) =>
-      Effect.gen(function* () {
-        const now = yield* Clock.currentTimeMillis;
-        const existing = open[0];
+    return yield* store.change((change) => raiseHoldIn(change, hold));
+  });
 
-        const id =
-          existing === undefined
-            ? (yield* query<{ id: number }>(
-                `INSERT INTO operator_hold (factory_id, kind, subject, state, evidence, raised_at, updated_at)
-                 VALUES (?, ?, ?, 'open', ?, ?, ?) RETURNING id`,
-                [hold.factoryId, hold.kind, hold.subject, evidence, now, now],
-              ).pipe(Effect.map((rows) => expectDefined(rows[0], "the inserted hold's id").id)))
-            : (yield* query(`UPDATE operator_hold SET evidence = ?, updated_at = ? WHERE id = ?`, [
-                evidence,
-                now,
-                existing.id,
-              ]),
-              existing.id);
+/**
+ * Closes the open hold of a factory, kind and subject inside a change: `resolved` by an operator
+ * command on its subject, `cleared` by the daemon when its cause went away. Returns `undefined`,
+ * writing nothing, if no such hold is open.
+ */
+export const closeOpenHoldIn = (
+  { query, recordHistory }: Change,
+  hold: Pick<RaiseHold, "factoryId" | "kind" | "subject">,
+  state: "resolved" | "cleared",
+): Effect.Effect<HoldRecord | undefined, StoreError> =>
+  Effect.gen(function* () {
+    const open = yield* openRow(query, hold);
 
-        yield* recordHistory({
-          factoryId: hold.factoryId,
-          kind: "hold.raised",
-          subject: hold.subject,
-          detail: { holdId: id, kind: hold.kind, refreshed: existing !== undefined, evidence: hold.evidence },
-        });
+    if (open === undefined) {return undefined;}
 
-        return { outcome: existing === undefined ? "raised" : "refreshed", hold: expectDefined(yield* byId(query, id), `hold ${id}`) } as const;
-      }),
-    );
+    const now = yield* Clock.currentTimeMillis;
+    yield* query(`UPDATE operator_hold SET state = ?, closed_at = ? WHERE id = ? AND state = 'open'`, [state, now, open.id]);
+    yield* recordHistory({
+      factoryId: open.factory_id,
+      kind: `hold.${state}`,
+      subject: open.subject,
+      detail: { holdId: open.id, kind: open.kind },
+    });
+
+    return expectDefined(yield* byId(query, open.id), `hold ${open.id}`);
   });
 
 /**
@@ -129,24 +167,7 @@ export const closeHold = (
 
     if (current === undefined || current.state !== "open") {return undefined;}
 
-    return yield* store.change(({ query, recordHistory }) =>
-      Effect.gen(function* () {
-        const now = yield* Clock.currentTimeMillis;
-        yield* query(`UPDATE operator_hold SET state = ?, closed_at = ? WHERE id = ? AND state = 'open'`, [
-          state,
-          now,
-          id,
-        ]);
-        yield* recordHistory({
-          factoryId: current.factoryId,
-          kind: `hold.${state}`,
-          subject: current.subject,
-          detail: { holdId: id, kind: current.kind },
-        });
-
-        return expectDefined(yield* byId(query, id), `hold ${id}`);
-      }),
-    );
+    return yield* store.change((change) => closeOpenHoldIn(change, current, state));
   });
 
 /** The open holds, oldest first. */

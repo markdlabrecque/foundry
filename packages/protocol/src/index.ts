@@ -4,3 +4,5 @@ export const packageName = "@foundry/protocol" as const;
 export * from "./channel.js";
 
 export * from "./tool-set.js";
+
+export * from "./launch-env.js";
