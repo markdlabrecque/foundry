@@ -132,6 +132,12 @@ test.each([
   expect(await get(api.socketPath, path)).toMatchObject({ status: statusCode, body: { ok: false, error: { code } } });
 });
 
+test("the slot interrupt route answers only POST, and a bare /interrupt is no slot route", async () => {
+  const api = await serve(tempRoot());
+  expect(await get(api.socketPath, "/api/v1/slots/dev/1/interrupt")).toMatchObject({ status: 405, body: { ok: false, error: { code: "method_not_allowed" } } });
+  expect(await get(api.socketPath, "/api/v1/slots/interrupt")).toMatchObject({ status: 400, body: { ok: false, error: { code: "bad_request" } } });
+});
+
 test("the slot routes answer 503 when the daemon serves no slots", async () => {
   const api = await serve(tempRoot());
   expect(await get(api.socketPath, "/api/v1/slots")).toMatchObject({ status: 503, body: { ok: false, error: { code: "unavailable" } } });

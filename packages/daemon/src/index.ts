@@ -108,7 +108,6 @@ export {
   planSlots,
   slotDirectory,
   SlotsError,
-  SLOT_INTERRUPT_ACK_TIMEOUT_MS,
   SLOTS_DIR_NAME,
   storeSlotInterrupter,
   storeSlotsReader,

@@ -291,7 +291,7 @@ const handleSlotInterrupt = (
   if (request.method !== "POST") {
     response.setHeader("allow", "POST");
 
-    return send(response, 405, failure("method_not_allowed", `${request.url ?? ""} only accepts POST`));
+    return send(response, 405, failure("method_not_allowed", `${new URL(request.url ?? "/", "http://foundry").pathname} only accepts POST`));
   }
 
   if (slotId === null) {return send(response, 400, failure("bad_request", "a slot is addressed as station/ordinal"));}

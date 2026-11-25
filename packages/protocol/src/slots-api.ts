@@ -60,6 +60,9 @@ export const matchSlotPath = (path: string): string | null | undefined => {
 
 const INTERRUPT_SUFFIX = "/interrupt";
 
+/** How long the daemon waits for the worker's interrupt acknowledgement before it refuses. */
+export const SLOT_INTERRUPT_ACK_TIMEOUT_MS = 30_000;
+
 /** Request path of a slot's interrupt; `slotId` must already be a valid `station/ordinal`. */
 export const slotInterruptPath = (slotId: string, factory?: string): string =>
   withFactory(`${SLOTS_PATH}/${slotId}${INTERRUPT_SUFFIX}`, factory);
@@ -69,7 +72,12 @@ export const slotInterruptPath = (slotId: string, factory?: string): string =>
  * when it is but does not name a valid `station/ordinal`.
  */
 export const matchSlotInterruptPath = (path: string): string | null | undefined => {
-  if (!path.startsWith(`${SLOTS_PATH}/`) || !path.endsWith(INTERRUPT_SUFFIX)) {return undefined;}
+  const prefix = `${SLOTS_PATH}/`;
+
+  // Longer than prefix plus suffix, so `/api/v1/slots/interrupt` is not read as an empty slot ID.
+  if (!path.startsWith(prefix) || !path.endsWith(INTERRUPT_SUFFIX) || path.length <= prefix.length + INTERRUPT_SUFFIX.length) {
+    return undefined;
+  }
 
   const slotId = path.slice(SLOTS_PATH.length + 1, -INTERRUPT_SUFFIX.length);
 

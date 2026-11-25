@@ -10,6 +10,7 @@ import {
   isSlotListResult,
   isSlotShowResult,
   parseSlotId,
+  SLOT_INTERRUPT_ACK_TIMEOUT_MS,
   slotInterruptPath,
   slotPath,
   slotsPath,
@@ -83,8 +84,8 @@ const renderInterrupt = ({ launchId, outcome, slot }: SlotInterruptResult): stri
     ? `slot ${slot.slotId}: run aborted; launch ${launchId} and its conversation kept\n`
     : `slot ${slot.slotId}: no run was active; launch ${launchId} and its conversation kept\n`;
 
-/** The daemon waits up to 30 s for the worker's acknowledgement; allow for that plus the call. */
-const INTERRUPT_TIMEOUT_MS = 35_000;
+/** The daemon's wait for the worker's acknowledgement, plus time for the call itself. */
+const INTERRUPT_TIMEOUT_MS = SLOT_INTERRUPT_ACK_TIMEOUT_MS + 5000;
 
 /** Calls the daemon and renders its result once `is` confirms the shape the daemon answered with. */
 const fetchAndRender = async <A>(

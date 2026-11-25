@@ -22,7 +22,7 @@ import { Clock, Effect, Schema } from "effect";
 import { buildLaunchArgs, connectHost, HostRefusedError, launchStderrPath, startHost } from "@foundry/host";
 import type { HostConnection, LaunchRecord, LaunchSpec, PiExecutable } from "@foundry/host";
 import { codeOf, messageOf } from "@foundry/protocol/errors";
-import { SlotCondition, slotIdOf } from "@foundry/protocol/slots-api";
+import { SLOT_INTERRUPT_ACK_TIMEOUT_MS, SlotCondition, slotIdOf } from "@foundry/protocol/slots-api";
 import type { LaunchEndReason, SlotLaunch, SlotLaunchHistoryEntry, SlotSummary } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
 import type { SlotInterrupter, SlotsReader } from "./slots-error.js";
@@ -572,9 +572,6 @@ export const storeSlotsReader = (
     return { slot: await summaryOf(store, slot), launches };
   },
 });
-
-/** How long an interrupt waits for the worker's acknowledgement before it is refused. */
-export const SLOT_INTERRUPT_ACK_TIMEOUT_MS = 30_000;
 
 /** The worker channel's interrupt; a `ChannelServer` satisfies it. */
 export type SlotChannel = Pick<ChannelServer, "interrupt">;

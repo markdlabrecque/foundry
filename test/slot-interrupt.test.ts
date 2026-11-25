@@ -9,6 +9,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
 import {
+  ChannelUnavailableError,
   createHostSlotClaim,
   createSlotScheduler,
   inMemorySlotConversations,
@@ -19,7 +20,7 @@ import {
   storeSlotInterrupter,
   storeSlotsReader,
 } from "@foundry/daemon";
-import type { SlotHost } from "@foundry/daemon";
+import type { SlotChannel, SlotHost } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import type { LaunchRecord } from "@foundry/host";
 import { openChannel, RunInterrupter } from "@foundry/extension";
@@ -158,6 +159,8 @@ const daemonWithWorker = async () => {
 
   return {
     home,
+    store,
+    slots,
     launched,
     aborts: () => aborts,
     hellos: () => hellos,
@@ -205,4 +208,17 @@ test("a slot with no live launch is refused, and nothing is launched into it", a
   expect(refused.exitCode).toBe(EXIT_REFUSED);
   expect(JSON.parse(refused.stdout)).toMatchObject({ ok: false, error: { code: "no_live_launch" } });
   expect(d.launched.map((l) => l.slotId)).toEqual(["lead/1"]);
+});
+
+test.each<[string, SlotChannel["interrupt"], string]>([
+  ["a worker that never acknowledges", () => new Promise(() => {}), "interrupt_unacknowledged"],
+  ["a channel lost before the ack", async (launchId) => { throw new ChannelUnavailableError(launchId, "was lost"); }, "channel_unavailable"],
+])("%s is refused with its code, and the launch is left alone", async (_name, interrupt, code) => {
+  const d = await daemonWithWorker();
+  const interrupter = storeSlotInterrupter({ store: d.store, factories: ["alpha"], slots: d.slots, channel: { interrupt }, ackTimeoutMs: 1 });
+
+  await expect(interrupter.interrupt("lead/1", undefined)).rejects.toMatchObject({ code });
+  const shown = await runSlotShow({ json: true, home: d.home, factory: undefined, slot: "lead/1", env });
+  expect(JSON.parse(shown.stdout)).toMatchObject({ result: { launches: [{ launchId: "launch-1", endedAt: null }] } });
+  expect(d.launched).toHaveLength(1);
 });
