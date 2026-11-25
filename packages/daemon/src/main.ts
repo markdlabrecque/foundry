@@ -206,10 +206,12 @@ const main = async (): Promise<void> => {
 
   const databaseFile = join(stateRoot, DATABASE_FILE_NAME);
   let store: Store;
+  let stage: "database open" | "operation interruption" = "database open";
 
   try {
     const { openStore } = await importStoreQuietly();
     store = await Effect.runPromise(Scope.provide(storeScope)(openStore({ filename: databaseFile })));
+    stage = "operation interruption";
 
     // PRD §10.2 step 1, before the Worker Host is asked about slots: nothing runs in this daemon
     // yet, so whatever is recorded as running was interrupted. Each affected factory's queue stays
@@ -220,13 +222,22 @@ const main = async (): Promise<void> => {
       log.warn("operation interrupted", { ...withTicket, detail: { kind: operation.kind } });
     }
 
+    stage = "database open";
+
     stopExpiry = await startRequestExpiry(store, (cause) => log.error("request expiry failed", { detail: { error: messageOf(cause) } }));
   } catch (error) {
-    log.error("database open failed", { detail: { file: databaseFile, error: messageOf(error) } });
+    if (stage === "operation interruption") {
+      log.error("operation interruption failed", { detail: { file: databaseFile, error: messageOf(error) } });
+    } else {
+      log.error("database open failed", { detail: { file: databaseFile, error: messageOf(error) } });
+    }
+
     await closeStore();
     log.close();
     claim.release();
-    fail(`cannot open the database: ${messageOf(error)}`);
+    fail(stage === "operation interruption"
+      ? `cannot mark running operations interrupted: ${messageOf(error)}`
+      : `cannot open the database: ${messageOf(error)}`);
 
     return;
   }

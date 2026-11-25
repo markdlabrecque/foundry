@@ -380,12 +380,14 @@ export const listOperationsAwaitingRecovery = (
  * Records recovery's verdict on an interrupted operation that awaits recovery, inside `change`, so
  * it lands with everything the verdict causes. `interrupted` keeps the status (a sync that is never
  * rerun) but, with its result recorded, no longer closes the queue. Dies if the operation is not
- * awaiting recovery: a verdict for anything else is a bug.
+ * awaiting recovery: a verdict for anything else is a bug. `indeterminate` and rerun-from-start are
+ * deliberately not accepted: PRD §10.2 keeps the queue closed until the operator declares an
+ * indeterminate integration, so those verdicts belong to the per-kind recovery drafts.
  */
 export const recordRecoveryResultIn = (
   change: Change,
   id: number,
-  outcome: { readonly status: OperationResultStatus | "interrupted"; readonly result: OperationDetail },
+  outcome: { readonly status: "complete" | "failed" | "interrupted"; readonly result: OperationDetail },
 ): Effect.Effect<Operation, StoreError> =>
   Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
