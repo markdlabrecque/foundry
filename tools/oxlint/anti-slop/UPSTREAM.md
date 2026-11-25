@@ -1,9 +1,9 @@
 # Upstream: anti-slop Oxlint plugins
 
-- **Source:** https://github.com/dmmulroy/anti-slop, the `install-anti-slop` skill's bundled `assets/anti-slop/`.
-- **Commit:** `63dbb09f73438e550a6991dc6d778f979ffbf183`, as pinned in the repo's `skills-lock.json` (`computedHash` `3d0294ca7cca885e1c676fe52ca49f127089ec7aa6e6e3e5fb2d9a38333ad1b3`).
-- **Copied with:** `node .agents/skills/install-anti-slop/scripts/install.mjs`, which copies the skill's assets unchanged.
-- **Pristine snapshot:** `.agents/skills/install-anti-slop/assets/anti-slop/`. At install time, `diff -r` against this directory showed no differences.
+- **Source:** https://github.com/dmmulroy/anti-slop, the `install-anti-slop` skill's bundled `skills/install-anti-slop/assets/anti-slop/`.
+- **Commit:** `63dbb09f73438e550a6991dc6d778f979ffbf183`.
+- **Copied with:** the skill's `scripts/install.mjs`, which copies its assets unchanged. At install time, `diff -r` against the skill's assets showed no differences.
+- **Pristine snapshot:** `skills/install-anti-slop/assets/anti-slop/` in the upstream repository at the commit above. The skill itself is not kept in this repository.
 
 ## Installed plugin paths
 
@@ -23,4 +23,4 @@
 
 ## Updating
 
-Follow `.agents/skills/install-anti-slop/references/update.md`. Treat an update as a reviewed merge, not a directory replacement, and update the commit above to match.
+Install the skill temporarily with `npx skills add dmmulroy/anti-slop --skill install-anti-slop`, then follow its `references/update.md`. Treat an update as a reviewed merge, not a directory replacement, and update the commit above to match. Remove the skill again afterwards.
