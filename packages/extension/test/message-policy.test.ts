@@ -88,6 +88,29 @@ const fixture = (busy = true, deferSettledInjections = false) => {
     duringRun: (action: () => void) => { duringRun = action; } };
 };
 
+test("injection notifications exclude held messages and start only when handed to Pi, once per ID", () => {
+  const reported: Array<string> = [];
+  const injected: Array<string> = [];
+  let idle = false;
+
+  const receiver = new MessageReceiver({
+    inject: (message) => { injected.push(message.id); },
+    pending: () => [],
+  }, (id) => reported.push(id));
+
+  receiver.bind({ isIdle: () => idle });
+  receiver.receive({ type: "message", id: "held", body: "held", delivery: "when_idle" });
+  expect(reported).toEqual([]);
+  receiver.receive({ type: "message", id: "immediate", body: "now", delivery: "after_turn" });
+  receiver.receive({ type: "message", id: "immediate", body: "duplicate", delivery: "after_turn" });
+  expect(reported).toEqual(["immediate"]);
+  idle = true;
+  receiver.settled();
+  expect(reported).toEqual(["immediate", "held"]);
+  expect(injected).toEqual(reported);
+  receiver.drain();
+});
+
 const tick = () => new Promise<void>((resolve) => { setImmediate(resolve); });
 
 test("working holds when_idle FIFO while after_turn overtakes FIFO; only idle settlement releases the batch once", async () => {

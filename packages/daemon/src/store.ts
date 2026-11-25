@@ -550,6 +550,14 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
        WHERE state = 'open' AND kind = 'blocked'`,
     ],
   },
+  {
+    id: 23,
+    name: "message_injection_clock",
+    statements: [
+      `ALTER TABLE message_attempt ADD COLUMN injected_at INTEGER`,
+      `ALTER TABLE message_attempt ADD COLUMN retired_at INTEGER`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */
