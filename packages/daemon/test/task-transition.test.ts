@@ -267,6 +267,7 @@ test.each([
   { mode: "mixed dirty", writing: false, code: "non_writing_changes" },
   { mode: "mixed wrong commit", writing: false, code: "invalid_code_outcome" },
   { mode: "mixed clean", writing: false, code: null },
+  { mode: "planning baseline", writing: false, code: null },
   { mode: "race before transaction", writing: false, code: "invalid_code_outcome" },
   { mode: "race during writes", writing: false, code: "invalid_code_outcome" },
   { mode: "dirty", writing: false, code: "non_writing_changes" },
@@ -279,6 +280,11 @@ test.each([
   { mode: "new commit", writing: true, code: null },
 ])("real Git $mode (writing=$writing) preserves assignment on refusal", async ({ mode, writing, code }) => {
   await fixture((store, id, root) => Effect.gen(function* () {
+    if (mode === "planning baseline") {
+      expect(yield* Effect.promise(() => createSubmissions({ store, handlers }).submit(owner, frame(id))))
+        .toMatchObject({ status: "committed" });
+    }
+
     const repository = join(root, "repository");
     const path = join(root, "worktree");
     git(root, "init", "--quiet", "--initial-branch=main", repository);
@@ -294,9 +300,15 @@ test.each([
 
     const codeConfig = { ...config, production_lines: { standard: {
       ...config.production_lines.standard,
-      stages: [{ id: "plan", station: mode.startsWith("mixed") ? "floor.worker" : "floor.reviewer", approval: false, writing },
+      stages: [{ id: mode === "planning baseline" ? "implement" : "plan", station: mode.startsWith("mixed") || mode === "planning baseline" ? "floor.worker" : "floor.reviewer", approval: false, writing },
         { id: "next", station: "floor.worker", approval: false, writing: false }],
     } } };
+
+    const activeId = mode === "planning baseline"
+      ? (yield* createAssignmentScheduler({ ...schedulerOptions(store), factories: [{ factoryId: "shop", config: codeConfig }] }).schedule())[0]?.id
+      : id;
+
+    if (activeId === undefined) {throw new Error("fixture did not assign code stage");}
 
     const codeHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({ factories: [{ factoryId: "shop", config: codeConfig }] })]]);
 
@@ -314,7 +326,7 @@ test.each([
 
     const head = git(path, "rev-parse", "HEAD");
     const gitCommit = mode === "missing commit" ? {} : { gitCommit: mode.endsWith("wrong commit") ? "not-a-commit" : head };
-    const outcome = { ...frame(id), args: { assignmentId: id, outcome: "done", reason: "Code evaluated", evidence: ["evidence/tests.md"], ...gitCommit } } as const;
+    const outcome = { ...frame(activeId), callId: "code-done", args: { assignmentId: activeId, outcome: "done", reason: "Code evaluated", evidence: ["evidence/tests.md"], ...gitCommit } } as const;
     const before = yield* snapshot(store);
 
     const submissionStore: Store = mode.startsWith("race") ? { ...store, change: (body) => store.change((change) => Effect.gen(function* () {
@@ -336,7 +348,7 @@ test.each([
     } else {
       expect(result).toMatchObject({ status: "committed", value: { stage: "next", status: "queued" } });
       const after = yield* snapshot(store);
-      expect(after.assignments).toMatchObject([{ status: "ended", end_reason: "done" }]);
+      expect(after.assignments).toContainEqual(expect.objectContaining({ id: activeId, status: "ended", end_reason: "done" }));
       expect(after.transitions.at(-1)).toMatchObject({ git_commit: head, outcome: "done" });
       // Even if the worktree disappears, a retry returns the durable result.
       git(repository, "worktree", "remove", "--force", path);
