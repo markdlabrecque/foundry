@@ -3,39 +3,44 @@ import { Clock, Effect } from "effect";
 import type { MessageDispositionResult } from "@foundry/protocol/messages-api";
 import { acceptMessage } from "./agent-message.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
-import type { Change } from "./store.js";
+import type { Change, StoreError } from "./store.js";
 
-/** Runs inside the drop's transaction, so abandonment, notification and drop commit together.
- * Only an open delegation is abandoned: one already closed keeps its result and nobody is told. */
-export const abandonDroppedDelegation = (change: Change, notice: MessageDispositionResult) => Effect.gen(function* () {
-  const rows = yield* change.query<{ id: string; delegating_slot: string; station: string | null; ticket_number: number }>(
-    `SELECT d.id, d.delegating_slot, s.station, a.ticket_number FROM delegation d
-     JOIN assignment a ON a.id = d.root_assignment AND a.factory_id = d.factory_id
-     LEFT JOIN slot s ON s.factory_id = d.factory_id AND s.slot_id = d.delegating_slot
-     WHERE d.notice_id = ? AND d.factory_id = ? AND d.status = 'open'`,
-    [notice.id, notice.factoryId],
-  );
+/**
+ * Runs inside the drop's transaction, so the abandonment, its notification and the drop commit
+ * together. Only an open delegation is abandoned: one already completed, abandoned or cancelled
+ * keeps that outcome, and the delegating slot hears nothing new. §10.2 closes only the named
+ * delegation, so its child delegations are deliberately not cascaded (cascading awaits a product
+ * decision).
+ */
+export const abandonDroppedDelegation = (change: Change, notice: MessageDispositionResult): Effect.Effect<void, StoreError> =>
+  Effect.gen(function* () {
+    const [abandoned] = yield* change.query<{ id: string; delegating_slot: string; root_assignment: string }>(
+      `UPDATE delegation SET status = 'abandoned' WHERE factory_id = ? AND notice_id = ? AND status = 'open'
+       RETURNING id, delegating_slot, root_assignment`, [notice.factoryId, notice.id],
+    );
 
-  const delegation = rows[0];
+    if (abandoned === undefined) {return;}
 
-  if (delegation === undefined) {return;}
+    const [assignment] = yield* change.query<{ ticket_number: number }>(
+      `SELECT ticket_number FROM assignment WHERE id = ? AND factory_id = ?`, [abandoned.root_assignment, notice.factoryId],
+    );
 
-  const now = yield* Clock.currentTimeMillis;
-  const records = [slotRecord(delegation.delegating_slot), ticketRecord(delegation.ticket_number)];
-  yield* change.query(`UPDATE delegation SET status = 'abandoned' WHERE id = ? AND status = 'open'`, [delegation.id]);
+    const ticket = assignment?.ticket_number ?? null;
+    const now = yield* Clock.currentTimeMillis;
+    const records = [slotRecord(abandoned.delegating_slot), ...(ticket === null ? [] : [ticketRecord(ticket)])];
 
-  const message = yield* acceptMessage(change, {
-    factoryId: notice.factoryId, senderKind: "daemon", senderSlot: null,
-    recipient: delegation.station ?? delegation.delegating_slot, kind: "ordinary", delivery: "after_turn",
-    correlation: { delegationId: delegation.id, ticket: delegation.ticket_number },
-    body: `Ticket ${delegation.ticket_number}: delegation ${delegation.id} was abandoned. The operator dropped its notice ${notice.id}, so no reply will come.`,
-  }).pipe(Effect.catchTag("ToolRefusal", Effect.die));
+    // Daemon-written (no budget), bound to the exact delegating slot as a completion reply would be.
+    const message = yield* acceptMessage(change, {
+      factoryId: notice.factoryId, senderKind: "daemon", senderSlot: null, recipient: abandoned.delegating_slot,
+      kind: "ordinary", delivery: "after_turn", correlation: { delegationId: abandoned.id, ticket },
+      body: `Delegation ${abandoned.id} was abandoned: the operator dropped its notice ${notice.id} because its delivery could not be confirmed. No reply will arrive.`,
+    }).pipe(Effect.catchTag("ToolRefusal", Effect.die));
 
-  yield* change.query(`UPDATE message SET status = 'bound', bound_slot = ?, bound_at = ? WHERE id = ?`,
-    [delegation.delegating_slot, now, message.id]);
-  yield* change.recordHistory({ factoryId: notice.factoryId, kind: "message.bound", subject: message.id,
-    detail: { sequence: message.sequence, slotId: delegation.delegating_slot }, records });
-  yield* change.recordHistory({ factoryId: notice.factoryId, kind: "delegation.abandoned", subject: delegation.id,
-    detail: { cause: "notice_dropped", noticeId: notice.id, delegatingSlot: delegation.delegating_slot, notificationId: message.id },
-    records });
-});
+    yield* change.query(`UPDATE message SET status = 'bound', bound_slot = ?, bound_at = ? WHERE id = ?`,
+      [abandoned.delegating_slot, now, message.id]);
+    yield* change.recordHistory({ factoryId: notice.factoryId, kind: "message.bound", subject: message.id,
+      detail: { sequence: message.sequence, slotId: abandoned.delegating_slot }, records });
+    yield* change.recordHistory({ factoryId: notice.factoryId, kind: "delegation.abandoned", subject: abandoned.id,
+      detail: { reason: "notice_dropped", noticeId: notice.id, delegatingSlot: abandoned.delegating_slot, notificationId: message.id },
+      records });
+  });
