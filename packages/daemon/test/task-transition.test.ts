@@ -4,15 +4,17 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { Effect, Match, Schema } from "effect";
+import { Effect, Exit, Match, Schema } from "effect";
 import {
   agentDelegateHandler, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
-  humanRequestHandler, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
+  createApprovalAnswers, humanRequestHandler, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
 import { HUMAN_REQUEST, TASK_TRANSITION } from "@foundry/protocol";
-import { runApprovalList, runApprovalShow } from "@foundry/cli";
+import { runApprovalAnswer, runApprovalList, runApprovalShow } from "@foundry/cli";
 import { FactoryConfig } from "../src/config/schema.js";
+import { postToDaemon } from "../../cli/src/management-client.js";
+import { approvalAnswerPath } from "@foundry/protocol/approvals";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
   version: 1, name: "shop", repository: { source: "/disposable", default_branch: "main" },
@@ -85,6 +87,58 @@ const fixture = async <A, E>(use: (store: Store, assignmentId: string, root: str
   })));
 };
 
+test("CLI answer commits one resolution and an exact-slot budget-exempt answer, or neither", async () => {
+  await fixture((store, id, root) => Effect.scoped(Effect.gen(function* () {
+    const submissions = createSubmissions({ store, handlers: new Map([[HUMAN_REQUEST, humanRequestHandler]]) });
+    expect(yield* Effect.promise(() => submissions.submit(owner, { type: "tool_call", tool: HUMAN_REQUEST,
+      callId: "request", args: { assignmentId: id, body: "Which option?" } })))
+      .toMatchObject({ status: "committed", value: { approvalId: 1 } });
+    const before = yield* snapshot(store);
+
+    const failing: Store = { ...store, change: (body) => store.change((change) =>
+      Effect.flatMap(body(change), () => Effect.fail(new StoreError({ reason: "Sql", message: "commit failure" })))),
+    };
+
+    expect(Exit.isFailure(yield* Effect.exit(createApprovalAnswers(failing, slots).answer(1, "Use B")))).toBe(true);
+    expect(yield* snapshot(store)).toEqual(before);
+    expect(Exit.isFailure(yield* Effect.exit(createApprovalAnswers(store, []).answer(1, "Use B")))).toBe(true);
+    expect(yield* snapshot(store)).toEqual(before);
+
+    const api = yield* Effect.promise(() => serveManagementApi({ stateRoot: root,
+      approvalAnswers: createApprovalAnswers(store, slots),
+      status: () => ({ instance: { stateRoot: root, daemonPid: 1, startedAt: "2026-01-01T00:00:00Z" } }),
+    }));
+
+    yield* Effect.addFinalizer(() => Effect.promise(api.close));
+
+    for (const body of [{}, { body: "" }, { body: 5 }]) {
+      expect((yield* Effect.promise(() => postToDaemon(root, approvalAnswerPath(1), body))).status).toBe(400);
+    }
+
+    const options = { home: root, env: {}, json: false, id: "1", body: "Use B\n✓" };
+    const outcomes = yield* Effect.promise(() => Promise.all([runApprovalAnswer(options), runApprovalAnswer({ ...options, json: true })]));
+    expect(outcomes.map((o) => o.exitCode).sort((a, b) => a - b)).toEqual([0, 1]);
+    const after = yield* snapshot(store);
+    expect(after.approvals).toMatchObject([{ state: "resolved", closed_at: expect.any(Number) }]);
+    expect(after.messages.slice(before.messages.length)).toMatchObject([{ factory_id: "shop", sender_kind: "operator",
+      sender_slot: null, recipient: "floor.worker", body: options.body, ticket_number: 1,
+      delivery: "after_turn", status: "bound", bound_slot: "worker/1" }]);
+    expect(after.messages).toHaveLength(before.messages.length + 1);
+    expect(after.tickets).toEqual(before.tickets); // Includes message_count and ceiling: no budget charged.
+    expect(after.assignments).toEqual(before.assignments);
+    expect(after.transitions).toEqual(before.transitions);
+    expect(yield* store.read(`SELECT * FROM history WHERE kind = 'approval.answered'`)).toHaveLength(1);
+    expect((yield* Effect.promise(() => runApprovalAnswer(options))).exitCode).toBe(1);
+    expect((yield* Effect.promise(() => runApprovalAnswer({ ...options, id: "999" }))).exitCode).toBe(1);
+
+    for (const invalid of [{ id: "0" }, { id: "9007199254740992" }, { body: "" }]) {
+      expect((yield* Effect.promise(() => runApprovalAnswer({ ...options, ...invalid }))).exitCode).toBe(2);
+    }
+
+    expect(yield* snapshot(store)).toEqual(after);
+  })));
+});
+
 test("human_request records one approval per submission, survives restart and never gates done", async () => {
   const saved = await fixture((store, id, root) => Effect.gen(function* () {
     const requestHandlers = new Map([...handlers, [HUMAN_REQUEST, humanRequestHandler]]);
@@ -129,7 +183,7 @@ test("human_request records one approval per submission, survives restart and ne
       { kind: "worker_request", reason: "Which option?", stage: "plan", transition: null, outcome: null },
       { kind: "worker_request" },
     ] });
-    expect(yield* Effect.promise(() => reader.show(1))).toMatchObject({ commands: [] });
+    expect(yield* Effect.promise(() => reader.show(1))).toMatchObject({ commands: ['foundry approval answer 1 "text"'] });
     expect(yield* Effect.promise(() => submissions.submit(owner, frame(id)))).toMatchObject({ status: "committed" });
     expect(yield* Effect.promise(() => submissions.submit(owner, { ...call, callId: "stale" })))
       .toMatchObject({ status: "refused", code: "not_assignment_owner" });
@@ -565,6 +619,14 @@ test.each(["blocked", "rejected"] as const)("%s pauses atomically, frees capacit
       actor: "worker/1", reason: "Need operator input", git_commit: null,
       evidence: '["evidence/plan.md"]', config_load: "load-1" });
     expect(after.approvals).toMatchObject([{ kind: "blocked", state: "open", assignment_id: id }]);
+    const blocked = yield* store.read<{ id: number }>(`SELECT id FROM approval WHERE kind = 'blocked'`);
+    const approvalId = blocked[0]?.id;
+
+    if (approvalId === undefined) {throw new Error("missing blocked approval");}
+
+    expect(yield* Effect.flip(createApprovalAnswers(store, slots).answer(approvalId, "Not allowed")))
+      .toMatchObject({ code: "wrong_kind" });
+    expect(yield* snapshot(store)).toEqual(after);
     expect(after.history.slice(before.history.length)).toMatchObject([
       { kind: "ticket.transitioned" }, { kind: "approval.requested" }, { kind: "submission.recorded" },
     ]);
