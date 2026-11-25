@@ -19,6 +19,7 @@ import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
 import { createTicketService, ticketFactoryFrom } from "./tickets.js";
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
+import { createFactorySyncer } from "./factory-sync.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Schema, Scope } from "effect";
@@ -340,6 +341,19 @@ const main = async (): Promise<void> => {
       }),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,
+      // Operator-requested syncs only (PRD §9.1): nothing else here contacts the source.
+      sync: createFactorySyncer({
+        store,
+        target: (factory) => {
+          const clone = clones.get(factory);
+          const loaded = factories.find((f) => f.factoryId === factory);
+
+          return clone === undefined || loaded === undefined || !decision.started.includes(factory)
+            ? undefined
+            : { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch };
+        },
+        onError: (factory, error) => log.error("sync queue run failed", { factoryId: factory, detail: { error: messageOf(error) } }),
+      }),
       // Read from the recorded run and its configuration loads, not from memory.
       factories: storeFactoriesReader(store, log.runId),
     });
