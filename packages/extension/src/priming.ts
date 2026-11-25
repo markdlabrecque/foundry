@@ -68,7 +68,7 @@ export class ReceiptReporter {
 
 export interface DaemonFrameHandlers {
   readonly adapter: Pick<ConversationAdapter, "inject" | "pending" | "classify">;
-  readonly messages?: Pick<MessageReceiver, "receive" | "drain" | "pending">;
+  readonly messages?: Pick<MessageReceiver, "receive" | "drain" | "pending"> & Partial<Pick<MessageReceiver, "lifecycle">>;
   readonly interrupter: Pick<RunInterrupter, "handle" | "handleDrain">;
   /** Receives tool results. Without one, a result is dropped: no call can be waiting on it. */
   readonly toolCalls?: Pick<ToolCallClient, "receive">;
@@ -86,12 +86,33 @@ export const receiveDaemonFrames = (handlers: DaemonFrameHandlers) => {
   return (frame: DaemonFrame, channel: OpenChannel): void => {
     switch (frame.type) {
       case "reconcile": {
-        const held = new Set(messages.pending());
+        let ended = false;
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        void channel.closed.then(() => { ended = true; clearTimeout(timer); });
 
-        const answers = handlers.adapter.classify(frame.ids).map((answer) =>
-          answer.status === "absent" && held.has(answer.id) ? { id: answer.id, status: "pending" as const } : answer);
+        const compare = () => {
+          if (ended) {return;}
 
-        void channel.send({ type: "reconciliation_answer", requestId: frame.requestId, answers }).catch(() => {});
+          const lifecycle = messages.lifecycle?.() ?? "unknown";
+
+          if (frame.whenIdle && lifecycle === "working") {
+            // Standalone compaction has no settled event after its busy flag clears.
+            // Observe only while a requested idle comparison is outstanding.
+            timer = setTimeout(compare, 25);
+            timer.unref();
+
+            return;
+          }
+
+          const held = new Set(messages.pending());
+
+          const answers = handlers.adapter.classify(frame.ids).map((answer) =>
+            answer.status === "absent" && held.has(answer.id) ? { id: answer.id, status: "pending" as const } : answer);
+
+          void channel.send({ type: "reconciliation_answer", requestId: frame.requestId, lifecycle, answers }).catch(() => {});
+        };
+
+        compare();
 
         return;
       }
