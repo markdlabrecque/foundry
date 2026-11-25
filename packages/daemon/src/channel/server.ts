@@ -9,7 +9,8 @@
  * A heartbeat lapse means only that the channel is lost. Whether the worker is
  * alive is the Worker Host's call, so this module never reports process death.
  */
-import { chmod, rm } from "node:fs/promises";
+import { chmod, lstat, mkdtemp, rename, rmdir, unlink } from "node:fs/promises";
+import { basename, dirname, join } from "node:path";
 import { createServer, type Server, type Socket } from "node:net";
 import {
   CHANNEL_LOST_AFTER_MS,
@@ -61,6 +62,9 @@ export interface ChannelEvents {
   onChannelLost?(slot: ClaimedSlot, cause: ChannelLostCause): void;
 }
 
+/** How long a refused peer gets to read its `hello_rejected` before the socket is destroyed. */
+export const REJECTED_SOCKET_GRACE_MS = 1_000;
+
 export interface ChannelServerOptions extends ChannelEvents {
   readonly socketPath: string;
   readonly slotClaim: SlotClaim;
@@ -107,6 +111,10 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
       cancelLapse?.();
       options.onRejected?.(reason);
       socket.end(encodeFrame({ type: "hello_rejected", reason }));
+      // A peer that never reads the refusal cannot hold the socket open.
+      const grace = setTimeout(() => socket.destroy(), REJECTED_SOCKET_GRACE_MS);
+      grace.unref();
+      socket.once("close", () => clearTimeout(grace));
     };
 
     const onHello = async (line: string): Promise<void> => {
@@ -166,17 +174,9 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
     socket.on("error", () => end("peer_closed"));
   };
 
-  await rm(options.socketPath, { force: true });
+  await removeStaleSocket(options.socketPath);
   const server: Server = createServer(handle);
-  await new Promise<void>((resolve, reject) => {
-    server.once("error", reject);
-    server.listen(options.socketPath, () => {
-      server.off("error", reject);
-      resolve();
-    });
-  });
-  await chmod(options.socketPath, 0o600);
-
+  await listenPrivately(server, options.socketPath);
   return {
     socketPath: options.socketPath,
     close: async () => {
@@ -184,6 +184,51 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));
       for (const socket of connections) socket.destroy();
       await closed;
+      await removeStaleSocket(options.socketPath);
     },
   };
+};
+
+/**
+ * Remove a leftover socket file at `path`, refusing to touch anything that is
+ * not a socket. Callers must hold the state-root lock (05a), so a socket found
+ * here belongs to no live daemon.
+ */
+const removeStaleSocket = async (path: string): Promise<void> => {
+  let stats;
+  try {
+    stats = await lstat(path);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+  if (!stats.isSocket()) throw new Error(`refusing to replace non-socket file at ${path}`);
+  await unlink(path);
+};
+
+/**
+ * Bind inside a fresh 0700 directory, set the socket to 0600, then rename it
+ * into place, so no peer can connect while the socket still has default
+ * permissions.
+ */
+const listenPrivately = async (server: Server, socketPath: string): Promise<void> => {
+  const privateDir = await mkdtemp(join(dirname(socketPath), `.${basename(socketPath)}-`));
+  const bindPath = join(privateDir, "s");
+  try {
+    await new Promise<void>((resolve, reject) => {
+      server.once("error", reject);
+      server.listen(bindPath, () => {
+        server.off("error", reject);
+        resolve();
+      });
+    });
+    await chmod(bindPath, 0o600);
+    await rename(bindPath, socketPath);
+  } catch (error) {
+    server.close();
+    throw error;
+  } finally {
+    await unlink(bindPath).catch(() => {});
+    await rmdir(privateDir);
+  }
 };

@@ -160,8 +160,8 @@ export class FrameLineSplitter {
     this.pending += chunk;
     const parts = this.pending.split("\n");
     this.pending = parts.pop() ?? "";
-    if (Buffer.byteLength(this.pending) > this.maxBytes) {
-      throw new Error(`frame exceeds ${this.maxBytes} bytes`);
+    for (const line of [...parts, this.pending]) {
+      if (Buffer.byteLength(line) > this.maxBytes) throw new Error(`frame exceeds ${this.maxBytes} bytes`);
     }
     return parts.filter((line) => line.trim().length > 0);
   }

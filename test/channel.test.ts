@@ -33,18 +33,26 @@ const acceptAll: SlotClaim = {
   claim: async (h) => ({ accepted: true, slot: { factoryId: h.factoryId, slotId: h.slotId, launchId: h.launchId } }),
 };
 
-/** A lapse timer the test fires by hand; it also counts how often it was re-armed. */
+/** A lapse timer the test fires by hand; it also counts how often it was (re-)armed. */
 const manualTimer = () => {
   let pending: (() => void) | undefined;
   let arms = 0;
+  const waiters: Array<{ count: number; resolve: () => void }> = [];
   const timer: LapseTimer = (_ms, onLapse) => {
     arms += 1;
     pending = onLapse;
+    for (const w of waiters.filter((w) => arms >= w.count)) {
+      waiters.splice(waiters.indexOf(w), 1);
+      w.resolve();
+    }
     return () => {
       if (pending === onLapse) pending = undefined;
     };
   };
-  return { timer, fire: () => pending?.(), arms: () => arms };
+  /** Resolves once the deadline has been armed at least `count` times. */
+  const armed = (count: number): Promise<void> =>
+    arms >= count ? Promise.resolve() : new Promise((resolve) => waiters.push({ count, resolve }));
+  return { timer, fire: () => pending?.(), arms: () => arms, armed };
 };
 
 const waitFor = <T>(register: (resolve: (value: T) => void) => void): Promise<T> => new Promise(register);
@@ -164,7 +172,7 @@ test("a connection that never sends a hello is dropped on the lapse deadline wit
   socket.on("error", () => {});
   await waitFor<void>((r) => socket.on("connect", () => r()));
   // The server arms the deadline when it accepts the connection; wait until it has.
-  while (lapse.arms() === 0) await new Promise((r) => setImmediate(r));
+  await lapse.armed(1);
 
   lapse.fire();
 
@@ -178,22 +186,63 @@ test("a heartbeat lapse reports only channel loss and closes the connection", as
   const channelLost = waitFor<[ClaimedSlot, ChannelLostCause]>((r) => (lost = r));
   let gotHeartbeat!: () => void;
   const heartbeat = waitFor<void>((r) => (gotHeartbeat = r));
+  let armsAtAccept = -1;
   server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: acceptAll,
     lapseTimer: lapse.timer,
+    onAccepted: () => (armsAtAccept = lapse.arms()),
     onFrame: () => gotHeartbeat(),
     onChannelLost: (slot, cause) => lost([slot, cause]),
   });
 
-  // Heartbeat once to show heartbeats re-arm the deadline, then go silent.
+  // A heartbeat after acceptance must push the deadline back; then the worker goes silent.
   const opened = await openChannel({ socketPath: server.socketPath, hello, heartbeatIntervalMs: 1 });
   if (!opened.accepted) throw new Error("hello was not accepted");
   await heartbeat;
-  expect(lapse.arms()).toBeGreaterThan(1);
+  expect(armsAtAccept).toBeGreaterThan(0);
+  expect(lapse.arms()).toBeGreaterThan(armsAtAccept);
 
   lapse.fire();
 
   expect(await channelLost).toEqual([{ factoryId: "f1", slotId: "builder-1", launchId: "launch-1" }, "heartbeat_lapse"]);
   await opened.channel.closed;
+});
+
+test("a slot claim that throws is refused as retryable", async () => {
+  server = await startChannelServer({
+    socketPath: join(dir, "channel.sock"),
+    slotClaim: { claim: async () => Promise.reject(new Error("host gone")) },
+  });
+
+  const opened = await openChannel({ socketPath: server.socketPath, hello });
+
+  expect(opened).toEqual({
+    accepted: false,
+    reason: expect.objectContaining({ kind: "retryable", code: "slot_claim_failed" }),
+  });
+});
+
+test.each([
+  ["an invalid frame after acceptance", `${JSON.stringify({ type: "bogus" })}\n`],
+  ["an oversize line after acceptance", "x".repeat(1024 * 1024 + 1)],
+])("%s closes the connection as a protocol error", async (_name, payload) => {
+  let lost!: (cause: ChannelLostCause) => void;
+  const channelLost = waitFor<ChannelLostCause>((r) => (lost = r));
+  server = await startChannelServer({
+    socketPath: join(dir, "channel.sock"),
+    slotClaim: acceptAll,
+    onChannelLost: (_slot, cause) => lost(cause),
+  });
+
+  const socket = connect(server.socketPath);
+  socket.on("error", () => {});
+  const closed = waitFor<void>((r) => socket.on("close", () => r()));
+  socket.setEncoding("utf8");
+  socket.write(`${JSON.stringify(hello)}\n`);
+  await waitFor<void>((r) => socket.once("data", () => r()));
+  socket.write(payload);
+
+  expect(await channelLost).toBe("protocol_error");
+  await closed;
 });
