@@ -64,6 +64,7 @@ import { agentRequestHandler } from "./agent-request.js";
 import { agentReplyHandler } from "./agent-reply.js";
 import { taskTransitionHandler } from "./task-transition.js";
 import { startMessageRouting } from "./message-routing.js";
+import { startRequestExpiry } from "./request-expiry.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -178,10 +179,12 @@ const main = async (): Promise<void> => {
   const storeScope = Effect.runSync(Scope.make());
   let stopRouting: (() => Promise<void>) | undefined;
   let stopDelivery: (() => Promise<void>) | undefined;
+  let stopExpiry: (() => Promise<void>) | undefined;
 
   const closeStore = async (): Promise<void> => {
     await stopRouting?.();
     await stopDelivery?.();
+    await stopExpiry?.();
     await Effect.runPromise(Scope.close(storeScope, Exit.void));
   };
 
@@ -191,6 +194,7 @@ const main = async (): Promise<void> => {
   try {
     const { openStore } = await importStoreQuietly();
     store = await Effect.runPromise(Scope.provide(storeScope)(openStore({ filename: databaseFile })));
+    stopExpiry = await startRequestExpiry(store, (cause) => log.error("request expiry failed", { detail: { error: messageOf(cause) } }));
   } catch (error) {
     log.error("database open failed", { detail: { file: databaseFile, error: messageOf(error) } });
     await closeStore();

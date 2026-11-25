@@ -124,6 +124,36 @@ test("queued stages, frozen/parked slots and lifecycle/readiness gates are respe
   }));
 });
 
+test("returning work waits for its last slot at that stage across scheduler restart", async () => {
+  await fixture((store) => Effect.gen(function* () {
+    yield* createAssignmentScheduler(options(store)).schedule();
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1, created_at = 0 WHERE ticket_number = 1`);
+      // Equal timestamps still choose the last inserted assignment; another stage must not win.
+      yield* change.query(`INSERT INTO assignment (id, factory_id, ticket_number, stage, slot_id, status, recovery_ceiling, created_at, ended_at, context_message)
+        SELECT 'return-plan', factory_id, ticket_number, 'plan', 'worker/2', 'ended', 4, 0, 1, context_message
+        FROM assignment WHERE ticket_number = 1`);
+      yield* change.query(`INSERT INTO assignment (id, factory_id, ticket_number, stage, slot_id, status, recovery_ceiling, created_at, ended_at, context_message)
+        SELECT 'later-review', factory_id, ticket_number, 'review', 'worker/1', 'ended', 4, 2, 3, context_message
+        FROM assignment WHERE id = 'return-plan'`);
+      yield* change.query(`UPDATE ticket SET status = 'queued' WHERE number = 1`);
+      yield* change.query(`UPDATE ticket SET state = 'stage', stage = 'plan', status = 'paused' WHERE number = 3`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "return" });
+    }));
+    const before = yield* snapshot(store);
+    expect(yield* createAssignmentScheduler(options(store)).schedule()).toEqual([]);
+    expect(yield* snapshot(store)).toEqual(before);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 4 WHERE ticket_number = 2`);
+      yield* change.query(`UPDATE ticket SET status = 'paused' WHERE number = 2`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "free-prior" });
+    }));
+    expect(yield* createAssignmentScheduler(options(store)).schedule()).toMatchObject([
+      { ticket: 1, stage: "plan", slotId: "worker/2" },
+    ]);
+  }));
+});
+
 test("routing uses current assignment preference but pins each context to its original slot", async () => {
   await fixture((store) => Effect.gen(function* () {
     const assigned = yield* createAssignmentScheduler(options(store)).schedule();

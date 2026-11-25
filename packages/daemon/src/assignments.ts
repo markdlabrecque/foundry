@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Cause, Clock, Data, Effect, Exit } from "effect";
 import { acceptMessage } from "./agent-message.js";
+import { eligibleAssignmentSlots } from "./assignment-slots.js";
+import type { AssignmentSlot } from "./assignment-slots.js";
 import type { FactoryConfig } from "./config/schema.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import type { PlannedSlot } from "./slots.js";
@@ -90,17 +92,30 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
 
         if (factory === undefined || stage === undefined) {continue;}
 
-        for (const slot of options.slots) {
-          if (slot.factoryId !== ticket.factory_id || slot.station.address !== stage.station) {continue;}
+        const previous = yield* change.query<{ slot_id: string }>(
+          `SELECT slot_id FROM assignment WHERE factory_id = ? AND ticket_number = ? AND stage = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+          [ticket.factory_id, ticket.number, stage.id],
+        );
 
-          const capacity = yield* change.query(
-            `SELECT 1 FROM slot s WHERE factory_id = ? AND slot_id = ? AND condition = 'normal'
-             AND NOT EXISTS (SELECT 1 FROM assignment a WHERE a.factory_id = s.factory_id
-               AND a.slot_id = s.slot_id AND a.status = 'active')`,
-            [slot.factoryId, slot.slotId],
-          );
+        const current = yield* change.query<AssignmentSlot>(
+          `SELECT s.slot_id, s.condition, EXISTS (
+             SELECT 1 FROM assignment a WHERE a.factory_id = s.factory_id
+               AND a.slot_id = s.slot_id AND a.status = 'active'
+           ) AS busy FROM slot s WHERE s.factory_id = ?`,
+          [ticket.factory_id],
+        );
 
-          if (capacity.length === 0 || options.ready?.(ticket, slot) === false) {continue;}
+        const stationSlots = options.slots.filter((slot) =>
+          slot.factoryId === ticket.factory_id && slot.station.address === stage.station);
+
+        const candidates = eligibleAssignmentSlots(stationSlots.flatMap((slot) =>
+          current.filter((state) => state.slot_id === slot.slotId)), previous[0]?.slot_id ?? null);
+
+        for (const candidate of candidates) {
+          const slot = stationSlots.find((planned) => planned.slotId === candidate.slot_id);
+
+          if (slot === undefined || options.ready?.(ticket, slot) === false) {continue;}
 
           // Until the worktree ticket wires its readiness seam, never assign an isolation:worktree
           // station a ticket without a materialized worktree.

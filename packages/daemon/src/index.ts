@@ -17,6 +17,8 @@ export * from "./operator-message.js";
 
 export * from "./agent-request.js";
 
+export * from "./request-expiry.js";
+
 export * from "./agent-reply.js";
 
 export * from "./task-transition.js";
