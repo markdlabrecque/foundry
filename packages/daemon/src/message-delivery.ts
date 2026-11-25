@@ -88,6 +88,15 @@ export const createMessageDelivery = (options: {
 
             if (updated.length === 0) {return yield* Effect.fail(unchanged);}
 
+            // Attribute context to the conversation that actually receives it, including a
+            // slot first launched after acceptance or reset before its first delivery.
+            yield* change.query(
+              `UPDATE repository_context SET conversation_ref = (
+                 SELECT ref FROM conversation WHERE factory_id = ? AND slot_id = ? AND status = 'current'
+               ) WHERE message_id = ?`,
+              [slot.factoryId, slot.slotId, message.id],
+            );
+
             const attemptId = randomUUID();
             yield* change.query(
               `INSERT INTO message_attempt (id, factory_id, message_id, slot_id, launch_id, connection_id, sent_at)
