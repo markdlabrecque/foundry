@@ -12,6 +12,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { join } from "node:path";
+import { Schema } from "effect";
 import type { HoldsReader } from "./holds.js";
 import { HOLDS_PATH } from "@foundry/protocol/holds";
 import { EVENTS_PATH, managementSocketPath, parseEventsQuery, STATUS_PATH } from "@foundry/protocol/management-api";
@@ -71,6 +72,9 @@ export class ManagementSocketError extends Error {
     super(message);
   }
 }
+
+/** A decoded log query is refused with its reason as text. */
+const isRefusal = Schema.is(Schema.String);
 
 const isErrno = (cause: unknown, code: string): boolean => codeOf(cause) === code;
 
@@ -296,7 +300,7 @@ const handleLogs = (
 
   const query = decodeLogQuery(params);
 
-  if (typeof query === "string") {return send(response, 400, failure("bad_request", query));}
+  if (isRefusal(query)) {return send(response, 400, failure("bad_request", query));}
 
   try {
     send(response, 200, { ok: true, result: readLogs(inputs.stateRoot, query) });

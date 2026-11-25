@@ -119,7 +119,7 @@ export const decideFactoryStarts = (
       const blockers = (yield* Effect.forEach(checks, (check) => check(store.read, factory))).flat();
 
       if (blockers.length === 0) {started.push(factory.factoryId);}
-      else {refused.push({ factoryId: factory.factoryId, blockers, ...(factory.loadId === undefined ? {} : { loadId: factory.loadId }) });}
+      else {refused.push(factory.loadId === undefined ? { factoryId: factory.factoryId, blockers } : { factoryId: factory.factoryId, blockers, loadId: factory.loadId });}
     }
 
     if (refused.length > 0) {

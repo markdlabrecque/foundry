@@ -132,7 +132,7 @@ const main = async (): Promise<void> => {
   let log: DaemonLogger;
 
   try {
-    log = openDaemonLog({ stateRoot, ...(flags.logLevel === undefined ? {} : { level: flags.logLevel }) });
+    log = openDaemonLog(flags.logLevel === undefined ? { stateRoot } : { stateRoot, level: flags.logLevel });
   } catch (error) {
     claim.release();
     fail(`cannot open the daemon log in ${stateRoot}: ${messageOf(error)}`);
@@ -276,9 +276,9 @@ const main = async (): Promise<void> => {
   // Configuration is read only at start (PRD §4), so the started set is fixed for this run.
   // Ticket commands naming a refused factory get `unknown_factory` ("not loaded") for now; a
   // distinct refused error belongs with showing refusals in status.
-  const ticketFactories = factories
-    .filter((f) => decision.started.includes(f.factoryId))
-    .map((f) => ticketFactoryFrom(f.config));
+  const ticketFactories = factories.flatMap((f) =>
+    decision.started.includes(f.factoryId) ? [ticketFactoryFrom(f.config)] : [],
+  );
 
   // Each factory's transitions carry this run's recorded configuration load.
   const loadIds = new Map(loads.map((l) => [l.factoryId, String(l.loadId)]));
@@ -308,14 +308,20 @@ const main = async (): Promise<void> => {
   };
 
   const finish = (served: ManagementApi): void => {
-    void served
-      .close()
-      .finally(closeStore)
-      .finally(() => {
+    // The store closes even if the API close fails, and the process exits even if the store close fails.
+    void (async () => {
+      try {
+        try {
+          await served.close();
+        } finally {
+          await closeStore();
+        }
+      } finally {
         log.close();
         claim.release();
         process.exit(0);
-      });
+      }
+    })();
   };
 
   process.on("SIGINT", stop);

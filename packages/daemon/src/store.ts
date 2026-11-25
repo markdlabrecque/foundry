@@ -381,7 +381,7 @@ export const openStore = (
           Effect.sync(() => {
             // The change has committed. A listener must never turn that into a reported failure,
             // or the caller would think it lost and might retry, writing duplicates (ADR 0001).
-            for (const listener of [...commitListeners]) {
+            for (const listener of Array.from(commitListeners)) {
               try {
                 listener();
               } catch {

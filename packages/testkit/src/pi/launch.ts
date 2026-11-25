@@ -146,7 +146,7 @@ export function startFauxPi(options: StartFauxPiOptions = {}): FauxPi {
 
       events.push(event);
 
-      for (const w of [...waiters]) {
+      for (const w of Array.from(waiters)) {
         if (w.match(event)) {
           waiters.splice(waiters.indexOf(w), 1);
           w.resolve(event);

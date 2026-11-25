@@ -1,4 +1,5 @@
-import { Data } from "effect";
+import { Data, Schema } from "effect";
+import { expectDefined } from "@foundry/protocol/errors";
 import type { ConfigProblem } from "./decode.js";
 import { resolveConfiguredPath } from "./paths.js";
 import type { FactoryConfig } from "./schema.js";
@@ -55,6 +56,9 @@ export type ResolveResult = Data.TaggedEnum<{
 
 export const ResolveResult = Data.taggedEnum<ResolveResult>();
 
+/** A path-only extension entry: hooks, no tools. */
+const isPathOnly = Schema.is(Schema.String);
+
 /** A whole-field placeholder. Anything else in a model field is taken literally. */
 const PLACEHOLDER = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
 
@@ -72,7 +76,7 @@ const resolveModel = (
   let model = raw;
 
   if (placeholder !== null) {
-    const name = placeholder[1] as string;
+    const name = expectDefined(placeholder[1], "the placeholder's variable name");
     const value = env[name];
 
     if (value === undefined) {
@@ -100,7 +104,7 @@ export const resolveStations = (config: FactoryConfig, options: ResolveOptions):
     resolveConfiguredPath(path, options.baseDir, options.home);
 
   const toExtension = (entry: string | { readonly path: string; readonly tools: ReadonlyArray<string> }): EffectiveExtension =>
-    typeof entry === "string"
+    isPathOnly(entry)
       ? { path: toPath(entry), tools: [] }
       : { path: toPath(entry.path), tools: [...entry.tools] };
 
@@ -138,9 +142,9 @@ export const resolveStations = (config: FactoryConfig, options: ResolveOptions):
 
       if (model === undefined) {continue;}
 
-      const instructions = [defaults.instructions, room.instructions, station.instructions]
-        .filter((path): path is string => path !== undefined)
-        .map(toPath);
+      const instructions = [defaults.instructions, room.instructions, station.instructions].flatMap((path) =>
+        path === undefined ? [] : [toPath(path)],
+      );
 
       stations.push({
         address: `${roomName}.${stationName}`,

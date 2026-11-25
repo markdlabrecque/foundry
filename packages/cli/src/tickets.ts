@@ -137,12 +137,11 @@ export const runTicketSubmit = async (options: SubmitOptions): Promise<TicketOut
     return usage(`cannot read ${options.file}: ${messageOf(error)}`);
   }
 
-  const body: SubmitTicketRequest = {
-    title: options.title ?? defaultTitle(options.file, spec),
-    spec,
-    ...(options.factory === undefined ? {} : { factory: options.factory }),
-    ...(options.line === undefined ? {} : { line: options.line }),
-  };
+  let body: SubmitTicketRequest = { title: options.title ?? defaultTitle(options.file, spec), spec };
+
+  if (options.factory !== undefined) {body = { ...body, factory: options.factory };}
+
+  if (options.line !== undefined) {body = { ...body, line: options.line };}
 
   return call(options, (root) => postToDaemon(root, TICKETS_PATH, body), isTicketDetail, renderDetail);
 };

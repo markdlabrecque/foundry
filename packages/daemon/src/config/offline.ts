@@ -1,6 +1,7 @@
 import { accessSync, constants, statSync } from "node:fs";
 import type { Stats } from "node:fs";
 import { dirname, resolve } from "node:path";
+import { Schema } from "effect";
 import { decodeFactoryYaml, DecodeResult, locateProblems } from "./decode.js";
 import type { ConfigProblem } from "./decode.js";
 import { resolveConfiguredPath as resolveFrom } from "./paths.js";
@@ -205,7 +206,10 @@ const checkCommand = (path: Path, command: ReadonlyArray<string> | undefined): A
 
 type Extension = string | { readonly path: string };
 
-const extensionPath = (entry: Extension): string => (typeof entry === "string" ? entry : entry.path);
+/** A path-only extension entry: hooks, no tools. */
+const isPathOnly = Schema.is(Schema.String);
+
+const extensionPath = (entry: Extension): string => (isPathOnly(entry) ? entry : entry.path);
 
 const checkResources = (
   base: Path,
@@ -224,7 +228,7 @@ const checkResources = (
   ),
   ...(settings.extensions ?? []).flatMap((entry, index) =>
     checkFile(
-      typeof entry === "string" ? [...base, "extensions", index] : [...base, "extensions", index, "path"],
+      isPathOnly(entry) ? [...base, "extensions", index] : [...base, "extensions", index, "path"],
       extensionPath(entry),
       options,
     ),

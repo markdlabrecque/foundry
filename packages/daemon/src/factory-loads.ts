@@ -16,7 +16,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Data, Effect } from "effect";
 import { DecodeResult, locateProblems, resolveConfiguredPath, ResolveResult, resolveStations, validateFactoryYaml } from "./config/index.js";
-import type { ConfigProblem, EffectiveStation, FactoryConfig } from "./config/index.js";
+import type { ConfigProblem, EffectiveStation, FactoryConfig, OfflineCheckOptions, ResolveOptions } from "./config/index.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Store, StoreError } from "./store.js";
 
@@ -110,15 +110,19 @@ export const loadFactoryFiles = (
 
     const yamlFile = resolve(file);
     const baseDir = dirname(yamlFile);
-    const validated = validateFactoryYaml(text, { yamlFile, ...(options.home === undefined ? {} : { home: options.home }) });
+    let offlineOptions: OfflineCheckOptions = { yamlFile };
+    let resolveOptions: ResolveOptions = { env: options.env, baseDir };
+
+    if (options.home !== undefined) {
+      offlineOptions = { ...offlineOptions, home: options.home };
+      resolveOptions = { ...resolveOptions, home: options.home };
+    }
+
+    const validated = validateFactoryYaml(text, offlineOptions);
 
     if (isInvalidConfig(validated)) {return refuseProblems(file, validated.problems);}
 
-    const resolved = resolveStations(validated.config, {
-      env: options.env,
-      baseDir,
-      ...(options.home === undefined ? {} : { home: options.home }),
-    });
+    const resolved = resolveStations(validated.config, resolveOptions);
 
     if (isUnresolved(resolved)) {return refuseProblems(file, locateProblems(text, resolved.problems));}
 
