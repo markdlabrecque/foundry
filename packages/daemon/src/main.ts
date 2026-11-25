@@ -418,6 +418,15 @@ const main = async (): Promise<void> => {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
+  const stopperOptions = (): FactoryStopperOptions => {
+    if (stopHost === undefined || scheduler === undefined) {return { store, states: factoryStates };}
+
+    const server = channel;
+    const base = { store, states: factoryStates, host: stopHost, scheduler };
+
+    return server === undefined ? base : { ...base, drain: (launchId: string) => server.drain(launchId) };
+  };
+
   try {
     api = await serveManagementApi({
       stateRoot,
@@ -433,15 +442,8 @@ const main = async (): Promise<void> => {
       clonePath: (factory) => clones.get(factory)?.path,
       // Read from the recorded run and its configuration loads, not from memory.
       factories: storeFactoriesReader(store, log.runId, (factoryId) => factoryStates.get(factoryId)),
-      // No channel server runs in the daemon yet, so a stop has no drain to send and goes straight
-      // to the host's bounded terminate.
-      stopper: createFactoryStopper(
-        stopHost === undefined
-          ? { store, states: factoryStates }
-          : scheduler === undefined
-            ? { store, states: factoryStates, host: stopHost }
-            : { store, states: factoryStates, host: stopHost, scheduler },
-      ),
+      // A graceful stop sends `drain` on each live worker's channel before the host terminates it.
+      stopper: createFactoryStopper(stopperOptions()),
       slots: storeSlotsReader(store, stateRoot, decision.started, plannedSlots),
     });
   } catch (error) {
