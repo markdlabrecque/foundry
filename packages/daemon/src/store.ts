@@ -532,9 +532,20 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       ) STRICT`,
       `CREATE TABLE resume_notice (
         message_id TEXT PRIMARY KEY REFERENCES message(id),
-        assignment_id TEXT NOT NULL REFERENCES assignment(id)
+        assignment_id TEXT NOT NULL REFERENCES assignment(id),
+        pending_body TEXT
       ) STRICT`,
       `CREATE INDEX resume_notice_assignment ON resume_notice(assignment_id)`,
+      // An unsent continuation must never survive a pause or an accepted outcome. Sent copies
+      // retain their original payload for reconciliation; no replacement is allowed afterward.
+      `CREATE TRIGGER resume_notice_assignment_inactive AFTER UPDATE OF status ON assignment
+       WHEN NEW.status != 'active'
+       BEGIN
+         UPDATE message SET status = 'dropped' WHERE status IN ('unbound', 'bound') AND id IN (
+           SELECT message_id FROM resume_notice WHERE assignment_id = NEW.id
+         );
+         UPDATE resume_notice SET pending_body = NULL WHERE assignment_id = NEW.id;
+       END`, 
     ],
   },
 ];
