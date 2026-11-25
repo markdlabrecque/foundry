@@ -3,15 +3,17 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { Clock, Effect } from "effect";
-import { agentReplyHandler, agentRequestHandler, bindStationMessages, createSubmissions, openStore, ToolRefusal } from "@foundry/daemon";
+import { acknowledgeMessage, agentReplyHandler, agentRequestHandler, bindStationMessages, createMessageDelivery, createSubmissions, expireRequests, openSlotGate, openStore, startRequestExpiry, ToolRefusal } from "@foundry/daemon";
 import type { MessageAcceptanceGuards, PlannedSlot, Store, ToolHandler } from "@foundry/daemon";
 import { AGENT_REPLY, AGENT_REQUEST } from "@foundry/protocol";
 
 const dirs: Array<string> = [];
 
-afterEach(async () => { for (const dir of dirs.splice(0)) {await rm(dir, { recursive: true, force: true });} });
+afterEach(async () => { vi.useRealTimers();
+
+ for (const dir of dirs.splice(0)) {await rm(dir, { recursive: true, force: true });} });
 
 const database = async () => {
   const dir = await mkdtemp(join(tmpdir(), "foundry-request-"));
@@ -263,6 +265,96 @@ test("competing reply submissions commit exactly one completion and reply", asyn
     expect(outcomes.filter((outcome) => outcome.status === "refused")).toMatchObject([{ code: "request_closed" }]);
     expect(await Effect.runPromise(store.read(`SELECT id FROM message WHERE kind = 'reply'`))).toHaveLength(1);
     expect(await Effect.runPromise(store.read(`SELECT sequence FROM history WHERE kind = 'request.completed'`))).toHaveLength(1);
+  }));
+});
+
+test("startup and periodic expiry count downtime, preserve attempted copies and never extend deadlines", async () => {
+  vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+  vi.setSystemTime(now);
+  const filename = await database();
+
+  await withStore(filename, (store) => Effect.promise(async () => {
+    await Effect.runPromise(selectedRequest(store));
+    const calls = dispatcher(store);
+
+    for (const callId of ["unbound", "future", "completed"]) {
+      await calls.submit(sender, { type: "tool_call", callId, tool: AGENT_REQUEST,
+        args: { ...args, timeoutMs: callId === "future" ? 120_000 : args.timeoutMs } });
+    }
+
+    // The bound notice has one committed attempt, but no receipt yet.
+    await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE message SET status = 'sent' WHERE status = 'bound'`);
+      yield* change.query(`INSERT INTO message_attempt (id, factory_id, message_id, slot_id, launch_id, connection_id, sent_at)
+        SELECT 'attempt', factory_id, id, bound_slot, 'reviewer', 'connection', ? FROM message WHERE status = 'sent'`, [now]);
+      yield* change.query(`UPDATE agent_request SET status = 'completed' WHERE notice_id = (SELECT id FROM message ORDER BY sequence DESC LIMIT 1)`);
+      yield* change.recordHistory({ factoryId: "alpha", kind: "fixture", subject: "attempt" });
+    })));
+  }));
+
+  vi.setSystemTime(now + args.timeoutMs); // Daemon was down all the way to the deadline.
+  await withStore(filename, (store) => Effect.promise(async () => {
+    const stop = await startRequestExpiry(store, (cause) => { throw cause; });
+
+    try {
+      expect(await Effect.runPromise(store.read(`SELECT status, deadline FROM agent_request ORDER BY rowid`))).toEqual([
+        { status: "expired", deadline: now + 60_000 }, { status: "expired", deadline: now + 60_000 },
+        { status: "open", deadline: now + 120_000 }, { status: "completed", deadline: now + 60_000 },
+      ]);
+      expect(await Effect.runPromise(store.read(`SELECT status FROM message ORDER BY sequence`))).toEqual([
+        { status: "sent" }, { status: "expired" }, { status: "unbound" }, { status: "unbound" },
+      ]);
+      const notices = await Effect.runPromise(store.read<{ id: string }>(`SELECT id FROM message WHERE status = 'sent'`));
+      const notice = notices[0];
+
+      if (notice === undefined) {throw new Error("sent notice missing");}
+
+      expect(await Effect.runPromise(acknowledgeMessage(store, { ...responder, launchId: "reviewer" }, notice.id))).toBe(true);
+      expect(await Effect.runPromise(expireRequests(store))).toBe(0);
+
+      // Resolve when the real store commits the periodic transition, without sleeps/polling.
+      const committed = new Promise<void>((resolve) => {
+        const off = store.onCommit(() => { off(); resolve(); });
+      });
+
+      vi.setSystemTime(now + 120_000);
+      await vi.advanceTimersByTimeAsync(1000);
+      await committed;
+      expect(await Effect.runPromise(store.read(`SELECT status FROM agent_request WHERE deadline = ?`, [now + 120_000])))
+        .toEqual([{ status: "expired" }]);
+      expect(await Effect.runPromise(store.read(`SELECT kind FROM history WHERE kind = 'request.expired'`))).toHaveLength(3);
+      expect(await Effect.runPromise(store.read(`SELECT * FROM message_attempt`))).toMatchObject([{ id: "attempt", acknowledged_at: now + 60_000 }]);
+    } finally { await stop(); }
+  }));
+});
+
+test("delivery blocks a bound request at its deadline before a sweep, but sends before it", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(now);
+  await withStore(await database(), (store) => Effect.promise(async () => {
+    await Effect.runPromise(selectedRequest(store));
+    const sent: Array<unknown> = [];
+    const errors: Array<unknown> = [];
+    const delivery = createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => { errors.push(cause); } });
+
+    try {
+      vi.setSystemTime(now + args.timeoutMs);
+      delivery.attach(responder, { send: async (frame) => { sent.push(frame); } });
+      await delivery.idle();
+      expect(sent).toEqual([]);
+      expect(await Effect.runPromise(store.read(`SELECT * FROM message_attempt`))).toEqual([]);
+      expect(await Effect.runPromise(expireRequests(store))).toBe(1);
+      expect(await Effect.runPromise(store.read(`SELECT status FROM message`))).toEqual([{ status: "expired" }]);
+
+      // An ordinary new request still delivers normally while its deadline is in the future.
+      await dispatcher(store, at(now + 120_000, agentRequestHandler(slots))).submit(sender,
+        { type: "tool_call", callId: "fresh", tool: AGENT_REQUEST, args });
+      await Effect.runPromise(bindStationMessages({ store, slots }));
+      await delivery.idle();
+      expect(sent).toMatchObject([{ type: "message", body: args.body }]);
+      expect(await Effect.runPromise(store.read(`SELECT * FROM message_attempt`))).toHaveLength(1);
+      expect(errors).toEqual([]);
+    } finally { await delivery.stop(); }
   }));
 });
 
