@@ -9,7 +9,7 @@ import type { StatusOutcome } from "./status.js";
 const renderShow = ({ approval: a, commands }: ApprovalShowResult): string => [
   `approval    ${a.id}`, `kind        ${a.kind}`, `factory     ${a.factoryId}`,
   `ticket      ${a.ticket}`, `stage       ${a.stage}`, `assignment  ${a.assignmentId}`,
-  `state       ${a.state}`, `outcome     ${a.outcome}`, `reason      ${a.reason}`,
+  `state       ${a.state}`, `outcome     ${a.outcome ?? "-"}`,  `reason      ${a.reason}`,
   `raised at   ${a.raisedAt}`, `commit      ${a.commit ?? "-"}`,
   "evidence", ...a.evidence.map((path) => `  ${path}`),
   ...(commands.length === 0 ? [] : ["commands", ...commands.map((command) => `  ${command}`)]),
