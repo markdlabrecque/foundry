@@ -4,6 +4,13 @@ import { MANAGEMENT_API_PREFIX } from "./management-api.js";
 
 export const APPROVALS_PATH = `${MANAGEMENT_API_PREFIX}/approvals`;
 export const approvalPath = (id: number): string => `${APPROVALS_PATH}/${id}`;
+export const approvalAnswerPath = (id: number): string => `${approvalPath(id)}/answer`;
+export const ApprovalAnswerRequest = Schema.Struct({ body: Schema.NonEmptyString });
+export const ApprovalAnswerResult = Schema.Struct({ approvalId: Schema.Number, messageId: Schema.String, slotId: Schema.String });
+
+export type ApprovalAnswerResult = typeof ApprovalAnswerResult.Type;
+
+export const isApprovalAnswerResult = Schema.is(ApprovalAnswerResult);
 
 /** Worker requests have no originating transition or outcome: they do not move the ticket. */
 export const ApprovalRecord = Schema.Struct({
@@ -13,7 +20,7 @@ export const ApprovalRecord = Schema.Struct({
   assignmentId: Schema.String,
   transition: Schema.NullOr(Schema.Number),
   stage: Schema.String,
-  kind: Schema.Literals(["blocked", "worker_request"]),
+  kind: Schema.Literals(["blocked", "worker_request", "limit_reached"]),
   state: Schema.Literals(["open", "resolved"]),
   outcome: Schema.NullOr(Schema.Literals(["blocked", "rejected"])),
   reason: Schema.String,
@@ -38,8 +45,10 @@ export const isApprovalListResult = Schema.is(ApprovalListResult);
 export const isApprovalShowResult = Schema.is(ApprovalShowResult);
 
 /** Include the factory even with multiple loaded factories; quote shell metacharacters safely. */
-export const approvalCommands = (approval: Pick<ApprovalRecord, "factoryId" | "ticket" | "state" | "kind">): ReadonlyArray<string> => {
-  if (approval.state !== "open" || approval.kind !== "blocked") {return [];}
+export const approvalCommands = (approval: Pick<ApprovalRecord, "id" | "factoryId" | "ticket" | "state" | "kind">): ReadonlyArray<string> => {
+  if (approval.state !== "open") {return [];}
+
+  if (approval.kind === "worker_request") {return [`foundry approval answer ${approval.id} "text"`];}
 
   const factory = `'${approval.factoryId.replaceAll("'", String.raw`'\''`)}'`;
 
