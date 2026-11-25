@@ -10,10 +10,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Schema, Scope } from "effect";
-import { createSlotFreezer, createSlotScheduler, openStore, planSlots, slotDirectory, storeSlotsReader } from "@foundry/daemon";
+import { createHostSlotClaim, createPrimer, createReconciler, createSlotFreezer, createSlotScheduler, openStore, planSlots, recordedCurrentLaunch, serveManagementApi, slotDirectory, startChannelServer, storeSlotsReader } from "@foundry/daemon";
 import type { LaunchExitResult } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import { connectHost, PI_BIN_ENV, resolvePiExecutable, startHost } from "@foundry/host";
+import { openChannel } from "@foundry/extension";
+import { runSlotRestart } from "@foundry/cli";
+import { PROTOCOL_VERSION } from "@foundry/protocol";
+import type { ChannelServer } from "@foundry/daemon";
 import { STUB_PI_RECORD, stopHost, writeStubPi } from "@foundry/testkit";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -41,7 +45,7 @@ const decodeStubRecord = Schema.decodeUnknownSync(
 const decodeDetail = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Unknown)));
 
 /** A disposable state root with a running host, an open store and a scheduler over `stations`' slots. */
-const fixture = async (stations: ReadonlyArray<EffectiveStation>) => {
+const fixture = async (stations: ReadonlyArray<EffectiveStation>, revokeSlot?: (factoryId: string, slotId: string) => void) => {
   const stateRoot = mkdtempSync(join(tmpdir(), "foundry-relaunch-"));
   cleanups.push(() => rmSync(stateRoot, { recursive: true, force: true }));
   const stubDir = mkdtempSync(join(tmpdir(), "foundry-stub-pi-"));
@@ -65,6 +69,8 @@ const fixture = async (stations: ReadonlyArray<EffectiveStation>) => {
     host,
     hostId,
     bootId,
+    terminate: (launchId) => host.terminate(launchId, { graceMs: 0 }),
+    revokeSlot: (factory, slot) => revokeSlot?.(factory, slot),
     pi: resolvePiExecutable({ [PI_BIN_ENV]: writeStubPi(stubDir) }),
     foundryExtension: "/opt/foundry/extension.js",
     slots,
@@ -131,6 +137,91 @@ test("a launch that dies unasked is relaunched in the same slot and conversation
   expect(ended.map((row) => decodeDetail(row.detail))).toEqual([
     expect.objectContaining({ slotId: "lead/1", reason: "exited", unexpected: true, signal: "SIGKILL" }),
   ]);
+});
+
+test("operator restart replaces only the owned launch, reconciles its existing conversation and keeps its counter", async () => {
+  const f = await fixture([station("lead"), station("dev")], (factory, slot) => channel.revokeSlot(factory, slot));
+  const { stateRoot, host, store, scheduler } = f;
+  const [first, other] = await scheduler.schedule();
+  const original = first!.launchId!;
+  const conversationRef = (await sessionIdOf(stateRoot, "lead/1", original))!;
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE slot SET recovery_count = 1 WHERE slot_id = 'lead/1'`);
+    yield* change.recordHistory({ factoryId: "alpha", kind: "fixture.counter", subject: "lead/1" });
+  })));
+
+  const primer = createPrimer({ store, primeRequest: () => ({
+    address: "eng.lead", slotId: "lead/1", isolation: "none", instructions: [],
+    knowledgeRoot: stateRoot, baseDir: stateRoot,
+  }) });
+
+  const reconciler = createReconciler(store);
+  const outcomes: Array<Promise<unknown>> = [];
+
+  const channel: ChannelServer = await startChannelServer({
+    socketPath: join(stateRoot, "channel.sock"),
+    slotClaim: createHostSlotClaim({ host, currentLaunch: recordedCurrentLaunch(store), settled: () => scheduler.idle() }),
+    onAccepted: (slot, hello, accepted) => {
+      outcomes.push(reconciler.reconcile(slot, hello, accepted).then(() => primer.prime(slot, hello, accepted).outcome));
+    },
+    onFrame: (slot, frame) => {
+      if (frame.type === "reconciliation_answer") {reconciler.receive(slot, frame);}
+    },
+  });
+
+  cleanups.push(() => channel.close());
+
+  const connect = async (launchId: string, hasRecoverableHistory: boolean) => {
+    let gotPrime!: (text: string) => void;
+    const prime = new Promise<string>((resolve) => { gotPrime = resolve; });
+
+    const opened = await openChannel({ socketPath: channel.socketPath, hello: {
+      type: "hello", protocolVersion: PROTOCOL_VERSION, factoryId: "alpha", slotId: "lead/1",
+      launchId, conversationRef, hasRecoverableHistory, mode: "headless", tools: [],
+    }, onFrame: (frame, connection) => {
+      if (frame.type === "prime") {gotPrime(frame.text);}
+      else if (frame.type === "reconcile") {
+        void connection.send({ type: "reconciliation_answer", requestId: frame.requestId,
+          answers: frame.ids.map((id) => ({ id, status: "history" })) });
+      }
+    } });
+
+    if (!opened.accepted) {throw new Error("channel refused");}
+
+    cleanups.push(() => opened.channel.close());
+
+    return { channel: opened.channel, prime };
+  };
+
+  const old = await connect(original, false);
+  expect(await old.prime).toContain("Situation: fresh");
+  const reader = storeSlotsReader(store, stateRoot, ["alpha"], f.slots);
+
+  const api = await serveManagementApi({ stateRoot, status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt: "now" } }),
+    slotRestarter: { restart: async (id, factory) => {
+      const shown = await reader.show(id, factory);
+      await scheduler.restart({ factoryId: shown.slot.factoryId, slotId: id });
+
+      return reader.show(id, shown.slot.factoryId);
+    } },
+  });
+
+  cleanups.push(() => api.close());
+  host.onLaunchExited((launch) => void scheduler.launchExited(launch));
+  const restarted = await runSlotRestart({ json: true, home: stateRoot, factory: "alpha", slot: "lead/1", env: {} });
+  expect(restarted.exitCode).toBe(0);
+  await old.channel.closed;
+  const current = (await reader.show("lead/1", "alpha")).slot.launch!.launchId;
+  expect(current).not.toBe(original);
+  expect(await sessionIdOf(stateRoot, "lead/1", current)).toBe(conversationRef);
+  const replacement = await connect(current, true);
+  expect(await replacement.prime).toContain("Situation: recovery");
+  await Promise.all(outcomes);
+  await scheduler.idle();
+  expect((await host.inventory()).filter((l) => l.liveness === "live").map((l) => l.launchId).sort()).toEqual([current, other!.launchId!].sort());
+  expect(await Effect.runPromise(store.read(`SELECT recovery_count FROM slot WHERE slot_id = 'lead/1'`))).toEqual([{ recovery_count: 1 }]);
+  const ended = await Effect.runPromise(store.read<{ detail: string }>(`SELECT detail FROM history WHERE kind = 'launch.ended' AND subject = ?`, [original]));
+  expect(ended.map((row) => decodeDetail(row.detail))).toEqual([expect.objectContaining({ reason: "requested", unexpected: false })]);
 });
 
 test("a launch the host stops on request is not relaunched", async () => {

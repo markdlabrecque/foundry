@@ -44,12 +44,12 @@ import type { FactoryStopErrorCode, FactoryStopper } from "./factory-stop.js";
 import { SHUTDOWN_PATH, ShutdownRequest } from "@foundry/protocol/shutdown-api";
 import { ShutdownError } from "./shutdown.js";
 import type { InstanceShutdown } from "./shutdown.js";
-import { matchSlotInterruptPath, matchSlotPath, matchSlotResetPath, matchSlotUnfreezePath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
+import { matchSlotRestartPath, matchSlotInterruptPath, matchSlotPath, matchSlotResetPath, matchSlotUnfreezePath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
 import { MESSAGES_PATH, SendMessageRequest } from "@foundry/protocol/messages-api";
 import { OperatorMessageError } from "./operator-message.js";
 import type { OperatorMessages } from "./operator-message.js";
-import type { SlotControl, SlotInterrupter, SlotResetter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
+import type { SlotRestarter, SlotControl, SlotInterrupter, SlotResetter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
 
 /** What the API reports, injected so the server is independent of where status comes from. */
 export interface ManagementApiInputs {
@@ -82,6 +82,7 @@ export interface ManagementApiInputs {
   /** The slot verbs (`foundry slot unfreeze`). Without it they answer 503. */
   readonly slotControl?: SlotControl;
   readonly slotResetter?: SlotResetter;
+  readonly slotRestarter?: SlotRestarter;
   /** Stops one named factory (PRD §10.3). Without it the stop route answers 503. */
   readonly stopper?: FactoryStopper;
   /** Stops every factory and then the Worker Host (PRD §10.3). Without it the route answers 503. */
@@ -320,6 +321,10 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
   if (syncFactory !== undefined) {return handleSync(inputs, syncFactory, url, request, response);}
 
+  const restarting = matchSlotRestartPath(path);
+
+  if (restarting !== undefined) {return handleRestart(inputs, restarting, url.searchParams, request, response);}
+
   const resetting = matchSlotResetPath(path);
 
   if (resetting !== undefined) {return handleReset(inputs, resetting, url.searchParams, request, response);}
@@ -500,6 +505,35 @@ const handleSlotInterrupt = (
 
 /** Largest accepted stop body; it carries only `force`. */
 const STOP_BODY_LIMIT = 4096;
+
+const handleRestart = (
+  inputs: ManagementApiInputs, slotId: string | null, params: URLSearchParams,
+  request: IncomingMessage, response: ServerResponse,
+): void => {
+  request.resume();
+
+  if (request.method !== "POST") {
+    response.setHeader("allow", "POST");
+
+    return send(response, 405, failure("method_not_allowed", "slot restart only accepts POST"));
+  }
+
+  if (slotId === null) {return send(response, 400, failure("bad_request", "malformed slot ID"));}
+
+  const restarter = inputs.slotRestarter;
+
+  if (restarter === undefined) {return send(response, 503, failure("unavailable", "slot restart is not served by this daemon"));}
+
+  void (async () => {
+    try {
+      send(response, 200, { ok: true, result: await restarter.restart(slotId, params.get(SLOT_FACTORY_PARAM) ?? undefined) });
+    } catch (error) {
+      if (error instanceof SlotsError) {return send(response, SLOT_ERROR_STATUS[error.code], failure(error.code, error.message));}
+
+      send(response, 500, failure("internal", `slot restart failed: ${messageOf(error)}`));
+    }
+  })();
+};
 
 const STOP_ERROR_STATUS: Record<FactoryStopErrorCode, number> = {
   unknown_factory: 404,
@@ -757,6 +791,7 @@ const HOLD_ID = new RegExp(`^${HOLDS_PATH}/([1-9][0-9]{0,15})$`);
 
 const SLOT_ERROR_STATUS: Record<SlotsErrorCode, number> = {
   reset_refused: 409,
+  restart_refused: 409,
   factory_required: 400,
   unknown_factory: 404,
   slot_not_found: 404,
