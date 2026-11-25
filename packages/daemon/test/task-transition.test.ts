@@ -305,6 +305,29 @@ test("blocked works at final and code stages without requiring a destination; ro
   }
 });
 
+test("unroutable rejection at the final stage pauses rather than requiring a next stage", async () => {
+  await fixture((store, id) => Effect.gen(function* () {
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET stage = 'final'`);
+      yield* change.query(`UPDATE assignment SET stage = 'final'`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "final" });
+    }));
+
+    const finalConfig = { ...config, production_lines: { standard: {
+      ...config.production_lines.standard,
+      stages: [{ id: "final", station: "floor.worker", approval: true, writing: false }],
+    } } };
+
+    const finalHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({ factories: [{ factoryId: "shop", config: finalConfig }] })]]);
+    expect(yield* Effect.promise(() => createSubmissions({ store, handlers: finalHandlers }).submit(owner,
+      { ...frame(id), args: { ...frame(id).args, outcome: "rejected" } })))
+      .toMatchObject({ status: "committed", value: { stage: "final", status: "paused" } });
+    expect(yield* store.read(`SELECT rejections FROM ticket`)).toEqual([{ rejections: 0 }]);
+    expect((yield* Effect.promise(() => storeApprovalsReader(store).list())).approvals)
+      .toMatchObject([{ kind: "blocked", stage: "final", outcome: "rejected" }]);
+  }));
+});
+
 test("adjacent approval/code/final workflows fail closed without effects", async () => {
   await fixture((store, id) => Effect.gen(function* () {
     for (const stage of ["implement", "review"]) {

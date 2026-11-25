@@ -50,4 +50,3 @@ export const fetchAndRender = async <A>(
 
   return { exitCode: EXIT_OK, stdout: render(result), stderr: "" };
 };
-
