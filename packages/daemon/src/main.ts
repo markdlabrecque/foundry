@@ -579,6 +579,13 @@ const main = async (): Promise<void> => {
 
   const stopAssignments = watchAssignments({
     store, factories, slots: plannedSlots,
+    clonePath: (factoryId) => {
+      const clone = clones.get(factoryId);
+
+      if (clone === undefined) {throw new Error(`no factory clone for ${factoryId}`);}
+
+      return clone.path;
+    },
     prepareWorktree: createTicketWorktrees({
       store,
       target: (factoryId) => {

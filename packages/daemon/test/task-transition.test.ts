@@ -50,6 +50,7 @@ const snapshot = (store: Store) => Effect.all({
   transitions: store.read(`SELECT * FROM ticket_transition`), history: store.read(`SELECT * FROM history`),
   submissions: store.read(`SELECT * FROM submission`), messages: store.read(`SELECT * FROM message`),
   approvals: store.read(`SELECT * FROM approval`),
+  delegations: store.read(`SELECT * FROM delegation ORDER BY accepted_at, rowid`),
 });
 
 const fixture = async <A, E>(use: (store: Store, assignmentId: string, root: string) => Effect.Effect<A, E>) => {
@@ -144,18 +145,79 @@ test("different slots/factories, suspended assignments, missing IDs and worker d
   }));
 });
 
-test("new delegation acceptance cannot strand open work under an ended assignment", async () => {
+test.each(["completed", "abandoned", "cancelled"])("done preserves the assignment until its whole delegation tree closes as %s", async (closedStatus) => {
   await fixture((store, id) => Effect.gen(function* () {
-    yield* store.change((change) => agentDelegateHandler(slots)(change, {
+    const delegate = agentDelegateHandler(slots);
+    yield* store.change((change) => delegate(change, {
       ...owner, callId: "delegate", tool: "agent_delegate", args: { recipient: "floor.worker", body: "Help with plan" },
     }));
+    const [parent] = yield* store.read<{ id: string }>(`SELECT id FROM delegation WHERE root_assignment = ?`, [id]);
+
+    if (parent === undefined) {throw new Error("fixture did not delegate");}
+
+    const submissions = createSubmissions({ store, handlers });
     const before = yield* snapshot(store);
-    const delegations = yield* store.read(`SELECT * FROM delegation`);
-    expect(delegations).toHaveLength(1);
-    expect(yield* Effect.promise(() => createSubmissions({ store, handlers }).submit(owner, frame(id))))
+    expect(before.delegations).toHaveLength(1);
+    expect(yield* Effect.promise(() => submissions.submit(owner, frame(id))))
       .toMatchObject({ status: "refused", code: "open_delegations" });
     expect(yield* snapshot(store)).toEqual(before);
-    expect(yield* store.read(`SELECT * FROM delegation`)).toEqual(delegations);
+
+    // Recipient selection and resolution have separate tickets. Seed their durable outcomes
+    // here so this test exercises only delegation acceptance and the done boundary.
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE delegation SET recipient_slot = 'worker/2' WHERE id = ?`, [parent.id]);
+      yield* delegate(change, { ...owner, slotId: "worker/2", callId: "child", tool: "agent_delegate",
+        args: { recipient: "floor.worker", body: "Check the plan", parentDelegationId: parent.id } });
+      yield* change.query(`UPDATE delegation SET status = 'completed' WHERE id = ?`, [parent.id]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "parent-completed" });
+    }));
+    const descendantOpen = yield* snapshot(store);
+    expect(descendantOpen.delegations).toMatchObject([
+      { root_assignment: id, status: "completed" },
+      { root_assignment: id, parent_id: parent.id, delegating_slot: "worker/2", status: "open" },
+    ]);
+    expect(yield* Effect.promise(() => submissions.submit(owner, frame(id))))
+      .toMatchObject({ status: "refused", code: "open_delegations" });
+    expect(yield* snapshot(store)).toEqual(descendantOpen);
+
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE delegation SET status = ? WHERE parent_id = ?`, [closedStatus, parent.id]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "child-closed" });
+    }));
+    const closed = yield* snapshot(store);
+    // A refused call is not committed: the same call ID can succeed once obligations close.
+    expect(yield* Effect.promise(() => submissions.submit(owner, frame(id))))
+      .toMatchObject({ status: "committed", value: { assignmentId: id, stage: "implement", status: "queued" } });
+    const after = yield* snapshot(store);
+    expect(after.assignments).toMatchObject([{ id, status: "ended", end_reason: "done" }]);
+    expect(after.tickets).toMatchObject([{ stage: "implement", status: "queued" }]);
+    expect(after.transitions).toHaveLength(closed.transitions.length + 1);
+    expect(after.submissions).toHaveLength(closed.submissions.length + 1);
+    expect(after.delegations).toEqual(closed.delegations);
+    expect(after.messages).toEqual(closed.messages);
+  }));
+});
+
+test("another assignment's open delegation does not block done", async () => {
+  await fixture((store, id, root) => Effect.gen(function* () {
+    yield* createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(config)] })
+      .submit({ title: "Other plan", spec: "Independent disposable spec" }).pipe(Effect.orDie);
+    const [other] = yield* createAssignmentScheduler(schedulerOptions(store)).schedule();
+
+    if (other === undefined) {throw new Error("fixture did not assign second ticket");}
+
+    yield* store.change((change) => agentDelegateHandler(slots)(change, {
+      ...owner, slotId: other.slotId, callId: "other-delegate", tool: "agent_delegate",
+      args: { recipient: "floor.worker", body: "Help with other plan" },
+    }));
+    const before = yield* snapshot(store);
+    expect(before.delegations).toMatchObject([{ root_assignment: other.id, status: "open" }]);
+    expect(yield* Effect.promise(() => createSubmissions({ store, handlers }).submit(owner, frame(id))))
+      .toMatchObject({ status: "committed" });
+    const after = yield* snapshot(store);
+    expect(after.assignments).toMatchObject([{ id, status: "ended" }, { id: other.id, status: "active" }]);
+    expect(after.delegations).toEqual(before.delegations);
+    expect(after.messages).toEqual(before.messages);
   }));
 });
 
