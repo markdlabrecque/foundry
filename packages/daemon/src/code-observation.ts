@@ -49,8 +49,11 @@ export const inspectCode = (path: string, branch: string) => Effect.gen(function
 
 
   const discoveryStart = yield* Effect.try({ try: () => fingerprint(metadata), catch: refusal });
-  const tracked = (yield* git(["ls-files", "-z"], true)).split("\0").filter(Boolean);
-  const files = [...metadata, ...tracked.map((file) => join(path, file))];
+  const entries = (yield* git(["ls-files", "-v", "-z"], true)).split("\0").filter(Boolean);
+  // Lowercase tags mean assume-unchanged; S/s means skip-worktree. Neither permits Git
+  // status to certify a non-writing checkout, even when its reported status is clean.
+  const hiddenChanges = entries.some((entry) => /^[a-zS]/.test(entry));
+  const files = [...metadata, ...entries.map((entry) => join(path, entry.slice(2)))];
 
   const before = yield* Effect.try({ try: () => {
     if (fingerprint(metadata) !== discoveryStart) {throw new Error("index changed during tracked-file discovery");}
@@ -60,7 +63,7 @@ export const inspectCode = (path: string, branch: string) => Effect.gen(function
 
   const head = yield* git(["rev-parse", "--verify", "HEAD^{commit}"]);
   const actualBranch = yield* git(["symbolic-ref", "HEAD"]);
-  const dirty = (yield* git(["status", "--porcelain=v1", "--untracked-files=no"])) !== "";
+  const dirty = (yield* git(["status", "--porcelain=v1", "--untracked-files=no"])) !== "" || hiddenChanges;
   const after = yield* Effect.try({ try: () => fingerprint(files), catch: refusal });
 
   if (before !== after) {return yield* refusal();}

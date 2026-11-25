@@ -274,6 +274,8 @@ test.each([
   { mode: "race during writes", writing: false, code: "invalid_code_outcome" },
   { mode: "dirty", writing: false, code: "non_writing_changes" },
   { mode: "staged", writing: false, code: "non_writing_changes" },
+  { mode: "assume-unchanged", writing: false, code: "non_writing_changes" },
+  { mode: "skip-worktree", writing: false, code: "non_writing_changes" },
   { mode: "missing commit", writing: true, code: "commit_required" },
   { mode: "wrong commit", writing: true, code: "invalid_code_outcome" },
   { mode: "wrong branch", writing: false, code: "invalid_code_outcome" },
@@ -321,6 +323,12 @@ test.each([
       if (!mode.endsWith("dirty")) {git(path, "add", ".");}
 
       if (mode.endsWith("moved") || mode === "new commit") {git(path, "commit", "--quiet", "-m", "worker change");}
+    }
+
+    if (mode === "assume-unchanged" || mode === "skip-worktree") {
+      git(path, "update-index", `--${mode}`, "--", "tracked.txt");
+      writeFileSync(join(path, "tracked.txt"), "hidden change\n");
+      expect(git(path, "status", "--porcelain=v1", "--untracked-files=no")).toBe("");
     }
 
     if (mode === "untracked") {writeFileSync(join(path, "notes.txt"), "not tracked\n");}
