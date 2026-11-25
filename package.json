@@ -1,0 +1,29 @@
+{
+  "name": "foundry",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/protocol",
+    "packages/daemon",
+    "packages/cli",
+    "packages/host",
+    "packages/extension",
+    "packages/testkit"
+  ],
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "packageManager": "npm@10.9.8",
+  "scripts": {
+    "build": "tsc -b",
+    "typecheck": "tsc -b && tsc -p tsconfig.test.json",
+    "test": "vitest run",
+    "clean": "tsc -b --clean"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.5",
+    "typescript": "7.0.2",
+    "vitest": "5.1.1"
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@foundry/host",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Worker Host: owns worker launches and resolves the pinned pi binary.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "dependencies": { "@earendil-works/pi-coding-agent": "1.6.0" }
+}

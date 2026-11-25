@@ -1,0 +1,15 @@
+{
+  "name": "@foundry/protocol",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Channel frames defined once in Schema, shared by the daemon and the Foundry Pi extension.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "dependencies": { "effect": "4.1.5" }
+}
