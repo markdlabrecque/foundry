@@ -108,10 +108,13 @@ test("rejection limit migration preserves blocked and worker request approvals a
       { id: 2, kind: "blocked", outcome: "blocked" },
     ] });
 
-    const invalid = yield* Effect.exit(store.change((change) => change.query(
-      `INSERT INTO approval (factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at)
-       SELECT factory_id, ticket_number, assignment_id, NULL, 'limit_reached', 'open', raised_at FROM approval WHERE id = 2`,
-    )));
+    const invalid = yield* Effect.exit(store.change((change) => Effect.gen(function* () {
+      yield* change.query(
+        `INSERT INTO approval (factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at)
+         SELECT factory_id, ticket_number, assignment_id, NULL, 'limit_reached', 'open', raised_at FROM approval WHERE id = 2`,
+      );
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "invalid-approval" });
+    })));
 
     expect(Exit.isFailure(invalid)).toBe(true);
     expect(yield* snapshot(store)).toEqual(saved.after);
