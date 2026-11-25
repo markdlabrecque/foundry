@@ -25,10 +25,27 @@ export interface GetOptions {
 const UNREACHABLE_CODES = new Set(["ENOENT", "ECONNREFUSED", "ECONNRESET", "EPIPE"]);
 
 /** `GET path` from the daemon serving `stateRoot`. */
-export const getFromDaemon = (stateRoot: string, path: string, options: GetOptions = {}): Promise<ApiReply> => {
+export const getFromDaemon = (stateRoot: string, path: string, options: GetOptions = {}): Promise<ApiReply> =>
+  callDaemon(stateRoot, "GET", path, undefined, options);
+
+/** `POST path` with a JSON body to the daemon serving `stateRoot`. */
+export const postToDaemon = (stateRoot: string, path: string, body: unknown, options: GetOptions = {}): Promise<ApiReply> =>
+  callDaemon(stateRoot, "POST", path, JSON.stringify(body), options);
+
+const callDaemon = (
+  stateRoot: string,
+  method: "GET" | "POST",
+  path: string,
+  payload: string | undefined,
+  options: GetOptions,
+): Promise<ApiReply> => {
   const socketPath = managementSocketPath(stateRoot);
+  const headers =
+    payload === undefined
+      ? {}
+      : { "content-type": "application/json", "content-length": String(Buffer.byteLength(payload)) };
   return new Promise<ApiReply>((resolve, reject) => {
-    const req = request({ socketPath, path, method: "GET", timeout: options.timeoutMs ?? 5_000 }, (res) => {
+    const req = request({ socketPath, path, method, headers, timeout: options.timeoutMs ?? 5_000 }, (res) => {
       let body = "";
       res.setEncoding("utf8");
       res.on("data", (chunk: string) => (body += chunk));
@@ -50,6 +67,6 @@ export const getFromDaemon = (stateRoot: string, path: string, options: GetOptio
       }
       reject(error);
     });
-    req.end();
+    req.end(payload);
   });
 };

@@ -72,7 +72,63 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
        WHERE state = 'open'`,
     ],
   },
+  {
+    id: 3,
+    name: "tickets",
+    statements: [
+      // PRD §7.3. The ticket directory holds the specification and evidence; only its path is here.
+      `CREATE TABLE ticket (
+        factory_id TEXT NOT NULL,
+        number INTEGER NOT NULL CHECK (number > 0),
+        title TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        production_line TEXT NOT NULL,
+        directory TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('backlog', 'stage', 'completed', 'cancelled')),
+        stage TEXT,
+        status TEXT CHECK (status IS NULL OR status IN ('queued', 'assigned', 'awaiting_approval', 'paused')),
+        rejections INTEGER NOT NULL DEFAULT 0,
+        rejection_ceiling INTEGER NOT NULL,
+        messages_spent INTEGER NOT NULL DEFAULT 0,
+        message_ceiling INTEGER NOT NULL,
+        worktree_path TEXT,
+        branch TEXT,
+        start_commit TEXT,
+        submitted_at INTEGER NOT NULL,
+        PRIMARY KEY (factory_id, number),
+        CHECK ((state = 'stage') = (stage IS NOT NULL AND status IS NOT NULL))
+      ) STRICT`,
+      // PRD §8.2: one row per change to a ticket's stage or status, never updated or deleted.
+      `CREATE TABLE ticket_transition (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        recorded_at INTEGER NOT NULL,
+        actor TEXT NOT NULL,
+        from_state TEXT,
+        from_stage TEXT,
+        from_status TEXT,
+        to_state TEXT NOT NULL,
+        to_stage TEXT,
+        to_status TEXT,
+        outcome TEXT,
+        reason TEXT,
+        git_commit TEXT,
+        evidence TEXT NOT NULL DEFAULT '[]',
+        config_load TEXT,
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket (factory_id, number)
+      ) STRICT`,
+      `CREATE INDEX ticket_transition_by_ticket ON ticket_transition (factory_id, ticket_number, sequence)`,
+      `CREATE TRIGGER ticket_transition_no_update BEFORE UPDATE ON ticket_transition
+       BEGIN SELECT RAISE(ABORT, 'transitions are append-only'); END`,
+      `CREATE TRIGGER ticket_transition_no_delete BEFORE DELETE ON ticket_transition
+       BEGIN SELECT RAISE(ABORT, 'transitions are append-only'); END`,
+    ],
+  },
 ];
+
+/** File name of the database inside the state root. */
+export const DATABASE_FILE_NAME = "foundry.db";
 
 /** Values that can be bound to a statement parameter. */
 export type SqlValue = string | number | bigint | Uint8Array | null;
