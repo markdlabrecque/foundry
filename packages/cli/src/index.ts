@@ -18,4 +18,5 @@ export {
   type SubmitOptions,
   type TicketOutcome,
 } from "./tickets.js";
+export { runLogs, type LogsOptions, type LogsOutcome } from "./logs.js";
 export { runHoldList, runHoldShow, type HoldOptions, type HoldOutcome } from "./holds.js";
