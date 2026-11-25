@@ -10,6 +10,7 @@ import {
   DATABASE_FILE_NAME,
   makeTicketService,
   openStore,
+  readEvents,
   serveManagementApi,
   slugify,
   StoreError,
@@ -131,6 +132,9 @@ test("submitted tickets, their transitions and ticket directories survive a daem
     { factory_id: "shop", kind: "ticket.submitted", subject: "1" },
     { factory_id: "shop", kind: "ticket.submitted", subject: "2" },
   ]);
+  // Each submission names its ticket, so the `--ticket` event filter finds it.
+  const forTicket = await Effect.runPromise(readEvents(second.store, { after: 0, ticket: 2, limit: 10 }));
+  expect(forTicket).toMatchObject([{ kind: "ticket.submitted", subject: "2", records: [{ kind: "ticket", id: "2" }] }]);
 });
 
 test("an unknown production line is refused and writes no ticket, transition, history or directory", async () => {

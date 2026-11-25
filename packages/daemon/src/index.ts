@@ -58,3 +58,5 @@ export {
   type RaiseOutcome,
   type RaiseResult,
 } from "./holds.js";
+export { readEvents, storeEventSource, type EventPageQuery, type EventSource } from "./events.js";
+export { formatEvent } from "./events-stream.js";
