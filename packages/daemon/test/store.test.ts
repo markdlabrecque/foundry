@@ -198,10 +198,15 @@ const acceptRoutingMessage = (store: Store, ticket: number | null = null, recipi
   }));
 
 test("message acceptance schema upgrades without losing queued work", async () => {
-  const message = await withStore(foundryMigrations.slice(0, -1), (store) => acceptRoutingMessage(store));
+  // A historical schema fixture uses historical columns, not today's acceptance implementation.
+  await withStore(foundryMigrations.filter((m) => m.id <= 12), (store) => store.change((change) => Effect.gen(function* () {
+    yield* change.query(`INSERT INTO message (id, factory_id, sequence, sender_slot, recipient, body, delivery, kind, status, accepted_at)
+      VALUES ('queued-before-binding', 'alpha', 1, 'sender/1', 'eng.builder', 'route me', 'after_turn', 'ordinary', 'unbound', 1)`);
+    yield* change.recordHistory({ factoryId: "alpha", kind: "message.accepted", subject: "queued-before-binding" });
+  })));
   await withStore(foundryMigrations, (store) => Effect.gen(function* () {
     expect(yield* store.read(`SELECT id, status, bound_slot, bound_at FROM message`)).toEqual([
-      { id: message.id, status: "unbound", bound_slot: null, bound_at: null },
+      { id: "queued-before-binding", status: "unbound", bound_slot: null, bound_at: null },
     ]);
   }));
 });

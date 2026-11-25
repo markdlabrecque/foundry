@@ -13,6 +13,8 @@ export * from "./submissions.js";
 
 export * from "./agent-message.js";
 
+export * from "./operator-message.js";
+
 export * from "./agent-request.js";
 
 export * from "./agent-reply.js";
