@@ -552,6 +552,14 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
   },
   {
     id: 23,
+    name: "message_injection_clock",
+    statements: [
+      `ALTER TABLE message_attempt ADD COLUMN injected_at INTEGER`,
+      `ALTER TABLE message_attempt ADD COLUMN retired_at INTEGER`,
+    ],
+  },
+  {
+    id: 24,
     name: "message_limit_approvals",
     statements: [
       `ALTER TABLE approval RENAME TO approval_old`,

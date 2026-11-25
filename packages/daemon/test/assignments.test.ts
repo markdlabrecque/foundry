@@ -422,7 +422,7 @@ test("message limit migration preserves existing blocked and worker-request deci
     }));
 
     return { root, approvals: yield* store.read(`SELECT * FROM approval ORDER BY id`) };
-  }), foundryMigrations.filter((migration) => migration.id <= 22));
+  }), foundryMigrations.filter((migration) => migration.name !== "message_limit_approvals"));
 
   await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
