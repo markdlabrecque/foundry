@@ -4,13 +4,7 @@
  */
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-
-/** Environment variables through which a launch learns its identity (PRD §3.2). */
-export const LAUNCH_ENV = {
-  factoryId: "FOUNDRY_FACTORY_ID",
-  slotId: "FOUNDRY_SLOT_ID",
-  launchId: "FOUNDRY_LAUNCH_ID",
-} as const;
+import { LAUNCH_ENV } from "./launch-command.js";
 
 /** What the daemon asks the host to start in a slot. */
 export interface LaunchSpec {
@@ -19,7 +13,11 @@ export interface LaunchSpec {
   readonly command: string;
   readonly args: readonly string[];
   readonly cwd: string;
-  /** Added to the host's full environment, after which the identity variables are set. */
+  /**
+   * Added to the host's full environment. The host then sets the identity
+   * variables (`LAUNCH_ENV`) itself, overriding any given here, and generates
+   * the launch ID; a caller cannot choose either.
+   */
   readonly env?: Readonly<Record<string, string>>;
 }
 
@@ -101,6 +99,9 @@ export function createLaunchRegistry(options: {
         occupied.delete(key);
         throw new LaunchRefused(`launch failed to start: ${(error as Error).message}`);
       }
+
+      // A later ChildProcess error (for example a failed kill) must not crash the host.
+      child.on("error", () => {});
 
       const pid = child.pid as number;
       const started: LaunchRecord = {

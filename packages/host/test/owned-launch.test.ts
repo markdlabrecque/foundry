@@ -71,6 +71,8 @@ test("the host owns a launched process group through launch and exit, across a l
     command: process.execPath,
     args: ["-e", STUB],
     cwd: launchDir,
+    // The host's identity variables must win over anything a caller passes.
+    env: { [LAUNCH_ENV.launchId]: "spoof", [LAUNCH_ENV.slotId]: "spoof" },
   });
   launchedGroups.push(launched.pgid);
 
@@ -111,5 +113,20 @@ test("the host owns a launched process group through launch and exit, across a l
   // A client that missed the event learns the same exit from the inventory.
   const third = await connectHost(stateRoot);
   expect(await third.inventory()).toEqual([reported]);
+
+  // The slot is free again once its launch is gone.
+  const relaunchDir = join(stateRoot, "launches", "slot-1-again");
+  await mkdir(relaunchDir, { recursive: true });
+  const relaunched = await third.launch({
+    factoryId: "factory-a",
+    slotId: "slot-1",
+    command: process.execPath,
+    args: ["-e", "setInterval(() => {}, 1000)"],
+    cwd: relaunchDir,
+  });
+  launchedGroups.push(relaunched.pgid);
+  expect(relaunched).toMatchObject({ slotId: "slot-1", liveness: "live" });
+  expect(relaunched.launchId).not.toBe(launched.launchId);
+  expect(await third.inventory()).toEqual([reported, relaunched]);
   third.close();
 });

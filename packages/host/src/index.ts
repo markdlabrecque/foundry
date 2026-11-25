@@ -11,12 +11,7 @@ export {
   type HostResponse,
   type LaunchExitedEvent,
 } from "./control.js";
-export {
-  LAUNCH_ENV,
-  type LaunchExit,
-  type LaunchRecord,
-  type LaunchSpec,
-} from "./launches.js";
+export type { LaunchExit, LaunchRecord, LaunchSpec } from "./launches.js";
 export { serveHost, type RunningHost } from "./server.js";
 export {
   HOST_LOG_NAME,
