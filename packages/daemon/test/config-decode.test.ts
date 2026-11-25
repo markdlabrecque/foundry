@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { Predicate } from "effect";
 import { decodeFactoryYaml } from "@foundry/daemon/config";
 import type { ConfigProblem } from "@foundry/daemon/config";
 
@@ -91,7 +92,7 @@ production_lines:
 const problemsOf = (text: string): ReadonlyArray<ConfigProblem> => {
   const result = decodeFactoryYaml(text);
 
-  if (result._tag === "Valid") {throw new Error("expected the configuration to be rejected");}
+  if (Predicate.isTagged(result, "Valid")) {throw new Error("expected the configuration to be rejected");}
 
   return result.problems;
 };
@@ -101,7 +102,7 @@ describe("valid configuration", () => {
     const result = decodeFactoryYaml(prdExample);
     expect(result._tag).toBe("Valid");
 
-    if (result._tag !== "Valid") {return;}
+    if (!Predicate.isTagged(result, "Valid")) {return;}
 
     expect(result.config.rooms["engineering"]?.stations["developer"]?.instances).toBe(3);
     expect(result.config.rooms["engineering"]?.stations["reviewer"]?.extensions).toEqual([]);
@@ -115,7 +116,7 @@ describe("valid configuration", () => {
     const result = decodeFactoryYaml(minimal);
     expect(result._tag).toBe("Valid");
 
-    if (result._tag !== "Valid") {return;}
+    if (!Predicate.isTagged(result, "Valid")) {return;}
 
     const { config } = result;
     expect(config.worktrees).toEqual({

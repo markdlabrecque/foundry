@@ -12,8 +12,8 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
 import { Type } from "typebox";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { composePrime, createPrimer, openStore, primesForConversation, startChannelServer } from "@foundry/daemon";
-import type { AcceptedConnection, ChannelServer, CompactionPrimingOutcome, PrimedConnection, PrimeRequest, SlotClaim, Store } from "@foundry/daemon";
+import { CompactionPrimingOutcome, composePrime, createPrimer, openStore, primesForConversation, startChannelServer } from "@foundry/daemon";
+import type { AcceptedConnection, ChannelServer, PrimedConnection, PrimeRequest, SlotClaim, Store } from "@foundry/daemon";
 import { CompactionReporter, createConversationAdapter, openChannel, receiveDaemonFrames, RunInterrupter } from "@foundry/extension";
 import type { ConversationAdapter, OpenChannel } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
@@ -173,14 +173,17 @@ test("a compaction prime reaches the same launch's conversation at the next tool
   channels.push(opened.channel);
 
   const deliveredCount = (count: number) =>
-    new Promise<void>((resolve) => { delivered.length >= count ? resolve() : deliveredWaiters.push({ count, resolve }); });
+    new Promise<void>((resolve) => {
+      if (delivered.length >= count) {resolve();}
+      else {deliveredWaiters.push({ count, resolve });}
+    });
 
   const reporter = new CompactionReporter();
   reporter.attach(opened.channel);
 
   await within("the fresh prime", deliveredCount(1));
   const [primed] = accepted;
-  expect(await primed!.outcome).toEqual({ _tag: "Sent", primeId: "prime-1" });
+  expect(await primed!.outcome).toEqual(CompactionPrimingOutcome.Sent({ primeId: "prime-1" }));
 
   const sessionId = session.sessionManager.getSessionId();
   // A run is mid-tool-round when Pi compacts.
@@ -194,7 +197,7 @@ test("a compaction prime reaches the same launch's conversation at the next tool
   // (A prime frame stands in for a message, which arrives in later tickets.)
   const work = primed!.connection.send({ type: "prime", id: "work-1", text: "Held work." });
   releaseCompose.resolve();
-  expect(await within("the compaction prime outcome", compacted)).toEqual({ _tag: "Sent", primeId: "prime-2" });
+  expect(await within("the compaction prime outcome", compacted)).toEqual(CompactionPrimingOutcome.Sent({ primeId: "prime-2" }));
   await within("the held work write", work);
   await within("delivery of both frames", deliveredCount(3));
 
@@ -234,9 +237,9 @@ test("a compaction report from a launch with no primed connection sends and reco
   const primer = createPrimer({ store, primeRequest, newPrimeId: () => "prime-1" });
   const slot = { factoryId: "f1", slotId: "builder-1", launchId: "launch-1" };
 
-  expect(await primer.compacted(slot)).toEqual({ _tag: "NotConnected" });
+  expect(await primer.compacted(slot)).toEqual(CompactionPrimingOutcome.NotConnected());
   await primer.prime(slot, hello, stub).outcome;
-  expect(await primer.compacted({ ...slot, launchId: "launch-2" })).toEqual({ _tag: "NotConnected" });
+  expect(await primer.compacted({ ...slot, launchId: "launch-2" })).toEqual(CompactionPrimingOutcome.NotConnected());
 
   expect(written).toEqual(["prime"]);
   expect((await conversationPrimes()).map((p) => p.situation)).toEqual(["fresh"]);

@@ -6,9 +6,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
+import { Effect, Exit, Predicate, Scope } from "effect";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { composePrime, createPrimer, openStore, primesForConversation, startChannelServer } from "@foundry/daemon";
+import { composePrime, createPrimer, openStore, primesForConversation, PrimingOutcome, startChannelServer } from "@foundry/daemon";
 import type { AcceptedConnection, AcknowledgeOutcome, ChannelServer, PrimedConnection, Primer, PrimeRequest, SlotClaim, Store } from "@foundry/daemon";
 import { createConversationAdapter, openChannel, ReceiptReporter, receiveDaemonFrames, RunInterrupter } from "@foundry/extension";
 import type { ConversationAdapter, OpenChannel } from "@foundry/extension";
@@ -150,7 +150,7 @@ test("the fresh prime is recorded unacknowledged and reaches the worker before a
   const later = primed.connection.send({ type: "prime", id: "later-frame", text: "after" });
   release();
 
-  expect(await primed.outcome).toEqual({ _tag: "Sent", primeId: "prime-1" });
+  expect(await primed.outcome).toEqual(PrimingOutcome.Sent({ primeId: "prime-1" }));
   await later;
   await twoFrames;
   expect(received.map((f) => (f.type === "prime" ? f.id : f.type))).toEqual(["prime-1", "later-frame"]);
@@ -175,22 +175,23 @@ test("a reconnect from the same launch is not primed again, and a missing instru
   const daemon = await serveDaemon(primer);
 
   const first = await connect(() => {});
-  expect(await (await daemon.nextAccepted()).outcome).toMatchObject({ _tag: "Sent" });
+  expect(Predicate.isTagged(await (await daemon.nextAccepted()).outcome, "Sent")).toBe(true);
   first.close();
   await first.closed;
 
   await connect(() => {});
-  expect(await (await daemon.nextAccepted()).outcome).toEqual({ _tag: "Reconnect", unacknowledgedPrimeId: "prime-1" });
+  expect(await (await daemon.nextAccepted()).outcome).toEqual(PrimingOutcome.Reconnect({ unacknowledgedPrimeId: "prime-1" }));
   expect(await conversationPrimes()).toHaveLength(1);
 
   // A fresh conversation on another slot whose instruction file is gone (freezing is 11c).
   await rm(join(dir, "factory", "instructions", "builder.md"));
   await connect(() => {}, { ...hello, slotId: "builder-2", launchId: "launch-2", conversationRef: "conv-2" });
   const missing = await daemon.nextAccepted();
-  expect(await missing.outcome).toMatchObject({
-    _tag: "SourceUnavailable",
-    problems: [{ source: "instructions/builder.md", reason: "missing" }],
-  });
+  expect(await missing.outcome).toMatchObject(
+    PrimingOutcome.SourceUnavailable({
+    problems: [expect.objectContaining({ source: "instructions/builder.md", reason: "missing" })],
+  }),
+  );
   await expect(missing.connection.send({ type: "prime", id: "work", text: "x" })).rejects.toThrow(/priming did not complete/);
   expect(await Effect.runPromise(primesForConversation(store, "f1", "builder-2", "conv-2"))).toEqual([]);
   expect((await history()).map((h) => h.kind)).toEqual(["prime.sent"]);
@@ -217,7 +218,7 @@ test("the prime alone starts no turn; once it is in the session file its receipt
     }).then((channel) => reporter.attach(channel));
   });
 
-  expect(await (await daemon.nextAccepted()).outcome).toMatchObject({ _tag: "Sent" });
+  expect(Predicate.isTagged(await (await daemon.nextAccepted()).outcome, "Sent")).toBe(true);
   await injected;
 
   // Injected, but Pi started no turn and has written no session file, so no receipt.
@@ -255,7 +256,7 @@ test("the prime is on record before its frame is written, so a sent prime always
 
   const primer = createPrimer({ store, primeRequest, newPrimeId: () => "prime-1" });
 
-  expect(await primer.prime(slot, hello, stub).outcome).toEqual({ _tag: "Sent", primeId: "prime-1" });
+  expect(await primer.prime(slot, hello, stub).outcome).toEqual(PrimingOutcome.Sent({ primeId: "prime-1" }));
   expect(recordedAtSend).toEqual([["prime-1"]]);
 });
 
@@ -268,12 +269,12 @@ test("two hellos from one launch send one fresh prime; the reconnect names it wh
   const outcomes = await Promise.all([primer.prime(slot, hello, stub).outcome, primer.prime(slot, hello, stub).outcome]);
 
   expect(outcomes).toEqual([
-    { _tag: "Sent", primeId: "prime-1" },
-    { _tag: "Reconnect", unacknowledgedPrimeId: "prime-1" },
+    PrimingOutcome.Sent({ primeId: "prime-1" }),
+    PrimingOutcome.Reconnect({ unacknowledgedPrimeId: "prime-1" }),
   ]);
   expect(written).toEqual(["prime-1"]);
   expect(await conversationPrimes()).toHaveLength(1);
 
   await primer.receipt(slot, "prime-1");
-  expect(await primer.prime(slot, hello, stub).outcome).toEqual({ _tag: "Reconnect" });
+  expect(await primer.prime(slot, hello, stub).outcome).toEqual(PrimingOutcome.Reconnect({}));
 });

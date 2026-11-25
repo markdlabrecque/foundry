@@ -1,4 +1,5 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { Predicate } from "effect";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterAll, beforeAll, describe, expect, test } from "vitest";
@@ -82,7 +83,7 @@ const validate = (text: string) => validateFactoryYaml(text, { yamlFile, home })
 const problemsOf = (text: string): ReadonlyArray<ConfigProblem> => {
   const result = validate(text);
 
-  if (result._tag === "Valid") {throw new Error("expected the configuration to be rejected");}
+  if (Predicate.isTagged(result, "Valid")) {throw new Error("expected the configuration to be rejected");}
 
   return result.problems;
 };

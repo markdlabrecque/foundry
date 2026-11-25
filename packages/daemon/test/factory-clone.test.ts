@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
-import { Effect } from "effect";
+import { Effect, Predicate } from "effect";
 import { clearCloneStaging, CLONE_MARKER_FILE_NAME, DATABASE_FILE_NAME, ensureFactoryClone, factoryClonePath, FactoryCloneError, loadFactoryFiles, openStore } from "@foundry/daemon";
 import type { LoadedFactory } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
@@ -73,7 +73,7 @@ const fixture = (name = "alpha", home?: string): Fixture => {
     writeFileSync(yamlFile, factoryYaml(factoryName, "./source.git"));
     const loaded = loadFactoryFiles([yamlFile], { env: {} });
 
-    if (loaded._tag !== "Loaded") {throw new Error(loaded.message);}
+    if (!Predicate.isTagged(loaded, "Loaded")) {throw new Error(loaded.message);}
 
     return loaded.factories[0]!;
   };

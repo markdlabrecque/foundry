@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { Predicate } from "effect";
 import { decodeFactoryYaml, locateProblems, resolveStations } from "@foundry/daemon/config";
 import type { EffectiveStation, ResolveResult } from "@foundry/daemon/config";
 
@@ -37,13 +38,13 @@ production_lines:
 const resolveText = (text: string, env: Record<string, string | undefined> = {}): ResolveResult => {
   const decoded = decodeFactoryYaml(text);
 
-  if (decoded._tag === "Invalid") {throw new Error(JSON.stringify(decoded.problems));}
+  if (Predicate.isTagged(decoded, "Invalid")) {throw new Error(JSON.stringify(decoded.problems));}
 
   return resolveStations(decoded.config, { env, baseDir });
 };
 
 const stationOf = (result: ResolveResult): EffectiveStation => {
-  if (result._tag === "Invalid") {throw new Error(JSON.stringify(result.problems));}
+  if (Predicate.isTagged(result, "Invalid")) {throw new Error(JSON.stringify(result.problems));}
 
   const [station] = result.stations;
 
@@ -98,7 +99,7 @@ describe("model", () => {
     const result = resolveText(factory(defaults, "", station), env);
     expect(result._tag).toBe("Invalid");
 
-    if (result._tag !== "Invalid") {return;}
+    if (!Predicate.isTagged(result, "Invalid")) {return;}
 
     expect(result.problems).toContainEqual({ path: expected.path, message: expect.stringMatching(expected.message) });
   });
@@ -144,7 +145,7 @@ test("resolution problems are located at their YAML setting", () => {
   const text = factory("", "", "        model: ${REVIEW_MODEL}\n");
   const result = resolveText(text);
 
-  if (result._tag !== "Invalid") {throw new Error("expected a problem");}
+  if (!Predicate.isTagged(result, "Invalid")) {throw new Error("expected a problem");}
 
   expect(locateProblems(text, result.problems)).toContainEqual(
     expect.objectContaining({ path: "rooms.eng.stations.dev.model", line: 11 }),
@@ -154,7 +155,7 @@ test("resolution problems are located at their YAML setting", () => {
 test("a leading ~ expands to the home directory, as in the offline checks", () => {
   const decoded = decodeFactoryYaml(factory(`${MODEL}  instructions: ~/shared/factory.md\n`, "", "        skills: [~/skills/a/SKILL.md]\n"));
 
-  if (decoded._tag === "Invalid") {throw new Error(JSON.stringify(decoded.problems));}
+  if (Predicate.isTagged(decoded, "Invalid")) {throw new Error(JSON.stringify(decoded.problems));}
 
   const resolved = stationOf(resolveStations(decoded.config, { env: {}, baseDir, home: "/home/op" }));
   expect({ instructions: resolved.instructions, skills: resolved.skills }).toEqual({

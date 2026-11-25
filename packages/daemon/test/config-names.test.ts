@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { Predicate } from "effect";
 import { decodeFactoryYaml } from "@foundry/daemon/config";
 
 /** A factory with the given `rooms:` block; the line references a station kept valid in every case. */
@@ -72,7 +73,7 @@ describe("rejected names", () => {
     const result = decodeFactoryYaml(factory(rooms));
     expect(result._tag).toBe("Invalid");
 
-    if (result._tag !== "Invalid") {return;}
+    if (!Predicate.isTagged(result, "Invalid")) {return;}
 
     const match = result.problems.find(
       (problem) => problem.path === expected.path && expected.message.test(problem.message),

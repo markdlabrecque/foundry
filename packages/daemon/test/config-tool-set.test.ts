@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
+import { Predicate } from "effect";
 import { FIXED_TOOLS } from "@foundry/protocol";
-import { decodeFactoryYaml, resolveStations, toolSetOf } from "@foundry/daemon/config";
+import { decodeFactoryYaml, resolveStations, toolSetOf, ToolSource } from "@foundry/daemon/config";
 import type { ToolSetEntry } from "@foundry/daemon/config";
 
 // Unit tier: Tool Sets are a pure function of decoded config; no files are read.
@@ -44,22 +45,22 @@ const DEFAULTS = `  extensions:
 const toolSet = (text: string): ReadonlyArray<ToolSetEntry> => {
   const decoded = decodeFactoryYaml(text);
 
-  if (decoded._tag === "Invalid") {throw new Error(JSON.stringify(decoded.problems));}
+  if (Predicate.isTagged(decoded, "Invalid")) {throw new Error(JSON.stringify(decoded.problems));}
 
   const resolved = resolveStations(decoded.config, { env: {}, baseDir: "/factory" });
 
-  if (resolved._tag === "Invalid") {throw new Error(JSON.stringify(resolved.problems));}
+  if (Predicate.isTagged(resolved, "Invalid")) {throw new Error(JSON.stringify(resolved.problems));}
 
   return toolSetOf(resolved.stations[0]!);
 };
 
 const fixed: ReadonlyArray<ToolSetEntry> = FIXED_TOOLS.map((name, index) => ({
   name,
-  source: index < 4 ? { _tag: "Pi" } : { _tag: "Foundry" },
+  source: index < 4 ? ToolSource.Pi() : ToolSource.Foundry(),
 }));
 
 const from = (path: string, ...names: Array<string>): Array<ToolSetEntry> =>
-  names.map((name) => ({ name, source: { _tag: "Extension", path } }));
+  names.map((name) => ({ name, source: ToolSource.Extension({ path }) }));
 
 describe("a Tool Set is the fixed tools plus those named on the effective extensions", () => {
   const rows: ReadonlyArray<[string, string, string, ReadonlyArray<ToolSetEntry>]> = [
@@ -101,7 +102,7 @@ describe("extension tool names are exact, unreserved and listed once", () => {
     const decoded = decodeFactoryYaml(factory(defaults, station));
     expect(decoded._tag).toBe("Invalid");
 
-    if (decoded._tag !== "Invalid") {return;}
+    if (!Predicate.isTagged(decoded, "Invalid")) {return;}
 
     expect(decoded.problems).toContainEqual(
       expect.objectContaining({ path, message: expect.stringMatching(message), line: expect.any(Number) }),
@@ -111,7 +112,7 @@ describe("extension tool names are exact, unreserved and listed once", () => {
   test("a problem points at the line naming the tool", () => {
     const decoded = decodeFactoryYaml(factory(ext("[ok, agent_message]"), ""));
 
-    if (decoded._tag !== "Invalid") {throw new Error("expected a problem");}
+    if (!Predicate.isTagged(decoded, "Invalid")) {throw new Error("expected a problem");}
 
     expect(decoded.problems).toEqual([expect.objectContaining({ line: 11, column: 19 })]);
   });

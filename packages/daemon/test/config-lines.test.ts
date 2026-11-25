@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { Predicate } from "effect";
 import { decodeFactoryYaml } from "@foundry/daemon/config";
 
 // Unit tier: production-line rules are pure checks on decoded config, so a
@@ -40,7 +41,8 @@ const goodStages = `      - id: plan
 
 test("a line meeting every rule is valid with no warnings", () => {
   const result = decodeFactoryYaml(base(goodStages));
-  expect(result).toMatchObject({ _tag: "Valid", warnings: [] });
+  expect(Predicate.isTagged(result, "Valid")).toBe(true);
+  expect(result).toMatchObject({ warnings: [] });
 });
 
 // Each row: name, YAML, then the path and message of a problem it must report
@@ -130,7 +132,7 @@ describe("rejected production lines", () => {
   test.each(rejected)("%s", (_name, text, expected) => {
     const result = decodeFactoryYaml(text);
 
-    if (result._tag === "Valid") {throw new Error("expected the configuration to be rejected");}
+    if (Predicate.isTagged(result, "Valid")) {throw new Error("expected the configuration to be rejected");}
 
     const match = result.problems.find(
       (problem) => problem.path === expected.path && expected.message.test(problem.message),
@@ -145,7 +147,7 @@ test("a line with no verify command is warned about, not rejected", () => {
   const result = decodeFactoryYaml(base(goodStages).replace("    verify: [npm, test]\n", ""));
   expect(result._tag).toBe("Valid");
 
-  if (result._tag !== "Valid") {return;}
+  if (!Predicate.isTagged(result, "Valid")) {return;}
 
   expect(result.warnings).toEqual([
     expect.objectContaining({ path: "production_lines.feature", message: expect.stringMatching(/No verify command/), line: 19 }),
