@@ -31,4 +31,4 @@ export { renderEvent, runEvents, sseParser, type EventsOptions, type EventsOutco
 
 export { runFactoryPath, type FactoryPathOptions } from "./factory.js";
 
-export { runSlotList, runSlotShow, type SlotOptions, type SlotOutcome } from "./slots.js";
+export { runSlotInterrupt, runSlotList, runSlotShow, type SlotOptions, type SlotOutcome } from "./slots.js";

@@ -16,7 +16,7 @@ import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath } from "./factory.js";
 import { runFactoryList } from "./factories.js";
-import { runSlotList, runSlotShow } from "./slots.js";
+import { runSlotInterrupt, runSlotList, runSlotShow } from "./slots.js";
 
 const validate = Command.make(
   "validate",
@@ -275,9 +275,21 @@ const slotShow = Command.make(
     ),
 ).pipe(Command.withDescription("Show one slot and its launch history"));
 
+const slotInterrupt = Command.make(
+  "interrupt",
+  { ...ticketFlags, slot: Argument.String("station/ordinal") },
+  ({ json, home, factory, slot }) =>
+    Effect.flatMap(
+      Effect.promise(() =>
+        runSlotInterrupt({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), slot, env: process.env }),
+      ),
+      print,
+    ),
+).pipe(Command.withDescription("Abort a slot's current run, keeping its launch and conversation"));
+
 const slot = Command.make("slot").pipe(
   Command.withDescription("Slots: each station's fixed worker positions and their launches"),
-  Command.withSubcommands([slotList, slotShow]),
+  Command.withSubcommands([slotList, slotShow, slotInterrupt]),
 );
 
 const foundry = Command.make("foundry").pipe(

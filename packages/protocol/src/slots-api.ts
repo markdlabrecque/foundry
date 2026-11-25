@@ -5,11 +5,15 @@
  *   factories (or of the named one) with its condition and its latest launch.
  * - `GET /api/v1/slots/<station>/<ordinal>[?factory=<name>]`: a `SlotShowResult`, the slot and its
  *   launch history. `factory` may be left out only when exactly one factory is loaded.
+ * - `POST /api/v1/slots/<station>/<ordinal>/interrupt[?factory=<name>]`: a `SlotInterruptResult`.
+ *   Aborts the worker's current run over its authenticated channel (PRD §5.3); the launch and
+ *   conversation are kept. Answers once the worker acknowledges, with Pi idle again.
  *
  * Slots are addressed as `station/ordinal`, the station's name and a 1-based ordinal.
  */
 import { Schema } from "effect";
 
+import { InterruptOutcome } from "./channel.js";
 import { MANAGEMENT_API_PREFIX } from "./management-api.js";
 
 export const SLOTS_PATH = `${MANAGEMENT_API_PREFIX}/slots`;
@@ -50,6 +54,32 @@ export const matchSlotPath = (path: string): string | null | undefined => {
   if (!path.startsWith(prefix)) {return undefined;}
 
   const slotId = path.slice(prefix.length);
+
+  return parseSlotId(slotId) === undefined ? null : slotId;
+};
+
+const INTERRUPT_SUFFIX = "/interrupt";
+
+/** How long the daemon waits for the worker's interrupt acknowledgement before it refuses. */
+export const SLOT_INTERRUPT_ACK_TIMEOUT_MS = 30_000;
+
+/** Request path of a slot's interrupt; `slotId` must already be a valid `station/ordinal`. */
+export const slotInterruptPath = (slotId: string, factory?: string): string =>
+  withFactory(`${SLOTS_PATH}/${slotId}${INTERRUPT_SUFFIX}`, factory);
+
+/**
+ * The slot ID an interrupt path names: `undefined` when the path is not an interrupt route, `null`
+ * when it is but does not name a valid `station/ordinal`.
+ */
+export const matchSlotInterruptPath = (path: string): string | null | undefined => {
+  const prefix = `${SLOTS_PATH}/`;
+
+  // Longer than prefix plus suffix, so `/api/v1/slots/interrupt` is not read as an empty slot ID.
+  if (!path.startsWith(prefix) || !path.endsWith(INTERRUPT_SUFFIX) || path.length <= prefix.length + INTERRUPT_SUFFIX.length) {
+    return undefined;
+  }
+
+  const slotId = path.slice(SLOTS_PATH.length + 1, -INTERRUPT_SUFFIX.length);
 
   return parseSlotId(slotId) === undefined ? null : slotId;
 };
@@ -126,6 +156,21 @@ export const SlotShowResult = Schema.Struct({
 });
 
 export type SlotShowResult = typeof SlotShowResult.Type;
+
+/**
+ * Result of `POST /api/v1/slots/<station>/<ordinal>/interrupt`: the launch whose run was
+ * interrupted, the worker's answer (`aborted`, or `idle` when no run was active) and the slot as
+ * it stands afterwards, still on that launch.
+ */
+export const SlotInterruptResult = Schema.Struct({
+  launchId: Schema.String,
+  outcome: InterruptOutcome,
+  slot: SlotSummary,
+});
+
+export type SlotInterruptResult = typeof SlotInterruptResult.Type;
+
+export const isSlotInterruptResult = Schema.is(SlotInterruptResult);
 
 export const isSlotListResult = Schema.is(SlotListResult);
 
