@@ -112,8 +112,10 @@ export const retryTicket = (options: TicketServiceOptions, factory: string, numb
 
     yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = ?, end_reason = 'abandoned' WHERE id = ?`, [now, assignment.id]);
     // Any old, unattempted context must not precede the fresh assignment as actionable work.
-    yield* change.query(`UPDATE message SET status = 'dropped' WHERE id = (SELECT context_message FROM assignment WHERE id = ?)
-      AND status IN ('unbound', 'bound') AND NOT EXISTS (SELECT 1 FROM message_attempt WHERE message_id = message.id)`, [assignment.id]);
+    yield* change.query(`UPDATE message SET status = 'dropped' WHERE id IN (
+        SELECT context_message FROM assignment WHERE id = ?
+        UNION SELECT message_id FROM repository_context WHERE assignment_id = ?)
+      AND status IN ('unbound', 'bound') AND NOT EXISTS (SELECT 1 FROM message_attempt WHERE message_id = message.id)`, [assignment.id, assignment.id]);
     yield* change.query(`UPDATE ticket SET status = 'queued' WHERE factory_id = ? AND number = ?`, [factory, number]);
     yield* change.query(
       `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,

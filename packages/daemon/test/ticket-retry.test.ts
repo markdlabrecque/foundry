@@ -14,6 +14,7 @@ import { runTicketRetry } from "@foundry/cli";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { DaemonFrame, Hello } from "@foundry/protocol";
 import { FactoryConfig } from "../src/config/schema.js";
+import { resendAssignmentRepositoryContext } from "../src/assignment-repository-context.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
   version: 1, name: "shop", repository: { source: "/disposable", default_branch: "main" },
@@ -143,9 +144,11 @@ test("retry closes the whole obligation tree and blocked approval; restart queue
   })));
 });
 
-test("attempted old work cannot rearm after retry and absent reconciliation; fresh context still delivers", async () => {
+test("attempted old work and restored context cannot rearm after retry; fresh context still delivers", async () => {
   await fixture((store, id, root) => Effect.gen(function* () {
     yield* obligations(store);
+    const restore = () => resendAssignmentRepositoryContext(store, { factoryId: "shop", slotId: "worker/1", clonePath: root, isolation: "none" });
+    yield* restore();
     yield* store.change((change) => Effect.gen(function* () {
       yield* change.query(`UPDATE message SET status = 'bound', bound_slot = CASE
         WHEN kind = 'delegation_notice' AND delegation_id IN (SELECT id FROM delegation WHERE parent_id IS NOT NULL)
@@ -169,9 +172,14 @@ test("attempted old work cannot rearm after retry and absent reconciliation; fre
       yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "injected" });
     }));
     const attempts = yield* store.read<{ message_id: string }>(`SELECT * FROM message_attempt ORDER BY rowid`);
-    expect(attempts).toHaveLength(4);
+    expect(attempts).toHaveLength(5);
+    yield* restore();
+    const restored = yield* store.read<{ message_id: string }>(`SELECT message_id FROM repository_context ORDER BY rowid`);
+    expect(restored).toHaveLength(2);
     yield* block(store, id);
     yield* service(store, root).retry("shop", 1);
+    expect(yield* store.read(`SELECT status FROM message WHERE id = ?`, [restored[1]?.message_id ?? "missing"]))
+      .toEqual([{ status: "dropped" }]);
     const reconciler = createReconciler(store);
     yield* Effect.promise(async () => {
       for (const slot of claimed) {
@@ -205,7 +213,7 @@ test("attempted old work cannot rearm after retry and absent reconciliation; fre
     expect(yield* detectStuckWorkers(store, () => true)).toBe(0);
     expect(yield* store.read(`SELECT * FROM operator_hold`)).toEqual([]);
     expect(yield* store.read(`SELECT status FROM message WHERE id IN (SELECT message_id FROM message_attempt)`))
-      .toEqual(Array.from({ length: 4 }, () => ({ status: "sent" })));
+      .toEqual(Array.from({ length: 5 }, () => ({ status: "sent" })));
     const [fresh] = yield* scheduler(store).schedule();
 
     if (fresh === undefined) {throw new Error("no fresh assignment");}

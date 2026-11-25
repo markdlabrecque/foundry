@@ -4,4 +4,6 @@ export const actionableMessage = `
   NOT EXISTS (SELECT 1 FROM agent_request r WHERE r.notice_id = message.id AND r.status = 'abandoned')
   AND NOT EXISTS (SELECT 1 FROM delegation d WHERE d.notice_id = message.id AND d.status IN ('abandoned', 'cancelled'))
   AND NOT EXISTS (SELECT 1 FROM assignment a WHERE a.context_message = message.id
-    AND a.status = 'ended' AND a.end_reason IN ('abandoned', 'cancelled'))`;
+    AND a.status = 'ended' AND a.end_reason IN ('abandoned', 'cancelled'))
+  AND NOT EXISTS (SELECT 1 FROM repository_context r JOIN assignment a ON a.id = r.assignment_id
+    WHERE r.message_id = message.id AND a.status = 'ended' AND a.end_reason IN ('abandoned', 'cancelled'))`;
