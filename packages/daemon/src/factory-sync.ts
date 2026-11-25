@@ -8,14 +8,15 @@
  * the head it started from and the commit it fetched in the operation's intent, so recovery can
  * tell what landed; its result records the previous, fetched and resulting heads. P0 never pushes.
  *
- * Out of scope here: reconciling a sync interrupted by a crash, and restoring the recorded head with
- * a sync-conflict hold after a conflict (PRD §10.2). A conflicting merge is aborted and the sync is
- * marked failed.
+ * A conflict is inspected before aborting the merge and restoring the recorded head. Its failed
+ * result and factory hold commit together; a successful sync clears that hold. Reconciling a sync
+ * interrupted by a crash is outside this module (PRD §10.2).
  */
 import { Data, Effect } from "effect";
 import { messageOf } from "@foundry/protocol/errors";
 import { runCloneGit } from "./factory-clone.js";
-import { enqueueOperation, extendOperationIntent, getOperation, runOperation, startNextOperation } from "./operations.js";
+import { closeOpenHoldIn, raiseHoldIn } from "./holds.js";
+import { enqueueOperation, extendOperationIntent, getOperation, recordOperationResult, startNextOperation } from "./operations.js";
 import type { Operation, OperationDetail, OperationOutcome } from "./operations.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Store, StoreError } from "./store.js";
@@ -34,6 +35,9 @@ const MERGE_IDENTITY = ["-c", "user.name=Foundry", "-c", "user.email=foundry@fou
  * say (PRD §9.1): their Git config must not force a merge commit, refuse one, or wait on pinentry.
  */
 const MERGE_POLICY = ["--ff", "--no-gpg-sign"] as const;
+
+/** Keep conflicts inspectable: inherited rerere can stage a remembered resolution on failure. */
+const NO_RERERE = ["-c", "rerere.enabled=false", "-c", "rerere.autoupdate=false"] as const;
 
 /** No hooks: the operator's configured hooks are not Foundry's. */
 const NO_HOOKS = ["-c", "core.hooksPath=/dev/null"] as const;
@@ -96,11 +100,23 @@ export const syncClone = (
     const fastForward = yield* Effect.promise(() => isAncestor(clone, previousHead, fetchedHead, env));
 
     yield* git(
-      [...NO_HOOKS, ...MERGE_IDENTITY, "merge", ...MERGE_POLICY, "--quiet", "--no-edit", "-m", `Sync ${branch} from source`, fetchedHead],
+      [...NO_HOOKS, ...MERGE_IDENTITY, ...NO_RERERE, "merge", ...MERGE_POLICY, "--quiet", "--no-edit", "-m", `Sync ${branch} from source`, fetchedHead],
       (reason) => ({ previousHead, fetchedHead, reason: `merge failed: ${reason}` }),
     ).pipe(
-      // Leave no half-finished merge behind. Restoring the recorded head with a sync-conflict hold is FOU-61.
-      Effect.tapError(() => Effect.ignore(git(["merge", "--abort"], () => ({})))),
+      Effect.catchTag("SyncStepFailed", (failure) => Effect.gen(function* () {
+        // NUL separation preserves spaces, newlines and non-ASCII names without Git's quoting.
+        const unmerged = yield* git(["ls-files", "--unmerged", "-z"], () => ({})).pipe(Effect.orDie);
+        const conflictingFiles = [...new Set(unmerged.split("\0").filter((entry) => entry !== "").map((entry) => entry.slice(entry.indexOf("\t") + 1)))];
+
+        if (conflictingFiles.length === 0) {return yield* failure;}
+
+        // If cleanup cannot be proved, leave the operation running and the queue gated for
+        // recovery, rather than reporting a harmless conflict on an unknown checkout.
+        yield* git([...NO_HOOKS, "merge", "--abort"], () => ({})).pipe(Effect.orDie);
+        yield* git([...NO_HOOKS, "reset", "--hard", previousHead], () => ({})).pipe(Effect.orDie);
+
+        return yield* new SyncStepFailed({ result: { ...failure.result, conflictingFiles } });
+      })),
     );
 
     const head = yield* Effect.orElseSucceed(
@@ -155,7 +171,25 @@ const drainQueue = (store: Store, factory: string, target: SyncTarget, env: Node
 
       if (next.kind !== "sync") {return yield* Effect.die(new Error(`no runner for ${next.kind} operation ${next.id}`));}
 
-      yield* runOperation(store, next, (operation) => syncClone(store, operation, target, env));
+      const outcome = yield* syncClone(store, next, target, env);
+
+      yield* store.change((change) => Effect.gen(function* () {
+        yield* recordOperationResult(change, next.id, outcome);
+        const hold = { factoryId: factory, kind: "sync_conflict", subject: factory } as const;
+
+        if (outcome.status === "complete") {
+          yield* closeOpenHoldIn(change, hold, "cleared");
+        } else if (Array.isArray(outcome.result["conflictingFiles"])) {
+          yield* raiseHoldIn(change, {
+            ...hold,
+            evidence: {
+              recordedHead: outcome.result["previousHead"] ?? null,
+              fetchedHead: outcome.result["fetchedHead"] ?? null,
+              conflictingFiles: outcome.result["conflictingFiles"],
+            },
+          });
+        }
+      }));
     }
   });
 

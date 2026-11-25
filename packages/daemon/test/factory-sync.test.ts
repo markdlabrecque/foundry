@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect } from "effect";
-import { createFactorySyncer, listOperations, openStore } from "@foundry/daemon";
+import { createFactorySyncer, getHold, listOpenHolds, listOperations, openStore, raiseHold } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 
@@ -139,20 +139,91 @@ test("the clone's merge.ff=false and commit.gpgSign=true neither prevent a fast-
   expect(git(f.clone, ["rev-parse", "main^1", "main^2"]).split("\n")).toEqual([local, fetched]);
 });
 
-test("a conflicting sync fails with both heads recorded and leaves no merge in progress", async () => {
+test("conflicts restore the head, refresh one factory hold, keep the queue open and clear only on success", async () => {
   const f = fixture();
   const previous = commit(f.clone, "README.md", "clone side\n");
   const fetched = commit(f.seed, "README.md", "source side\n");
   pushSeed(f);
 
-  const reply = await withStore(f.dir, (store) => syncer(store, f).request("alpha", true));
+  const reply = await withStore(f.dir, async (store) => {
+    const s = syncer(store, f);
+    const first = await s.request("alpha", true);
+    const holds = await Effect.runPromise(listOpenHolds(store));
+    expect(holds).toMatchObject([{
+      factoryId: "alpha", subject: "alpha", kind: "sync_conflict", state: "open",
+      evidence: { recordedHead: previous, fetchedHead: fetched, conflictingFiles: ["README.md"] },
+    }]);
+    expect(existsSync(join(f.clone, ".git", "MERGE_HEAD"))).toBe(false);
+    expect(git(f.clone, ["rev-parse", "HEAD"])).toBe(previous);
+    expect(git(f.clone, ["status", "--porcelain"])).toBe("");
+
+    const refreshedHead = commit(f.seed, "README.md", "another source side\n");
+    pushSeed(f);
+    expect(await s.request("alpha", true)).toMatchObject({ operation: { status: "failed" } });
+    expect(await Effect.runPromise(listOpenHolds(store))).toMatchObject([{
+      id: holds[0]?.id, evidence: { recordedHead: previous, fetchedHead: refreshedHead, conflictingFiles: ["README.md"] },
+    }]);
+    expect(git(f.clone, ["rev-parse", "HEAD"])).toBe(previous);
+
+    // A non-conflict failure must not clear the unresolved conflict.
+    git(f.clone, ["remote", "set-url", "origin", join(f.dir, "missing.git")]);
+    expect(await s.request("alpha", true)).toMatchObject({ operation: { status: "failed" } });
+    expect(await Effect.runPromise(listOpenHolds(store))).toHaveLength(1);
+    git(f.clone, ["remote", "set-url", "origin", f.source]);
+
+    // The operator resolves in their own working repository, never in Foundry's clone.
+    git(f.seed, ["fetch", "--quiet", f.clone, "main"]);
+    git(f.seed, ["merge", "--quiet", "--no-edit", "-s", "ours", "FETCH_HEAD"]);
+    pushSeed(f);
+
+    const unrelated = await Effect.runPromise(raiseHold(store, {
+      factoryId: "beta", subject: "beta", kind: "sync_conflict", evidence: { recordedHead: "unrelated" },
+    }));
+
+    expect(await s.request("alpha", true)).toMatchObject({ operation: { status: "complete" } });
+    expect(await Effect.runPromise(getHold(store, holds[0]!.id))).toMatchObject({ state: "cleared" });
+    expect(await Effect.runPromise(listOpenHolds(store))).toEqual([unrelated.hold]);
+    expect((await Effect.runPromise(listOperations(store, "alpha"))).map((op) => op.status)).toEqual(["failed", "failed", "failed", "complete"]);
+
+    return first;
+  });
 
   expect(reply).toMatchObject({
     found: true,
-    operation: { status: "failed", intent: { recordedHead: previous, fetchedHead: fetched }, result: { previousHead: previous, fetchedHead: fetched } },
+    operation: { status: "failed", intent: { recordedHead: previous, fetchedHead: fetched }, result: { previousHead: previous, fetchedHead: fetched, conflictingFiles: ["README.md"] } },
   });
   expect(existsSync(join(f.clone, ".git", "MERGE_HEAD"))).toBe(false);
-  expect(git(f.clone, ["rev-parse", "main"])).toBe(previous);
+  expect(git(f.clone, ["status", "--porcelain"])).toBe("");
+});
+
+test("remembered rerere resolutions cannot hide sync conflicts or leave a merge in progress", async () => {
+  const f = fixture();
+  const previous = commit(f.clone, "README.md", "clone side\n");
+  const fetched = commit(f.seed, "README.md", "source side\n");
+  pushSeed(f);
+  git(f.clone, ["config", "rerere.enabled", "true"]);
+  git(f.clone, ["config", "rerere.autoupdate", "true"]);
+  git(f.clone, ["fetch", "--quiet", "origin", "main"]);
+
+  // Teach Git a resolution, then return to the original divergent head. A subsequent normal
+  // merge exits unsuccessfully but autoupdate would leave no unmerged index entries to inspect.
+  expect(() => git(f.clone, ["merge", "--no-edit", fetched])).toThrow();
+  writeFileSync(join(f.clone, "README.md"), "remembered resolution\n");
+  git(f.clone, ["rerere"]);
+  git(f.clone, ["merge", "--abort"]);
+
+  const { reply, holds } = await withStore(f.dir, async (store) => ({
+    reply: await syncer(store, f).request("alpha", true),
+    holds: await Effect.runPromise(listOpenHolds(store)),
+  }));
+
+  expect(reply).toMatchObject({ operation: { status: "failed", result: { conflictingFiles: ["README.md"] } } });
+  expect(holds).toMatchObject([{
+    kind: "sync_conflict", evidence: { recordedHead: previous, fetchedHead: fetched, conflictingFiles: ["README.md"] },
+  }]);
+  expect(git(f.clone, ["rev-parse", "HEAD"])).toBe(previous);
+  expect(git(f.clone, ["status", "--porcelain"])).toBe("");
+  expect(existsSync(join(f.clone, ".git", "MERGE_HEAD"))).toBe(false);
 });
 
 test("a sync request without wait answers with the queued operation; an unknown factory is not found", async () => {
