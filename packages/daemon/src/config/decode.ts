@@ -4,6 +4,7 @@ import { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } from "yam
 import type { Document, Node as YamlNode } from "yaml";
 import { checkNames } from "./names.js";
 import { FactoryConfig } from "./schema.js";
+import { checkToolNames } from "./tool-set.js";
 
 /** One reason a factory YAML file is rejected, with its YAML location where available. */
 export interface ConfigProblem {
@@ -58,8 +59,8 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
     errors: "all",
   });
   if (Result.isSuccess(decoded)) {
-    // Name rules (PRD §4) run on the decoded value; a name problem points at its key.
-    const nameProblems = checkNames(decoded.success).map((problem) => ({
+    // Name and tool-name rules (PRD §4) run on the decoded value; a name problem points at its key.
+    const nameProblems = [...checkNames(decoded.success), ...checkToolNames(decoded.success)].map((problem) => ({
       path: problem.path.join("."),
       message: problem.message,
       ...at(locate(doc, problem.path, true) ?? 0),

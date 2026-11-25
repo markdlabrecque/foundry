@@ -47,7 +47,21 @@ production_lines:
 
 test("foundry validate accepts a valid factory with exit 0", () => {
   const result = run(valid);
-  expect(result).toMatchObject({ status: 0, stdout: 'F: factory "smoke" is valid\n' });
+  expect(result.status).toBe(0);
+  expect(result.stdout).toMatch(/^F: factory "smoke" is valid\n/);
+});
+
+test("foundry validate prints each station's Tool Set with the source of every tool", () => {
+  const result = run(
+    valid.replace("      s: { model: p/m }", "      s:\n        model: p/m\n        extensions:\n          - ext/hooks.ts\n          - { path: ext/tools.ts, tools: [web_fetch] }"),
+  );
+  expect(result.status).toBe(0);
+  const lines = result.stdout.trimEnd().split("\n");
+  expect(lines[1]).toBe("Tool Set for r.s (13 tools):");
+  expect(lines).toContainEqual(expect.stringMatching(/^  read +Pi built-in$/));
+  expect(lines).toContainEqual(expect.stringMatching(/^  agent_message +Foundry extension$/));
+  expect(lines).toContainEqual(expect.stringMatching(new RegExp(`^  web_fetch +extension ${join(dir, "ext/tools.ts")}$`)));
+  expect(lines.at(-1)).toMatch(/registers them is not checked/);
 });
 
 test("foundry validate reports the location of each problem and exits 1", () => {

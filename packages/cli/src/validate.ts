@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { decodeFactoryYaml, locateProblems, resolveStations } from "@foundry/daemon/config";
 import type { ConfigProblem } from "@foundry/daemon/config";
+import { renderToolSets } from "./tool-set-listing.js";
 
 /** What `foundry validate` prints and the exit code it ends with. */
 export interface ValidateOutcome {
@@ -41,5 +42,9 @@ export const validateFactoryFile = (file: string): ValidateOutcome => {
     const problems = locateProblems(text, stations.problems);
     return { exitCode: 1, stdout: [], stderr: problems.map((p) => describe(file, p)) };
   }
-  return { exitCode: 0, stdout: [`${file}: factory "${result.config.name}" is valid`], stderr: [] };
+  return {
+    exitCode: 0,
+    stdout: [`${file}: factory "${result.config.name}" is valid`, ...renderToolSets(stations.stations)],
+    stderr: [],
+  };
 };
