@@ -1,0 +1,11 @@
+{
+  "files": [],
+  "references": [
+    { "path": "packages/protocol" },
+    { "path": "packages/daemon" },
+    { "path": "packages/cli" },
+    { "path": "packages/host" },
+    { "path": "packages/extension" },
+    { "path": "packages/testkit" }
+  ]
+}

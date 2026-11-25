@@ -1,0 +1,15 @@
+{
+  "name": "@foundry/extension",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The Foundry Pi extension: plain TypeScript with promises, no Effect runtime.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": ["dist"],
+  "dependencies": { "@earendil-works/pi-coding-agent": "1.6.0", "@foundry/protocol": "0.0.0" }
+}
