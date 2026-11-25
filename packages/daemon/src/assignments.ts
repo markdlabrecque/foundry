@@ -285,7 +285,7 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
   return {
     schedule: (): Effect.Effect<ReadonlyArray<Assignment>, StoreError> => Effect.gen(function* () {
       const unverified = new Set<string>();
-      yield* voidStaleApprovals({ ...options, onUnverified: (factory, ticket, cause) => {
+      yield* voidStaleApprovals({ ...options, waitForLock: true, queuedOnly: true, onUnverified: (factory, ticket, cause) => {
         unverified.add(JSON.stringify([factory, ticket]));
         options.onApprovalError?.(cause);
       } }).pipe(Effect.catch((cause) => Effect.gen(function* () {
