@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { Clock, Effect } from "effect";
 import type { Message } from "@foundry/protocol";
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
-import { actionableMessage } from "./message-obligations.js";
+import { actionableMessage, actionableMessageAs } from "./message-obligations.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { releaseResumeReplacement } from "./resume-notice.js";
 import type { SlotGate } from "./freeze.js";
@@ -94,7 +94,10 @@ export const createMessageDelivery = (options: {
               `UPDATE message SET status = 'sent' WHERE id = ? AND status = 'bound'
                AND ${actionableMessage}
                AND NOT EXISTS (SELECT 1 FROM message earlier WHERE earlier.factory_id = message.factory_id
-                 AND earlier.bound_slot = message.bound_slot AND earlier.sequence < message.sequence AND earlier.status IN ('indeterminate', 'bound'))
+                 AND earlier.bound_slot = message.bound_slot AND earlier.sequence < message.sequence
+                 -- A held copy always blocks; a bound copy only while it can still be sent, so
+                 -- abandoned work an operator re-bound never starves later deliveries.
+                 AND (earlier.status = 'indeterminate' OR (earlier.status = 'bound' AND ${actionableMessageAs("earlier")})))
                AND NOT EXISTS (SELECT 1 FROM agent_request r WHERE r.notice_id = message.id
                  AND (r.status = 'expired' OR r.deadline <= ?)
                  AND NOT EXISTS (SELECT 1 FROM message_attempt prior WHERE prior.message_id = message.id))

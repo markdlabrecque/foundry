@@ -6,7 +6,7 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Schema } from "effect";
 import {
   agentDelegateHandler, agentRequestHandler, assignmentTicket, createAssignmentScheduler,
-  createMessageDelivery, createReconciler, detectStuckWorkers, openSlotGate,
+  createMessageDelivery, createMessageDisposition, createReconciler, detectStuckWorkers, openSlotGate,
   createTicketService, openStore, planSlots, serveManagementApi, SlotsError, StoreError, taskTransitionHandler, ticketFactoryFrom,
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
@@ -200,23 +200,26 @@ test("attempted old work and restored context cannot rearm after retry; fresh co
 
         expect(await Effect.runPromise(store.read(`SELECT retired_at FROM message_attempt WHERE slot_id = ?`, [slot.slotId])))
           .toEqual(expect.arrayContaining([{ retired_at: null }]));
-
-        const result = await reconciler.reconcile(slot, hello, { send: async (frame) => {
-          if (frame.type !== "reconcile") {throw new Error("expected reconciliation");}
-
-          reconciler.receive(slot, { type: "reconciliation_answer", requestId: frame.requestId, lifecycle: "idle",
-            answers: frame.ids.map((messageId) => ({ id: messageId, status: "absent" })) });
-        } });
-
-        expect(result.absent.length).toBeGreaterThan(0);
       }
     });
-    const retiredAttempts = yield* store.read<{ message_id: string }>(`SELECT * FROM message_attempt ORDER BY rowid`);
-    expect(retiredAttempts).toEqual(attempts.map((attempt) => ({ ...attempt, retired_at: expect.any(Number) })));
+    // PRD §6.3/§10.2 (FOU-84): absence on the same launch with an unknown lifecycle is ambiguous.
+    // It is held for the operator, never retired or re-armed automatically.
+    const oldIds = new Set(attempts.map((attempt) => attempt.message_id));
+    const held = yield* store.read<{ id: string }>(`SELECT id FROM message WHERE status = 'indeterminate' ORDER BY id`);
+    expect(new Set(held.map((row) => row.id))).toEqual(oldIds);
+    expect(yield* store.read(`SELECT kind, subject FROM operator_hold WHERE closed_at IS NULL ORDER BY subject`))
+      .toEqual(held.map((row) => ({ kind: "indeterminate_message", subject: row.id })));
+    const unretired = yield* store.read<{ message_id: string }>(`SELECT * FROM message_attempt ORDER BY rowid`);
+    expect(unretired).toEqual(attempts);
+    // Even an explicit operator resend re-binds abandoned work but cannot deliver it.
+    const disposition = createMessageDisposition(store);
+
+    for (const row of held) {yield* disposition.act(row.id, "resend");}
+
     expect(yield* detectStuckWorkers(store, () => true)).toBe(0);
-    expect(yield* store.read(`SELECT * FROM operator_hold`)).toEqual([]);
+    expect(yield* store.read(`SELECT * FROM operator_hold WHERE closed_at IS NULL`)).toEqual([]);
     expect(yield* store.read(`SELECT status FROM message WHERE id IN (SELECT message_id FROM message_attempt)`))
-      .toEqual(Array.from({ length: 6 }, () => ({ status: "sent" })));
+      .toEqual(Array.from({ length: 6 }, () => ({ status: "bound" })));
     const [fresh] = yield* scheduler(store).schedule();
 
     if (fresh === undefined) {throw new Error("no fresh assignment");}
@@ -237,11 +240,10 @@ test("attempted old work and restored context cannot rearm after retry; fresh co
         await next.idle();
       } finally {await next.stop();}
     });
-    const oldIds = new Set(attempts.map((attempt) => attempt.message_id));
     expect(delivered.some((frame) => frame.type === "message" && oldIds.has(frame.id))).toBe(false);
     expect(delivered).toContainEqual(expect.objectContaining({ type: "message", id: fresh.contextMessage }));
     const afterAttempts = yield* store.read<{ message_id: string }>(`SELECT * FROM message_attempt ORDER BY rowid`);
-    expect(afterAttempts.filter((attempt) => oldIds.has(attempt.message_id))).toEqual(retiredAttempts);
+    expect(afterAttempts.filter((attempt) => oldIds.has(attempt.message_id))).toEqual(unretired);
     expect(errors).toEqual([]);
   }));
 });
