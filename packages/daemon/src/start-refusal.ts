@@ -5,12 +5,12 @@
  * the configuration just loaded. A factory with any open record naming configuration that no
  * longer exists is refused alone: one `factory.start_refused` history row names its blocking
  * records, and the other factories start. A refusal never makes the daemon exit. Records that are
- * closed (a completed or cancelled ticket) never block, whatever their history names.
- *
- * Each record kind has its own reference check (`ReferenceCheck`); this module ships the ticket
- * check. Messages (50b) and delegations (50c) add theirs to `START_REFERENCE_CHECKS`.
+ * closed (a completed or cancelled ticket, or an acknowledged/closed message) never block,
+ * whatever their history names. Each record kind has its own reference check (`ReferenceCheck`);
+ * delegations (50c) add theirs to `START_REFERENCE_CHECKS`.
  */
 import { Effect } from "effect";
+import { slotIdOf } from "@foundry/protocol/slots-api";
 import type { FactoryConfig } from "./config/schema.js";
 import { ticketRecord } from "./history-records.js";
 import type { HistoryRecordRef } from "./history-records.js";
@@ -20,19 +20,22 @@ import type { Query, Store, StoreError } from "./store.js";
 /** A factory about to start, with the configuration it was just loaded with. */
 export interface StartingFactory {
   readonly factoryId: string;
-  readonly config: Pick<FactoryConfig, "production_lines">;
+  readonly config: Pick<FactoryConfig, "production_lines" | "rooms">;
   /** The recorded configuration load this start runs under, if any. */
   readonly loadId?: number;
 }
 
 /** Configuration an open record names that the loaded configuration no longer has. */
-export interface MissingReference {
-  readonly kind: "production_line" | "stage";
-  /** The production line it belongs to, or is. */
-  readonly line: string;
-  /** The stage ID; absent for a production line. */
-  readonly stage?: string;
-}
+export type MissingReference =
+  | {
+    readonly kind: "production_line" | "stage";
+    /** The production line it belongs to, or is. */
+    readonly line: string;
+    /** The stage ID; absent for a production line. */
+    readonly stage?: string;
+  }
+  | { readonly kind: "station"; readonly station: string }
+  | { readonly kind: "slot"; readonly slot: string };
 
 /** One open record that blocks a factory's start. */
 export interface StartBlocker {
@@ -82,8 +85,52 @@ export const ticketReferenceCheck: ReferenceCheck = (query, factory) =>
       }),
   );
 
+interface OpenMessageRow {
+  id: string;
+  recipient: string;
+  bound_slot: string | null;
+}
+
+/** Check current durable destinations and immutable bindings, never senders or delivery history. */
+export const messageReferenceCheck: ReferenceCheck = (query, factory) => {
+  const stations = new Set<string>();
+  const slots = new Set<string>();
+
+  for (const [roomName, room] of Object.entries(factory.config.rooms)) {
+    for (const [stationName, station] of Object.entries(room.stations)) {
+      stations.add(`${roomName}.${stationName}`);
+
+      for (let ordinal = 1; ordinal <= (station.instances ?? 1); ordinal++) {
+        slots.add(slotIdOf(stationName, ordinal));
+      }
+    }
+  }
+
+  return Effect.map(
+    query<OpenMessageRow>(
+      `SELECT id, recipient, bound_slot FROM message
+       WHERE factory_id = ? AND status IN ('unbound', 'bound', 'sent', 'indeterminate') ORDER BY sequence`,
+      [factory.factoryId],
+    ),
+    (rows) => rows.flatMap((row): Array<StartBlocker> => {
+      const record = { kind: "message", id: row.id };
+      const blockers: Array<StartBlocker> = [];
+
+      if (!stations.has(row.recipient)) {
+        blockers.push({ record, missing: { kind: "station", station: row.recipient } });
+      }
+
+      if (row.bound_slot !== null && !slots.has(row.bound_slot)) {
+        blockers.push({ record, missing: { kind: "slot", slot: row.bound_slot } });
+      }
+
+      return blockers;
+    }),
+  );
+};
+
 /** The reference checks a start runs, one per record kind. */
-export const START_REFERENCE_CHECKS: ReadonlyArray<ReferenceCheck> = [ticketReferenceCheck];
+export const START_REFERENCE_CHECKS: ReadonlyArray<ReferenceCheck> = [ticketReferenceCheck, messageReferenceCheck];
 
 export interface RefusedFactory {
   readonly factoryId: string;
@@ -97,10 +144,18 @@ export interface StartDecision {
 }
 
 /** One line naming a blocker, e.g. `ticket 3 names stage review of line feature`. */
-export const describeBlocker = ({ record, missing }: StartBlocker): string =>
-  `${record.kind} ${record.id} names ${
-    missing.kind === "stage" ? `stage ${missing.stage} of line ${missing.line}` : `production line ${missing.line}`
-  }`;
+export const describeBlocker = ({ record, missing }: StartBlocker): string => {
+  let reference: string;
+
+  switch (missing.kind) {
+    case "station": reference = `station ${missing.station}`; break;
+    case "slot": reference = `slot ${missing.slot}`; break;
+    case "stage": reference = `stage ${missing.stage} of line ${missing.line}`; break;
+    case "production_line": reference = `production line ${missing.line}`; break;
+  }
+
+  return `${record.kind} ${record.id} names ${reference}`;
+};
 
 /**
  * Runs every check for every factory and records one `factory.start_refused` row per refused
