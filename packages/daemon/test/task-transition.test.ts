@@ -367,12 +367,17 @@ test.each([
       yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "worktree" });
     }));
 
+    const codeStage = { id: mode === "planning baseline" ? "implement" : "plan",
+      station: mode.startsWith("mixed") || mode === "planning baseline" ? "floor.worker" : "floor.reviewer",
+      approval: mode.startsWith("routed") && !writing, writing };
+
+    const routedStage = mode.startsWith("routed") ? { ...codeStage, on_rejection: "revise" } : codeStage;
+
     const codeConfig = { ...config, production_lines: { standard: {
       ...config.production_lines.standard,
       stages: [
         ...(mode.startsWith("routed") ? [{ id: "revise", station: "floor.worker", approval: false, writing: false }] : []),
-        { id: mode === "planning baseline" ? "implement" : "plan", station: mode.startsWith("mixed") || mode === "planning baseline" ? "floor.worker" : "floor.reviewer",
-          approval: mode.startsWith("routed") && !writing, writing, on_rejection: mode.startsWith("routed") ? "revise" : undefined },
+        routedStage,
         { id: "next", station: "floor.worker", approval: false, writing: false }],
     } } };
 
