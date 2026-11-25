@@ -30,6 +30,7 @@ import { startAfterCreateRecovery } from "./after-create-recovery.js";
 import { createTicketWorktrees } from "./worktrees.js";
 import { createWorktreeService } from "./worktree-cleanup.js";
 import { reconcileInterruptedCleanups } from "./cleanup-recovery.js";
+import { startWorktreeRecovery } from "./worktree-recovery.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Predicate, Schema, Scope } from "effect";
@@ -680,6 +681,23 @@ const main = async (): Promise<void> => {
     inScope: (factoryId) => !stopping && factoryStates.isRunning(factoryId),
   }, (error) => log.error("tickets not assigned", { detail: { error: messageOf(error) } }));
 
+  // PRD §10.2 step 3: an interrupted worktree creation is recreated when its branch is still empty,
+  // or kept as created when it has commits. Its ticket is unassignable until a creation completes.
+  const stopWorktreeRecovery = startWorktreeRecovery({
+    store, factories: decision.started,
+    target: (factoryId) => {
+      const factory = factories.find((f) => f.factoryId === factoryId);
+      const clone = clones.get(factoryId);
+
+      return factory === undefined || clone === undefined ? undefined : { factory, clonePath: clone.path };
+    },
+    onRecovered: (operation, verdict) => {
+      const refs: LogRefs = { factoryId: operation.factoryId, operationId: String(operation.id) };
+      log.info("worktree creation recovered", { ...(operation.ticket === null ? refs : { ...refs, ticketId: String(operation.ticket) }), detail: { verdict } });
+    },
+    onError: (error) => log.error("worktree recovery failed", { detail: { error: messageOf(error) } }),
+  });
+
   const stop = (signal: NodeJS.Signals): void => {
     if (stopping) {return;}
 
@@ -699,6 +717,7 @@ const main = async (): Promise<void> => {
           await stopApprovalHeads();
           await stopAfterCreateRecovery();
           await stopAssignments?.();
+          await stopWorktreeRecovery();
           await channel?.close().catch(() => {});
           host?.close();
           await served.close();
@@ -843,6 +862,7 @@ const main = async (): Promise<void> => {
     await stopApprovalHeads();
     await stopAfterCreateRecovery();
     await stopAssignments();
+    await stopWorktreeRecovery();
     await channel?.close().catch(() => {});
     host?.close();
 
