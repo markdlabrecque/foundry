@@ -6,6 +6,7 @@ import { checkProductionLines } from "./lines.js";
 import type { LineIssue } from "./lines.js";
 import { checkNames } from "./names.js";
 import { FactoryConfig } from "./schema.js";
+import { checkToolNames } from "./tool-set.js";
 
 /** One reason a factory YAML file is rejected, with its YAML location where available. */
 export interface ConfigProblem {
@@ -66,9 +67,9 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
   });
   if (Result.isSuccess(decoded)) {
     const config = decoded.success;
-    // Name rules (PRD §4) run first; a name problem points at its key. Line
-    // rules resolve station references by name, so they run only on valid names.
-    const nameProblems = checkNames(config).map((problem) => ({
+    // Name and tool-name rules (PRD §4) run first; a name problem points at its key.
+    // Line rules resolve station references by name, so they run only on valid names.
+    const nameProblems = [...checkNames(config), ...checkToolNames(config)].map((problem) => ({
       path: problem.path.join("."),
       message: problem.message,
       ...at(locate(doc, problem.path, true) ?? 0),

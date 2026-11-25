@@ -12,3 +12,5 @@ export type {
   ResolveOptions,
   ResolveResult,
 } from "./resolve.js";
+export { checkToolNames, toolSetOf } from "./tool-set.js";
+export type { ToolSetEntry, ToolSource } from "./tool-set.js";
