@@ -484,6 +484,8 @@ const main = async (): Promise<void> => {
         foundryExtension: foundryExtensionPath(),
         slots: plannedSlots,
         freezer,
+        recoveryLimit: (factoryId) => factories.find((f) => f.factoryId === factoryId)?.config.recovery_limit ?? 3,
+        configLoad: (factoryId) => loadIds.get(factoryId),
         inScope: (factoryId) => factoryStates.isRunning(factoryId),
       });
       const recorder = scheduler;

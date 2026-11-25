@@ -5,14 +5,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
-import { createHostSlotClaim, createSlotFreezer, createSlotScheduler, listOpenHolds, openStore, planSlots, recordedCurrentLaunch, storeSlotControl, storeSlotsReader } from "@foundry/daemon";
+import { Effect, Exit, Schema, Scope } from "effect";
+import { createAssignmentScheduler, createHostSlotClaim, createSlotFreezer, createSlotScheduler, createTicketService, listOpenHolds, openStore, planSlots, recordedCurrentLaunch, storeSlotControl, storeSlotsReader, ticketFactoryFrom } from "@foundry/daemon";
 import type { FreezeChecks, SlotClaimResult, SlotFreezer } from "@foundry/daemon";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { SlotHost, Store } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import { HostRefusedError } from "@foundry/host";
 import type { LaunchRecord, LaunchSpec } from "@foundry/host";
+import { FactoryConfig } from "../src/config/schema.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -82,6 +83,7 @@ const scheduler = async (
   stations: ReadonlyArray<EffectiveStation>,
   bootId = "boot-1",
   freezer?: SlotFreezer,
+  recoveryLimit = 3,
 ) =>
   createSlotScheduler({
     store,
@@ -92,6 +94,8 @@ const scheduler = async (
     pi: { command: "/opt/pi/bin/pi", args: [] },
     foundryExtension: "/opt/foundry/extension.js",
     slots: planSlots("alpha", stations),
+    recoveryLimit: () => recoveryLimit,
+    configLoad: () => "load-1",
     freezer: freezer ?? await createSlotFreezer({ store, checks: {} }),
   });
 
@@ -409,4 +413,152 @@ test("a host from a new boot proves the slot vacant: it gets a recovery launch i
   expect(await Effect.runPromise(listOpenHolds(sameBoot.store))).toMatchObject([
     { kind: "frozen_slot", subject: "lead/1", evidence: { cause: "host_lost", reason: "recorded_launch_unknown_to_host" } },
   ]);
+});
+
+const recoveryConfig = Schema.decodeUnknownSync(FactoryConfig)({
+  version: 1, name: "alpha", repository: { source: "/disposable", default_branch: "main" },
+  default_production_line: "standard", recovery_limit: 2,
+  rooms: { eng: { stations: { lead: {} } } },
+  production_lines: { standard: { stages: [{ id: "plan", station: "eng.lead" }] } },
+});
+
+const assignRecoveryTicket = async (store: Store, stateRoot: string) => {
+  const tickets = createTicketService({ store, stateRoot, factories: () => [ticketFactoryFrom(recoveryConfig)] });
+  await Effect.runPromise(tickets.submit({ title: "Disposable recovery ticket", spec: "Keep recovery state" }));
+  await Effect.runPromise(createAssignmentScheduler({ store, slots: planSlots("alpha", [station("lead", 1)]),
+    factories: [{ factoryId: "alpha", config: recoveryConfig }] }).schedule());
+};
+
+const recoveryState = (store: Store) => Effect.runPromise(Effect.all({
+  slots: store.read(`SELECT condition, recovery_count FROM slot`),
+  assignments: store.read(`SELECT status, recovery_count, recovery_ceiling, context_message FROM assignment`),
+  tickets: store.read(`SELECT status FROM ticket`),
+  holds: listOpenHolds(store),
+  transitions: store.read(`SELECT from_status, to_status, config_load FROM ticket_transition WHERE to_status = 'paused'`),
+  ends: store.read(`SELECT launch_id FROM launch WHERE ended_at IS NOT NULL`),
+  history: store.read(`SELECT * FROM history`),
+}));
+
+const failed = (launchId: string): LaunchRecord => ({ ...live(launchId, "lead/1"), liveness: "gone",
+  exit: { code: 7, signal: null, endedAt: "2026-01-01T00:05:00.000Z" } });
+
+test.each([false, true])("parks exactly at the ceiling, atomically, with assignment=%s; replay and restart do not count", async (assigned) => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const worker = fakeHost(inventory);
+  const slots = await scheduler(store, stateRoot, worker.host, "host-1", [station("lead", 1)], "boot-1", undefined, 2);
+  await slots.schedule();
+
+  if (assigned) {await assignRecoveryTicket(store, stateRoot);}
+
+  // The first end is below the ceiling, including an assigned worker's death before its first turn.
+  inventory[0] = failed("boot-1-launch-1");
+  expect(await slots.launchExited(inventory[0])).toMatchObject({ ended: true, recovery: { outcome: "relaunched" } });
+  const first = await recoveryState(store);
+  expect(first.slots).toEqual([{ condition: "normal", recovery_count: assigned ? 0 : 1 }]);
+  expect(first.holds).toEqual([]);
+
+  if (assigned) {expect(first.assignments).toMatchObject([{ status: "active", recovery_count: 1, recovery_ceiling: 2 }]);}
+
+  expect(await slots.launchExited(inventory[0])).toEqual({ ended: false });
+  await (await scheduler(store, stateRoot, worker.host, "host-1", [station("lead", 1)], "boot-1", undefined, 2)).schedule();
+  expect(await recoveryState(store)).toEqual(first);
+
+  inventory[1] = failed("boot-1-launch-2");
+  expect(await slots.launchExited(inventory[1])).toMatchObject({ ended: true, recovery: { outcome: "held" } });
+  const parked = await recoveryState(store);
+  expect(parked.slots).toEqual([{ condition: "parked", recovery_count: assigned ? 0 : 2 }]);
+  expect(parked.holds).toMatchObject([{ kind: "parked_slot", subject: "lead/1", evidence: {
+    recoveryCount: 2, recoveryCeiling: 2, ticket: assigned ? 1 : null,
+    launches: [{ launch_id: "boot-1-launch-1", end_reason: "exited" }, { launch_id: "boot-1-launch-2", end_reason: "exited" }],
+  } }]);
+  expect(parked.holds).toHaveLength(1);
+
+  if (assigned) {
+    expect(parked.assignments).toEqual([{ ...first.assignments[0], status: "suspended", recovery_count: 2 }]);
+    expect(parked.tickets).toEqual([{ status: "paused" }]);
+    expect(parked.transitions).toEqual([{ from_status: "assigned", to_status: "paused", config_load: "load-1" }]);
+  } else {
+    expect(parked.assignments).toEqual([]);
+    expect(parked.tickets).toEqual([]);
+    expect(parked.transitions).toEqual([]);
+  }
+
+  await slots.launchExited(inventory[1]);
+  expect((await slots.schedule()).map((s) => s.outcome)).toEqual(["held"]);
+  expect(await recoveryState(store)).toEqual(parked);
+  expect(worker.asked).toHaveLength(2);
+  await expect(slots.relaunch({ factoryId: "alpha", slotId: "lead/1" }, sessionIdsOf(worker.asked)[0] ?? ""))
+    .rejects.toThrow("parked; reset is required");
+  expect(worker.asked).toHaveLength(2);
+});
+
+test.each<NonNullable<LaunchRecord["exit"]>>([
+  { code: 0, signal: null, endedAt: "2026-01-01T00:05:00.000Z" },
+  { code: null, signal: "SIGTERM", requested: true, endedAt: "2026-01-01T00:05:00.000Z" },
+])("observed non-failure end %j never counts or parks", async (exit) => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const worker = fakeHost(inventory);
+  const slots = await scheduler(store, stateRoot, worker.host, "host-1", [station("lead", 1)], "boot-1", undefined, 1);
+  await slots.schedule();
+  await assignRecoveryTicket(store, stateRoot);
+  // Daemon reconciliation/channel loss with a still-live host launch records no death.
+  await slots.schedule();
+
+  const gone: LaunchRecord = { ...live("boot-1-launch-1", "lead/1"), liveness: "gone",
+    exit: { ...exit, endedAt: "2026-01-01T00:05:00.000Z" } };
+
+  inventory[0] = gone;
+  await slots.launchExited(gone);
+  await slots.schedule();
+  const state = await recoveryState(store);
+  expect(state.slots).toEqual([{ condition: "normal", recovery_count: 0 }]);
+  expect(state.assignments).toMatchObject([{ status: "active", recovery_count: 0 }]);
+  expect(state.tickets).toEqual([{ status: "assigned" }]);
+  expect(state.holds).toEqual([]);
+  expect(state.ends).toHaveLength(1);
+});
+
+test("parking failure rolls back the launch end, counter, ticket and assignment together", async () => {
+  const { stateRoot, store } = await openTempStore();
+  const worker = fakeHost([]);
+  const slots = await scheduler(store, stateRoot, worker.host, "host-1", [station("lead", 1)]);
+  await slots.schedule();
+  await assignRecoveryTicket(store, stateRoot);
+  // The assignment's stored ceiling, not a later factory limit, is authoritative.
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE assignment SET recovery_count = 1`);
+    yield* change.query(`CREATE TRIGGER reject_parking BEFORE INSERT ON operator_hold WHEN NEW.kind = 'parked_slot'
+      BEGIN SELECT RAISE(ABORT, 'fixture refuses hold'); END`);
+    yield* change.recordHistory({ factoryId: "alpha", kind: "fixture", subject: "reject parking" });
+  })));
+  const before = await recoveryState(store);
+  await expect(slots.recordExit(failed("boot-1-launch-1"))).rejects.toThrow("fixture refuses hold");
+  expect(await recoveryState(store)).toEqual(before);
+});
+
+test("idle deaths stay separate from an assignment and reboot evidence parks without launching", async () => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const worker = fakeHost(inventory);
+  const slots = await scheduler(store, stateRoot, worker.host, "host-1", [station("lead", 1)], "boot-1", undefined, 2);
+  await slots.schedule();
+  inventory[0] = failed("boot-1-launch-1");
+  await slots.launchExited(inventory[0]);
+  await assignRecoveryTicket(store, stateRoot);
+  // The prior idle death must not use up the assignment's allowance.
+  inventory[1] = failed("boot-1-launch-2");
+  expect(await slots.launchExited(inventory[1])).toMatchObject({ recovery: { outcome: "relaunched" } });
+  expect((await recoveryState(store)).assignments).toMatchObject([{ recovery_count: 1, status: "active" }]);
+  const reboot = fakeHost([], undefined, "boot-2");
+  const recovered = await scheduler(store, stateRoot, reboot.host, "host-2", [station("lead", 1)], "boot-2", undefined, 2);
+  expect((await recovered.schedule()).map((r) => r.outcome)).toEqual(["held"]);
+  const state = await recoveryState(store);
+  expect(state.slots).toEqual([{ condition: "parked", recovery_count: 1 }]);
+  expect(state.assignments).toMatchObject([{ recovery_count: 2, status: "suspended" }]);
+  expect(state.holds).toMatchObject([{ evidence: { launches: [
+    { end_reason: "exited" }, { end_reason: "exited" }, { end_reason: "machine_restarted" },
+  ] } }]);
+  expect(reboot.asked).toEqual([]);
 });

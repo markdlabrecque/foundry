@@ -407,6 +407,13 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       ) STRICT`,
     ],
   },
+  {
+    id: 17,
+    name: "idle_slot_recovery",
+    statements: [
+      `ALTER TABLE slot ADD COLUMN recovery_count INTEGER NOT NULL DEFAULT 0 CHECK (recovery_count >= 0)`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */
