@@ -644,7 +644,9 @@ const main = async (): Promise<void> => {
     (cause) => log.error("approval heads not checked", { detail: { error: messageOf(cause) } }));
 
   // PRD §10.2 step 3: an interrupted first after_create reruns in its worktree. Its ticket stays
-  // unassignable until the rerun's own hook result is complete.
+  // unassignable until the rerun's own hook result is complete. Starting it after the Worker Host and
+  // channel steps is safe because each step gates only what depends on it: assignment readiness
+  // reads the newest hook for the worktree, and the queue reads AWAITING_RECOVERY.
   const stopAfterCreateRecovery = startAfterCreateRecovery({
     store, factories: factories.filter((f) => decision.started.includes(f.factoryId)),
     onRerun: (operation) => {

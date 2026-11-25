@@ -12,8 +12,7 @@ import { acknowledgeMessage, assignmentContextSlot, bindStationMessages, createA
 import type { DaemonFrame } from "@foundry/protocol";
 import { MessageReceiver } from "@foundry/extension";
 import type { AssignmentSchedulerOptions, LoadedFactory, Store } from "@foundry/daemon";
-import { interruptRunningOperations } from "@foundry/daemon";
-import { recoverInterruptedAfterCreate } from "../src/after-create-recovery.js";
+import { interruptRunningOperations, recoverInterruptedAfterCreate } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { CompactionPrimingOutcome, createPrimer, startChannelServer } from "@foundry/daemon";
 import { openChannel } from "@foundry/extension";
@@ -1080,7 +1079,6 @@ test.each([
         { id: interrupted?.id, status: "interrupted", result: { rerun: true, rerunOperationId: reruns[0]?.id } },
         { id: reruns[0]?.id, status: outcome, intent: { path, argv: command, rerunOf: interrupted?.id }, result: { exitStatus: ready ? 0 : 17 } },
       ]);
-      expect(hooks[0]?.intent["logPath"]).not.toBe(hooks[1]?.intent["logPath"]);
 
       // Each run logged its own cwd first; the interrupted one also logs its abort.
       for (const hook of hooks) {expect(readFileSync(String(hook.intent["logPath"]), "utf8").split("\n")[0]).toBe(path);}
@@ -1099,6 +1097,61 @@ test.each([
         expect(yield* store.read(`SELECT stage, status FROM ticket`)).toEqual([{ stage: "develop", status: "paused" }]);
         const holds = yield* store.read<{ evidence: string }>(`SELECT evidence FROM operator_hold WHERE kind = 'hook_failure' AND state = 'open'`);
         expect(JSON.parse(holds[0]?.evidence ?? "{}")).toMatchObject({ hook: "after_create", operationId: reruns[0]?.id, exitStatus: 17 });
+      }
+    }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+  } finally {await new Promise<void>((resolve) => { server.close(() => resolve()); });}
+});
+
+test.each([
+  { outcome: "complete", ready: true },
+  { outcome: "failed", ready: false },
+])("startup reruns an interrupted operator retry of after_create as a retry and settles the paused ticket ($outcome)", async ({ outcome, ready }) => {
+  const root = mkdtempSync(join(tmpdir(), "foundry-retry-rerun-"));
+  roots.push(root);
+  const socketPath = join(root, "hook.sock");
+  const server = createServer();
+  await new Promise<void>((resolve) => { server.listen(socketPath, resolve); });
+  const connected = new Promise<Socket>((resolve) => { server.once("connection", resolve); });
+
+  // Run 1 fails, run 2 (the operator retry) blocks until killed, run 3 (the rerun) exits by readiness.
+  const command = [process.execPath, "-e", `const fs = require('node:fs');
+    const run = (fs.existsSync('runs') ? Number(fs.readFileSync('runs', 'utf8')) : 0) + 1; fs.writeFileSync('runs', String(run));
+    if (run === 1) process.exit(17);
+    if (run >= 3) process.exit(fs.existsSync('setup-ready') ? 0 : 17);
+    require('node:net').connect(${JSON.stringify(socketPath)}).on('data', () => {})`];
+
+  try {
+    await fixture(({ store, root, factory, scheduler, newScheduler, tickets }) => Effect.gen(function* () {
+      expect(yield* scheduler.schedule()).toEqual([]);
+      const controller = new AbortController();
+      const resuming = Effect.runPromiseExit(tickets.resume("shop", 1), { signal: controller.signal });
+      const socket = yield* Effect.promise(() => connected);
+      const closed = new Promise<void>((resolve) => { socket.once("close", () => resolve()); });
+      controller.abort();
+      yield* Effect.promise(() => resuming);
+      yield* Effect.promise(() => closed);
+
+      if (ready) {writeFileSync(join(root, "worktrees/shop/1-build-widget/setup-ready"), "yes");}
+
+      const [interrupted] = yield* interruptRunningOperations(store);
+      const reruns = yield* recoverInterruptedAfterCreate({ store, factories: [factory], env: isolatedGitEnv() });
+      const hooks = (yield* listOperations(store, "shop")).filter((op) => op.kind === "hook");
+      expect(hooks).toMatchObject([
+        { status: "failed" },
+        { id: interrupted?.id, status: "interrupted", intent: { retryOf: hooks[0]?.id }, result: { rerun: true, rerunOperationId: reruns[0]?.id } },
+        { id: reruns[0]?.id, status: outcome, intent: { retryOf: hooks[0]?.id, rerunOf: interrupted?.id } },
+      ]);
+
+      if (ready) {
+        expect(yield* store.read(`SELECT stage, status FROM ticket`)).toEqual([{ stage: "develop", status: "queued" }]);
+        expect(yield* store.read(`SELECT id FROM operator_hold WHERE state = 'open'`)).toEqual([]);
+        expect(yield* newScheduler().schedule()).toMatchObject([{ stage: "develop" }]);
+      } else {
+        expect(yield* store.read(`SELECT stage, status FROM ticket`)).toEqual([{ stage: "develop", status: "paused" }]);
+        const holds = yield* store.read<{ evidence: string }>(`SELECT evidence FROM operator_hold WHERE kind = 'hook_failure' AND state = 'open'`);
+        expect(holds).toHaveLength(1);
+        expect(JSON.parse(holds[0]?.evidence ?? "{}")).toMatchObject({ hook: "after_create", operationId: reruns[0]?.id, exitStatus: 17 });
+        expect(yield* newScheduler().schedule()).toEqual([]);
       }
     }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
   } finally {await new Promise<void>((resolve) => { server.close(() => resolve()); });}

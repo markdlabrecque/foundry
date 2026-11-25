@@ -23,9 +23,11 @@ export interface AfterCreateRecoveryOptions {
   /** The started factories; another factory's interrupted hooks wait for a run that starts it. */
   readonly factories: ReadonlyArray<LoadedFactory>;
   readonly env?: NodeJS.ProcessEnv;
+  /** One operation's claim or rerun failed; the others carry on. Defaults to logging the cause. */
+  readonly onFailure?: (operationId: number, cause: Cause.Cause<unknown>) => void;
 }
 
-const decodeIntent = Schema.decodeUnknownSync(Schema.Struct({
+const decodeIntent = Schema.decodeUnknownEffect(Schema.Struct({
   argv: Schema.NonEmptyArray(Schema.String),
   worktreeOperationId: Schema.Number,
   path: Schema.String,
@@ -41,7 +43,15 @@ const claimRerun = (store: Store, factory: LoadedFactory, interrupted: Operation
 
   if (awaiting.length === 0) {return undefined;}
 
-  const intent = decodeIntent(interrupted.intent);
+  const decoded = yield* Effect.exit(decodeIntent(interrupted.intent));
+
+  if (Exit.isFailure(decoded)) {
+    yield* recordRecoveryResultIn(change, interrupted.id, { status: "interrupted", result: { rerun: false, reason: "invalid intent" } });
+
+    return undefined;
+  }
+
+  const intent = decoded.value;
 
   const [ticket] = yield* change.query<QueuedTicket>(`SELECT * FROM ticket WHERE factory_id = ? AND number = ?`,
     [interrupted.factoryId, interrupted.ticket]);
@@ -72,30 +82,49 @@ const claimRerun = (store: Store, factory: LoadedFactory, interrupted: Operation
 
   yield* recordRecoveryResultIn(change, interrupted.id, { status: "interrupted", result: { rerun: true, rerunOperationId: operation.id } });
 
-  // An interrupted operator retry reruns as one, so its result settles the paused ticket and hold.
   return { ticket, stage, argv: intent.argv, path: intent.path, logPath, operation, resume: intent.retryOf !== undefined };
 }));
 
+/** Passes a success through; reports a failure (but not a plain interruption) and turns it into `undefined`. */
+const report = (onFailure: AfterCreateRecoveryOptions["onFailure"], operationId: number) =>
+  <A, E>(exit: Exit.Exit<A, E>): Effect.Effect<A | undefined> => {
+    if (Exit.isSuccess(exit)) {return Effect.succeed(exit.value);}
+
+    // An interrupted recovery stops quietly; the next startup picks it up again.
+    if (Cause.hasInterruptsOnly(exit.cause)) {return Effect.succeed(undefined);}
+
+    if (onFailure === undefined) {
+      return Effect.as(Effect.logError(`after_create recovery of operation ${operationId} failed`, exit.cause), undefined);
+    }
+
+    onFailure(operationId, exit.cause);
+
+    return Effect.succeed(undefined);
+  };
+
 /**
  * Reruns every interrupted first `after_create` of the given factories, concurrently, and returns
- * the reruns with their results. If this is interrupted, a rerun stays running, like any hook
- * after a crash, and the next startup reruns it again.
+ * the reruns that ran. Each claim and rerun is isolated: one failing is reported through
+ * `onFailure` and never stops the others. If this is interrupted, a rerun stays running, like any
+ * hook after a crash, and the next startup reruns it again.
  */
 export const recoverInterruptedAfterCreate = (options: AfterCreateRecoveryOptions) => Effect.gen(function* () {
   const claimed = [];
 
   for (const factory of options.factories) {
     for (const interrupted of (yield* listOperationsAwaitingRecovery(options.store, factory.factoryId)).filter(isFirstAfterCreate)) {
-      const rerun = yield* claimRerun(options.store, factory, interrupted);
+      const rerun = yield* Effect.exit(claimRerun(options.store, factory, interrupted)).pipe(Effect.flatMap(report(options.onFailure, interrupted.id)));
 
       if (rerun !== undefined) {claimed.push(rerun);}
     }
   }
 
-  return yield* Effect.forEach(claimed, (rerun) => Effect.as(
+  const reruns = yield* Effect.forEach(claimed, (rerun) => Effect.exit(Effect.as(
     runFirstAfterCreate({ store: options.store, ...rerun, env: options.env ?? process.env }),
     rerun.operation,
-  ), { concurrency: "unbounded" });
+  )).pipe(Effect.flatMap(report(options.onFailure, rerun.operation.id))), { concurrency: "unbounded" });
+
+  return reruns.filter((operation) => operation !== undefined);
 });
 
 /** Runs recovery in the background, so a slow hook never holds up startup. The stop function kills any running rerun. */
@@ -105,7 +134,12 @@ export const startAfterCreateRecovery = (options: AfterCreateRecoveryOptions & {
 }): (() => Promise<void>) => {
   const controller = new AbortController();
 
-  const done = Effect.runPromiseExit(recoverInterruptedAfterCreate(options), { signal: controller.signal }).then((exit) => {
+  const done = Effect.runPromiseExit(recoverInterruptedAfterCreate({
+    ...options,
+    onFailure: options.onFailure ?? ((operationId, cause) => {
+      options.onError(new Error(`operation ${operationId}: ${Cause.pretty(cause)}`));
+    }),
+  }), { signal: controller.signal }).then((exit) => {
     if (Exit.isSuccess(exit)) {
       for (const operation of exit.value) {options.onRerun?.(operation);}
     } else if (!controller.signal.aborted) {
