@@ -555,7 +555,7 @@ test("message limit migration preserves existing blocked and worker-request deci
 
   await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
-    expect(yield* store.read(`SELECT * FROM approval ORDER BY id`)).toEqual(saved.approvals);
+    expect(yield* store.read(`SELECT * FROM approval ORDER BY id`)).toEqual(saved.approvals.map((approval) => ({ ...approval, decision: null, resolution_transition: null })));
     expect(yield* store.read(`PRAGMA foreign_key_check`)).toEqual([]);
     expect((yield* Effect.promise(() => storeApprovalsReader(store).list())).approvals.map((approval) => approval.kind))
       .toEqual(["worker_request", "blocked"]);

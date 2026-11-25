@@ -12,11 +12,13 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { join } from "node:path";
-import { Cause, Effect, Exit, Option, Schema } from "effect";
+import { Cause, Effect, Exit, Match, Option, Schema } from "effect";
 import type { ApprovalsReader } from "./approvals.js";
-import { APPROVALS_PATH, ApprovalAnswerRequest } from "@foundry/protocol/approvals";
+import { APPROVALS_PATH, ApprovalAnswerRequest, ApprovalDecisionRequest } from "@foundry/protocol/approvals";
 import { ApprovalAnswerError } from "./approval-answer.js";
 import type { ApprovalAnswers } from "./approval-answer.js";
+import { ApprovalDecisionError } from "./approval-decision.js";
+import type { ApprovalDecisions } from "./approval-decision.js";
 import type { HoldsReader } from "./holds.js";
 import { WORKTREES_PATH, WorktreeCleanRequest } from "@foundry/protocol/worktrees-api";
 import type { WorktreeService } from "./worktree-cleanup.js";
@@ -61,6 +63,7 @@ export interface ManagementApiInputs {
   /** Work decisions, separate from system holds. */
   readonly approvals?: ApprovalsReader;
   readonly approvalAnswers?: ApprovalAnswers;
+  readonly approvalDecisions?: ApprovalDecisions;
   /** Serves the ticket routes when given; without it they answer 404. */
   readonly tickets?: TicketService;
   readonly worktrees?: WorktreeService;
@@ -281,6 +284,12 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
     return handleApprovalAnswer(inputs, request, response, path);
   }
 
+  const approvalAction = new RegExp(`^${APPROVALS_PATH}/([1-9][0-9]{0,15})/(approve|reject)$`).exec(path);
+
+  if (approvalAction !== null) {
+    return handleApprovalDecision(inputs, request, response, Number(approvalAction[1]), approvalAction[2] === "approve" ? "approved" : "rejected");
+  }
+
   // Ticket routes first: submit reads a POST body, so it must not be drained.
   if (inputs.tickets !== undefined && (path === TICKETS_PATH || path.startsWith(`${TICKETS_PATH}/`))) {
     void handleTickets(inputs.tickets, request, url).then(
@@ -412,6 +421,46 @@ const handleOperatorMessage = (inputs: ManagementApiInputs, request: IncomingMes
 
     send(response, 500, failure("internal", "operator message was not committed"));
   })().catch(() => send(response, 500, failure("internal", "operator message request failed")));
+};
+
+const handleApprovalDecision = (
+  inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse,
+  id: number, decision: "approved" | "rejected",
+): void => {
+  if (request.method !== "POST") {
+    request.resume();
+    response.setHeader("allow", "POST");
+
+    return send(response, 405, failure("method_not_allowed", "approval decisions only accept POST"));
+  }
+
+  void (async () => {
+    const text = await readSmallBody(request, STOP_BODY_LIMIT);
+
+    if (text === undefined) {return send(response, 400, failure("bad_request", "invalid approval request body"));}
+
+    const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(ApprovalDecisionRequest))(text, { onExcessProperty: "error" });
+
+    if (Option.isNone(decoded)) {return send(response, 400, failure("bad_request", "expected an optional reason, not a destination or commit"));}
+
+    if (inputs.approvalDecisions === undefined) {return send(response, 503, failure("unavailable", "approval decisions are not served by this daemon"));}
+
+    const result = await Effect.runPromiseExit(inputs.approvalDecisions.resolve(id, decision, decoded.value.reason));
+
+    if (Exit.isSuccess(result)) {return send(response, 200, { ok: true, result: result.value });}
+
+    const error = Cause.squash(result.cause);
+
+    if (error instanceof ApprovalDecisionError) {
+      const status = Match.value(error.code).pipe(
+        Match.when("not_found", () => 404), Match.when("invalid_request", () => 400), Match.orElse(() => 409),
+      );
+
+      return send(response, status, failure(error.code, error.message));
+    }
+
+    send(response, 500, failure("internal", "approval decision was not committed"));
+  })().catch(() => send(response, 500, failure("internal", "approval request failed")));
 };
 
 /** `POST /api/v1/slots/<station>/<ordinal>/interrupt`: an action, so it answers only `POST`. */
