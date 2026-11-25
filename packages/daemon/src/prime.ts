@@ -82,7 +82,11 @@ const isMissing = (error: unknown): boolean => {
 /** What the daemon writes in the prime's header. */
 export type PrimeHeader = Pick<PrimeRequest, "address" | "slotId" | "situation" | "isolation" | "knowledgeRoot">;
 
-/** Renders the prime text. Pure: the same header and parts give the same text. */
+/**
+ * Renders the prime text. Pure: the same header and parts give the same text.
+ * `parts` is the authoritative attribution: file content containing
+ * `</foundry-source>` can make the text wrapper ambiguous.
+ */
 export const renderPrime = (header: PrimeHeader, parts: ReadonlyArray<PrimePart>): string => {
   const lines = [
     "# Foundry prime",

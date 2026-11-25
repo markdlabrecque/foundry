@@ -90,6 +90,41 @@ describe("composition", () => {
   });
 });
 
+describe("source bytes", () => {
+  const reader =
+    (read: () => Promise<Uint8Array>): ReadSource =>
+    () =>
+      read();
+
+  test("the hash covers the raw bytes, including a byte-order mark the content drops", async () => {
+    const bytes = new TextEncoder().encode("\uFEFFX");
+    const prime = composed(
+      await composePrime(request({ instructions: ["/factory/factory.md"] }), reader(async () => bytes)),
+    );
+    expect(prime.parts).toEqual([
+      {
+        source: "factory.md",
+        hash: `sha256:${createHash("sha256").update(bytes).digest("hex")}`,
+        content: "X",
+      },
+    ]);
+  });
+
+  test("a source that exists but cannot be read is reported as unreadable", async () => {
+    const denied = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+    const result = await composePrime(
+      request({ instructions: ["/factory/factory.md"] }),
+      reader(async () => {
+        throw denied;
+      }),
+    );
+    expect(result).toMatchObject({
+      _tag: "SourceUnavailable",
+      problems: [{ path: "/factory/factory.md", source: "factory.md", reason: "unreadable" }],
+    });
+  });
+});
+
 describe("real files", () => {
   const dirs: string[] = [];
   afterEach(async () => {
@@ -101,18 +136,18 @@ describe("real files", () => {
     dirs.push(baseDir);
     const factoryFile = join(baseDir, "factory.md");
     const stationFile = join(baseDir, "dev.md");
-    await writeFile(factoryFile, "v1\n");
+    await writeFile(factoryFile, "FACTORY-V1\n");
     await writeFile(stationFile, "station\n");
     const req = request({ baseDir, instructions: [factoryFile, stationFile], knowledgeRoot: join(baseDir, "knowledge") });
 
     const first = composed(await composePrime(req));
-    expect(first.parts[0]).toMatchObject({ source: "factory.md", hash: sha("v1\n"), content: "v1\n" });
+    expect(first.parts[0]).toMatchObject({ source: "factory.md", hash: sha("FACTORY-V1\n"), content: "FACTORY-V1\n" });
 
-    await writeFile(factoryFile, "v2\n");
+    await writeFile(factoryFile, "FACTORY-V2\n");
     const second = composed(await composePrime(req));
-    expect(second.parts[0]).toMatchObject({ source: "factory.md", hash: sha("v2\n"), content: "v2\n" });
-    expect(second.text).toContain("v2");
-    expect(second.text).not.toContain("v1");
+    expect(second.parts[0]).toMatchObject({ source: "factory.md", hash: sha("FACTORY-V2\n"), content: "FACTORY-V2\n" });
+    expect(second.text).toContain(">\nFACTORY-V2\n</foundry-source>");
+    expect(second.text).not.toContain("FACTORY-V1");
 
     await unlink(stationFile);
     const third = await composePrime(req);
