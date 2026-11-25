@@ -10,6 +10,8 @@ import { runCloneGit } from "./factory-clone.js";
 import type { TicketWorktreesOptions } from "./worktrees.js";
 import { beginOperationIn, recordOperationResult } from "./operations.js";
 import { ticketRecord } from "./history-records.js";
+import { runBeforeRemove } from "./before-remove.js";
+import { closeOpenHoldIn } from "./holds.js";
 import { TicketError } from "./tickets.js";
 
 interface WorktreeRow {
@@ -90,7 +92,7 @@ const fingerprintFiles = async (path: string, names: ReadonlyArray<string>): Pro
   return hash.digest("hex");
 };
 
-export const createWorktreeService = (options: TicketWorktreesOptions & { readonly factories: () => ReadonlyArray<string> }) => {
+export const createWorktreeService = (options: TicketWorktreesOptions & { readonly stateRoot: string; readonly factories: () => ReadonlyArray<string> }) => {
   const git = (cwd: string, args: ReadonlyArray<string>, rawOutput = false) => Effect.tryPromise({
     try: () => runCloneGit(args, options.env ?? process.env, cwd, rawOutput),
     catch: (cause) => refuse(messageOf(cause)),
@@ -207,8 +209,16 @@ export const createWorktreeService = (options: TicketWorktreesOptions & { readon
       } else {
         if (inspected.files !== "" || inspected.commits !== "") {return yield* refuse("worktree contains uncommitted/untracked files or unmerged commits; inspect and confirm --force to discard them");}
 
-        // Hook execution is a separate lifecycle handler (FOU-78); never silently bypass it.
-        if (target.factory.config.worktrees?.before_remove !== undefined) {return yield* refuse("before_remove hook requires the hook lifecycle handler; use confirmed --force to skip it");}
+        const argv = target.factory.config.worktrees?.before_remove;
+
+        if (argv !== undefined) {
+          yield* runBeforeRemove({ store: options.store, stateRoot: options.stateRoot,
+            factoryId: row.factory_id, ticket: number, path: inspected.path, argv, env: options.env ?? process.env });
+          // Hooks can change files or Git state. Never discard newly-created work or a changed identity.
+          const afterHook = yield* inspectRow(row);
+
+          if (afterHook.files !== "" || afterHook.commits !== "") {return yield* refuse("before_remove left uncommitted/untracked files or unmerged commits; inspect and confirm --force to discard them");}
+        }
       }
 
       yield* git(target.clonePath, ["-c", "core.hooksPath=/dev/null", "worktree", "remove", ...(force ? ["--force"] : []), "--", inspected.path]);
@@ -217,6 +227,7 @@ export const createWorktreeService = (options: TicketWorktreesOptions & { readon
       yield* options.store.change((change) => Effect.gen(function* () {
         yield* change.query(`UPDATE ticket SET worktree_path = NULL, branch = NULL WHERE factory_id = ? AND number = ?`, [row.factory_id, number]);
         yield* recordOperationResult(change, operation.id, { status: "complete", result: { path: inspected.path, branch: inspected.branch } });
+        yield* closeOpenHoldIn(change, { factoryId: row.factory_id, kind: "hook_failure", subject: String(number) }, "resolved");
         yield* change.recordHistory({ factoryId: row.factory_id, kind: "ticket.worktree_removed", subject: String(number),
           detail: { path: inspected.path, branch: inspected.branch, force }, records: [ticketRecord(number)] });
       }));

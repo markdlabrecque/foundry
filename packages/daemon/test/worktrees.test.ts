@@ -1,5 +1,5 @@
 // Integration tier: real disposable Git and SQLite prove creation intent, base and stage reuse.
-import { existsSync, mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -73,7 +73,7 @@ production_lines:
       ...overrides,
     });
 
-    const worktrees = createWorktreeService({ store, target: () => ({ factory, clonePath: clone.path }),
+    const worktrees = createWorktreeService({ store, stateRoot: root, target: () => ({ factory, clonePath: clone.path }),
       factories: () => ["shop"], env: isolatedGitEnv() });
 
     return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler, worktrees });
@@ -488,14 +488,96 @@ test("concurrent clean requests admit one operation and never delete twice", asy
   }));
 });
 
-test("configured removal hooks fail closed until the hook handler is available; confirmed force skips them", async () => {
-  await fixture(({ store, scheduler, worktrees }) => Effect.gen(function* () {
+test.each(["retry", "force"])("failed before_remove preserves artifacts, reports durable output, and supports %s", async (recovery) => {
+  await fixture(({ store, root, clone, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store, "completed");
+    const path = join(root, "worktrees/shop/1-build-widget");
+    // argv is executed directly in the worktree; no shell expansion of this argument.
+    writeFileSync(join(root, "cleanup.cjs"), `const fs = require('node:fs');
+console.log(process.cwd(), process.argv[2]); console.error('cleanup diagnostic');
+process.exit(fs.existsSync('../../../allow-cleanup') ? 0 : 7);\n`);
+    const failures: Array<string> = [];
+    const observer = new DatabaseSync(join(root, "foundry.db"), { readOnly: true });
+    const logsBeforeExecution: Array<boolean> = [];
+
+    const unsubscribe = store.onCommit(() => {
+      const hook = observer.prepare(`SELECT id, intent FROM operation WHERE kind = 'hook' AND status = 'running' ORDER BY id DESC LIMIT 1`).get();
+
+      if (hook !== undefined) {
+        const intent = JSON.parse(String(hook["intent"]));
+
+        if (intent.logPath !== undefined) {
+          // The full intent and output destination must commit before the executable starts.
+          logsBeforeExecution.push(existsSync(intent.logPath));
+        }
+      }
+    });
+
+    try {
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        failures.push(yield* worktrees.clean(undefined, 1).pipe(Effect.match({ onFailure: (error) => error.message, onSuccess: () => "unexpected success" })));
+        expect(existsSync(path)).toBe(true);
+        expect(git(clone, ["branch", "--list", "ticket/1-build-widget"])).not.toBe("");
+        expect(yield* store.read(`SELECT state, worktree_path, branch FROM ticket`)).toEqual([
+          { state: "completed", worktree_path: path, branch: "ticket/1-build-widget" },
+        ]);
+      }
+    } finally {unsubscribe(); observer.close();}
+
+    expect(logsBeforeExecution).toEqual([false, false]);
+    const hooks = (yield* listOperations(store, "shop")).filter((operation) => operation.kind === "hook");
+    expect(hooks).toHaveLength(2);
+
+    for (const [index, hook] of hooks.entries()) {
+      const logPath = join(root, "logs/operations", `${hook.id}.log`);
+      expect(hook).toMatchObject({ status: "failed", intent: { hook: "before_remove", path }, result: { exitStatus: 7, logPath } });
+      expect(failures[index]).toContain(logPath);
+      expect(readFileSync(logPath, "utf8")).toBe(`${path} literal $HOME ; untouched\ncleanup diagnostic\n`);
+    }
+
+    expect(yield* store.read(`SELECT state, evidence FROM operator_hold ORDER BY id`)).toEqual([
+      { state: "resolved", evidence: expect.stringContaining(`"operationId":${hooks[0]?.id}`) },
+      { state: "open", evidence: expect.stringContaining(`"operationId":${hooks[1]?.id}`) },
+    ]);
+
+    if (recovery === "retry") {
+      writeFileSync(join(root, "allow-cleanup"), "yes");
+      yield* worktrees.clean(undefined, 1);
+    } else {
+      const inspected = yield* worktrees.inspect(undefined, 1);
+      yield* worktrees.clean(undefined, 1, true, inspected.confirmation);
+    }
+
+    expect(existsSync(path)).toBe(false);
+    expect(git(clone, ["branch", "--list", "ticket/1-build-widget"])).toBe("");
+    expect((yield* listOperations(store, "shop")).filter((operation) => operation.kind === "hook")).toHaveLength(recovery === "retry" ? 3 : 2);
+    expect(yield* store.read(`SELECT state FROM operator_hold`)).toEqual([{ state: "resolved" }, { state: "resolved" }]);
+    expect(yield* store.read(`SELECT state, worktree_path FROM ticket`)).toEqual([{ state: "completed", worktree_path: null }]);
+    expect(readFileSync(join(root, "logs/operations", `${hooks[0]?.id}.log`), "utf8")).toContain("cleanup diagnostic");
+  }), `root: ./worktrees, before_remove: [${JSON.stringify(process.execPath)}, ../../../cleanup.cjs, 'literal $HOME ; untouched']`);
+});
+
+test("hook-created files are preserved instead of discarded after a successful hook", async () => {
+  await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
     yield* scheduler.schedule();
     yield* finishTicket(store);
-    expect((yield* Effect.result(worktrees.clean(undefined, 1)))._tag).toBe("Failure");
+    const path = join(root, "worktrees/shop/1-build-widget");
+    expect(yield* worktrees.clean(undefined, 1).pipe(Effect.match({ onFailure: (error) => error.message, onSuccess: () => "unexpected success" }))).toContain("before_remove left");
+    expect(readFileSync(join(path, "artifact"), "utf8")).toBe("preserve me");
+  }), `root: ./worktrees, before_remove: [${JSON.stringify(process.execPath)}, -e, "require('node:fs').writeFileSync('artifact', 'preserve me')"]`);
+});
+
+test("missing before_remove executable raises a failure hold and confirmed force skips it", async () => {
+  await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    expect(yield* worktrees.clean(undefined, 1).pipe(Effect.match({ onFailure: (error) => error.message, onSuccess: () => "unexpected success" }))).toContain("ENOENT");
+    expect(existsSync(join(root, "worktrees/shop/1-build-widget"))).toBe(true);
+    expect(yield* store.read(`SELECT state FROM operator_hold`)).toEqual([{ state: "open" }]);
     const inspected = yield* worktrees.inspect(undefined, 1);
     yield* worktrees.clean(undefined, 1, true, inspected.confirmation);
-  }), 'root: ./worktrees, before_remove: [./cleanup]');
+  }), 'root: ./worktrees, before_remove: [./missing-cleanup]');
 });
 
 test("CLI list and confirmed force traverse the management socket without deleting cancelled work automatically", async () => {
