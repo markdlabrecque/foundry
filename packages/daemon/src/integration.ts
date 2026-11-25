@@ -9,12 +9,14 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, unlink
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { ticketApprovalLock } from "./approval-coordination.js";
-import { Clock, Data, Effect, Schema } from "effect";
+import { Clock, Data, Effect, Option, Schema } from "effect";
 import { expectDefined, messageOf } from "@foundry/protocol/errors";
 import { runCloneGit } from "./factory-clone.js";
 import type { SyncTarget } from "./factory-sync.js";
 import { ticketRecord } from "./history-records.js";
 import { outcomeRoute } from "./outcome-route.js";
+import { runIntegrationSetup } from "./integration-setup.js";
+import { closeOpenHoldIn, raiseHoldIn } from "./holds.js";
 import { extendOperationIntent, recordOperationResult } from "./operations.js";
 import type { Operation, OperationDetail, OperationOutcome } from "./operations.js";
 import type { Store, StoreError } from "./store.js";
@@ -179,6 +181,15 @@ export const integrateApprovedCommit = (
 
         yield* scratchGit(["checkout", "--detach", preparedHead]);
 
+        const setup = target.config?.worktrees?.after_create;
+
+        if (setup !== undefined) {
+          const result = yield* runIntegrationSetup(store, operation, setup, path, clonePath, env);
+          recorded = { ...recorded, setup: result };
+
+          if (result.status === "failed") {return yield* new IntegrationRefused({ reason: "integration after_create failed before verification" });}
+        }
+
         if (beforeVerify !== undefined && !(yield* beforeVerify({ store, operation, path, env }))) {
           return yield* new IntegrationRefused({ reason: "integration setup failed before verification" });
         }
@@ -263,6 +274,12 @@ export const integrateApprovedCommit = (
   // deliberately left pending with worktree/branch metadata intact for the cleanup service.
   return yield* store.change((change) => Effect.gen(function* () {
     yield* recordOperationResult(change, operation.id, outcome);
+    const failedSetup = Schema.decodeUnknownOption(Schema.Struct({ status: Schema.Literals(["failed"]), operationId: Schema.Number }))(outcome.result["setup"]);
+
+    if (Option.isSome(failedSetup)) {
+      yield* recordOperationResult(change, failedSetup.value.operationId, { status: "failed",
+        result: Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))(outcome.result["setup"]) });
+    }
 
     const [current] = yield* change.query<{ stage: string; approved_commit: string }>(`SELECT t.stage, i.approved_commit FROM ticket t
       JOIN integration_intent i ON i.factory_id = t.factory_id AND i.ticket_number = t.number
@@ -272,6 +289,14 @@ export const integrateApprovedCommit = (
     if (ticket === undefined || current?.stage !== ticket.stage || current.approved_commit !== ticket.approved_commit) {return false;}
 
     const complete = outcome.status === "complete";
+    const setupFailure = Schema.is(Schema.Struct({ status: Schema.Literals(["failed"]) }))(outcome.result["setup"]);
+
+    if (setupFailure) {
+      yield* closeOpenHoldIn(change, { factoryId: operation.factoryId, kind: "hook_failure", subject: String(operation.ticket) }, "resolved");
+      yield* raiseHoldIn(change, { factoryId: operation.factoryId, kind: "hook_failure", subject: String(operation.ticket),
+        evidence: Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))(outcome.result["setup"]) });
+    }
+
     const conflict = Array.isArray(outcome.result["conflictingFiles"]);
     const rejected = conflict || Schema.is(Schema.Struct({ status: Schema.Literals(["failed"]) }))(outcome.result["verification"]);
     const stages = target.config?.production_lines[ticket.production_line]?.stages ?? [];

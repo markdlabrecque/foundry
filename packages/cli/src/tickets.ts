@@ -192,7 +192,7 @@ export const runTicketCancel = async (options: CancelOptions): Promise<TicketOut
 
 class UnconfirmedCancellation extends Data.TaggedError("UnconfirmedCancellation")<{ readonly message: string }> {}
 
-const runTicketAction = (options: ShowOptions, action: "pause" | "resume" | "retry"): Promise<TicketOutcome> => {
+const runTicketAction = (options: ShowOptions, action: "pause" | "resume" | "retry" | "integration-retry"): Promise<TicketOutcome> => {
   if (!Number.isSafeInteger(options.number) || options.number < 1) {
     return Promise.resolve(usage("a ticket number is a positive integer"));
   }
@@ -203,6 +203,7 @@ const runTicketAction = (options: ShowOptions, action: "pause" | "resume" | "ret
 export const runTicketPause = (options: ShowOptions): Promise<TicketOutcome> => runTicketAction(options, "pause");
 export const runTicketResume = (options: ShowOptions): Promise<TicketOutcome> => runTicketAction(options, "resume");
 export const runTicketRetry = (options: ShowOptions): Promise<TicketOutcome> => runTicketAction(options, "retry");
+export const runIntegrationRetry = (options: ShowOptions): Promise<TicketOutcome> => runTicketAction(options, "integration-retry");
 
 export const runTicketShow = (options: ShowOptions): Promise<TicketOutcome> => {
   if (!Number.isSafeInteger(options.number) || options.number < 1) {

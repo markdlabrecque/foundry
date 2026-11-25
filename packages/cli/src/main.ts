@@ -10,7 +10,7 @@ import { EXIT_USAGE, runStatus } from "./status.js";
 import { runLogs } from "./logs.js";
 import { runMessageSend } from "./messages.js";
 import { validateFactoryFile } from "./validate.js";
-import { runTicketCancel, runTicketList, runTicketPause, runTicketResume, runTicketRetry, runTicketShow, runTicketSubmit } from "./tickets.js";
+import { runIntegrationRetry, runTicketCancel, runTicketList, runTicketPause, runTicketResume, runTicketRetry, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow } from "./holds.js";
 import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow } from "./approvals.js";
@@ -290,6 +290,12 @@ const ticketRetry = Command.make("retry", { ...ticketFlags, number: Argument.Int
   report(() => runTicketRetry({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), number, env: process.env })),
 ).pipe(Command.withDescription("Abandon the assignment and queue a fresh attempt"));
 
+const integrationRetry = Command.make("retry", { ...ticketFlags, number: Argument.Int("n") }, ({ json, home, factory, number }) =>
+  Effect.flatMap(Effect.promise(() => runIntegrationRetry({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), number, env: process.env })), print),
+).pipe(Command.withDescription("Retry setup and integration with the preserved approval"));
+
+const integration = Command.make("integration").pipe(Command.withSubcommands([integrationRetry]));
+
 const ticketCancel = Command.make("cancel", { ...ticketFlags, number: Argument.Int("n"),
   yes: Flag.Boolean("yes").pipe(Flag.withDefault(false), Flag.withDescription("Confirm cancellation without a prompt")),
 }, ({ json, home, factory, number, yes }) =>
@@ -440,7 +446,7 @@ const worktreeClean = Command.make("clean", { ...ticketFlags, number: Argument.I
 const worktree = Command.make("worktree").pipe(Command.withSubcommands([worktreeList, worktreeClean]));
 
 const foundry = Command.make("foundry").pipe(
-  Command.withSubcommands([validate, status, shutdown, hold, approval, logs, ticket, events, factory, slot, message, worktree]),
+  Command.withSubcommands([validate, status, shutdown, hold, approval, logs, ticket, events, factory, slot, message, worktree, integration]),
 );
 
 Command.run(foundry, { version: "0.0.0" }).pipe(
