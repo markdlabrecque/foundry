@@ -1,13 +1,13 @@
 // Integration tier: disposable SQLite proves ownership, atomic submissions and a durable queue.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { Effect, Exit, Match, Schema } from "effect";
 import {
   agentDelegateHandler, agentRequestHandler, assignmentTicket, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
-  createFactorySyncer, listOperations,
+  createFactorySyncer, enqueueOperation, listOperations, startNextOperation,
   createApprovalAnswers, humanRequestHandler, createApprovalDecisions, createOperatorMessages, foundryMigrations, messageBudget, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
 } from "@foundry/daemon";
 import type { Migration, Store } from "@foundry/daemon";
@@ -1109,7 +1109,7 @@ const gateFixture = <A, E>(final: boolean, routed: boolean,
 
 // Reuse the gate fixture: this boundary test includes worker outcome, operator approval,
 // durable queue reopen and real Git; no daemon, HTTP or production state is needed.
-test.each(["complete", "moved", "dirty", "cancelled"] as const)("approved integration: %s", async (scenario) => {
+test.each(["complete", "moved", "dirty", "cancelled", "merge-error"] as const)("approved integration: %s", async (scenario) => {
   const saved = await gateFixture(true, true, (store, id, root, base, gatedConfig) => Effect.gen(function* () {
     const repository = join(root, "repository");
     const path = join(root, "worktree");
@@ -1159,8 +1159,46 @@ test.each(["complete", "moved", "dirty", "cancelled"] as const)("approved integr
   // Reopen before consuming: approved integration is not an in-memory callback.
   await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
-    const queue = createFactorySyncer({ store, env: isolatedGitEnv(), target: () => ({ clonePath: saved.repository, defaultBranch: "main" }) });
+    const env = isolatedGitEnv();
+    let queueError = "";
+
+    if (scenario === "merge-error") {
+      // Real Git updates the ref successfully; its wrapper then loses the success result.
+      const realGit = execFileSync("sh", ["-c", "command -v git"], { encoding: "utf8" }).trim();
+      const bin = join(saved.root, "bin");
+      mkdirSync(bin);
+      writeFileSync(join(bin, "git"), `#!/bin/sh
+"$FOUNDRY_REAL_GIT" "$@"
+status=$?
+for arg do
+  if [ "$arg" = merge ]; then exit 73; fi
+done
+exit "$status"
+`, { mode: 0o755 });
+      env["FOUNDRY_REAL_GIT"] = realGit;
+      env["PATH"] = `${bin}:${process.env["PATH"]}`;
+    }
+
+    const queue = createFactorySyncer({ store, env, target: () => ({ clonePath: saved.repository, defaultBranch: "main" }),
+      onError: (_factory, cause) => { queueError = String(cause); } });
+
     yield* Effect.promise(() => queue.resumeQueued("shop"));
+
+    if (scenario === "merge-error") {
+      expect(queueError).not.toBe("");
+      expect(git(saved.repository, "rev-parse", "main")).toBe(saved.approved);
+      expect(git(saved.path, "rev-parse", "HEAD")).toBe(saved.branchHead);
+      expect(git(saved.source, "for-each-ref", "--format=%(refname) %(objectname)")).toBe(saved.sourceRefs);
+      expect(yield* listOperations(store, "shop")).toMatchObject([{ status: "running", result: null }]);
+      expect(yield* store.read(`SELECT state, status FROM ticket`)).toEqual([{ state: "stage", status: "awaiting_approval" }]);
+      yield* enqueueOperation(store, { factoryId: "shop", kind: "sync", intent: { defaultBranch: "main" } });
+      expect(yield* startNextOperation(store, "shop")).toBeUndefined();
+      const service = createTicketService({ store, stateRoot: saved.root, factories: () => [ticketFactoryFrom(config)] });
+      expect(yield* Effect.exit(service.inspectCancellation("shop", 1))).toMatchObject(Exit.fail({ code: "invalid_state" }));
+
+      return;
+    }
+
     const complete = scenario === "complete";
     expect(yield* listOperations(store, "shop")).toMatchObject([{ kind: "integration", status: complete ? "complete" : "failed",
       result: complete ? { head: saved.approved, cleanup: "pending" } : { reason: expect.any(String) } }]);

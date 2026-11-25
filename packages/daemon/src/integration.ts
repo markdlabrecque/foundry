@@ -73,10 +73,12 @@ export const integrateApprovedCommit = (
 
     if (exact !== approved) {return yield* new IntegrationRefused({ reason: "approved SHA is not an exact commit" });}
 
-    yield* git(["switch", "--quiet", "--no-guess", "--no-recurse-submodules", "--", target.defaultBranch]);
+    // From the first mutation onward, a subprocess error is ambiguous: Git may have changed
+    // state before losing its result. Leave the operation running and queue gated for recovery.
+    yield* git(["switch", "--quiet", "--no-guess", "--no-recurse-submodules", "--", target.defaultBranch]).pipe(Effect.orDie);
     // With the original base still current, only a descendant can land. ff-only is independent
     // of operator merge policy and cannot manufacture or substitute an unreviewed commit.
-    yield* git(["merge", "--ff-only", "--no-gpg-sign", "--quiet", approved]);
+    yield* git(["merge", "--ff-only", "--no-gpg-sign", "--quiet", approved]).pipe(Effect.orDie);
     const head = yield* git(["rev-parse", "--verify", `${ref}^{commit}`]).pipe(Effect.orDie);
 
     if (head !== approved) {return yield* Effect.die(new Error("integration head is not the approved SHA"));}
