@@ -5,10 +5,12 @@
  */
 import { connect, type Socket } from "node:net";
 import {
+  decodeDaemonFrameLine,
   decodeHelloReplyLine,
   encodeFrame,
   FrameLineSplitter,
   HEARTBEAT_INTERVAL_MS,
+  type DaemonFrame,
   type Hello,
   type HelloRejectReason,
   type WorkerFrame,
@@ -31,6 +33,11 @@ export interface OpenChannelOptions {
   readonly socketPath: string;
   readonly hello: Hello;
   readonly heartbeatIntervalMs?: number;
+  /**
+   * Each frame the daemon sends after accepting the hello, in arrival order. A
+   * frame that does not decode closes the connection as a protocol error.
+   */
+  readonly onFrame?: (frame: DaemonFrame) => void;
 }
 
 /**
@@ -63,15 +70,30 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
     socket.once("connect", () => socket.write(encodeFrame(options.hello)));
     socket.on("error", fail);
     socket.once("close", () => fail(new Error("channel closed before the hello was answered")));
+    let accepted = false;
+    const deliver = (line: string): void => {
+      if (!accepted || socket.destroyed) return;
+      const frame = decodeDaemonFrameLine(line);
+      if (!frame.ok) {
+        socket.destroy();
+        return;
+      }
+      options.onFrame?.(frame.value);
+    };
+
     socket.on("data", (chunk: string) => {
-      if (settled) return;
       let lines: string[];
       try {
         lines = splitter.push(chunk);
       } catch (error) {
+        if (settled) socket.destroy();
         return fail(error as Error);
       }
-      const first = lines[0];
+      if (settled) {
+        for (const line of lines) deliver(line);
+        return;
+      }
+      const first = lines.shift();
       if (first === undefined) return;
       const reply = decodeHelloReplyLine(first);
       if (!reply.ok) return fail(new Error(`malformed hello reply: ${reply.detail}`));
@@ -80,6 +102,7 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
         socket.end();
         return resolve({ accepted: false, reason: reply.value.reason });
       }
+      accepted = true;
       heartbeat = setInterval(
         () => socket.write(encodeFrame({ type: "heartbeat" })),
         options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS,
@@ -99,5 +122,7 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
           closed,
         },
       });
+      // Frames that arrived in the same chunk as the reply.
+      for (const line of lines) deliver(line);
     });
   });

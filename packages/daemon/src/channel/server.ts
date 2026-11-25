@@ -19,6 +19,7 @@ import {
   encodeFrame,
   FrameLineSplitter,
   PROTOCOL_VERSION,
+  type DaemonFrame,
   type Hello,
   type HelloRejectReason,
   type WorkerFrame,
@@ -54,10 +55,16 @@ const realTimer: LapseTimer = (ms, onLapse) => {
 /** Why an accepted channel ended. Neither cause says anything about the worker process. */
 export type ChannelLostCause = "heartbeat_lapse" | "peer_closed" | "protocol_error" | "server_closed";
 
+/** Writes daemon frames to one accepted connection, in call order. */
+export interface AcceptedConnection {
+  /** Resolves once written to the socket; rejects if the connection has ended. */
+  send(frame: DaemonFrame): Promise<void>;
+}
+
 export interface ChannelEvents {
   /** An authenticated frame from an accepted connection, attributed to its claimed slot. */
   onFrame?(slot: ClaimedSlot, frame: WorkerFrame): void;
-  onAccepted?(slot: ClaimedSlot, hello: Hello): void;
+  onAccepted?(slot: ClaimedSlot, hello: Hello, connection: AcceptedConnection): void;
   onRejected?(reason: HelloRejectReason): void;
   onChannelLost?(slot: ClaimedSlot, cause: ChannelLostCause): void;
 }
@@ -136,7 +143,16 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
       state = "accepted";
       socket.write(encodeFrame({ type: "hello_accepted", protocolVersion: PROTOCOL_VERSION }));
       armLapse();
-      options.onAccepted?.(slot, decoded.value);
+      const connection: AcceptedConnection = {
+        send: (frame) =>
+          new Promise<void>((done, failed) => {
+            if (state !== "accepted" || socket.destroyed || !socket.writable) {
+              return failed(new Error("channel connection has ended"));
+            }
+            socket.write(encodeFrame(frame), (error) => (error ? failed(error) : done()));
+          }),
+      };
+      options.onAccepted?.(slot, decoded.value, connection);
     };
 
     // Lines are handled strictly in order; nothing after the hello is read until the claim settles.

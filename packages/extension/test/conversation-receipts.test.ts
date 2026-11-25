@@ -7,16 +7,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import {
-  type AgentSession,
-  createAgentSession,
-  DefaultResourceLoader,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { type ConversationAdapter, createConversationAdapter } from "@foundry/extension";
-import { FAUX_MODEL, FAUX_PROVIDER, FAUX_PROVIDER_EXTENSION } from "@foundry/testkit";
+import { startFauxSession } from "@foundry/testkit";
 
 let root: string;
 let session: AgentSession | undefined;
@@ -33,39 +26,12 @@ afterEach(async () => {
 
 /** A real Pi session whose conversation adapter records every receipt it issues. */
 const startWorker = async (): Promise<{ adapter: ConversationAdapter; receipts: string[]; session: AgentSession }> => {
-  const agentDir = join(root, "agent");
-  const cwd = join(root, "work");
   const receipts: string[] = [];
   let adapter: ConversationAdapter | undefined;
-  const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false } });
-  const resourceLoader = new DefaultResourceLoader({
-    cwd,
-    agentDir,
-    settingsManager,
-    noExtensions: true,
-    noSkills: true,
-    noPromptTemplates: true,
-    noThemes: true,
-    noContextFiles: true,
-    additionalExtensionPaths: [FAUX_PROVIDER_EXTENSION],
+  session = await startFauxSession({
+    root,
     extensionFactories: [(pi) => void (adapter = createConversationAdapter(pi, { onReceipt: (id) => receipts.push(id) }))],
   });
-  await resourceLoader.reload();
-  const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: null });
-  const created = await createAgentSession({
-    cwd,
-    agentDir,
-    modelRuntime,
-    resourceLoader,
-    settingsManager,
-    sessionManager: SessionManager.create(cwd, join(root, "sessions")),
-    noTools: "all",
-  });
-  session = created.session;
-  await session.bindExtensions({});
-  const model = modelRuntime.getModel(FAUX_PROVIDER, FAUX_MODEL);
-  if (!model) throw new Error("faux model not registered");
-  await session.setModel(model);
   if (!adapter) throw new Error("conversation adapter not registered");
   return { adapter, receipts, session };
 };

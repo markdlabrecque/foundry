@@ -21,6 +21,7 @@ export {
 } from "./repository-context.js";
 export * from "./store.js";
 export * from "./prime.js";
+export * from "./priming.js";
 export {
   ManagementSocketError,
   serveManagementApi,

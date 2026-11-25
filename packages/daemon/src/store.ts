@@ -50,6 +50,26 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
        BEGIN SELECT RAISE(ABORT, 'history is append-only'); END`,
     ],
   },
+  {
+    id: 2,
+    name: "prime",
+    statements: [
+      // One row per prime the daemon sends (PRD §5.5, §10.1). `parts` is the
+      // JSON path-and-hash list; `acknowledged_at` stays NULL until the receipt.
+      `CREATE TABLE prime (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        launch_id TEXT NOT NULL,
+        conversation_ref TEXT NOT NULL,
+        situation TEXT NOT NULL CHECK (situation IN ('fresh', 'recovery', 'compaction')),
+        parts TEXT NOT NULL,
+        recorded_at INTEGER NOT NULL,
+        acknowledged_at INTEGER
+      ) STRICT`,
+      `CREATE INDEX prime_by_conversation ON prime (factory_id, slot_id, conversation_ref)`,
+    ],
+  },
 ];
 
 /** Values that can be bound to a statement parameter. */
