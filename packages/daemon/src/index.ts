@@ -151,6 +151,11 @@ export * from "./operations.js";
 
 export { recoverInterruptedAfterCreate, startAfterCreateRecovery, type AfterCreateRecoveryOptions } from "./after-create-recovery.js";
 
+export {
+  createWorktreeRecovery, recoverInterruptedWorktrees, type WorktreeRecovered, type WorktreeRecoveryOptions, type WorktreeSettleOptions,
+  type WorktreeVerdict,
+} from "./worktree-recovery.js";
+
 export * from "./factory-sync.js";
 
 export * from "./sync-recovery.js";

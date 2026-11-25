@@ -11,10 +11,11 @@ import { runCloneGit } from "./factory-clone.js";
 import type { LoadedFactory } from "./factory-loads.js";
 import { ticketRecord } from "./history-records.js";
 import { beginOperationIn, extendOperationIntent, recordOperationResult } from "./operations.js";
-import type { Store } from "./store.js";
+import type { Operation } from "./operations.js";
+import type { Change, Store } from "./store.js";
 import { pathSegment } from "./tickets.js";
 
-interface WorktreeTarget {
+export interface WorktreeTarget {
   readonly factory: LoadedFactory;
   readonly clonePath: string;
 }
@@ -32,7 +33,8 @@ class WorktreeStepFailed extends Data.TaggedError("WorktreeStepFailed")<{ readon
 
 /**
  * Claim once durably, then create from the clone's current default-branch head. A previous
- * attempt in any status blocks a blind replay; interrupted creation is reconciled by recovery.
+ * attempt in any status blocks a blind replay; interrupted creation is reconciled by recovery
+ * (worktree-recovery.ts).
  * The first after_create runs before assignment; cleanup and recovery have separate handlers.
  */
 export const createTicketWorktrees = (options: TicketWorktreesOptions) => (ticket: QueuedTicket) =>
@@ -69,55 +71,113 @@ export const createTicketWorktrees = (options: TicketWorktreesOptions) => (ticke
 
     if (operation === undefined) {return;}
 
-    const env = options.env ?? process.env;
-
-    const git = (args: ReadonlyArray<string>) => Effect.tryPromise({
-      try: () => runCloneGit(args, env, clonePath), catch: (cause) => new WorktreeStepFailed({ reason: messageOf(cause) }),
-    });
-
-    yield* Effect.gen(function* () {
-      const startCommit = yield* git(["rev-parse", "--verify", `refs/heads/${defaultBranch}^{commit}`]);
-
-      // The exact base is durable before branch/worktree creation can change Git state.
-      yield* extendOperationIntent(options.store, operation.id, { startCommit });
-      yield* Effect.try({
-        try: () => mkdirSync(dirname(path), { recursive: true }),
-        catch: (cause) => new WorktreeStepFailed({ reason: messageOf(cause) }),
-      });
-      yield* git(["-c", "core.hooksPath=/dev/null", "worktree", "add", "--quiet", "-b", branch, "--", path, startCommit]);
-
-      const argv = factory.config.worktrees?.after_create;
-      const logPath = join(ticket.directory, "evidence", `after-create-${randomUUID()}.log`);
-
-      // Publish the worktree and hook intent atomically. A concurrent scheduler cannot skip setup.
-      const hook = yield* options.store.change((change) => Effect.gen(function* () {
-        yield* change.query(
-          `UPDATE ticket SET worktree_path = ?, branch = ?, start_commit = ? WHERE factory_id = ? AND number = ?`,
-          [path, branch, startCommit, ticket.factory_id, ticket.number],
-        );
-        yield* recordOperationResult(change, operation.id, {
-          status: "complete", result: { path, branch, startCommit },
-        });
-        yield* change.recordHistory({
-          factoryId: ticket.factory_id, kind: "ticket.worktree_created", subject: String(ticket.number),
-          detail: { path, branch, startCommit }, records: [ticketRecord(ticket.number)],
-        });
-
-        if (argv === undefined) {return undefined;}
-
-        return yield* beginOperationIn(change, { factoryId: ticket.factory_id, kind: "hook", ticket: ticket.number,
-          intent: { hook: "after_create", operation: "worktree_create", worktreeOperationId: operation.id, argv: [...argv], path, logPath } });
-      }));
-
-      if (hook !== undefined && argv !== undefined) {
-        const line = factory.config.production_lines[ticket.production_line];
-        const stage = ticket.stage ?? line?.stages[0]?.id;
-
-        if (stage === undefined) {return yield* Effect.die(new Error("worktree ticket has no stage"));}
-
-        yield* runFirstAfterCreate({ store: options.store, operation: hook, ticket, stage, argv, path, logPath, env });
-      }
-    }).pipe(Effect.catchTag("WorktreeStepFailed", ({ reason }) =>
-      options.store.change((change) => recordOperationResult(change, operation.id, { status: "failed", result: { reason } })),
-    ));
+    yield* buildTicketWorktree({ store: options.store, factory, clonePath, ticket, operation,
+      path, branch, defaultBranch, env: options.env ?? process.env });
   });
+
+/** Where a ticket's worktree lives, fixed when it is created (PRD §9.2). */
+export interface WorktreeIdentity {
+  readonly path: string;
+  readonly branch: string;
+  readonly startCommit: string;
+}
+
+/** The first after_create of a newly published worktree, begun in the publishing change. */
+export interface FirstSetup {
+  readonly hook: Operation;
+  readonly argv: ReadonlyArray<string>;
+  readonly path: string;
+  readonly logPath: string;
+}
+
+/**
+ * Records the worktree on its ticket and, when `argv` is given, begins its first after_create in
+ * the same change, so a concurrent scheduler cannot skip setup. The caller settles the creation
+ * operation in that change too.
+ */
+export const publishTicketWorktreeIn = (
+  change: Change,
+  ticket: QueuedTicket,
+  worktreeOperationId: number,
+  identity: WorktreeIdentity,
+  argv: ReadonlyArray<string> | undefined,
+) => Effect.gen(function* () {
+  const { path, branch, startCommit } = identity;
+  yield* change.query(
+    `UPDATE ticket SET worktree_path = ?, branch = ?, start_commit = ? WHERE factory_id = ? AND number = ?`,
+    [path, branch, startCommit, ticket.factory_id, ticket.number],
+  );
+  yield* change.recordHistory({
+    factoryId: ticket.factory_id, kind: "ticket.worktree_created", subject: String(ticket.number),
+    detail: { path, branch, startCommit }, records: [ticketRecord(ticket.number)],
+  });
+
+  if (argv === undefined) {return undefined;}
+
+  const logPath = join(ticket.directory, "evidence", `after-create-${randomUUID()}.log`);
+
+  const hook = yield* beginOperationIn(change, { factoryId: ticket.factory_id, kind: "hook", ticket: ticket.number,
+    intent: { hook: "after_create", operation: "worktree_create", worktreeOperationId, argv: [...argv], path, logPath } });
+
+  const setup: FirstSetup = { hook, argv, path, logPath };
+
+  return setup;
+});
+
+/** Runs a published worktree's first after_create, if one was begun. */
+export const runFirstSetup = (store: Store, factory: LoadedFactory, ticket: QueuedTicket, setup: FirstSetup | undefined, env: NodeJS.ProcessEnv) =>
+  Effect.gen(function* () {
+    if (setup === undefined) {return;}
+
+    const stage = ticket.stage ?? factory.config.production_lines[ticket.production_line]?.stages[0]?.id;
+
+    if (stage === undefined) {return yield* Effect.die(new Error("worktree ticket has no stage"));}
+
+    yield* runFirstAfterCreate({ store, operation: setup.hook, ticket, stage, argv: setup.argv, path: setup.path, logPath: setup.logPath, env });
+  });
+
+export interface WorktreeBuild {
+  readonly store: Store;
+  readonly factory: LoadedFactory;
+  readonly clonePath: string;
+  readonly ticket: QueuedTicket;
+  /** A `worktree_create` operation already committed as running, with its intent. */
+  readonly operation: Operation;
+  readonly path: string;
+  readonly branch: string;
+  readonly defaultBranch: string;
+  readonly env: NodeJS.ProcessEnv;
+}
+
+/**
+ * Creates the branch and worktree for a running `worktree_create` from the clone's current
+ * default-branch head, publishes them with the operation's result, then runs the first
+ * after_create. A failed Git step records the operation failed.
+ */
+export const buildTicketWorktree = (build: WorktreeBuild) => Effect.gen(function* () {
+  const { store, factory, clonePath, ticket, operation, path, branch, defaultBranch, env } = build;
+
+  const git = (args: ReadonlyArray<string>) => Effect.tryPromise({
+    try: () => runCloneGit(args, env, clonePath), catch: (cause) => new WorktreeStepFailed({ reason: messageOf(cause) }),
+  });
+
+  const startCommit = yield* git(["rev-parse", "--verify", `refs/heads/${defaultBranch}^{commit}`]);
+
+  // The exact base is durable before branch/worktree creation can change Git state.
+  yield* extendOperationIntent(store, operation.id, { startCommit });
+  yield* Effect.try({
+    try: () => mkdirSync(dirname(path), { recursive: true }),
+    catch: (cause) => new WorktreeStepFailed({ reason: messageOf(cause) }),
+  });
+  yield* git(["-c", "core.hooksPath=/dev/null", "worktree", "add", "--quiet", "-b", branch, "--", path, startCommit]);
+
+  const setup = yield* store.change((change) => Effect.gen(function* () {
+    yield* recordOperationResult(change, operation.id, { status: "complete", result: { path, branch, startCommit } });
+
+    return yield* publishTicketWorktreeIn(change, ticket, operation.id, { path, branch, startCommit }, factory.config.worktrees?.after_create);
+  }));
+
+  yield* runFirstSetup(store, factory, ticket, setup, env);
+}).pipe(Effect.catchTag("WorktreeStepFailed", ({ reason }) =>
+  build.store.change((change) => recordOperationResult(change, build.operation.id, { status: "failed", result: { reason } })),
+));
