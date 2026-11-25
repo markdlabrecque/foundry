@@ -1,5 +1,6 @@
 // Integration tier: real disposable Git and SQLite prove creation intent, base and stage reuse.
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
@@ -253,6 +254,43 @@ test.each(["tracked", "untracked", "unmerged", "ignored", "whitespace-untracked"
     yield* worktrees.clean(undefined, 1, true, current.confirmation);
     expect(existsSync(path)).toBe(false);
     expect(yield* store.read(`SELECT state FROM ticket`)).toEqual([{ state: "cancelled" }]);
+  }));
+});
+
+test.each(["--assume-unchanged", "--skip-worktree"])("cleanup refuses changes hidden by %s unless confirmed force", async (flag) => {
+  await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    const path = join(root, "worktrees/shop/1-build-widget");
+    git(path, ["update-index", flag, "README.md"]);
+    writeFileSync(join(path, "README.md"), "hidden work");
+    expect(git(path, ["status", "--porcelain"])).toBe("");
+    const inspected = yield* worktrees.inspect(undefined, 1);
+    expect(inspected.files).toContain('index flag may hide tracked changes: "README.md"');
+    expect((yield* Effect.result(worktrees.clean(undefined, 1)))._tag).toBe("Failure");
+    expect(existsSync(path)).toBe(true);
+    writeFileSync(join(path, "README.md"), "changed hidden work");
+    expect((yield* Effect.result(worktrees.clean(undefined, 1, true, inspected.confirmation)))._tag).toBe("Failure");
+    const current = yield* worktrees.inspect(undefined, 1);
+    yield* worktrees.clean(undefined, 1, true, current.confirmation);
+    expect(existsSync(path)).toBe(false);
+  }));
+});
+
+test.each(["fifo", "oversized"])("inspection safely refuses %s entries without deleting work", async (kind) => {
+  await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
+    yield* scheduler.schedule();
+    yield* finishTicket(store);
+    const path = join(root, "worktrees/shop/1-build-widget");
+    const file = join(path, "unsafe-entry");
+
+    if (kind === "fifo") {execFileSync("mkfifo", [file]);}
+    else {writeFileSync(file, ""); truncateSync(file, 16 * 1024 * 1024 + 1);}
+
+    expect((yield* Effect.result(worktrees.inspect(undefined, 1)))._tag).toBe("Failure");
+    expect((yield* Effect.result(worktrees.clean(undefined, 1, true, "forged")))._tag).toBe("Failure");
+    expect(existsSync(file)).toBe(true);
+    expect(yield* worktrees.list()).toMatchObject({ worktrees: [{ ticket: 1 }] });
   }));
 });
 
