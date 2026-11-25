@@ -11,3 +11,9 @@ export {
   type StateRootClaim,
   type StateRootLockedReason,
 } from "./instance-lock.js";
+export {
+  discoverRepositoryContext,
+  type RepositoryContext,
+  type RepositoryContextFile,
+  type SkillHeader,
+} from "./repository-context.js";
