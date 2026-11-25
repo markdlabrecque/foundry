@@ -59,6 +59,29 @@ export const Compacted = Schema.Struct({
 });
 export type Compacted = typeof Compacted.Type;
 
+/**
+ * Daemon-initiated control (PRD §3.2): abort the worker's current Pi run. The
+ * conversation and the launch are kept; process termination never travels on
+ * the channel. Not `urgent` delivery, and agents cannot send it.
+ */
+export const Interrupt = Schema.Struct({
+  type: Schema.Literal("interrupt"),
+  requestId: Id,
+});
+export type Interrupt = typeof Interrupt.Type;
+
+/** `aborted`: a run was active and has settled after the abort. `idle`: no run was active. */
+export const InterruptOutcome = Schema.Literals(["aborted", "idle"]);
+export type InterruptOutcome = typeof InterruptOutcome.Type;
+
+/** The worker's answer to an `interrupt`, sent once Pi is idle again. */
+export const InterruptAck = Schema.Struct({
+  type: Schema.Literal("interrupt_ack"),
+  requestId: Id,
+  outcome: InterruptOutcome,
+});
+export type InterruptAck = typeof InterruptAck.Type;
+
 /** Why the daemon refused a hello. A terminal refusal stops the extension reconnecting. */
 export const HelloRejectReason = Schema.Struct({
   kind: Schema.Literals(["terminal", "retryable"]),
@@ -87,8 +110,12 @@ export const HelloRejected = Schema.Struct({
 export type HelloRejected = typeof HelloRejected.Type;
 
 /** Frames a worker sends after its hello is accepted. */
-export const WorkerFrame = Schema.Union([Heartbeat, Compacted]);
+export const WorkerFrame = Schema.Union([Heartbeat, Compacted, InterruptAck]);
 export type WorkerFrame = typeof WorkerFrame.Type;
+
+/** Frames the daemon sends after accepting a hello. */
+export const DaemonFrame = Interrupt;
+export type DaemonFrame = typeof DaemonFrame.Type;
 
 /** Frames the daemon sends in reply to a hello. */
 export const HelloReply = Schema.Union([HelloAccepted, HelloRejected]);
@@ -142,6 +169,7 @@ export const decodeHelloLine = (line: string): Decoded<Hello> => {
 
 const decodeWorkerFrameSchema = Schema.decodeUnknownResult(WorkerFrame);
 const decodeHelloReplySchema = Schema.decodeUnknownResult(HelloReply);
+const decodeDaemonFrameSchema = Schema.decodeUnknownResult(DaemonFrame);
 
 const decodeLine = <A>(line: string, decode: (u: unknown) => Result.Result<A, Schema.SchemaError>) => {
   const json = parseJson(line);
@@ -158,8 +186,11 @@ export const decodeWorkerFrameLine = (line: string) => decodeLine(line, decodeWo
 /** Decode the daemon's reply to a hello. */
 export const decodeHelloReplyLine = (line: string) => decodeLine(line, decodeHelloReplySchema);
 
+/** Decode a post-hello frame from the daemon. */
+export const decodeDaemonFrameLine = (line: string) => decodeLine(line, decodeDaemonFrameSchema);
+
 /** Serialize one frame as a newline-terminated JSON line. */
-export const encodeFrame = (frame: Hello | WorkerFrame | HelloReply): string => `${JSON.stringify(frame)}\n`;
+export const encodeFrame = (frame: Hello | WorkerFrame | HelloReply | DaemonFrame): string => `${JSON.stringify(frame)}\n`;
 
 /**
  * Split a byte stream into frame lines. Throws once a pending line exceeds

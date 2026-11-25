@@ -56,7 +56,17 @@ export interface FauxPi {
   dispose(): Promise<void>;
 }
 
-export function startFauxPi(options: { piBin?: string } = {}): FauxPi {
+export interface StartFauxPiOptions {
+  readonly piBin?: string;
+  /** More extension files to load after the faux provider and fixture tool. */
+  readonly extensions?: readonly string[];
+  /** More tool names to enable besides the fixture tool. */
+  readonly tools?: readonly string[];
+  /** Extra environment for the child, on top of the isolated one. */
+  readonly env?: Readonly<Record<string, string>>;
+}
+
+export function startFauxPi(options: StartFauxPiOptions = {}): FauxPi {
   const piBin = options.piBin ?? resolvePiBin();
   const root = mkdtempSync(join(tmpdir(), "foundry-faux-pi-"));
   const home = join(root, "home");
@@ -71,9 +81,10 @@ export function startFauxPi(options: { piBin?: string } = {}): FauxPi {
     "--no-extensions",
     "--extension", FAUX_PROVIDER_EXTENSION,
     "--extension", FIXTURE_TOOL_EXTENSION,
+    ...(options.extensions ?? []).flatMap((path) => ["--extension", path]),
     "--provider", FAUX_PROVIDER,
     "--model", FAUX_MODEL,
-    "--tools", FIXTURE_TOOL,
+    "--tools", [FIXTURE_TOOL, ...(options.tools ?? [])].join(","),
     "--no-context-files", "--no-skills", "--no-prompt-templates", "--no-themes",
     "--no-approve", "--offline",
     "--session-dir", sessions,
@@ -87,6 +98,7 @@ export function startFauxPi(options: { piBin?: string } = {}): FauxPi {
     PI_CODING_AGENT_DIR: agentDir,
     PI_OFFLINE: "1",
     PI_TELEMETRY: "0",
+    ...options.env,
   };
   const isJs = /\.[cm]?js$/.test(piBin);
   const child = spawn(isJs ? process.execPath : piBin, isJs ? [piBin, ...args] : args, {
