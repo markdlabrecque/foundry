@@ -19,6 +19,8 @@ export * from "./agent-request.js";
 
 export * from "./agent-delegate.js";
 
+export * from "./request-expiry.js";
+
 export * from "./agent-reply.js";
 
 export * from "./message-routing.js";
