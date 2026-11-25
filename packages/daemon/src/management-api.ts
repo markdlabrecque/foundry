@@ -12,7 +12,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { join } from "node:path";
-import { Schema } from "effect";
+import { Option, Schema } from "effect";
 import type { HoldsReader } from "./holds.js";
 import { HOLDS_PATH } from "@foundry/protocol/holds";
 import { EVENTS_PATH, managementSocketPath, parseEventsQuery, STATUS_PATH } from "@foundry/protocol/management-api";
@@ -25,8 +25,10 @@ import type { TicketService } from "./tickets.js";
 import { decodeLogQuery, LOGS_PATH } from "@foundry/protocol/log-query";
 import { readLogs } from "@foundry/protocol/log-read";
 import { matchFactoryPathPath } from "@foundry/protocol/factory-path";
-import { FACTORIES_PATH } from "@foundry/protocol/factories-api";
+import { FACTORIES_PATH, FactoryStopRequest, matchFactoryStopPath } from "@foundry/protocol/factories-api";
 import type { FactoriesReader } from "./factories.js";
+import { FactoryStopError } from "./factory-stop.js";
+import type { FactoryStopErrorCode, FactoryStopper } from "./factory-stop.js";
 import { matchSlotInterruptPath, matchSlotPath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
 import type { SlotInterrupter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
@@ -50,6 +52,8 @@ export interface ManagementApiInputs {
   readonly slots?: SlotsReader;
   /** Interrupts a slot's worker over its channel (PRD §5.3). Without it the route answers 503. */
   readonly slotInterrupter?: SlotInterrupter;
+  /** Stops one named factory (PRD §10.3). Without it the stop route answers 503. */
+  readonly stopper?: FactoryStopper;
 }
 
 export interface ManagementApi {
@@ -252,6 +256,10 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
     return;
   }
 
+  const stopping = matchFactoryStopPath(path);
+
+  if (stopping !== undefined) {return handleFactoryStop(inputs, stopping, request, response);}
+
   request.resume(); // The remaining routes read no body; drain it so the connection stays usable.
 
   if (path === LOGS_PATH) {return handleLogs(inputs, request, response, url.searchParams);}
@@ -313,6 +321,80 @@ const handleSlotInterrupt = (
       send(response, 500, failure("internal", `slot interrupt failed: ${messageOf(error)}`));
     }
   })();
+};
+
+/** Largest accepted stop body; it carries only `force`. */
+const STOP_BODY_LIMIT = 4096;
+
+const STOP_ERROR_STATUS: Record<FactoryStopErrorCode, number> = {
+  unknown_factory: 404,
+  factory_stopped: 409,
+  stop_unconfirmed: 409,
+};
+
+const decodeStopRequest = Schema.decodeUnknownOption(Schema.fromJsonString(FactoryStopRequest));
+
+const readSmallBody = (request: IncomingMessage, limit: number): Promise<string | undefined> =>
+  new Promise((resolve, reject) => {
+    let body = "";
+    let tooLarge = false;
+    request.setEncoding("utf8");
+    request.on("data", (chunk: string) => {
+      body += chunk;
+
+      if (Buffer.byteLength(body) > limit) {
+        tooLarge = true;
+        request.removeAllListeners("data");
+        request.resume();
+        resolve(undefined);
+      }
+    });
+    request.on("end", () => {
+      if (!tooLarge) {resolve(body);}
+    });
+    request.on("error", reject);
+  });
+
+/** `POST /api/v1/factories/<name>/stop`: answers once the stop is confirmed or has failed to confirm. */
+const handleFactoryStop = (
+  inputs: ManagementApiInputs,
+  factory: string | null,
+  request: IncomingMessage,
+  response: ServerResponse,
+): void => {
+  if (request.method !== "POST") {
+    request.resume();
+    response.setHeader("allow", "POST");
+
+    return send(response, 405, failure("method_not_allowed", "a factory stop only accepts POST"));
+  }
+
+  void (async (): Promise<readonly [number, ApiResponse<unknown>]> => {
+    const text = await readSmallBody(request, STOP_BODY_LIMIT);
+
+    if (factory === null) {return [400, failure("bad_request", "malformed factory name")];}
+
+    if (text === undefined) {return [413, failure("payload_too_large", `request body exceeds ${STOP_BODY_LIMIT} bytes`)];}
+
+    const decoded = decodeStopRequest(text.trim() === "" ? "{}" : text);
+
+    if (Option.isNone(decoded)) {return [400, failure("bad_request", "the body must be a JSON object with an optional boolean force")];}
+
+    const stopper = inputs.stopper;
+
+    if (stopper === undefined) {return [503, failure("unavailable", "factory stop is not served by this daemon")];}
+
+    try {
+      return [200, { ok: true, result: await stopper.stop(factory, decoded.value.force ?? false) }];
+    } catch (error) {
+      if (error instanceof FactoryStopError) {return [STOP_ERROR_STATUS[error.code], failure(error.code, error.message)];}
+
+      throw error;
+    }
+  })().then(
+    ([status, body]) => send(response, status, body),
+    (cause: unknown) => send(response, 500, failure("internal", `factory stop failed: ${messageOf(cause)}`)),
+  );
 };
 
 const handleEvents = (inputs: ManagementApiInputs, url: URL, request: IncomingMessage, response: ServerResponse): void => {

@@ -66,13 +66,14 @@ export class ReceiptReporter {
 
 export interface DaemonFrameHandlers {
   readonly adapter: Pick<ConversationAdapter, "inject">;
-  readonly interrupter: Pick<RunInterrupter, "handle">;
+  readonly interrupter: Pick<RunInterrupter, "handle" | "handleDrain">;
 }
 
 /**
  * The one dispatcher for daemon frames. Pass as `openChannel`'s `onFrame`:
  * a prime goes into the conversation (never starting a turn), an interrupt to
- * the run interrupter, which answers on the channel the frame arrived on.
+ * the run interrupter, which answers on the channel the frame arrived on, and
+ * a drain to the same interrupter, which answers once Pi settles.
  */
 export const receiveDaemonFrames =
   (handlers: DaemonFrameHandlers) =>
@@ -84,6 +85,10 @@ export const receiveDaemonFrames =
         return;
       case "interrupt":
         handlers.interrupter.handle(frame, channel);
+
+        return;
+      case "drain":
+        handlers.interrupter.handleDrain(frame, channel);
 
         return;
       default: {

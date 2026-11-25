@@ -92,6 +92,27 @@ export const InterruptAck = Schema.Struct({
 
 export type InterruptAck = typeof InterruptAck.Type;
 
+/**
+ * Daemon-initiated control (PRD §3.2, §10.3): a graceful stop is coming. The
+ * extension stops injecting held work and answers once Pi settles. Unlike
+ * `interrupt`, the current run is not aborted. Termination still belongs to
+ * the Worker Host and never travels on the channel.
+ */
+export const Drain = Schema.Struct({
+  type: Schema.Literal("drain"),
+  requestId: Id,
+});
+
+export type Drain = typeof Drain.Type;
+
+/** The worker's answer to a `drain`, sent once Pi is idle. */
+export const DrainAck = Schema.Struct({
+  type: Schema.Literal("drain_ack"),
+  requestId: Id,
+});
+
+export type DrainAck = typeof DrainAck.Type;
+
 /** Why the daemon refused a hello. A terminal refusal stops the extension reconnecting. */
 export const HelloRejectReason = Schema.Struct({
   kind: Schema.Literals(["terminal", "retryable"]),
@@ -135,7 +156,7 @@ export const Receipt = Schema.Struct({
 export type Receipt = typeof Receipt.Type;
 
 /** Frames a worker sends after its hello is accepted. */
-export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck]);
+export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck, DrainAck]);
 
 export type WorkerFrame = typeof WorkerFrame.Type;
 
@@ -152,7 +173,7 @@ export const Prime = Schema.Struct({
 export type Prime = typeof Prime.Type;
 
 /** Frames the daemon sends on an accepted connection, after `hello_accepted`. */
-export const DaemonFrame = Schema.Union([Prime, Interrupt]);
+export const DaemonFrame = Schema.Union([Prime, Interrupt, Drain]);
 
 export type DaemonFrame = typeof DaemonFrame.Type;
 

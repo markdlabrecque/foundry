@@ -94,6 +94,12 @@ export interface ChannelServer {
    * lost before the ack. Callers bound the wait themselves.
    */
   interrupt(launchId: string): Promise<InterruptOutcome>;
+  /**
+   * Ask the worker on `launchId`'s accepted channel to drain before a graceful stop (PRD §3.2,
+   * §10.3): stop injecting held work and answer once Pi settles, without aborting the run.
+   * Rejects with `ChannelUnavailableError` like `interrupt`. Callers bound the wait themselves.
+   */
+  drain(launchId: string): Promise<void>;
   close(): Promise<void>;
 }
 
@@ -109,6 +115,7 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
     /** The one writer for this connection; `interrupt()` and the primer both write through it. */
     readonly connection: AcceptedConnection;
     readonly pending: Map<string, { resolve: (o: InterruptOutcome) => void; reject: (e: Error) => void }>;
+    readonly drains: Map<string, { resolve: () => void; reject: (e: Error) => void }>;
   }
 
   const byLaunch = new Map<string, Accepted>();
@@ -138,6 +145,12 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         }
 
         accepted.pending.clear();
+
+        for (const { reject } of accepted.drains.values()) {
+          reject(new ChannelUnavailableError(slot.launchId, `was lost before the drain was acknowledged (${cause})`));
+        }
+
+        accepted.drains.clear();
       }
 
       if (wasAccepted && slot) {options.onChannelLost?.(slot, cause);}
@@ -196,7 +209,7 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
           }),
       };
 
-      accepted = { connection, pending: new Map() };
+      accepted = { connection, pending: new Map(), drains: new Map() };
       byLaunch.set(slot.launchId, accepted);
       socket.write(encodeFrame({ type: "hello_accepted", protocolVersion: PROTOCOL_VERSION }));
       armLapse();
@@ -225,6 +238,12 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         const waiter = accepted?.pending.get(decoded.value.requestId);
         accepted?.pending.delete(decoded.value.requestId);
         waiter?.resolve(decoded.value.outcome);
+      }
+
+      if (decoded.value.type === "drain_ack") {
+        const waiter = accepted?.drains.get(decoded.value.requestId);
+        accepted?.drains.delete(decoded.value.requestId);
+        waiter?.resolve();
       }
 
       options.onFrame?.(slot, decoded.value);
@@ -277,6 +296,23 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         // interrupt is a control frame, outside §5.5's prime-before-messages ordering.
         channel.connection.send({ type: "interrupt", requestId }).catch((cause: unknown) => {
           channel.pending.delete(requestId);
+          reject(new ChannelUnavailableError(launchId, `could not be written to (${String(cause)})`));
+        });
+      }),
+    drain: (launchId) =>
+      new Promise<void>((resolve, reject) => {
+        const channel = byLaunch.get(launchId);
+
+        if (!channel) {
+          reject(new ChannelUnavailableError(launchId, "is not connected"));
+
+          return;
+        }
+
+        const requestId = randomUUID();
+        channel.drains.set(requestId, { resolve, reject });
+        channel.connection.send({ type: "drain", requestId }).catch((cause: unknown) => {
+          channel.drains.delete(requestId);
           reject(new ChannelUnavailableError(launchId, `could not be written to (${String(cause)})`));
         });
       }),
