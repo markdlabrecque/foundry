@@ -5,6 +5,7 @@ import type { DaemonFrame, Hello, ReconciliationAnswer } from "@foundry/protocol
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
 import type { Store } from "./store.js";
 import { acknowledgeMessage } from "./message-delivery.js";
+import { releaseResumeReplacement } from "./resume-notice.js";
 import { decideMessageRetry } from "./message-retry.js";
 import type { RetryDecision, RetryEvidence } from "./message-retry.js";
 import { acknowledgePrime } from "./priming.js";
@@ -106,6 +107,10 @@ export const createReconciler = (store: Store) => {
                 const decided = decideMessageRetry({ status: item.status, launch, lifecycle: response.lifecycle ?? "unknown" });
 
                 if (decided !== "retry" || ended) {return yield* Effect.fail(new RetryUnchanged({ decision: decided }));}
+
+                const replacement = yield* releaseResumeReplacement(change, item.id, 'sent');
+
+                if (replacement !== null) {return decided;}
 
                 const updated = yield* change.query<{ id: string }>(
                   `UPDATE message SET status = 'bound' WHERE id = ? AND factory_id = ? AND bound_slot = ? AND status = 'sent' RETURNING id`,
