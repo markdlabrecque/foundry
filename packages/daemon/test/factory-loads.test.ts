@@ -2,7 +2,7 @@
 // message on refusal, the run and configuration-load rows in the state root's database, and the
 // knowledge directories on disk — so it runs the built foreground daemon against temp dirs.
 // Validation rules themselves are covered by the config unit tests; one invalid case suffices here.
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn, type ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -12,6 +12,18 @@ import { Effect } from "effect";
 import { DATABASE_FILE_NAME, openStore } from "@foundry/daemon";
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
+const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
+
+/** Runs the built `foundry` CLI without blocking, so the daemon's pipes keep draining. */
+const foundry = (args: ReadonlyArray<string>, home: string): Promise<{ code: number | null; stderr: string }> =>
+  new Promise((done) => {
+    execFile(
+      process.execPath,
+      [cliMain, ...args],
+      { env: { ...process.env, FOUNDRY_HOME: join(home, "not-this-one") }, timeout: 20_000 },
+      (error, _stdout, stderr) => done({ code: error === null ? 0 : typeof error.code === "number" ? error.code : null, stderr }),
+    );
+  });
 
 const roots: string[] = [];
 const children: ChildProcess[] = [];
@@ -87,10 +99,11 @@ const startDaemon = (home: string, files: ReadonlyArray<string>): Run => {
   return { child, exited, serving };
 };
 
-/** Starts the daemon, waits until it serves, and stops it cleanly. */
-const runOnce = async (home: string, files: ReadonlyArray<string>): Promise<void> => {
+/** Starts the daemon, waits until it serves, runs `whileServing`, and stops it cleanly. */
+const runOnce = async (home: string, files: ReadonlyArray<string>, whileServing?: () => Promise<void>): Promise<void> => {
   const run = startDaemon(home, files);
   await run.serving;
+  await whileServing?.();
   run.child.kill("SIGTERM");
   expect((await run.exited).code).toBe(0);
 };
@@ -130,7 +143,13 @@ test("a valid start records the run and its load, creates the empty knowledge la
   const file = factoryDir(factoryYaml("alpha"));
   const knowledge = join(dirname(file), "knowledge");
 
-  await runOnce(home, [file]);
+  // The loaded factory takes tickets through the real daemon's management API.
+  await runOnce(home, [file], async () => {
+    const spec = join(dirname(file), "spec.md");
+    writeFileSync(spec, "# First ticket\n");
+    const submitted = await foundry(["ticket", "submit", spec, "--home", home], home);
+    expect(submitted).toEqual({ code: 0, stderr: "" });
+  });
   await runOnce(home, [file]);
 
   const state = await readState(home);
@@ -147,6 +166,7 @@ test("a valid start records the run and its load, creates the empty knowledge la
     state.runs.flatMap((r, i) => [
       { factory_id: "", kind: "run.started", subject: r.id },
       { factory_id: "alpha", kind: "factory.config_loaded", subject: String(state.loads[i]!.id) },
+      ...(i === 0 ? [{ factory_id: "alpha", kind: "ticket.submitted", subject: "1" }] : []),
     ]),
   );
 

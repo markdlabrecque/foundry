@@ -13,7 +13,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { Cause, Effect, Exit, Scope } from "effect";
+import { Effect } from "effect";
 import {
   locateProblems,
   resolveConfiguredPath,
@@ -23,10 +23,8 @@ import {
   type EffectiveStation,
   type FactoryConfig,
 } from "./config/index.js";
-import { openStore, type Store, type StoreError } from "./store.js";
-
-/** The database file, relative to the state root. */
-export const DATABASE_FILE_NAME = "foundry.db";
+// Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
+import type { Store, StoreError } from "./store.js";
 
 /**
  * The factory ID on history rows that belong to the instance rather than one factory, such as
@@ -182,40 +180,17 @@ export const recordRun = (store: Store, run: RunRecord): Effect.Effect<ReadonlyA
     }),
   );
 
-/** The open database of a started run, held until `close`. */
-export interface StartedRun {
-  readonly store: Store;
-  readonly loads: ReadonlyArray<RecordedLoad>;
-  /** Closes the database. Never rejects. */
-  readonly close: () => Promise<void>;
-}
-
-export interface StartRunOptions extends RunRecord {
-  /** The claimed state root. The caller must hold its lock. */
-  readonly stateRoot: string;
-}
-
 /**
- * Opens the state root's database (refusing a newer schema), creates each factory's knowledge
- * layout, then records the run. On failure the database is closed and the cause rethrown.
+ * Creates each factory's knowledge layout, then records the run in the daemon's store. The store
+ * is the daemon's one open database; the caller must hold the state-root lock.
  */
-export const startRun = async (options: StartRunOptions): Promise<StartedRun> => {
-  const scope = Effect.runSync(Scope.make());
-  const close = async (): Promise<void> => {
-    await Effect.runPromiseExit(Scope.close(scope, Exit.void));
-  };
-  const run = <A, E>(effect: Effect.Effect<A, E>): Promise<A> =>
-    Effect.runPromiseExit(effect).then((exit) => {
-      if (Exit.isSuccess(exit)) return exit.value;
-      throw Cause.squash(exit.cause);
+export const startRun = (store: Store, run: RunRecord): Effect.Effect<ReadonlyArray<RecordedLoad>, StoreError | Error> =>
+  Effect.gen(function* () {
+    yield* Effect.try({
+      try: () => {
+        for (const factory of run.factories) createKnowledgeLayout(factory);
+      },
+      catch: (cause) => new Error(`cannot create the knowledge layout: ${(cause as Error).message}`),
     });
-  try {
-    const store = await run(openStore({ filename: join(options.stateRoot, DATABASE_FILE_NAME) }).pipe(Scope.provide(scope)));
-    for (const factory of options.factories) createKnowledgeLayout(factory);
-    const loads = await run(recordRun(store, options));
-    return { store, loads, close };
-  } catch (error) {
-    await close();
-    throw error;
-  }
-};
+    return yield* recordRun(store, run);
+  });

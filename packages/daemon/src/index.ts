@@ -21,6 +21,7 @@ export {
   type SkillHeader,
 } from "./repository-context.js";
 export * from "./store.js";
+export * from "./tickets.js";
 export * from "./prime.js";
 export {
   DAEMON_LOG_KEEP_FILES,
@@ -46,4 +47,15 @@ export {
   type ManagementApiInputs,
   type ManagementSocketRefusal,
 } from "./management-api.js";
+export {
+  closeHold,
+  getHold,
+  listOpenHolds,
+  raiseHold,
+  storeHoldsReader,
+  type HoldsReader,
+  type RaiseHold,
+  type RaiseOutcome,
+  type RaiseResult,
+} from "./holds.js";
 export * from "./factory-loads.js";
