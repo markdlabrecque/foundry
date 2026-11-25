@@ -4,9 +4,10 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { Effect } from "effect";
-import { acknowledgeMessage, detectStuckWorkers, openStore, recordMessageInjection as persistInjection, startStuckWorkerDetection, STUCK_WORKER_AFTER_MS } from "@foundry/daemon";
+import { acknowledgeMessage, createMessageDelivery, createReconciler, detectStuckWorkers, openSlotGate, openStore, recordMessageInjection as persistInjection, startStuckWorkerDetection, STUCK_WORKER_AFTER_MS } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
 import { InjectionReporter } from "@foundry/extension";
+import { PROTOCOL_VERSION } from "@foundry/protocol";
 
 const dirs: Array<string> = [];
 const slot = { factoryId: "shop", slotId: "builder/1", launchId: "launch" };
@@ -89,6 +90,47 @@ test("15-minute boundary excludes held when_idle, unsent, prime and disconnected
       AND kind IN ('message.acknowledged', 'hold.cleared') ORDER BY sequence`)))
       .toMatchObject([{ kind: "hold.cleared", sequence: expect.any(Number) }, { kind: "message.acknowledged", sequence: expect.any(Number) }]);
     expect(await sweep()).toBe(0);
+  });
+});
+
+test("same-launch absent/idle retry retires the old clock; held and newly injected replacement copies get no false hold", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(now);
+  await withStore(await database(), async (store) => {
+    await seed(store);
+    await Effect.runPromise(recordMessageInjection(store, slot, "injected"));
+    vi.setSystemTime(now + STUCK_WORKER_AFTER_MS);
+    const reconciler = createReconciler(store);
+    await reconciler.reconcile(slot, { type: "hello", protocolVersion: PROTOCOL_VERSION, ...slot,
+      conversationRef: "conversation", hasRecoverableHistory: true, mode: "headless", tools: [] }, {
+      send: async (frame) => {
+        if (frame.type === "reconcile") {
+          reconciler.receive(slot, { type: "reconciliation_answer", requestId: frame.requestId, lifecycle: "idle",
+            answers: frame.ids.map((id) => ({ id, status: id === "injected" ? "absent" : "pending" })) });
+        }
+      },
+    });
+    expect(await Effect.runPromise(store.read(`SELECT injected_at, retired_at FROM message_attempt WHERE id = 'injected'`)))
+      .toEqual([{ injected_at: now, retired_at: now + STUCK_WORKER_AFTER_MS }]);
+    // A delayed old report cannot reactivate the retired attempt while awaiting redelivery.
+    expect(await Effect.runPromise(persistInjection(store, slot, "injected", now))).toBe(false);
+    const errors: Array<unknown> = [];
+    const delivery = createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => errors.push(cause) });
+
+    try {
+      delivery.attach(slot, { send: async () => {} });
+      await delivery.idle();
+      expect(await Effect.runPromise(detectStuckWorkers(store, () => true))).toBe(0);
+      // The replacement stays uninjected (e.g. when_idle held by busy Pi), however old the retired clock gets.
+      vi.setSystemTime(now + 2 * STUCK_WORKER_AFTER_MS);
+      expect(await Effect.runPromise(detectStuckWorkers(store, () => true))).toBe(0);
+      expect(await Effect.runPromise(recordMessageInjection(store, slot, "injected"))).toBe(true);
+      vi.setSystemTime(now + 3 * STUCK_WORKER_AFTER_MS - 1);
+      expect(await Effect.runPromise(detectStuckWorkers(store, () => true))).toBe(0);
+      vi.setSystemTime(now + 3 * STUCK_WORKER_AFTER_MS);
+      expect(await Effect.runPromise(detectStuckWorkers(store, () => true))).toBe(1);
+      expect(errors).toEqual([]);
+    } finally { await delivery.stop(); }
   });
 });
 

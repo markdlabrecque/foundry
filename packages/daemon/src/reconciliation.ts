@@ -1,6 +1,6 @@
 /** PRD §6.3 comparison and evidence-gated retry. Channel loss is never death evidence. */
 import { randomUUID } from "node:crypto";
-import { Data, Effect } from "effect";
+import { Clock, Data, Effect } from "effect";
 import type { DaemonFrame, Hello, ReconciliationAnswer } from "@foundry/protocol";
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
 import type { Store } from "./store.js";
@@ -113,6 +113,13 @@ export const createReconciler = (store: Store) => {
                 );
 
                 if (updated.length === 0) {return yield* Effect.fail(new RetryUnchanged({ decision: decided }));}
+
+                // Only the proven-unconsumable copies are retired. Their historical clocks
+                // must not qualify again when redelivery changes the message back to sent.
+                const retiredAt = yield* Clock.currentTimeMillis;
+                yield* change.query(`UPDATE message_attempt SET retired_at = ?
+                  WHERE message_id = ? AND factory_id = ? AND slot_id = ? AND retired_at IS NULL`,
+                [retiredAt, item.id, slot.factoryId, slot.slotId]);
 
                 yield* change.recordHistory({ factoryId: slot.factoryId, kind: "message.retry_ready", subject: item.id,
                   detail: { slotId: slot.slotId, launchId: slot.launchId, launch, lifecycle: response.lifecycle ?? "unknown" } });

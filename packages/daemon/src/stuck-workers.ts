@@ -15,7 +15,7 @@ export const recordMessageInjection = (store: Store, slot: ClaimedSlot, id: stri
   store.change((change) => Effect.gen(function* () {
     const rows = yield* change.query<{ id: string }>(
       `UPDATE message_attempt SET injected_at = ? WHERE message_id = ? AND factory_id = ?
-       AND slot_id = ? AND launch_id = ? AND injected_at IS NULL AND acknowledged_at IS NULL
+       AND slot_id = ? AND launch_id = ? AND injected_at IS NULL AND acknowledged_at IS NULL AND retired_at IS NULL
        AND EXISTS (SELECT 1 FROM message m WHERE m.id = message_attempt.message_id
          AND m.factory_id = ? AND m.bound_slot = ? AND m.status = 'sent') RETURNING id`,
       [injectedAt, id, slot.factoryId, slot.slotId, slot.launchId, slot.factoryId, slot.slotId],
@@ -39,7 +39,7 @@ export const detectStuckWorkers = (store: Store, isConnected: (slot: ClaimedSlot
       id: string; factory_id: string; bound_slot: string; launch_id: string; injected_at: number;
     }>(`SELECT m.id, m.factory_id, m.bound_slot, a.launch_id, a.injected_at
         FROM message m JOIN message_attempt a ON a.message_id = m.id
-        WHERE m.status = 'sent' AND a.acknowledged_at IS NULL AND a.injected_at <= ?
+        WHERE m.status = 'sent' AND a.acknowledged_at IS NULL AND a.retired_at IS NULL AND a.injected_at <= ?
           AND a.factory_id = m.factory_id AND a.slot_id = m.bound_slot
           AND NOT EXISTS (SELECT 1 FROM operator_hold h WHERE h.factory_id = m.factory_id
             AND h.kind = 'stuck_worker' AND h.subject = m.id AND h.state = 'open')`,
