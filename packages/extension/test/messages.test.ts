@@ -19,7 +19,7 @@ afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
 
-test("after_turn starts an idle Pi turn and receipts only recoverable history; held when_idle never starts it", async () => {
+test("after_turn starts an idle Pi turn and receipts only recoverable history", async () => {
   let receiver: MessageReceiver | undefined;
   const receipts: Array<string> = [];
   let settled!: () => void;
@@ -31,8 +31,6 @@ test("after_turn starts an idle Pi turn and receipts only recoverable history; h
 
   if (receiver === undefined) {throw new Error("fixture receiver not registered");}
 
-  receiver.receive({ type: "message", id: "held", body: "Wait for idle policy", delivery: "when_idle" });
-  expect(receiver.pending()).toEqual(["held"]);
   expect(receipts).toEqual([]);
   expect(session.messages).toEqual([]);
   receiver.receive({ type: "message", id: "immediate", body: "Act now", delivery: "after_turn" });

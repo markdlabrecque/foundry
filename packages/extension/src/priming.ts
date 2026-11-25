@@ -68,6 +68,7 @@ export class ReceiptReporter {
 
 export interface DaemonFrameHandlers {
   readonly adapter: Pick<ConversationAdapter, "inject">;
+  readonly messages?: Pick<MessageReceiver, "receive">;
   readonly interrupter: Pick<RunInterrupter, "handle" | "handleDrain">;
   /** Receives tool results. Without one, a result is dropped: no call can be waiting on it. */
   readonly toolCalls?: Pick<ToolCallClient, "receive">;
@@ -80,7 +81,7 @@ export interface DaemonFrameHandlers {
  * a drain to the same interrupter, which answers once Pi settles.
  */
 export const receiveDaemonFrames = (handlers: DaemonFrameHandlers) => {
-  const messages = new MessageReceiver(handlers.adapter);
+  const messages = handlers.messages ?? new MessageReceiver(handlers.adapter);
 
   return (frame: DaemonFrame, channel: OpenChannel): void => {
     switch (frame.type) {
