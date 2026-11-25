@@ -94,3 +94,10 @@ test("a file that is not a socket is refused and never removed", async () => {
   expect((await refusal(serveManagementApi({ stateRoot: root, status: () => status }))).reason).toBe("not-a-socket");
   expect(readFileSync(path, "utf8")).toBe("operator data");
 });
+
+test("a factory path request with a malformed name answers 400; an unknown factory 404", async () => {
+  const api = await serveManagementApi({ stateRoot: tempRoot(), status: () => status, clonePath: () => undefined });
+  cleanups.push(() => api.close());
+  expect(await get(api.socketPath, "/api/v1/factories/%E0%A4/path")).toMatchObject({ status: 400, body: { ok: false, error: { code: "bad_request" } } });
+  expect(await get(api.socketPath, "/api/v1/factories/nope/path")).toMatchObject({ status: 404, body: { ok: false, error: { code: "not_found" } } });
+});

@@ -12,6 +12,7 @@ import { validateFactoryFile } from "./validate.js";
 import { runTicketList, runTicketShow, runTicketSubmit, type TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow, type HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
+import { runFactoryPath } from "./factory.js";
 import { runFactoryList } from "./factories.js";
 
 const validate = Command.make(
@@ -222,9 +223,16 @@ const factoryList = Command.make("list", commonFlags, ({ json, home }) =>
   ),
 ).pipe(Command.withDescription("List the loaded factories and their recorded configuration loads"));
 
+const factoryPath = Command.make("path", { ...commonFlags, name: Argument.String("name") }, ({ json, home, name }) =>
+  Effect.flatMap(
+    Effect.promise(() => runFactoryPath({ json, home: Option.getOrUndefined(home), env: process.env, name })),
+    print,
+  ),
+).pipe(Command.withDescription("Print the path of a factory's dedicated clone, to add as a Git remote"));
+
 const factory = Command.make("factory").pipe(
-  Command.withDescription("Factories loaded by the daemon"),
-  Command.withSubcommands([factoryList]),
+  Command.withDescription("Factories loaded by the daemon and their dedicated clones"),
+  Command.withSubcommands([factoryList, factoryPath]),
 );
 
 const foundry = Command.make("foundry").pipe(

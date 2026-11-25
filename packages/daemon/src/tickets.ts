@@ -73,8 +73,8 @@ export const TICKETS_DIR_NAME = "tickets";
 export const SPEC_FILE_NAME = "spec.md";
 export const EVIDENCE_DIR_NAME = "evidence";
 
-/** A factory name as one safe path segment: no separators, never `.` or `..`. */
-const pathSegment = (name: string): string => {
+/** A factory name as one safe path segment: no separators, never `.` or `..`. Shared with the factory clone path. */
+export const pathSegment = (name: string): string => {
   const encoded = encodeURIComponent(name);
   return encoded === "." || encoded === ".." ? encoded.replaceAll(".", "%2E") : encoded;
 };

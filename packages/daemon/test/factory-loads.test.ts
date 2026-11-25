@@ -3,13 +3,14 @@
 // knowledge directories on disk — so it runs the built foreground daemon against temp dirs.
 // Validation rules themselves are covered by the config unit tests; one invalid case suffices here.
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { Effect } from "effect";
 import { DATABASE_FILE_NAME, openStore } from "@foundry/daemon";
+import { isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { runFactoryList } from "@foundry/cli";
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
@@ -69,7 +70,7 @@ production_lines:
 /** A disposable factory directory with its repository source; returns the YAML path. */
 const factoryDir = (yaml: string): string => {
   const dir = tempRoot();
-  mkdirSync(join(dir, "repo"));
+  makeGitSource(join(dir, "repo"));
   const file = join(dir, "factory.yaml");
   writeFileSync(file, yaml);
   return file;
@@ -84,7 +85,8 @@ interface Run {
 const startDaemon = (home: string, files: ReadonlyArray<string>, env: Record<string, string> = {}): Run => {
   // FOUNDRY_HOME points elsewhere so the operator's root is never used.
   const child = spawn(process.execPath, [daemonMain, "--home", home, ...files], {
-    env: { ...process.env, ...env, FOUNDRY_HOME: join(home, "not-this-one") },
+    // Isolated Git: start clones the source, and the operator's Git config and hooks stay out of it.
+    env: { ...isolatedGitEnv(), ...env, FOUNDRY_HOME: join(home, "not-this-one") },
     stdio: ["ignore", "pipe", "pipe"],
   });
   children.push(child);

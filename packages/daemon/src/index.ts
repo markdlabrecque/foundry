@@ -62,5 +62,22 @@ export {
 export { readEvents, storeEventSource, type EventPageQuery, type EventSource } from "./events.js";
 export { formatEvent } from "./events-stream.js";
 export * from "./factory-loads.js";
+export {
+  CLONE_MARKER_FILE_NAME,
+  CLONES_DIR_NAME,
+  clearCloneStaging,
+  cloneGitEnv,
+  cloneRefusalOf,
+  cloneSource,
+  ensureFactoryClone,
+  factoryClonePath,
+  FactoryCloneError,
+  recordCloneRefusals,
+  type CloneMarker,
+  type CloneRefusal,
+  type CloneRefusalReason,
+  type EnsureCloneOptions,
+  type EnsuredClone,
+} from "./factory-clone.js";
 export * from "./start-refusal.js";
 export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";
