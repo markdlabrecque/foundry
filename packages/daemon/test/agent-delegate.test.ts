@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Schema } from "effect";
 import {
-  agentDelegateHandler, bindStationMessages, createAssignmentScheduler, createSubmissions,
+  acknowledgeMessage, agentDelegateHandler, agentReplyHandler, bindStationMessages, createAssignmentScheduler, createSubmissions,
   createTicketService, openStore, planSlots, ticketFactoryFrom, ToolRefusal,
 } from "@foundry/daemon";
 import type { Store, ToolHandler } from "@foundry/daemon";
-import { AGENT_DELEGATE } from "@foundry/protocol";
+import { AGENT_DELEGATE, AGENT_REPLY } from "@foundry/protocol";
 import { FactoryConfig } from "../src/config/schema.js";
 
 const dirs: Array<string> = [];
@@ -146,6 +146,128 @@ test("parent requires the same factory, selected slot, open state and active roo
     }));
     yield* refuse("suspended-child");
     yield* refuse("suspended-root", { recipient: "floor.worker", body: "No active root" }, sender);
+  }));
+});
+
+const responder = { ...sender, slotId: "reviewer/1", launchId: "replacement-reviewer" };
+const resolution = { outcome: "reviewed", evidence: "All acceptance checks pass" };
+
+const replies = (store: Store, handler = agentReplyHandler()) =>
+  createSubmissions({ store, handlers: new Map([[AGENT_REPLY, handler]]) });
+
+const selectedDelegation = (store: Store) => Effect.gen(function* () {
+  yield* Effect.promise(() => submit(store, "delegate"));
+  yield* bindStationMessages({ store, slots });
+  const delegation = (yield* snapshot(store)).delegations[0];
+
+  if (delegation === undefined) {throw new Error("delegation missing");}
+
+  return delegation;
+});
+
+test("acknowledgement leaves the obligation open; only its selected slot can resolve it with outcome and evidence", async () => {
+  const filename = await fixture();
+
+  const saved = await withStore(filename, (store) => Effect.gen(function* () {
+    const delegation = yield* selectedDelegation(store);
+    // A real receipt for a durable sent attempt must not resolve the obligation.
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE message SET status = 'sent' WHERE id = ?`, [delegation.notice_id]);
+      yield* change.query(`INSERT INTO message_attempt (id, factory_id, message_id, slot_id, launch_id, connection_id, sent_at)
+        VALUES ('attempt', 'shop', ?, 'reviewer/1', 'replacement-reviewer', 'connection', 1)`, [delegation.notice_id]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "attempt" });
+    }));
+    expect(yield* acknowledgeMessage(store, responder, delegation.notice_id)).toBe(true);
+    expect(yield* store.read(`SELECT status FROM delegation`)).toEqual([{ status: "open" }]);
+    const before = yield* snapshot(store);
+
+    const frame = { type: "tool_call", callId: "resolve", tool: AGENT_REPLY,
+      args: { delegationId: delegation.id, ...resolution, delegatingSlot: "spoof", ticket: 999 } } as const;
+
+    for (const identity of [sender, { ...responder, slotId: "reviewer/2" }, { ...responder, factoryId: "other" }]) {
+      expect(yield* Effect.promise(() => replies(store).submit(identity, frame))).toMatchObject({ status: "refused" });
+      expect(yield* snapshot(store)).toEqual(before);
+    }
+
+    for (const input of [{ delegationId: delegation.id }, { ...frame.args, evidence: "" },
+      { ...frame.args, outcome: "" }, { ...frame.args, requestId: "ambiguous" }]) {
+      expect(yield* Effect.promise(() => replies(store).submit(responder, { ...frame, args: input })))
+        .toMatchObject({ status: "refused", code: "invalid_arguments" });
+      expect(yield* snapshot(store)).toEqual(before);
+    }
+
+    const outcome = yield* Effect.promise(() => replies(store).submit(responder, frame));
+    expect(outcome).toMatchObject({ status: "committed", value: { delegationId: delegation.id, status: "completed" } });
+    expect(yield* store.read(`SELECT status FROM delegation`)).toEqual([{ status: "completed" }]);
+    expect(yield* store.read(`SELECT kind, delegation_id, request_id, ticket_number, recipient, bound_slot, status, body FROM message WHERE kind = 'reply'`))
+      .toEqual([{ kind: "reply", delegation_id: delegation.id, request_id: null, ticket_number: 1,
+        recipient: sender.slotId, bound_slot: sender.slotId, status: "bound", body: JSON.stringify(resolution) }]);
+    expect(yield* store.read(`SELECT detail FROM history WHERE kind = 'delegation.completed'`))
+      .toEqual([{ detail: expect.stringContaining(resolution.evidence) }]);
+    const completed = yield* snapshot(store);
+    expect(yield* Effect.promise(() => replies(store).submit({ ...responder, launchId: "next-launch" }, { ...frame, callId: "duplicate" })))
+      .toMatchObject({ status: "refused", code: "delegation_closed" });
+    expect(yield* snapshot(store)).toEqual(completed);
+
+    return { frame, outcome, completed };
+  }));
+
+  await withStore(filename, (store) => Effect.gen(function* () {
+    expect(yield* Effect.promise(() => replies(store).submit(responder, saved.frame))).toEqual(saved.outcome);
+    expect(yield* snapshot(store)).toEqual(saved.completed);
+    expect(yield* bindStationMessages({ store, slots })).toEqual([]);
+  }));
+});
+
+test("unselected and closed delegations cannot resolve; competing resolutions commit just one result", async () => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    yield* Effect.promise(() => submit(store, "delegate"));
+    const delegation = (yield* snapshot(store)).delegations[0];
+
+    const frame = { type: "tool_call", callId: "resolve", tool: AGENT_REPLY,
+      args: { delegationId: delegation?.id ?? "missing", ...resolution } } as const;
+
+    expect(yield* Effect.promise(() => replies(store).submit(responder, frame))).toMatchObject({ status: "refused", code: "wrong_recipient" });
+    yield* bindStationMessages({ store, slots });
+
+    for (const status of ["abandoned", "cancelled"]) {
+      yield* store.change((change) => Effect.gen(function* () {
+        yield* change.query(`UPDATE delegation SET status = ?`, [status]);
+        yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: status });
+      }));
+      const before = yield* snapshot(store);
+      expect(yield* Effect.promise(() => replies(store).submit(responder, frame))).toMatchObject({ status: "refused", code: "delegation_closed" });
+      expect(yield* snapshot(store)).toEqual(before);
+    }
+
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE delegation SET status = 'open'`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "reopen" });
+    }));
+    const outcomes = yield* Effect.promise(() => Promise.all(["one", "two"].map((callId) => replies(store).submit(responder, { ...frame, callId }))));
+    expect(outcomes.filter((outcome) => outcome.status === "committed")).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === "refused")).toMatchObject([{ code: "delegation_closed" }]);
+    expect(yield* store.read(`SELECT id FROM message WHERE kind = 'reply'`)).toHaveLength(1);
+    expect(yield* store.read(`SELECT sequence FROM history WHERE kind = 'delegation.completed'`)).toHaveLength(1);
+  }));
+});
+
+const failReply: ToolHandler = (change, call) => Effect.gen(function* () {
+  yield* agentReplyHandler()(change, call);
+  yield* change.query(`INSERT INTO nonexistent_table VALUES (1)`);
+
+  return null;
+});
+
+test("a failed resolution rolls back result, obligation state, history and submission together", async () => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    const delegation = yield* selectedDelegation(store);
+    const before = yield* snapshot(store);
+
+    const frame = { type: "tool_call", callId: "retry", tool: AGENT_REPLY, args: { delegationId: delegation.id, ...resolution } } as const;
+    expect(yield* Effect.promise(() => replies(store, failReply).submit(responder, frame))).toMatchObject({ status: "refused", code: "not_committed" });
+    expect(yield* snapshot(store)).toEqual(before);
+    expect(yield* Effect.promise(() => replies(store).submit(responder, frame))).toMatchObject({ status: "committed" });
   }));
 });
 
