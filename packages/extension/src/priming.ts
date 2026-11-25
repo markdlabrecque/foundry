@@ -9,7 +9,11 @@ import type { DaemonFrame } from "@foundry/protocol";
 import type { OpenChannel } from "./channel/client.js";
 import type { ConversationAdapter } from "./conversation/adapter.js";
 
-/** Sends receipts over the attached channel, holding them while there is none. */
+/**
+ * Sends receipts over the attached channel, holding them while there is none.
+ * Held receipts live in memory only and are lost if the worker restarts; the
+ * daemon reconciles unacknowledged IDs on reconnect (17a).
+ */
 export class ReceiptReporter {
   private readonly held: string[] = [];
   private sending = false;

@@ -71,7 +71,12 @@ const fromRow = (row: PrimeRow): PrimeRecord => ({
   acknowledgedAt: row.acknowledged_at,
 });
 
-/** Record a prime the daemon is about to send, unacknowledged, with its `prime.sent` history row. */
+/**
+ * Record a prime the daemon is about to send, unacknowledged, with its
+ * `prime.sent` history row. `prime.sent` means "recorded for sending": it is
+ * written before the frame, so a crash in between leaves a recorded prime the
+ * worker never saw (reconciled by 17a), never a sent prime with no record.
+ */
 export const recordPrime = (store: Store, prime: NewPrimeRecord): Effect.Effect<number, StoreError> =>
   store.change(({ query, recordHistory }) =>
     Effect.gen(function* () {
@@ -166,8 +171,11 @@ export const decideFreshPriming = (
 export type PrimingOutcome =
   /** The fresh prime was recorded and written to the connection. */
   | { readonly _tag: "Sent"; readonly primeId: string }
-  /** A reconnect from the same launch: no prime. */
-  | { readonly _tag: "Reconnect" }
+  /**
+   * A reconnect from the same launch: no prime. Carries the newest prime sent
+   * to this launch that is still unacknowledged, if any, for reconciliation (17a).
+   */
+  | { readonly _tag: "Reconnect"; readonly unacknowledgedPrimeId?: string }
   /** A recovery prime is due; sending it belongs to 41b. Nothing was sent. */
   | { readonly _tag: "NotFresh" }
   /** No effective station is known for the slot. Nothing was sent. */
@@ -211,11 +219,31 @@ export const createPrimer = (options: PrimerOptions): Primer => {
   const compose = options.compose ?? ((request: PrimeRequest) => composePrime(request));
   const newPrimeId = options.newPrimeId ?? (() => `prime-${randomUUID()}`);
   const run = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> => Effect.runPromise(effect);
+  // Decide-and-send runs one at a time per slot, so two hellos from one launch
+  // cannot both read "no prime yet" and both send a fresh prime.
+  const slotTurns = new Map<string, Promise<unknown>>();
+  const serialized = <A>(slot: ClaimedSlot, task: () => Promise<A>): Promise<A> => {
+    const key = JSON.stringify([slot.factoryId, slot.slotId]);
+    const previous = slotTurns.get(key) ?? Promise.resolve();
+    const next = previous.then(task, task);
+    const settled = next.then(
+      () => {},
+      () => {},
+    );
+    slotTurns.set(key, settled);
+    void settled.then(() => {
+      if (slotTurns.get(key) === settled) slotTurns.delete(key);
+    });
+    return next;
+  };
 
   const decideAndSend = async (slot: ClaimedSlot, hello: Hello, connection: AcceptedConnection): Promise<PrimingOutcome> => {
     const primes = await run(primesForConversation(options.store, slot.factoryId, slot.slotId, hello.conversationRef));
     const decision = decideFreshPriming(primes, slot.launchId);
-    if (decision === "reconnect") return { _tag: "Reconnect" };
+    if (decision === "reconnect") {
+      const unacknowledged = primes.filter((p) => p.launchId === slot.launchId && p.acknowledgedAt === null).at(-1);
+      return unacknowledged === undefined ? { _tag: "Reconnect" } : { _tag: "Reconnect", unacknowledgedPrimeId: unacknowledged.id };
+    }
     if (decision === "not_fresh") return { _tag: "NotFresh" };
 
     const request = options.primeRequest(slot);
@@ -246,7 +274,7 @@ export const createPrimer = (options: PrimerOptions): Primer => {
 
   return {
     prime(slot, hello, connection) {
-      const outcome = decideAndSend(slot, hello, connection);
+      const outcome = serialized(slot, () => decideAndSend(slot, hello, connection));
       const gate = outcome.then((settled) => {
         if (!opensConnection(settled)) throw new Error(`priming did not complete: ${settled._tag}`);
       });

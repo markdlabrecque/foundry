@@ -14,6 +14,7 @@ import {
   openStore,
   primesForConversation,
   startChannelServer,
+  type AcceptedConnection,
   type AcknowledgeOutcome,
   type ChannelServer,
   type PrimedConnection,
@@ -185,7 +186,7 @@ test("a reconnect from the same launch is not primed again, and a missing instru
   await first.closed;
 
   await connect(() => {});
-  expect(await (await daemon.nextAccepted()).outcome).toEqual({ _tag: "Reconnect" });
+  expect(await (await daemon.nextAccepted()).outcome).toEqual({ _tag: "Reconnect", unacknowledgedPrimeId: "prime-1" });
   expect(await conversationPrimes()).toHaveLength(1);
 
   // A fresh conversation on another slot whose instruction file is gone (freezing is 11c).
@@ -232,7 +233,8 @@ test("the prime alone starts no turn; once it is in the session file its receipt
   // A first user prompt makes Pi write the session file, prime included.
   const receipt = daemon.nextReceipt();
   await session.prompt("hello");
-  expect(await receipt).toBe("acknowledged");
+  // Bounded, so a missing receipt fails on the history assertion below rather than a vitest timeout.
+  await Promise.race([receipt, new Promise<void>((r) => setTimeout(r, 2_000).unref())]);
 
   expect((await conversationPrimes())[0]?.acknowledgedAt).toEqual(expect.any(Number));
   expect((await history()).map((h) => [h.kind, h.subject])).toEqual([
@@ -242,4 +244,38 @@ test("the prime alone starts no turn; once it is in the session file its receipt
   // A repeated receipt changes nothing.
   expect(await primer.receipt({ factoryId: "f1", slotId: "builder-1", launchId: "launch-1" }, "prime-1")).toBe("duplicate");
   expect(await history()).toHaveLength(2);
+});
+
+const slot = { factoryId: "f1", slotId: "builder-1", launchId: "launch-1" };
+
+test("the prime is on record before its frame is written, so a sent prime always has a record", async () => {
+  const recordedAtSend: Array<ReadonlyArray<string>> = [];
+  const stub: AcceptedConnection = {
+    send: async () => {
+      recordedAtSend.push((await conversationPrimes()).map((p) => p.id));
+    },
+  };
+  const primer = createPrimer({ store, primeRequest, newPrimeId: () => "prime-1" });
+
+  expect(await primer.prime(slot, hello, stub).outcome).toEqual({ _tag: "Sent", primeId: "prime-1" });
+  expect(recordedAtSend).toEqual([["prime-1"]]);
+});
+
+test("two hellos from one launch send one fresh prime; the reconnect names it while it is unacknowledged", async () => {
+  const written: string[] = [];
+  const stub: AcceptedConnection = { send: async (frame) => void written.push(frame.id) };
+  let n = 0;
+  const primer = createPrimer({ store, primeRequest, newPrimeId: () => `prime-${++n}` });
+
+  const outcomes = await Promise.all([primer.prime(slot, hello, stub).outcome, primer.prime(slot, hello, stub).outcome]);
+
+  expect(outcomes).toEqual([
+    { _tag: "Sent", primeId: "prime-1" },
+    { _tag: "Reconnect", unacknowledgedPrimeId: "prime-1" },
+  ]);
+  expect(written).toEqual(["prime-1"]);
+  expect(await conversationPrimes()).toHaveLength(1);
+
+  await primer.receipt(slot, "prime-1");
+  expect(await primer.prime(slot, hello, stub).outcome).toEqual({ _tag: "Reconnect" });
 });
