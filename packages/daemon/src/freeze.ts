@@ -76,6 +76,8 @@ export interface SlotFreezer extends SlotGate {
   freeze(request: FreezeRequest): Promise<FreezeOutcome>;
   /** Re-runs the slot's cause check and unfreezes it only if the check passes. */
   unfreeze(slot: SlotRef): Promise<UnfreezeResult>;
+  /** Gates senders and serializes with freeze/unfreeze while the scheduler replaces a conversation. */
+  reset<A>(slot: SlotRef, work: () => Promise<A>): Promise<A>;
 }
 
 export interface SlotFreezerOptions {
@@ -146,7 +148,7 @@ export const createSlotFreezer = async (options: SlotFreezerOptions): Promise<Sl
   const { store, checks } = options;
 
   const frozen = new Set(
-    (await run(store.read<FrozenRow>(`SELECT factory_id, slot_id FROM slot WHERE condition = 'frozen'`))).map((row) =>
+    (await run(store.read<FrozenRow>(`SELECT factory_id, slot_id FROM slot WHERE condition IN ('frozen', 'parked')`))).map((row) =>
       keyOf({ factoryId: row.factory_id, slotId: row.slot_id }),
     ),
   );
@@ -311,6 +313,25 @@ export const createSlotFreezer = async (options: SlotFreezerOptions): Promise<Sl
     },
     freeze: (request) => serial(() => freeze(request)),
     unfreeze: (slot) => serial(() => unfreeze(slot)),
+    reset: (slot, work) => serial(async () => {
+      const key = keyOf(slot);
+      frozen.add(key);
+
+      try {
+        return await work();
+      } finally {
+        // On failure keep a persisted freeze gated; on success release the new conversation.
+        const row = await run(readSlot(slot));
+
+        if (row?.condition !== "frozen" && row?.condition !== "parked") {
+          frozen.delete(key);
+
+          for (const listener of Array.from(listeners)) {
+            try { listener(slot); } catch { /* State has already committed. */ }
+          }
+        }
+      }
+    }),
   };
 };
 
