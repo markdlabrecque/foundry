@@ -29,6 +29,10 @@
       "types": "./dist/holds.d.ts",
       "default": "./dist/holds.js"
     },
+    "./factories-api": {
+      "types": "./dist/factories-api.d.ts",
+      "default": "./dist/factories-api.js"
+    },
     "./state-root": {
       "types": "./dist/state-root.d.ts",
       "default": "./dist/state-root.js"
