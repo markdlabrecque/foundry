@@ -1,6 +1,6 @@
 # Evidence: RPC explicit stop on macOS (launch gate 3)
 
-Ticket: FOU-128 (build plan ticket 54, macOS half; draft 54b). Product contract: PRD §17.2 gate 3 ("Explicit stop") and §17.3. The Linux half is FOU-122 (`docs/evidence/rpc-54-4-linux.md`).
+Ticket: FOU-128 (build plan ticket 54, macOS half; draft 54b). Product contract: PRD §17.2 gate 3 ("Explicit stop"). The ticket also cites §17.3, but none of its checks concerns explicit stop. The Linux half is FOU-122 (`docs/evidence/rpc-54-4-linux.md`).
 
 ## Outcome
 
@@ -24,7 +24,7 @@ The ticket ran unattended on a Linux workstation (agent run, 2026-11-25). An ope
 Recorded so a later macOS run can be compared with the tree this record was made against.
 
 - Foundry tree: `develop` at `bc83e3b` (after FOU-95, FOU-126, FOU-131 and FOU-138 merged).
-- Pi coding agent `1.6.0` and `@earendil-works/pi-ai` `1.6.0`, as pinned in `packages/host`, `packages/extension` and `packages/testkit`.
+- Pi coding agent `1.6.0`, pinned in `packages/host`, `packages/extension` and `packages/testkit`, read from the installed `node_modules/@earendil-works/pi-coding-agent/package.json`. `@earendil-works/pi-ai` `1.6.0` is pinned in `packages/testkit` only.
 - Node `v22.23.2`, npm `10.9.8`.
 - Host used: Linux (Omarchy, kernel 7.2.15, x86_64). **Not macOS.** No macOS version, Node build or Pi install was exercised.
 
@@ -43,21 +43,20 @@ Unchanged from `develop` at `bc83e3b`. A later run records any difference.
   --extension <foundry extension> [--extension <configured>…] [--skill <configured>…]
   ```
 
-  The cwd is the neutral slot folder, and `FOUNDRY_FACTORY_ID`, `FOUNDRY_SLOT` and `FOUNDRY_LAUNCH_ID` are set (`packages/host/src/launch-command.ts`).
-- **Stop:** `foundry factory stop <name> [--force]` drains, then calls `terminateGroup` (`packages/host/src/terminate.ts`). That sends SIGTERM to `-pgid`, waits `graceMs` (default 5000 ms), sends SIGKILL, then waits up to `killWaitMs` (default 5000 ms). A group counts as gone only once the leader is reaped and `kill(-pgid, 0)` reports `ESRCH`.
-- **Shutdown:** `foundry shutdown [--force]` stops every factory as above, then the Worker Host, then the daemon.
+  The argv is built by `buildLaunchArgs` (`packages/host/src/launch-command.ts`). With the default `rpc-entry`, `--mode rpc` appears twice in the real argv, which is harmless, so a recorded `ps` line showing it twice is not a discrepancy. The cwd is the neutral slot folder. The daemon sets `FOUNDRY_CHANNEL_SOCKET` in the launch spec (`packages/daemon/src/slots.ts`). At spawn time the host sets `FOUNDRY_FACTORY_ID`, `FOUNDRY_SLOT` and `FOUNDRY_LAUNCH_ID` on top of its own full environment (`packages/host/src/launches.ts`).
+- **Stop:** `foundry factory stop <name>`. Without `--force`, the daemon sends `drain` to the factory's live workers and waits up to `graceMs` for acknowledgements. The host then runs `terminateGroup` (`packages/host/src/terminate.ts`) on every launch the factory owns, including launches that have already ended. That sends SIGTERM to `-pgid` and waits up to `graceMs` (default 5000 ms). SIGKILL is sent only if the group is still present after that wait (`escalated: true`), followed by a wait of up to `killWaitMs` (default 5000 ms). A group counts as gone only once the leader is reaped and `kill(-pgid, 0)` reports `ESRCH`. If it is not gone, the outcome is `unconfirmed` and the stop fails with `stop_unconfirmed`. `--force` skips the drain and SIGTERM and sends SIGKILL straight away (`graceMs: 0`), so it never exercises escalation.
+- **Shutdown:** `foundry shutdown [--force]` stops every factory concurrently as above (factories already stopped are skipped). It then terminates any stray launches the host owns for factories not started in this run, then stops the Worker Host, then the daemon. If any group is unconfirmed, the result is `shutdown_unconfirmed` (exit 1) and the host is left running.
 
 ## What a macOS run must record to close the gate
 
 Run on macOS with a faux provider (PRD §17.2) and disposable fixtures only: a fresh `mktemp -d` state root passed as `--home`, an isolated `HOME`, `PI_CODING_AGENT_DIR` and `XDG_*`, and no operator `~/.pi` or `~/.foundry`.
 
-1. The macOS version and architecture, `node --version`, `pi --version` and the Foundry commit.
-2. The exact launcher, as above, and the effective fixture: two factories, each with at least one active worker, and the YAML used.
-3. Before the stop: each worker's launch ID, PID and PGID (`ps -o pid,pgid,command`).
-4. `foundry factory stop <A>`: every group of A is gone (`kill -0 -<pgid>` → `ESRCH`), and B's group is alive with the same launch ID.
-5. Escalation: a worker of A has a child that ignores SIGTERM and is spawned without `detached`, so it shares the worker's group. Show SIGTERM, the grace period, then SIGKILL (`escalated: true`), with the child gone too.
-6. `foundry shutdown`: no group from the run's launches remains and the Worker Host has exited.
-7. A result of supported, blocked on the tested approaches, or inconclusive, with the limits.
+1. The macOS version and architecture, the Foundry commit, the `node --version` of the Node that runs the Worker Host, and the Pi version the launcher actually runs. That version comes from `@earendil-works/pi-coding-agent/package.json` as resolved in the Foundry checkout, together with whether `FOUNDRY_PI_BIN` was set. Do not use the `pi --version` of a `pi` on PATH.
+2. The exact launcher, as above, and the effective fixture: two factories, A and B, each with at least one worker mid-run on a faux-provider turn (active work, so the drain path runs), and the YAML used.
+3. Before the stop: each worker's launch ID, PID and PGID (`ps -o pid,pgid,command`). In A, one worker must have a child that ignores SIGTERM and was spawned without `detached`. Record the child's PID and confirm that its PGID equals the worker's.
+4. A graceful `foundry factory stop A`, **without `--force`**. In that stop, record the drain, SIGTERM, the child surviving the grace period, then SIGKILL with `escalated: true` reported for that launch. Then record every group of A gone, including the child: `kill -0 -- -<pgid>` prints "No such process". B's group must still be alive with the same launch ID.
+5. `foundry shutdown`: exits 0, no group from the run's launches remains, and the Worker Host has exited.
+6. A result of supported, blocked on the tested approaches, or inconclusive, with the limits.
 
 ## Limits of this evidence
 
