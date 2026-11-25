@@ -6,12 +6,12 @@
  * Daemon frames go to the existing handlers: a prime into the conversation adapter, an interrupt
  * to the run interrupter. Receipts and compaction reports travel back on the attached channel.
  *
- * Out of scope here: redialling after the channel is lost or a retryable refusal (reconnect), and
- * failing agent tools after a terminal refusal; those land with the agent tools and the RPC gates.
+ * Terminal hello refusals disable this launch's channel and tools. A general reconnect/backoff
+ * loop after a lost channel or retryable refusal remains out of scope.
  */
 import { existsSync } from "node:fs";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { AGENT_DISCOVER, AGENT_MESSAGE, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
+import { AGENT_DISCOVER, AGENT_MESSAGE, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello, ToolCallOutcome } from "@foundry/protocol";
 import { Type } from "typebox";
 import { openChannel } from "./channel/client.js";
@@ -77,23 +77,26 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
 
   const toolCalls = new ToolCallClient();
 
-  pi.registerTool({
-    name: AGENT_DISCOVER,
-    label: "Discover stations and slots",
-    description: "List the configured stations and slots in your factory.",
-    parameters: Type.Object({}, { additionalProperties: false }),
-    async execute(callId): Promise<AgentToolResult<ToolCallOutcome>> {
-      const outcome = await toolCalls.call(callId, AGENT_DISCOVER, {});
+  for (const tool of [
+    { name: AGENT_DISCOVER, label: "Discover stations and slots", description: "List the configured stations and slots in your factory." },
+    { name: AGENT_STATUS, label: "Inspect station and slot availability", description: "Inspect your factory's station capacity and recorded slot conditions and launch state. Normal or unended does not prove idle, reachable, or host-confirmed vacant capacity." },
+  ]) {
+    pi.registerTool({
+      ...tool,
+      parameters: Type.Object({}, { additionalProperties: false }),
+      async execute(callId): Promise<AgentToolResult<ToolCallOutcome>> {
+        const outcome = await toolCalls.call(callId, tool.name, {});
 
-      if (outcome.status === "committed") {
-        return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
-      }
+        if (outcome.status === "committed") {
+          return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
+        }
 
-      const code = outcome.status === "refused" ? outcome.code : outcome.status;
+        const code = outcome.status === "refused" ? outcome.code : outcome.status;
 
-      return { content: [{ type: "text", text: `${code}: ${outcome.detail}` }], details: outcome, isError: true };
-    },
-  });
+        return { content: [{ type: "text", text: `${code}: ${outcome.detail}` }], details: outcome, isError: true };
+      },
+    });
+  }
 
   pi.registerTool({
     name: AGENT_MESSAGE,
@@ -124,7 +127,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   pi.on("session_start", async (_event, ctx) => {
     // One dial per launch for now: a later `session_start` (`/new`, `/resume`, `/reload`) on a live
     // channel is not re-announced. Conversation-change handling belongs to the reconnect work.
-    if (channel !== undefined || dialling) {return;}
+    if (toolCalls.terminallyRefused || channel !== undefined || dialling) {return;}
 
     dialling = true;
 
@@ -132,6 +135,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
       const opened = await openChannel({ socketPath: launch.socketPath, hello: helloFor(pi, launch, ctx), onFrame });
 
       if (!opened.accepted) {
+        toolCalls.refuse(opened.reason);
         // The host keeps the launch's stderr, so a worker that never connects can be diagnosed.
         process.stderr.write(`foundry: channel hello refused (${opened.reason.kind} ${opened.reason.code})\n`);
 

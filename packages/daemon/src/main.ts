@@ -34,7 +34,7 @@ import type { DaemonLogger, LogLevel, LogRefs } from "./log.js";
 import { ManagementSocketError, serveManagementApi } from "./management-api.js";
 import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
-import { AGENT_DISCOVER, AGENT_MESSAGE, channelSocketPath } from "@foundry/protocol";
+import { AGENT_DISCOVER, AGENT_MESSAGE, AGENT_STATUS, channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
 import { connectHost, resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
@@ -54,6 +54,7 @@ import type { ShutdownHost } from "./shutdown.js";
 import { createToolSetGuard, createToolSetRecheck, expectedToolSet, frozenConversation } from "./tool-set-check.js";
 import { createSubmissions } from "./submissions.js";
 import { agentDiscoverHandler } from "./agent-discover.js";
+import { agentStatusHandler } from "./agent-status.js";
 import { agentMessageHandler } from "./agent-message.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
@@ -420,6 +421,7 @@ const main = async (): Promise<void> => {
           store,
           handlers: new Map([
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
+            [AGENT_STATUS, agentStatusHandler(plannedSlots)],
             [AGENT_MESSAGE, agentMessageHandler(plannedSlots)],
           ]),
           gate: freezer,

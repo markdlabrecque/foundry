@@ -15,10 +15,11 @@ const privateVar = (source: string) => source.replace(/^\/var\//, "/private/var/
 
 const builtins = PI_BUILTIN_TOOLS.map((name) => ({ name, source: `builtin:${name}` }));
 
-test("the expected Tool Set includes Pi's built-ins, discovery, messaging, and each named extension tool", () => {
+test("the expected Tool Set includes Pi's built-ins, discovery, status, messaging, and each named extension tool", () => {
   expect(expectedToolSet(station, FOUNDRY)).toEqual([
     ...builtins,
     { name: "agent_discover", source: FOUNDRY },
+    { name: "agent_status", source: FOUNDRY },
     { name: "agent_message", source: FOUNDRY },
     { name: "web_fetch", source: PROJECT },
   ]);
