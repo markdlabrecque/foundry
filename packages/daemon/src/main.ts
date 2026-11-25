@@ -15,8 +15,15 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createKnowledgeLayout, loadFactoryFiles, recordRun, type LoadedFactory, type RecordedLoad } from "./factory-loads.js";
 import { makeTicketService, ticketFactoryFrom } from "./tickets.js";
-import { ensureFactoryClone, type EnsuredClone } from "./factory-clone.js";
-import { decideFactoryStarts, describeBlocker, type StartDecision } from "./start-refusal.js";
+import {
+  clearCloneStaging,
+  cloneRefusalOf,
+  ensureFactoryClone,
+  recordCloneRefusals,
+  type CloneRefusal,
+  type EnsuredClone,
+} from "./factory-clone.js";
+import { decideFactoryStarts, describeBlocker, type StartBlocker, type StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
@@ -131,8 +138,16 @@ const main = async (): Promise<void> => {
   }
 
   const startedAt = new Date().toISOString();
-  // The dedicated clone of each factory (PRD §9.1): created once, then reused without contacting the source.
+  // Staging left by a daemon that died mid-clone; safe to remove under the claim, before any clone starts.
+  try {
+    for (const leftover of clearCloneStaging(stateRoot)) log.info("clone staging removed", { detail: { path: leftover } });
+  } catch (error) {
+    log.warn("clone staging not removed", { detail: { error: (error as Error).message } });
+  }
+  // The dedicated clone of each factory (PRD §9.1): created once, then reused without contacting the
+  // source. A clone that fails refuses that factory alone (§11.6), recorded once the run is.
   const clones = new Map<string, EnsuredClone>();
+  const cloneRefusals: CloneRefusal[] = [];
   for (const factory of factories) {
     try {
       const clone = await ensureFactoryClone(factory, { stateRoot });
@@ -141,13 +156,14 @@ const main = async (): Promise<void> => {
         factoryId: factory.factoryId,
         detail: { path: clone.path, source: clone.source },
       });
+      if (clone.source !== clone.configuredSource) {
+        log.warn("factory clone source differs from configuration", {
+          factoryId: factory.factoryId,
+          detail: { path: clone.path, clonedFrom: clone.source, configured: clone.configuredSource },
+        });
+      }
     } catch (error) {
-      log.error("factory clone refused", { factoryId: factory.factoryId, detail: { error: (error as Error).message } });
-      await closeStore();
-      log.close();
-      claim.release();
-      fail((error as Error).message);
-      return;
+      cloneRefusals.push(cloneRefusalOf(stateRoot, factory.factoryId, error));
     }
   }
   let loads: ReadonlyArray<RecordedLoad>;
@@ -177,14 +193,24 @@ const main = async (): Promise<void> => {
       detail: { loadId: load.loadId, configHash: load.configHash },
     });
   }
-  // A factory whose open records name removed configuration is refused alone (PRD §4, §11.6):
-  // the daemon keeps running and the other factories start.
+  // A factory whose open records name removed configuration, or whose clone failed, is refused
+  // alone (PRD §4, §11.6): the daemon keeps running and the other factories start.
+  const cloneRefused = new Set(cloneRefusals.map((r) => r.factoryId));
   let decision: StartDecision;
   try {
+    await Effect.runPromise(
+      recordCloneRefusals(
+        store,
+        cloneRefusals.map((r) => {
+          const loadId = loads.find((l) => l.factoryId === r.factoryId)?.loadId;
+          return loadId === undefined ? r : { ...r, loadId };
+        }),
+      ),
+    );
     decision = await Effect.runPromise(
       decideFactoryStarts(
         store,
-        loads.map((l) => ({ factoryId: l.factoryId, loadId: l.loadId, config: factories.find((f) => f.factoryId === l.factoryId)!.config })),
+        loads.filter((l) => !cloneRefused.has(l.factoryId)).map((l) => ({ factoryId: l.factoryId, loadId: l.loadId, config: factories.find((f) => f.factoryId === l.factoryId)!.config })),
       ),
     );
   } catch (error) {
@@ -194,6 +220,12 @@ const main = async (): Promise<void> => {
     claim.release();
     fail(`cannot check open records in ${stateRoot}: ${(error as Error).message}`);
     return;
+  }
+  for (const refused of cloneRefusals) {
+    log.warn("factory start refused", {
+      factoryId: refused.factoryId,
+      detail: { reason: refused.reason, clonePath: refused.clonePath, error: refused.message },
+    });
   }
   for (const refused of decision.refused) {
     log.warn("factory start refused", {
@@ -211,7 +243,10 @@ const main = async (): Promise<void> => {
   const loadIds = new Map(loads.map((l) => [l.factoryId, String(l.loadId)]));
   // This run's refusals and their blockers, held in daemon state so status and the factory list
   // can show them without reading history. Recomputed on every start.
-  const refusedFactories = new Map(decision.refused.map((r) => [r.factoryId, r.blockers]));
+  const refusedFactories = new Map<string, { readonly blockers: ReadonlyArray<StartBlocker> } | { readonly clone: CloneRefusal }>([
+    ...cloneRefusals.map((r) => [r.factoryId, { clone: r }] as const),
+    ...decision.refused.map((r) => [r.factoryId, { blockers: r.blockers }] as const),
+  ]);
   void refusedFactories;
 
   // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:

@@ -65,11 +65,17 @@ export * from "./factory-loads.js";
 export {
   CLONE_MARKER_FILE_NAME,
   CLONES_DIR_NAME,
+  clearCloneStaging,
+  cloneGitEnv,
+  cloneRefusalOf,
   cloneSource,
   ensureFactoryClone,
   factoryClonePath,
   FactoryCloneError,
+  recordCloneRefusals,
   type CloneMarker,
+  type CloneRefusal,
+  type CloneRefusalReason,
   type EnsureCloneOptions,
   type EnsuredClone,
 } from "./factory-clone.js";
