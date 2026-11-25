@@ -112,6 +112,17 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
           if (capacity.length === 0 || options.ready?.(ticket, slot) === false) {continue;}
 
           if (slot.station.isolation === 'worktree' && ticket.worktree_path === null) {
+            if (options.prepareWorktree === undefined) {continue;}
+
+            const attempted = yield* change.query(
+              `SELECT 1 FROM operation WHERE factory_id = ? AND ticket_number = ? AND kind = 'worktree_create'`,
+              [ticket.factory_id, ticket.number],
+            );
+
+            // Failed or interrupted creation needs explicit recovery, not capacity. Other tickets
+            // must still be considered, even when the oldest ticket cannot be prepared.
+            if (attempted.length > 0) {continue;}
+
             pending.push(ticket);
             preparingSlots.add(slotKey);
             break;

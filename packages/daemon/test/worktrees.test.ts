@@ -139,6 +139,48 @@ test("a colliding branch is never overwritten or assigned and failed creation is
   }));
 });
 
+test("failed creation does not reserve capacity needed by a later ticket", async () => {
+  await fixture(({ store, root, clone, scheduler }) => Effect.gen(function* () {
+    git(clone, ["branch", "ticket/1-build-widget"]);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`INSERT INTO ticket (factory_id, number, title, slug, production_line, directory, state,
+        rejection_ceiling, message_ceiling, submitted_at)
+        SELECT factory_id, 2, 'Next widget', 'next-widget', production_line, directory, 'backlog',
+          rejection_ceiling, message_ceiling, submitted_at + 1 FROM ticket WHERE number = 1`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "second ticket" });
+    }));
+    expect(yield* scheduler.schedule()).toEqual([]);
+    expect(yield* scheduler.schedule()).toMatchObject([{ ticket: 2 }]);
+    expect(yield* scheduler.schedule()).toEqual([]);
+    expect(yield* listOperations(store, "shop")).toMatchObject([
+      { ticket: 1, status: "failed" }, { ticket: 2, status: "complete" },
+    ]);
+    expect(git(join(root, "worktrees", "shop", "2-next-widget"), ["branch", "--show-current"])).toBe("ticket/2-next-widget");
+  }));
+});
+
+test("lifecycle and readiness gates prevent creation and are rechecked after preparation", async () => {
+  await fixture(({ store, newScheduler }) => Effect.gen(function* () {
+    expect(yield* newScheduler({ inScope: () => false }).schedule()).toEqual([]);
+    expect(yield* newScheduler({ ready: () => false }).schedule()).toEqual([]);
+    expect(yield* listOperations(store, "shop")).toEqual([]);
+    // onCommit changes lifecycle precisely when the operation completes, before the second scan.
+    let running = true;
+    const unsubscribe = store.onCommit(() => { running = false; });
+
+    try {
+      expect(yield* newScheduler({ inScope: () => running }).schedule()).toEqual([]);
+    } finally {
+      unsubscribe();
+    }
+
+    expect(yield* listOperations(store, "shop")).toMatchObject([{ status: "complete" }]);
+    expect(yield* store.read(`SELECT * FROM assignment`)).toEqual([]);
+    expect(yield* newScheduler().schedule()).toHaveLength(1);
+    expect(yield* listOperations(store, "shop")).toHaveLength(1);
+  }));
+});
+
 test("configured tilde root and branch pattern are used", async () => {
   await fixture(({ store, root, scheduler }) => Effect.gen(function* () {
     expect(yield* scheduler.schedule()).toHaveLength(1);
