@@ -158,6 +158,27 @@ test("failure after handler writes rolls back outcome, assignment, history and s
   }));
 });
 
+test.each([
+  { label: "non-final approval", approval: true, writing: false, station: "floor.worker" },
+  { label: "writing", approval: false, writing: true, station: "floor.worker" },
+  { label: "non-writing worktree", approval: false, writing: false, station: "floor.reviewer" },
+])("$label guard independently refuses without effects", async ({ approval, writing, station }) => {
+  await fixture((store, id) => Effect.gen(function* () {
+    // Structural fixtures isolate each guard; writing/non-worktree is deliberately not a valid
+    // loadable production line, but still must not bypass the handler's writing-stage guard.
+    const guardedConfig = { ...config, production_lines: { standard: {
+      ...config.production_lines.standard,
+      stages: [{ id: "plan", station, approval, writing }, { id: "next", station: "floor.worker", approval: false, writing: false }],
+    } } };
+
+    const guardedHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({ factories: [{ factoryId: "shop", config: guardedConfig }] })]]);
+    const before = yield* snapshot(store);
+    expect(yield* Effect.promise(() => createSubmissions({ store, handlers: guardedHandlers }).submit(owner, frame(id))))
+      .toMatchObject({ status: "refused", code: "unsupported_transition" });
+    expect(yield* snapshot(store)).toEqual(before);
+  }));
+});
+
 test("adjacent approval/code/final workflows fail closed without effects", async () => {
   await fixture((store, id) => Effect.gen(function* () {
     for (const stage of ["implement", "review"]) {
