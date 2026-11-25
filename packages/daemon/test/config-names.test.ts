@@ -15,6 +15,10 @@ ${rooms}production_lines:
       - id: develop
         station: engineering.developer
         writing: true
+      - id: integrate
+        station: engineering.developer
+        approval: true
+        on_rejection: develop
 `;
 
 // Rooms begin on line 8.

@@ -11,9 +11,12 @@ import {
   HEARTBEAT_INTERVAL_MS,
   type Hello,
   type HelloRejectReason,
+  type WorkerFrame,
 } from "@foundry/protocol";
 
 export interface OpenChannel {
+  /** Write one frame. Resolves once written to the socket; rejects if the channel is closed. */
+  send(frame: WorkerFrame): Promise<void>;
   /** Stop heartbeating and close the connection. */
   close(): void;
   /** Settles when the connection ends, for whatever reason. */
@@ -84,6 +87,11 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
       resolve({
         accepted: true,
         channel: {
+          send: (frame) =>
+            new Promise<void>((done, failed) => {
+              if (socket.destroyed || !socket.writable) return failed(new Error("channel is closed"));
+              socket.write(encodeFrame(frame), (error) => (error ? failed(error) : done()));
+            }),
           close: () => {
             stop();
             socket.end();

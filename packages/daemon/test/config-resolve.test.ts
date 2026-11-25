@@ -6,7 +6,7 @@ import type { EffectiveStation, ResolveResult } from "@foundry/daemon/config";
 // environment and the YAML's directory. No files are read.
 const baseDir = "/factory";
 
-/** A factory whose `defaults` and one station's settings vary per case. */
+/** A factory whose `defaults` and one station's settings vary per case; `ops.gate` only completes the line's final-stage contract. */
 const factory = (defaults: string, room: string, station: string): string => `version: 1
 name: f
 repository:
@@ -17,11 +17,21 @@ ${defaults === "" ? "" : `defaults:\n${defaults}`}rooms:
   eng:
 ${room}    stations:
       dev:
-${station === "" ? "        isolation: none\n" : station}production_lines:
+${station === "" ? "        isolation: none\n" : station}  ops:
+    stations:
+      gate: { isolation: worktree, model: p/m }
+production_lines:
   l:
     stages:
       - id: a
         station: eng.dev
+      - id: w
+        station: ops.gate
+        writing: true
+      - id: z
+        station: ops.gate
+        approval: true
+        on_rejection: w
 `;
 
 const resolveText = (text: string, env: Record<string, string | undefined> = {}): ResolveResult => {

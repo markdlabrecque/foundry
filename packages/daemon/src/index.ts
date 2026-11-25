@@ -3,6 +3,7 @@ export const packageName = "@foundry/daemon" as const;
 
 export * from "./channel/server.js";
 export { channelLogEvents } from "./channel/log-events.js";
+export * from "./channel/slot-claim.js";
 export { selectStateRoot, type StateRootInputs } from "@foundry/protocol/state-root";
 export {
   claimStateRoot,
