@@ -110,7 +110,7 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
           const now = yield* Clock.currentTimeMillis;
 
           const message = yield* acceptMessage(change, {
-            factoryId: ticket.factory_id, senderSlot: "", recipient: slot.station.address,
+            factoryId: ticket.factory_id, senderKind: "daemon", senderSlot: null, recipient: slot.station.address,
             kind: "ordinary", delivery: "after_turn", correlation: { ticket: ticket.number },
             body: `Ticket ${ticket.number}: ${ticket.title}\nProduction line: ${ticket.production_line}\nStage: ${stage.id}\nAssignment: ${id}\nSlot: ${slot.slotId}\nSpecification: ${join(ticket.directory, 'spec.md')}\nEvidence: ${join(ticket.directory, 'evidence')}\nWorktree: ${ticket.worktree_path ?? 'none (write only in the ticket directory)'}`,
           }).pipe(Effect.catchTag("ToolRefusal", Effect.die)); // No agent guards: daemon context cannot be refused.

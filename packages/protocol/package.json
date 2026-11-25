@@ -13,6 +13,10 @@
       "types": "./dist/management-api.d.ts",
       "default": "./dist/management-api.js"
     },
+    "./messages-api": {
+      "types": "./dist/messages-api.d.ts",
+      "default": "./dist/messages-api.js"
+    },
     "./tickets-api": {
       "types": "./dist/tickets-api.d.ts",
       "default": "./dist/tickets-api.js"
