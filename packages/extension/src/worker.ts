@@ -19,6 +19,7 @@ import { CompactionReporter } from "./compaction.js";
 import { createConversationAdapter } from "./conversation/adapter.js";
 import { interruptRuns, RunInterrupter } from "./interrupt.js";
 import { ReceiptReporter, receiveDaemonFrames } from "./priming.js";
+import { ToolCallClient } from "./tool-calls.js";
 import { registeredToolSet } from "./tool-set.js";
 
 /** What a launch tells its worker through the environment. */
@@ -73,7 +74,10 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   const compactions = new CompactionReporter();
   pi.on("session_compact", () => compactions.record());
 
-  const onFrame = receiveDaemonFrames({ adapter, interrupter });
+  // Agent tools (PRD §6.1) submit through this client; the tools themselves ship with their tickets.
+  const toolCalls = new ToolCallClient();
+
+  const onFrame = receiveDaemonFrames({ adapter, interrupter, toolCalls });
   let channel: OpenChannel | undefined;
   let dialling = false;
 
@@ -97,6 +101,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
       channel = opened.channel;
       receipts.attach(opened.channel);
       compactions.attach(opened.channel);
+      toolCalls.attach(opened.channel);
       void opened.channel.closed.then(() => {
         if (channel === opened.channel) {channel = undefined;}
       });

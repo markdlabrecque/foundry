@@ -1028,6 +1028,7 @@ slot.parked
 slot.reset
 prime.sent
 prime.acknowledged
+submission.recorded
 message.accepted
 message.bound
 message.sent
@@ -1064,6 +1065,7 @@ operation.indeterminate
 
 - `ticket.transitioned` is the only event for a change to a ticket's stage or status; from, to, outcome, actor and reason are fields.
 - `operation.*` carries the kind as a field: integration, source sync, worktree creation, hook run or cleanup.
+- `submission.recorded` is written with every committed agent tool call (§6.1), in the transaction that applies its effects; launch ID, call ID and tool are fields. A replayed call writes nothing.
 - `hold.*` carries the kind as a field: frozen slot, parked slot, hook failure, indeterminate message, indeterminate integration, interrupted sync, sync conflict or stuck worker.
 - `message.*` carries the kind as a field, so a resume notice or a repository context message is a `message.*` event of that kind.
 - Every event carries its time, the factory ID and the identifiers of the records it concerns.

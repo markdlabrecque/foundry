@@ -288,6 +288,25 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `CREATE UNIQUE INDEX conversation_one_current ON conversation (factory_id, slot_id) WHERE status = 'current'`,
     ],
   },
+  {
+    id: 11,
+    name: "submission",
+    statements: [
+      // PRD §6.1, §10.1: one row per agent tool call, keyed by the launch the channel was claimed
+      // for plus Pi's tool call ID. Written in the transaction that applies the call's effects, with
+      // the result returned, so a retry returns `result` and changes nothing.
+      `CREATE TABLE submission (
+        launch_id TEXT NOT NULL,
+        call_id TEXT NOT NULL,
+        factory_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        tool TEXT NOT NULL,
+        result TEXT NOT NULL,
+        committed_at INTEGER NOT NULL,
+        PRIMARY KEY (launch_id, call_id)
+      ) STRICT`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */
