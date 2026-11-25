@@ -3,6 +3,7 @@
  * group, owns it as the parent, and reports what it knows about every launch.
  */
 import { spawn } from "node:child_process";
+import { messageOf } from "@foundry/protocol/errors";
 import { randomUUID } from "node:crypto";
 import { LAUNCH_ENV } from "./launch-command.js";
 import { LAUNCH_STDERR_TAIL_BYTES, StderrTail } from "./log.js";
@@ -175,7 +176,7 @@ export function createLaunchRegistry(options: {
       } catch (error) {
         occupied.delete(key);
         throw new LaunchRefused(
-          `launch failed to start: ${(error as Error).message}`,
+          `launch failed to start: ${messageOf(error)}`,
           (error as NodeJS.ErrnoException).code ?? "spawn_failed",
         );
       }

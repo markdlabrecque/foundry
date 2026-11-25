@@ -9,6 +9,7 @@
  * being AUTOINCREMENT: a row with a lower ID can never commit after a higher one has been read.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { messageOf } from "@foundry/protocol/errors";
 import type { EventsQuery, FactoryEvent } from "@foundry/protocol/management-api";
 import type { EventSource } from "./events.js";
 
@@ -94,7 +95,7 @@ export const streamEvents = (
         }
       } while (pending && !closed);
     } catch (error) {
-      if (!closed) {response.write(`event: error\ndata: ${JSON.stringify({ message: (error as Error).message })}\n\n`);}
+      if (!closed) {response.write(`event: error\ndata: ${JSON.stringify({ message: messageOf(error) })}\n\n`);}
 
       finish();
 

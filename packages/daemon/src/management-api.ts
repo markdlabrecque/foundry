@@ -6,6 +6,7 @@
  * socket probes and then unlinks, which is only safe with one starter per root.
  */
 import { chmodSync, linkSync, lstatSync, mkdtempSync, rmdirSync, unlinkSync } from "node:fs";
+import { messageOf } from "@foundry/protocol/errors";
 import type { Stats } from "node:fs";
 import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
@@ -261,7 +262,7 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
   route().then(
     ([status, body]) => send(response, status, body),
-    (error: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${describeError(error)}`)),
+    (error: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${messageOf(error)}`)),
   );
 };
 
@@ -301,7 +302,7 @@ const handleLogs = (
   try {
     send(response, 200, { ok: true, result: readLogs(inputs.stateRoot, query) });
   } catch (error) {
-    send(response, 500, failure("internal", `logs unavailable: ${(error as Error).message}`));
+    send(response, 500, failure("internal", `logs unavailable: ${messageOf(error)}`));
   }
 };
 
@@ -354,8 +355,6 @@ const withHolds =
   (inputs: ManagementApiInputs, use: (holds: HoldsReader) => ReturnType<Route>): Route =>
   async () =>
     inputs.holds === undefined ? [503, failure("unavailable", "holds are not served by this daemon")] : use(inputs.holds);
-
-const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 const failure = (code: string, message: string): ApiResponse<never> => ({ ok: false, error: { code, message } satisfies ApiError });
 

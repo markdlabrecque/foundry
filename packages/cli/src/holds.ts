@@ -4,6 +4,7 @@
  * what to print and the exit code (PRD §11.5).
  */
 import { selectStateRoot } from "@foundry/protocol/state-root";
+import { messageOf } from "@foundry/protocol/errors";
 import { holdPath, HOLDS_PATH, isHoldListResult, isHoldShowResult } from "@foundry/protocol/holds";
 import type { HoldRecord, HoldShowResult } from "@foundry/protocol/holds";
 import { DaemonUnreachableError, getFromDaemon } from "./management-client.js";
@@ -74,7 +75,7 @@ const fetchAndRender = async (
       return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
     }
 
-    return refused((error as Error).message);
+    return refused(messageOf(error));
   }
 
   if (options.json) {

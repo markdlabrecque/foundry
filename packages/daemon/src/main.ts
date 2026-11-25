@@ -12,6 +12,7 @@
  * fetched) after (PRD §9.1), and the run and each configuration load are recorded in it.
  */
 import { readFileSync } from "node:fs";
+import { messageOf } from "@foundry/protocol/errors";
 import { join } from "node:path";
 import { createKnowledgeLayout, loadFactoryFiles, recordRun } from "./factory-loads.js";
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
@@ -94,7 +95,7 @@ const main = async (): Promise<void> => {
   try {
     flags = parseFlags(process.argv.slice(2));
   } catch (error) {
-    process.stderr.write(`foundry daemon: ${(error as Error).message}\n`);
+    process.stderr.write(`foundry daemon: ${messageOf(error)}\n`);
     process.exit(EXIT_USAGE);
   }
 
@@ -118,7 +119,7 @@ const main = async (): Promise<void> => {
     // A held lock, or a root we cannot create or write (EACCES and the like), is an instance-level
     // failure: one line and exit 1, not a stack trace. Without the lock this daemon must not
     // write the daemon log, which belongs to the daemon that holds it.
-    fail(error instanceof StateRootLockedError ? error.message : `cannot claim state root ${stateRoot}: ${(error as Error).message}`);
+    fail(error instanceof StateRootLockedError ? error.message : `cannot claim state root ${stateRoot}: ${messageOf(error)}`);
 
     return;
   }
@@ -131,7 +132,7 @@ const main = async (): Promise<void> => {
     log = openDaemonLog({ stateRoot, ...(flags.logLevel === undefined ? {} : { level: flags.logLevel }) });
   } catch (error) {
     claim.release();
-    fail(`cannot open the daemon log in ${stateRoot}: ${(error as Error).message}`);
+    fail(`cannot open the daemon log in ${stateRoot}: ${messageOf(error)}`);
 
     return;
   }
@@ -146,11 +147,11 @@ const main = async (): Promise<void> => {
     const { openStore } = await importStoreQuietly();
     store = await Effect.runPromise(Scope.provide(storeScope)(openStore({ filename: databaseFile })));
   } catch (error) {
-    log.error("database open failed", { detail: { file: databaseFile, error: (error as Error).message } });
+    log.error("database open failed", { detail: { file: databaseFile, error: messageOf(error) } });
     await closeStore();
     log.close();
     claim.release();
-    fail(`cannot open the database: ${(error as Error).message}`);
+    fail(`cannot open the database: ${messageOf(error)}`);
 
     return;
   }
@@ -161,7 +162,7 @@ const main = async (): Promise<void> => {
   try {
     for (const leftover of clearCloneStaging(stateRoot)) {log.info("clone staging removed", { detail: { path: leftover } });}
   } catch (error) {
-    log.warn("clone staging not removed", { detail: { error: (error as Error).message } });
+    log.warn("clone staging not removed", { detail: { error: messageOf(error) } });
   }
 
   // The dedicated clone of each factory (PRD §9.1): created once, then reused without contacting the
@@ -199,11 +200,11 @@ const main = async (): Promise<void> => {
       recordRun(store, { runId: log.runId, startedAt: Date.parse(startedAt), version: foundryVersion(), factories }),
     );
   } catch (error) {
-    log.error("run not recorded", { detail: { error: (error as Error).message } });
+    log.error("run not recorded", { detail: { error: messageOf(error) } });
     await closeStore();
     log.close();
     claim.release();
-    fail(`cannot record the run in ${stateRoot}: ${(error as Error).message}`);
+    fail(`cannot record the run in ${stateRoot}: ${messageOf(error)}`);
 
     return;
   }
@@ -246,11 +247,11 @@ const main = async (): Promise<void> => {
       ),
     );
   } catch (error) {
-    log.error("factory start checks failed", { detail: { error: (error as Error).message } });
+    log.error("factory start checks failed", { detail: { error: messageOf(error) } });
     await closeStore();
     log.close();
     claim.release();
-    fail(`cannot check open records in ${stateRoot}: ${(error as Error).message}`);
+    fail(`cannot check open records in ${stateRoot}: ${messageOf(error)}`);
 
     return;
   }
@@ -337,13 +338,13 @@ const main = async (): Promise<void> => {
     if (error instanceof ManagementSocketError) {
       log.error("management API refused", { detail: { reason: error.reason, socket: error.socketPath } });
     } else {
-      log.error("management API failed", { detail: { error: (error as Error).message } });
+      log.error("management API failed", { detail: { error: messageOf(error) } });
     }
 
     await closeStore();
     log.close();
     claim.release();
-    fail(error instanceof ManagementSocketError ? error.message : `cannot serve the management API: ${(error as Error).message}`);
+    fail(error instanceof ManagementSocketError ? error.message : `cannot serve the management API: ${messageOf(error)}`);
 
     return;
   }

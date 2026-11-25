@@ -4,6 +4,7 @@
  * returns what to print and the exit code (PRD §11.5).
  */
 import { selectStateRoot } from "@foundry/protocol/state-root";
+import { messageOf } from "@foundry/protocol/errors";
 import { FACTORIES_PATH, isFactoryListResult } from "@foundry/protocol/factories-api";
 import type { FactoryListResult } from "@foundry/protocol/factories-api";
 import { DaemonUnreachableError, getFromDaemon } from "./management-client.js";
@@ -42,7 +43,7 @@ export const runFactoryList = async (options: FactoryListOptions): Promise<Facto
       return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
     }
 
-    return refused((error as Error).message);
+    return refused(messageOf(error));
   }
 
   if (options.json) {

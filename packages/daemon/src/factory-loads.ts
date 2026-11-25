@@ -11,6 +11,7 @@
  * state root is claimed. Nothing here clones, contacts a remote, runs a command or launches a worker.
  */
 import { createHash } from "node:crypto";
+import { messageOf } from "@foundry/protocol/errors";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Effect } from "effect";
@@ -97,7 +98,7 @@ export const loadFactoryFiles = (
     try {
       text = readFileSync(file, "utf8");
     } catch (error) {
-      return { _tag: "Refused", message: `${file}: cannot read factory YAML: ${(error as Error).message}` };
+      return { _tag: "Refused", message: `${file}: cannot read factory YAML: ${messageOf(error)}` };
     }
 
     const yamlFile = resolve(file);

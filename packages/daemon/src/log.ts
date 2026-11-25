@@ -8,6 +8,7 @@
  * values, and keys that look like credentials or message bodies are never written.
  */
 import { randomUUID } from "node:crypto";
+import { messageOf } from "@foundry/protocol/errors";
 import { chmodSync, closeSync, fchmodSync, fstatSync, mkdirSync, openSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
 
@@ -120,7 +121,7 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
   };
 
   const failure = (msg: string, error: unknown): string =>
-    `${JSON.stringify({ time: now().toISOString(), level: "error", runId, msg, detail: { error: (error as Error).message } })}\n`;
+    `${JSON.stringify({ time: now().toISOString(), level: "error", runId, msg, detail: { error: messageOf(error) } })}\n`;
 
   // A log file that cannot be opened is not fatal: the daemon logs to stderr only.
   let file: { fd: number; size: number } | undefined;

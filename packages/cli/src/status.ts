@@ -4,6 +4,7 @@
  * and the exit code (PRD §11.5).
  */
 import { selectStateRoot } from "@foundry/protocol/state-root";
+import { messageOf } from "@foundry/protocol/errors";
 import { isStatusResult, STATUS_PATH } from "@foundry/protocol/management-api";
 import type { StatusResult } from "@foundry/protocol/management-api";
 import { DaemonUnreachableError, getFromDaemon } from "./management-client.js";
@@ -52,7 +53,7 @@ export const runStatus = async (options: StatusOptions): Promise<StatusOutcome> 
       return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
     }
 
-    return refused((error as Error).message);
+    return refused(messageOf(error));
   }
 
   if (options.json) {

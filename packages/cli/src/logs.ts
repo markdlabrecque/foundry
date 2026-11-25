@@ -5,6 +5,7 @@
  * itself when no daemon answers. It never opens the database (ADR 0001).
  */
 import { encodeLogQuery, isLogsResult, logQueryProblem, LOGS_PATH } from "@foundry/protocol/log-query";
+import { messageOf } from "@foundry/protocol/errors";
 import type { LogQuery, LogsResult } from "@foundry/protocol/log-query";
 import { readLogs } from "@foundry/protocol/log-read";
 import { selectStateRoot } from "@foundry/protocol/state-root";
@@ -65,13 +66,13 @@ export const runLogs = async (options: LogsOptions): Promise<LogsOutcome> => {
     const search = encodeLogQuery(query);
     reply = await getFromDaemon(stateRoot, search === "" ? LOGS_PATH : `${LOGS_PATH}?${search}`);
   } catch (error) {
-    if (!(error instanceof DaemonUnreachableError)) {return refused((error as Error).message);}
+    if (!(error instanceof DaemonUnreachableError)) {return refused(messageOf(error));}
 
     // No daemon: the files are read directly, as the daemon would (PRD §15.2).
     try {
       return print(readLogs(stateRoot, query), options.json);
     } catch (readError) {
-      return refused(`cannot read logs: ${(readError as Error).message}`);
+      return refused(`cannot read logs: ${messageOf(readError)}`);
     }
   }
 

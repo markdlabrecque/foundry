@@ -16,6 +16,7 @@
  * Callers must hold the state-root claim.
  */
 import { execFile } from "node:child_process";
+import { messageOf } from "@foundry/protocol/errors";
 import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import type { Stats } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -239,7 +240,7 @@ export const ensureFactoryClone = async (factory: LoadedFactory, options: Ensure
       factory.factoryId,
       path,
       "clone_failed",
-      `cannot clone ${configuredSource} (branch ${branch}) for factory "${factory.factoryId}": ${(error as Error).message}`,
+      `cannot clone ${configuredSource} (branch ${branch}) for factory "${factory.factoryId}": ${messageOf(error)}`,
     );
   } finally {
     if (staging !== undefined) {rmSync(staging, { recursive: true, force: true });}

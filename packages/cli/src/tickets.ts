@@ -5,6 +5,7 @@
  * writes the ticket directory.
  */
 import { readFileSync } from "node:fs";
+import { messageOf } from "@foundry/protocol/errors";
 import { basename, extname } from "node:path";
 import { selectStateRoot } from "@foundry/protocol/state-root";
 import { FACTORY_PARAM, isTicketDetail, isTicketListResult, ticketPath, TICKETS_PATH } from "@foundry/protocol/tickets-api";
@@ -107,7 +108,7 @@ const call = async <T>(
       return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
     }
 
-    return refused((error as Error).message);
+    return refused(messageOf(error));
   }
 
   if (options.json) {
@@ -133,7 +134,7 @@ export const runTicketSubmit = async (options: SubmitOptions): Promise<TicketOut
   try {
     spec = readFileSync(options.file, "utf8");
   } catch (error) {
-    return usage(`cannot read ${options.file}: ${(error as Error).message}`);
+    return usage(`cannot read ${options.file}: ${messageOf(error)}`);
   }
 
   const body: SubmitTicketRequest = {

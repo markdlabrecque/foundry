@@ -3,6 +3,7 @@
  * the factory's dedicated clone path. The CLI never opens the database (ADR 0001).
  */
 import { selectStateRoot } from "@foundry/protocol/state-root";
+import { messageOf } from "@foundry/protocol/errors";
 import { factoryPathPath, isFactoryPathResult } from "@foundry/protocol/factory-path";
 import { DaemonUnreachableError, getFromDaemon } from "./management-client.js";
 import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, EXIT_USAGE } from "./status.js";
@@ -38,7 +39,7 @@ export const runFactoryPath = async (options: FactoryPathOptions): Promise<Facto
       return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
     }
 
-    return refused((error as Error).message);
+    return refused(messageOf(error));
   }
 
   if (options.json) {

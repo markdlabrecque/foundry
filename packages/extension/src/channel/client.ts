@@ -55,12 +55,13 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
 
     closed.then(stop);
 
-    const fail = (error: Error): void => {
+    // Rejects with the value as thrown or emitted: socket errors and splitter overflows are Errors.
+    const fail = (cause: unknown): void => {
       if (settled) {return;}
 
       settled = true;
       socket.destroy();
-      reject(error);
+      reject(cause);
     };
 
     socket.once("connect", () => socket.write(encodeFrame(options.hello)));
@@ -73,7 +74,7 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
       try {
         lines = splitter.push(chunk);
       } catch (error) {
-        if (!settled) {return fail(error as Error);}
+        if (!settled) {return fail(error);}
 
         socket.destroy();
 
