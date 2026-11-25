@@ -31,6 +31,7 @@ import type { SlotInterrupter } from "./slots-error.js";
 import type { Query, Store, StoreError } from "./store.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { reserveAssignmentSlot } from "./assignment-reservation.js";
+import { restoreRejectionAllowance } from "./rejection-allowance.js";
 
 /** What submission needs to know about a loaded factory's production line. */
 export interface TicketLine {
@@ -555,6 +556,8 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
   const resume: TicketService["resume"] = (name, number, message, allowAbandon = false) => Effect.gen(function* () {
     const factory = (yield* loadedFactory(name)).name;
     yield* store.change((change) => Effect.gen(function* () {
+      if (yield* restoreRejectionAllowance(change, options, factory, number, "resume")) {return;}
+
       const [row] = yield* change.query<{ id: string; stage: string; status: string }>(
         `SELECT a.id, t.stage, t.status FROM ticket t JOIN assignment a ON a.factory_id = t.factory_id AND a.ticket_number = t.number
          WHERE t.factory_id = ? AND t.number = ? AND t.state = 'stage'

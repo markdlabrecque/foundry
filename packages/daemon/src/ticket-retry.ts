@@ -8,6 +8,7 @@ import type { SlotInterrupter } from "./slots-error.js";
 import type { Change } from "./store.js";
 import { TicketError } from "./tickets.js";
 import type { TicketServiceOptions } from "./tickets.js";
+import { restoreRejectionAllowance } from "./rejection-allowance.js";
 
 export const interruptTicketSlot = (interrupter: SlotInterrupter | undefined, factory: string, slot: string) => {
   if (interrupter === undefined) {
@@ -48,6 +49,15 @@ export const retryTicket = (options: TicketServiceOptions, factory: string, numb
 
   return Effect.gen(function* () {
   const { store } = options;
+  const notRejectionLimit = Symbol("not a rejection-limit pause");
+
+  const restored = yield* store.change((change) => Effect.gen(function* () {
+    if (yield* restoreRejectionAllowance(change, options, factory, number, "retry")) {return true;}
+
+    return yield* Effect.fail(notRejectionLimit);
+  })).pipe(Effect.catchIf((error) => error === notRejectionLimit, () => Effect.succeed(false)));
+
+  if (restored) {return;}
 
   const [assignment] = yield* store.read<RetryAssignment>(
     `SELECT a.id, a.slot_id, a.stage, a.status AS assignment_status, t.status FROM assignment a
