@@ -17,6 +17,7 @@ import { runEvents } from "./events.js";
 import { runFactoryPath } from "./factory.js";
 import { runFactoryList } from "./factories.js";
 import { runFactoryStop } from "./factory-stop.js";
+import { runShutdown } from "./shutdown.js";
 import { runSlotInterrupt, runSlotList, runSlotShow, runSlotUnfreeze } from "./slots.js";
 
 const validate = Command.make(
@@ -319,8 +320,21 @@ const slot = Command.make("slot").pipe(
   Command.withSubcommands([slotList, slotShow, slotInterrupt, slotUnfreeze]),
 );
 
+const shutdown = Command.make(
+  "shutdown",
+  {
+    ...commonFlags,
+    force: Flag.Boolean("force").pipe(Flag.withDefault(false), Flag.withDescription("Skip the drain and the grace period")),
+  },
+  ({ json, home, force }) =>
+    Effect.flatMap(
+      Effect.promise(() => runShutdown({ json, home: Option.getOrUndefined(home), env: process.env, force })),
+      print,
+    ),
+).pipe(Command.withDescription("Stop every factory's workers, then the Worker Host, then the daemon"));
+
 const foundry = Command.make("foundry").pipe(
-  Command.withSubcommands([validate, status, hold, logs, ticket, events, factory, slot]),
+  Command.withSubcommands([validate, status, shutdown, hold, logs, ticket, events, factory, slot]),
 );
 
 Command.run(foundry, { version: "0.0.0" }).pipe(

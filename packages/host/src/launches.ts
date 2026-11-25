@@ -97,6 +97,11 @@ export interface LaunchRegistry {
    * one launch share a single termination.
    */
   terminate(launchId: string, options?: TerminateOptions): Promise<Termination>;
+  /**
+   * Slots whose launch is starting, live, or whose process group is not yet confirmed empty. The
+   * host may stop only when this is empty: otherwise it would leave an owned group behind.
+   */
+  occupiedSlots(): Array<{ readonly factoryId: string; readonly slotId: string }>;
 }
 
 const slotKey = (factoryId: string, slotId: string): string => JSON.stringify([factoryId, slotId]);
@@ -126,7 +131,7 @@ export function createLaunchRegistry(options: {
    * and set without awaiting, so starts serialize. A slot is free for reuse only once its last
    * launch's whole group is confirmed gone (PRD §10.3), not merely its leader.
    */
-  const occupied = new Set<string>();
+  const occupied = new Map<string, { readonly factoryId: string; readonly slotId: string }>();
 
   /** Records a launch's group as confirmed empty, once, and frees its slot. */
   const markEmpty = (launch: LaunchRecord): void => {
@@ -159,7 +164,7 @@ export function createLaunchRegistry(options: {
         throw new LaunchRefusedError(`slot ${spec.slotId} of factory ${spec.factoryId} already holds a live launch`, "slot_occupied");
       }
 
-      occupied.add(key);
+      occupied.set(key, { factoryId: spec.factoryId, slotId: spec.slotId });
 
       const launchId = randomUUID();
 
@@ -268,6 +273,9 @@ export function createLaunchRegistry(options: {
     },
     inventory() {
       return [...launches.values()];
+    },
+    occupiedSlots() {
+      return [...occupied.values()];
     },
     terminate(launchId, terminateOptions = {}) {
       const record = launches.get(launchId);

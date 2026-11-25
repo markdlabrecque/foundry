@@ -57,13 +57,24 @@ export interface TerminateRequest {
   readonly killWaitMs?: number;
 }
 
-export type HostRequest = IdentifyRequest | LaunchRequest | InventoryRequest | TerminateRequest;
+/**
+ * Stops the host process (PRD §10.3: only `foundry shutdown` stops it). Refused while any slot
+ * holds a launch that is starting, live, or whose process group is not yet confirmed empty, so the
+ * host never exits leaving an owned group behind. Once accepted, the host answers, then exits.
+ */
+export interface ShutdownRequest {
+  readonly id: number;
+  readonly op: "shutdown";
+}
+
+export type HostRequest = IdentifyRequest | LaunchRequest | InventoryRequest | TerminateRequest | ShutdownRequest;
 
 export type HostResponse =
   | { readonly id: number; readonly ok: true; readonly identity: HostIdentity }
   | { readonly id: number; readonly ok: true; readonly launch: LaunchRecord }
   | { readonly id: number; readonly ok: true; readonly launches: ReadonlyArray<LaunchRecord> }
   | { readonly id: number; readonly ok: true; readonly termination: Termination }
+  | { readonly id: number; readonly ok: true; readonly shutdown: true }
   | { readonly id: number | null; readonly ok: false; readonly error: string };
 
 /**
@@ -121,6 +132,7 @@ const HostMessage = Schema.Union([
   Schema.Struct({ id: Schema.Number, ok: Schema.Literal(true), launch: LaunchRecordMessage }),
   Schema.Struct({ id: Schema.Number, ok: Schema.Literal(true), launches: Schema.Array(LaunchRecordMessage) }),
   Schema.Struct({ id: Schema.Number, ok: Schema.Literal(true), termination: TerminationMessage }),
+  Schema.Struct({ id: Schema.Number, ok: Schema.Literal(true), shutdown: Schema.Literal(true) }),
   Schema.Struct({ id: Schema.NullOr(Schema.Number), ok: Schema.Literal(false), error: Schema.String }),
 ]);
 

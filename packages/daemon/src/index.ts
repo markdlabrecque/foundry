@@ -118,6 +118,15 @@ export {
 } from "./factory-stop.js";
 
 export {
+  createInstanceShutdown,
+  ShutdownError,
+  type InstanceShutdown,
+  type InstanceShutdownOptions,
+  type ShutdownErrorCode,
+  type ShutdownHost,
+} from "./shutdown.js";
+
+export {
   connectOrStartHost,
   createSlotScheduler,
   planSlots,
