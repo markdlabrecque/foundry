@@ -143,6 +143,8 @@ export const integrateApprovedCommit = (
         );
 
         const path = join(directory, "merge");
+        // Recorded before Git creates it, so recovery can discard it after a crash (PRD §10.2).
+        yield* extendOperationIntent(store, operation.id, { scratchPath: path });
         yield* Effect.acquireRelease(
           git(["worktree", "add", "--detach", path, previousHead]),
           () => git(["worktree", "remove", "--force", path]).pipe(Effect.orDie),

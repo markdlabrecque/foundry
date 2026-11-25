@@ -188,10 +188,16 @@ class NothingInterrupted extends Data.TaggedError("NothingInterrupted") {}
 const AWAITING_RECOVERY_SQL = `status = 'interrupted' AND result IS NULL`;
 
 /**
+ * An integration recovery could not classify: the operator declares it landed or not (PRD §10.2).
+ * Its recorded result is the queue's closing cause.
+ */
+const INDETERMINATE_INTEGRATION_SQL = `kind = 'integration' AND status = 'indeterminate'`;
+
+/**
  * Admits the factory's oldest queued integration or sync: commits it as running and returns it.
  * Returns `undefined`, writing nothing, while one of them is already running there, while any of
- * the factory's operations is interrupted and awaiting recovery (PRD §10.2 step 3), or when none
- * is queued. The check and the claim are one transaction.
+ * the factory's operations is interrupted and awaiting recovery (PRD §10.2 step 3), while one of
+ * its integrations is indeterminate (§9.4), or when none is queued. The check and the claim are one transaction.
  */
 export const startNextOperation = (store: Store, factoryId: string): Effect.Effect<Operation | undefined, StoreError> =>
   store
@@ -210,7 +216,7 @@ export const startNextOperation = (store: Store, factoryId: string): Effect.Effe
                AND NOT EXISTS (
                  SELECT 1 FROM operation WHERE factory_id = ? AND kind IN (${QUEUED_KINDS_SQL}) AND status = 'running')
                AND NOT EXISTS (
-                 SELECT 1 FROM operation WHERE factory_id = ? AND ${AWAITING_RECOVERY_SQL})
+                 SELECT 1 FROM operation WHERE factory_id = ? AND ((${AWAITING_RECOVERY_SQL}) OR (${INDETERMINATE_INTEGRATION_SQL})))
              ORDER BY id LIMIT 1)
            RETURNING ${COLUMNS}`,
           [now, factoryId, factoryId, factoryId],
@@ -379,15 +385,16 @@ export const listOperationsAwaitingRecovery = (
 /**
  * Records recovery's verdict on an interrupted operation that awaits recovery, inside `change`, so
  * it lands with everything the verdict causes. `interrupted` keeps the status (a sync that is never
- * rerun) but, with its result recorded, no longer closes the queue. Dies if the operation is not
- * awaiting recovery: a verdict for anything else is a bug. `indeterminate` and rerun-from-start are
- * deliberately not accepted: PRD §10.2 keeps the queue closed until the operator declares an
- * indeterminate integration, so those verdicts belong to the per-kind recovery drafts.
+ * rerun) but, with its result recorded, no longer closes the queue. `indeterminate` records an
+ * integration recovery could not classify; it keeps the factory's queue closed, with the result as
+ * the recorded cause, until the operator declares it (PRD §9.4, §10.2). Dies if the operation is
+ * not awaiting recovery: a verdict for anything else is a bug. A rerun from the start is
+ * `requeueInterruptedOperationIn`.
  */
 export const recordRecoveryResultIn = (
   change: Change,
   id: number,
-  outcome: { readonly status: "complete" | "failed" | "interrupted"; readonly result: OperationDetail },
+  outcome: { readonly status: "complete" | "failed" | "interrupted" | "indeterminate"; readonly result: OperationDetail },
 ): Effect.Effect<Operation, StoreError> =>
   Effect.gen(function* () {
     const now = yield* Clock.currentTimeMillis;
@@ -405,6 +412,38 @@ export const recordRecoveryResultIn = (
       kind: "operation.recovered",
       subject: String(id),
       detail: { operationId: id, kind: operation.kind, status: outcome.status, result: outcome.result },
+      records: recordsOf(operation.ticket),
+    });
+
+    return operation;
+  });
+
+/**
+ * Recovery's rerun-from-start verdict on an interrupted integration or sync awaiting recovery,
+ * inside `change`: puts it back on its factory's queue with `intent` in place of what the
+ * interrupted run recorded (kept in its history). It keeps its ID, so it runs before anything
+ * queued after it. Dies if the operation is not a queued kind awaiting recovery.
+ */
+export const requeueInterruptedOperationIn = (
+  change: Change,
+  id: number,
+  intent: OperationDetail,
+): Effect.Effect<Operation, StoreError> =>
+  Effect.gen(function* () {
+    const rows = yield* change.query<OperationRow>(
+      `UPDATE operation SET status = 'queued', started_at = NULL, intent = ?
+       WHERE id = ? AND kind IN (${QUEUED_KINDS_SQL}) AND ${AWAITING_RECOVERY_SQL}
+       RETURNING ${COLUMNS}`,
+      [JSON.stringify(intent), id],
+    );
+
+    const operation = toOperation(expectDefined(rows[0], `queued-kind operation ${id} awaiting recovery`));
+
+    yield* change.recordHistory({
+      factoryId: operation.factoryId,
+      kind: "operation.requeued",
+      subject: String(id),
+      detail: { operationId: id, kind: operation.kind, intent },
       records: recordsOf(operation.ticket),
     });
 

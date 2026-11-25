@@ -265,3 +265,5 @@ export {
 export * from "./reconciliation.js";
 
 export * from "./message-retry.js";
+
+export * from "./integration-recovery.js";
