@@ -1,4 +1,5 @@
 import { describe, expect, test } from "vitest";
+import { Predicate } from "effect";
 import { decodeFactoryYaml, locateProblems, resolveStations } from "@foundry/daemon/config";
 import type { EffectiveStation, ResolveResult } from "@foundry/daemon/config";
 
@@ -36,14 +37,19 @@ production_lines:
 
 const resolveText = (text: string, env: Record<string, string | undefined> = {}): ResolveResult => {
   const decoded = decodeFactoryYaml(text);
-  if (decoded._tag === "Invalid") throw new Error(JSON.stringify(decoded.problems));
+
+  if (Predicate.isTagged(decoded, "Invalid")) {throw new Error(JSON.stringify(decoded.problems));}
+
   return resolveStations(decoded.config, { env, baseDir });
 };
 
 const stationOf = (result: ResolveResult): EffectiveStation => {
-  if (result._tag === "Invalid") throw new Error(JSON.stringify(result.problems));
+  if (Predicate.isTagged(result, "Invalid")) {throw new Error(JSON.stringify(result.problems));}
+
   const [station] = result.stations;
-  if (station === undefined) throw new Error("no station");
+
+  if (station === undefined) {throw new Error("no station");}
+
   return station;
 };
 
@@ -57,6 +63,7 @@ describe("instructions compose factory → room → station", () => {
     ["none", MODEL, "", "", []],
     ["absolute path kept", `${MODEL}  instructions: /abs/factory.md\n`, "", "", ["/abs/factory.md"]],
   ];
+
   test.each(rows)("%s", (_name, defaults, room, station, expected) => {
     expect(stationOf(resolveText(factory(defaults, room, station))).instructions).toEqual(expected);
   });
@@ -72,6 +79,7 @@ describe("model", () => {
     // Placeholders expand only as a whole field; a partial one stays literal.
     ["partial placeholder is literal", "  model: p/${X}\n", "", { X: "m" }, "p/${X}"],
   ];
+
   test.each(resolved)("%s", (_name, defaults, station, env, expected) => {
     expect(stationOf(resolveText(factory(defaults, "", station), env)).model).toBe(expected);
   });
@@ -86,10 +94,13 @@ describe("model", () => {
     ["not a provider/model selector", "  model: sonnet\n", "", {}, { path: "defaults.model", message: /provider\/model/ }],
     ["variable value not a selector", "  model: ${DEFAULT_MODEL}\n", "", { DEFAULT_MODEL: "sonnet" }, { path: "defaults.model", message: /"sonnet" \(from \$\{DEFAULT_MODEL\}\)/ }],
   ];
+
   test.each(rejected)("%s", (_name, defaults, station, env, expected) => {
     const result = resolveText(factory(defaults, "", station), env);
     expect(result._tag).toBe("Invalid");
-    if (result._tag !== "Invalid") return;
+
+    if (!Predicate.isTagged(result, "Invalid")) {return;}
+
     expect(result.problems).toContainEqual({ path: expected.path, message: expect.stringMatching(expected.message) });
   });
 });
@@ -101,6 +112,7 @@ describe("skills and extensions: omission inherits, a list replaces, [] clears",
     - path: ext/tools.ts
       tools: [web_fetch, jira_get]
 `;
+
   const inherited = {
     skills: ["/factory/skills/a/SKILL.md"],
     extensions: [
@@ -108,6 +120,7 @@ describe("skills and extensions: omission inherits, a list replaces, [] clears",
       { path: "/factory/ext/tools.ts", tools: ["web_fetch", "jira_get"] },
     ],
   };
+
   const rows: ReadonlyArray<[string, string, string, { skills: ReadonlyArray<string>; extensions: ReadonlyArray<unknown> }]> = [
     ["omitted: both inherit with their tools", defaults, "", inherited],
     ["skills replaced, extensions inherit", defaults, "        skills: [skills/b/SKILL.md]\n", { ...inherited, skills: ["/factory/skills/b/SKILL.md"] }],
@@ -116,6 +129,7 @@ describe("skills and extensions: omission inherits, a list replaces, [] clears",
     ["explicit [] clears extensions and their tools", defaults, "        extensions: []\n", { ...inherited, extensions: [] }],
     ["no defaults and omitted: empty", MODEL, "", { skills: [], extensions: [] }],
   ];
+
   test.each(rows)("%s", (_name, defaultsText, station, expected) => {
     const resolved = stationOf(resolveText(factory(defaultsText, "", station)));
     expect({ skills: resolved.skills, extensions: resolved.extensions }).toEqual(expected);
@@ -130,7 +144,9 @@ test("each station carries its address, pool size and isolation", () => {
 test("resolution problems are located at their YAML setting", () => {
   const text = factory("", "", "        model: ${REVIEW_MODEL}\n");
   const result = resolveText(text);
-  if (result._tag !== "Invalid") throw new Error("expected a problem");
+
+  if (!Predicate.isTagged(result, "Invalid")) {throw new Error("expected a problem");}
+
   expect(locateProblems(text, result.problems)).toContainEqual(
     expect.objectContaining({ path: "rooms.eng.stations.dev.model", line: 11 }),
   );
@@ -138,7 +154,9 @@ test("resolution problems are located at their YAML setting", () => {
 
 test("a leading ~ expands to the home directory, as in the offline checks", () => {
   const decoded = decodeFactoryYaml(factory(`${MODEL}  instructions: ~/shared/factory.md\n`, "", "        skills: [~/skills/a/SKILL.md]\n"));
-  if (decoded._tag === "Invalid") throw new Error(JSON.stringify(decoded.problems));
+
+  if (Predicate.isTagged(decoded, "Invalid")) {throw new Error(JSON.stringify(decoded.problems));}
+
   const resolved = stationOf(resolveStations(decoded.config, { env: {}, baseDir, home: "/home/op" }));
   expect({ instructions: resolved.instructions, skills: resolved.skills }).toEqual({
     instructions: ["/home/op/shared/factory.md"],

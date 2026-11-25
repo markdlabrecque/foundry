@@ -37,25 +37,37 @@ export async function terminateGroup(
   options: TerminateGroupOptions,
   deps: TerminateGroupDeps,
 ): Promise<GroupTermination> {
-  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  const sleep = deps.sleep ?? ((ms: number) =>
+      new Promise<void>((resolve) => {
+        setTimeout(resolve, ms);
+      }));
+
   const pollMs = options.pollMs ?? 20;
   // While the leader is unreaped it holds the pgid, so the group cannot be a
   // reused one; once it is reaped, an empty group is never signalled again.
   const gone = (): boolean => deps.leaderReaped() && !deps.signalGroup(pgid, 0);
+
   const waitUntilGone = async (ms: number): Promise<boolean> => {
     const deadline = Date.now() + ms;
+
     for (;;) {
-      if (gone()) return true;
-      if (Date.now() >= deadline) return false;
+      if (gone()) {return true;}
+
+      if (Date.now() >= deadline) {return false;}
+
       await sleep(Math.min(pollMs, Math.max(0, deadline - Date.now())));
     }
   };
 
-  if (gone()) return { outcome: "gone", escalated: false };
+  if (gone()) {return { outcome: "gone", escalated: false };}
+
   if (options.graceMs > 0) {
     deps.signalGroup(pgid, "SIGTERM");
-    if (await waitUntilGone(options.graceMs)) return { outcome: "gone", escalated: false };
+
+    if (await waitUntilGone(options.graceMs)) {return { outcome: "gone", escalated: false };}
   }
+
   deps.signalGroup(pgid, "SIGKILL");
+
   return { outcome: (await waitUntilGone(options.killWaitMs)) ? "gone" : "unconfirmed", escalated: true };
 }

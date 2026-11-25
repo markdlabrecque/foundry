@@ -6,16 +6,10 @@
  * Raising a hold that is already open never opens a second one: identical evidence changes
  * nothing, and new evidence refreshes the open hold (as a repeated sync conflict does).
  */
-import { Clock, Effect } from "effect";
-import {
-  holdCommands,
-  type HoldEvidence,
-  type HoldKind,
-  type HoldListResult,
-  type HoldRecord,
-  type HoldShowResult,
-  type HoldState,
-} from "@foundry/protocol/holds";
+import { Clock, Effect, Schema } from "effect";
+import { expectDefined } from "@foundry/protocol/errors";
+import { HoldEvidence, HoldKind, HoldState, holdCommands } from "@foundry/protocol/holds";
+import type { HoldListResult, HoldRecord, HoldShowResult } from "@foundry/protocol/holds";
 import type { Query, Store, StoreError } from "./store.js";
 
 export interface RaiseHold {
@@ -50,13 +44,20 @@ interface HoldRow {
 
 const COLUMNS = `id, factory_id, kind, subject, state, evidence, raised_at, updated_at, closed_at`;
 
+// Columns are decoded as read: a row this build did not write fails loudly instead of passing as a hold.
+const decodeKind = Schema.decodeUnknownSync(HoldKind);
+
+const decodeState = Schema.decodeUnknownSync(HoldState);
+
+const decodeEvidence = Schema.decodeUnknownSync(Schema.fromJsonString(HoldEvidence));
+
 const toRecord = (row: HoldRow): HoldRecord => ({
   id: row.id,
   factoryId: row.factory_id,
-  kind: row.kind as HoldKind,
+  kind: decodeKind(row.kind),
   subject: row.subject,
-  state: row.state as HoldState,
-  evidence: JSON.parse(row.evidence) as HoldEvidence,
+  state: decodeState(row.state),
+  evidence: decodeEvidence(row.evidence),
   raisedAt: new Date(row.raised_at).toISOString(),
   updatedAt: new Date(row.updated_at).toISOString(),
   closedAt: row.closed_at === null ? null : new Date(row.closed_at).toISOString(),
@@ -71,38 +72,44 @@ const byId = (query: Query, id: number) =>
 export const raiseHold = (store: Store, hold: RaiseHold): Effect.Effect<RaiseResult, StoreError> =>
   Effect.gen(function* () {
     const evidence = JSON.stringify(hold.evidence);
+
     const open = yield* store.read<HoldRow>(
       `SELECT ${COLUMNS} FROM operator_hold WHERE factory_id = ? AND kind = ? AND subject = ? AND state = 'open'`,
       [hold.factoryId, hold.kind, hold.subject],
     );
+
     // The daemon is the only writer, so this read cannot be raced; the unique index backs it up.
     if (open[0] !== undefined && open[0].evidence === evidence) {
       return { outcome: "unchanged", hold: toRecord(open[0]) } as const;
     }
+
     return yield* store.change(({ query, recordHistory }) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
         const existing = open[0];
+
         const id =
           existing === undefined
             ? (yield* query<{ id: number }>(
                 `INSERT INTO operator_hold (factory_id, kind, subject, state, evidence, raised_at, updated_at)
                  VALUES (?, ?, ?, 'open', ?, ?, ?) RETURNING id`,
                 [hold.factoryId, hold.kind, hold.subject, evidence, now, now],
-              ))[0]!.id
+              ).pipe(Effect.map((rows) => expectDefined(rows[0], "the inserted hold's id").id)))
             : (yield* query(`UPDATE operator_hold SET evidence = ?, updated_at = ? WHERE id = ?`, [
                 evidence,
                 now,
                 existing.id,
               ]),
               existing.id);
+
         yield* recordHistory({
           factoryId: hold.factoryId,
           kind: "hold.raised",
           subject: hold.subject,
           detail: { holdId: id, kind: hold.kind, refreshed: existing !== undefined, evidence: hold.evidence },
         });
-        return { outcome: existing === undefined ? "raised" : "refreshed", hold: (yield* byId(query, id))! } as const;
+
+        return { outcome: existing === undefined ? "raised" : "refreshed", hold: expectDefined(yield* byId(query, id), `hold ${id}`) } as const;
       }),
     );
   });
@@ -119,7 +126,9 @@ export const closeHold = (
   Effect.gen(function* () {
     // The daemon is the only writer, so a hold read as open is still open inside the change.
     const current = yield* getHold(store, id);
-    if (current === undefined || current.state !== "open") return undefined;
+
+    if (current === undefined || current.state !== "open") {return undefined;}
+
     return yield* store.change(({ query, recordHistory }) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
@@ -134,7 +143,8 @@ export const closeHold = (
           subject: current.subject,
           detail: { holdId: id, kind: current.kind },
         });
-        return (yield* byId(query, id))!;
+
+        return expectDefined(yield* byId(query, id), `hold ${id}`);
       }),
     );
   });

@@ -18,7 +18,9 @@ export const resolveConfiguredPath = (
   baseDir: string,
   home: string = homedir(),
 ): string => {
-  if (value === "~") return home;
-  if (value.startsWith("~/")) return join(home, value.slice(2));
+  if (value === "~") {return home;}
+
+  if (value.startsWith("~/")) {return join(home, value.slice(2));}
+
   return isAbsolute(value) ? value : resolve(baseDir, value);
 };

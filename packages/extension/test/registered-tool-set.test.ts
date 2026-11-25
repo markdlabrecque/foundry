@@ -6,15 +6,8 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import {
-  type AgentSession,
-  createAgentSession,
-  DefaultResourceLoader,
-  type ExtensionAPI,
-  ModelRuntime,
-  SessionManager,
-  SettingsManager,
-} from "@earendil-works/pi-coding-agent";
+import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registeredToolSet } from "@foundry/extension";
 import { PI_BUILTIN_TOOLS } from "@foundry/protocol";
 
@@ -37,8 +30,9 @@ interface FixtureTool {
 }
 
 /** Write a plain-JS Pi extension that registers `tools`, and return its path. */
-const writeExtension = async (file: string, tools: readonly FixtureTool[]): Promise<string> => {
+const writeExtension = async (file: string, tools: ReadonlyArray<FixtureTool>): Promise<string> => {
   const path = join(root, "extensions", file);
+
   const registrations = tools
     .map(
       (tool) => `  pi.registerTool({
@@ -51,16 +45,19 @@ const writeExtension = async (file: string, tools: readonly FixtureTool[]): Prom
   });`,
     )
     .join("\n");
+
   await writeFile(path, `export default function (pi) {\n${registrations}\n}\n`);
+
   return path;
 };
 
 /** Start a real Pi session with `extensions` in load order and `allowlist` as `--tools`. */
-const reportFrom = async (extensions: readonly string[], allowlist: readonly string[]) => {
+const reportFrom = async (extensions: ReadonlyArray<string>, allowlist: ReadonlyArray<string>) => {
   const agentDir = join(root, "agent");
   const cwd = join(root, "work");
   let foundry: ExtensionAPI | undefined;
   const settingsManager = SettingsManager.inMemory({ compaction: { enabled: false } });
+
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir,
@@ -73,8 +70,10 @@ const reportFrom = async (extensions: readonly string[], allowlist: readonly str
     additionalExtensionPaths: [...extensions],
     extensionFactories: [(pi) => void (foundry = pi)],
   });
+
   await resourceLoader.reload();
   const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: null });
+
   const created = await createAgentSession({
     cwd,
     agentDir,
@@ -84,20 +83,24 @@ const reportFrom = async (extensions: readonly string[], allowlist: readonly str
     sessionManager: SessionManager.inMemory(cwd),
     tools: [...allowlist],
   });
+
   session = created.session;
   await session.bindExtensions({});
-  if (!foundry) throw new Error("the reporting extension was not loaded");
+
+  if (!foundry) {throw new Error("the reporting extension was not loaded");}
+
   return byName(registeredToolSet(foundry));
 };
 
 /** Order-free comparison: the report's order is Pi's, not part of the contract. */
-const byName = <T extends { readonly name: string }>(tools: readonly T[]): T[] =>
+const byName = <T extends { readonly name: string }>(tools: ReadonlyArray<T>): Array<T> =>
   [...tools].sort((a, b) => a.name.localeCompare(b.name));
 
 const builtins = PI_BUILTIN_TOOLS.map((name) => ({ name, source: `builtin:${name}` }));
 
 test("reports named tools from configured extensions with their source, and hides the rest", async () => {
   await mkdir(join(root, "extensions"));
+
   const project = await writeExtension("project.mjs", [
     { name: "web_fetch" },
     { name: "jira_get" }, // registered, but the YAML does not name it

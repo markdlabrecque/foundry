@@ -5,6 +5,8 @@
  * in-memory enqueue, an injection and the start of a turn do not qualify.
  */
 import { readFileSync } from "node:fs";
+import { codeOf } from "@foundry/protocol/errors";
+import { Schema } from "effect";
 
 /** The `customType` every Foundry injection carries in Pi's session. */
 export const FOUNDRY_MESSAGE_TYPE = "foundry" as const;
@@ -26,7 +28,7 @@ export interface FoundryInjection {
 
 /** Which of the given IDs are in the worker's recoverable conversation history. */
 export interface RecoverableHistory {
-  recoverable(ids: readonly string[]): ReadonlySet<string>;
+  recoverable(ids: ReadonlyArray<string>): ReadonlySet<string>;
 }
 
 /**
@@ -47,25 +49,36 @@ export class ReceiptIssuer {
   }
 
   /** IDs injected but not yet found in recoverable history. */
-  pending(): readonly string[] {
+  pending(): ReadonlyArray<string> {
     return [...this.awaiting];
   }
 
   /** Issue receipts for every awaited ID now in recoverable history; returns them. */
-  check(): readonly string[] {
-    if (this.awaiting.size === 0) return [];
+  check(): ReadonlyArray<string> {
+    if (this.awaiting.size === 0) {return [];}
+
     const found = this.history.recoverable([...this.awaiting]);
     const issued = [...this.awaiting].filter((id) => found.has(id));
+
     for (const id of issued) {
       this.awaiting.delete(id);
       this.onReceipt(id);
     }
+
     return issued;
   }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/** A Foundry custom message entry in a Pi session file; its details are checked separately. */
+const isFoundryEntry = Schema.is(
+  Schema.Struct({
+    type: Schema.Literal("custom_message"),
+    customType: Schema.Literal(FOUNDRY_MESSAGE_TYPE),
+    details: Schema.optionalKey(Schema.Unknown),
+  }),
+);
+
+const isFoundryDetails = Schema.is(Schema.Struct({ foundryId: Schema.String }));
 
 /**
  * Foundry IDs in a Pi session file on disk. Pi rebuilds a relaunched worker's
@@ -75,26 +88,35 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  */
 export const readRecoverableIds = (sessionFile: string | undefined): Set<string> => {
   const ids = new Set<string>();
-  if (sessionFile === undefined) return ids;
+
+  if (sessionFile === undefined) {return ids;}
+
   let text: string;
+
   try {
     text = readFileSync(sessionFile, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return ids;
+    if (codeOf(error) === "ENOENT") {return ids;}
+
     throw error;
   }
+
   for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
+    if (line.trim() === "") {continue;}
+
     let entry: unknown;
+
     try {
       entry = JSON.parse(line);
     } catch {
       continue; // Pi skips malformed lines when it restores, so they are not recoverable.
     }
-    if (!isRecord(entry) || entry["type"] !== "custom_message" || entry["customType"] !== FOUNDRY_MESSAGE_TYPE) continue;
-    const details = entry["details"];
-    if (isRecord(details) && typeof details["foundryId"] === "string") ids.add(details["foundryId"]);
+
+    if (!isFoundryEntry(entry)) {continue;}
+
+    if (isFoundryDetails(entry.details)) {ids.add(entry.details.foundryId);}
   }
+
   return ids;
 };
 
@@ -102,6 +124,7 @@ export const readRecoverableIds = (sessionFile: string | undefined): Set<string>
 export const sessionFileHistory = (sessionFile: () => string | undefined): RecoverableHistory => ({
   recoverable(ids) {
     const present = readRecoverableIds(sessionFile());
+
     return new Set(ids.filter((id) => present.has(id)));
   },
 });

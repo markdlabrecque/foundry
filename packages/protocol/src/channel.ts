@@ -9,9 +9,9 @@ import { Result, Schema } from "effect";
 export const PROTOCOL_VERSION = 1 as const;
 
 /** Timing constants (PRD §3.2). Fixed starting values, not factory configuration. */
-export const HEARTBEAT_INTERVAL_MS = 5_000;
+export const HEARTBEAT_INTERVAL_MS = 5000;
 export const CHANNEL_LOST_AFTER_MS = 15_000;
-export const RECONNECT_BACKOFF_CAP_MS = 5_000;
+export const RECONNECT_BACKOFF_CAP_MS = 5000;
 export const TOOL_CALL_CHANNEL_WAIT_MS = 30_000;
 
 /** Longest frame line accepted, so a peer cannot make the other end buffer without bound. */
@@ -24,6 +24,7 @@ export const ReportedTool = Schema.Struct({
   name: Id,
   source: Id,
 });
+
 export type ReportedTool = typeof ReportedTool.Type;
 
 /** The worker's opening frame. Identity claims here are unauthenticated until a slot claim accepts them. */
@@ -38,12 +39,14 @@ export const Hello = Schema.Struct({
   mode: Schema.Literals(["headless", "interactive"]),
   tools: Schema.Array(ReportedTool),
 });
+
 export type Hello = typeof Hello.Type;
 
 /** Liveness of the channel only. A lapse means the channel is lost, never that the worker died. */
 export const Heartbeat = Schema.Struct({
   type: Schema.Literal("heartbeat"),
 });
+
 export type Heartbeat = typeof Heartbeat.Type;
 
 /**
@@ -57,6 +60,7 @@ export type Heartbeat = typeof Heartbeat.Type;
 export const Compacted = Schema.Struct({
   type: Schema.Literal("compacted"),
 });
+
 export type Compacted = typeof Compacted.Type;
 
 /**
@@ -68,6 +72,7 @@ export const Interrupt = Schema.Struct({
   type: Schema.Literal("interrupt"),
   requestId: Id,
 });
+
 export type Interrupt = typeof Interrupt.Type;
 
 /**
@@ -75,6 +80,7 @@ export type Interrupt = typeof Interrupt.Type;
  * abort. `idle`: nothing was active, or the work completed despite the abort.
  */
 export const InterruptOutcome = Schema.Literals(["aborted", "idle"]);
+
 export type InterruptOutcome = typeof InterruptOutcome.Type;
 
 /** The worker's answer to an `interrupt`, sent once Pi is idle again. */
@@ -83,6 +89,7 @@ export const InterruptAck = Schema.Struct({
   requestId: Id,
   outcome: InterruptOutcome,
 });
+
 export type InterruptAck = typeof InterruptAck.Type;
 
 /** Why the daemon refused a hello. A terminal refusal stops the extension reconnecting. */
@@ -91,6 +98,7 @@ export const HelloRejectReason = Schema.Struct({
   code: Id,
   detail: Schema.String,
 });
+
 export type HelloRejectReason = typeof HelloRejectReason.Type;
 
 /** Refusal codes defined by the handshake itself; slot claims may add their own. */
@@ -104,12 +112,14 @@ export const HelloAccepted = Schema.Struct({
   type: Schema.Literal("hello_accepted"),
   protocolVersion: Schema.Literal(PROTOCOL_VERSION),
 });
+
 export type HelloAccepted = typeof HelloAccepted.Type;
 
 export const HelloRejected = Schema.Struct({
   type: Schema.Literal("hello_rejected"),
   reason: HelloRejectReason,
 });
+
 export type HelloRejected = typeof HelloRejected.Type;
 
 /**
@@ -121,10 +131,12 @@ export const Receipt = Schema.Struct({
   type: Schema.Literal("receipt"),
   id: Id,
 });
+
 export type Receipt = typeof Receipt.Type;
 
 /** Frames a worker sends after its hello is accepted. */
 export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck]);
+
 export type WorkerFrame = typeof WorkerFrame.Type;
 
 /**
@@ -136,14 +148,17 @@ export const Prime = Schema.Struct({
   id: Id,
   text: Schema.String,
 });
+
 export type Prime = typeof Prime.Type;
 
 /** Frames the daemon sends on an accepted connection, after `hello_accepted`. */
 export const DaemonFrame = Schema.Union([Prime, Interrupt]);
+
 export type DaemonFrame = typeof DaemonFrame.Type;
 
 /** Frames the daemon sends in reply to a hello. */
 export const HelloReply = Schema.Union([HelloAccepted, HelloRejected]);
+
 export type HelloReply = typeof HelloReply.Type;
 
 export type Decoded<A> =
@@ -152,16 +167,26 @@ export type Decoded<A> =
 
 const terminal = (code: string, detail: string): HelloRejectReason => ({ kind: "terminal", code, detail });
 
+/** `JSON.parse` throws a `SyntaxError`, whose message is what a rejection shows. */
+const hasMessage = Schema.is(Schema.Struct({ message: Schema.String }));
+
 const parseJson = (line: string): { ok: true; value: unknown } | { ok: false; detail: string } => {
   try {
-    return { ok: true, value: JSON.parse(line) as unknown };
+    const value: unknown = JSON.parse(line);
+
+    return { ok: true, value };
   } catch (error) {
-    return { ok: false, detail: `not JSON: ${(error as Error).message}` };
+    return { ok: false, detail: `not JSON: ${hasMessage(error) ? error.message : String(error)}` };
   }
 };
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/**
+ * Just enough of a hello to tell "not a hello" from "a hello of another version". The version is
+ * read as given, so a missing one is reported as a mismatch.
+ */
+const isHelloHeader = Schema.is(
+  Schema.Struct({ type: Schema.Literal("hello"), protocolVersion: Schema.optionalKey(Schema.Unknown) }),
+);
 
 const decodeHelloSchema = Schema.decodeUnknownResult(Hello);
 
@@ -171,48 +196,54 @@ const decodeHelloSchema = Schema.decodeUnknownResult(Hello);
  */
 export const decodeHelloLine = (line: string): Decoded<Hello> => {
   const json = parseJson(line);
-  if (!json.ok) return { ok: false, reason: terminal(RejectCode.malformedHello, json.detail) };
+
+  if (!json.ok) {return { ok: false, reason: terminal(RejectCode.malformedHello, json.detail) };}
+
   const value = json.value;
-  if (!isRecord(value) || value["type"] !== "hello") {
+
+  if (!isHelloHeader(value)) {
     return { ok: false, reason: terminal(RejectCode.helloRequired, "the first frame must be a hello") };
   }
-  if (value["protocolVersion"] !== PROTOCOL_VERSION) {
+
+  if (value.protocolVersion !== PROTOCOL_VERSION) {
     return {
       ok: false,
       reason: terminal(
         RejectCode.protocolVersionMismatch,
-        `expected protocol version ${PROTOCOL_VERSION}, got ${JSON.stringify(value["protocolVersion"])}`,
+        `expected protocol version ${PROTOCOL_VERSION}, got ${JSON.stringify(value.protocolVersion)}`,
       ),
     };
   }
+
   const decoded = decodeHelloSchema(value);
+
   if (Result.isFailure(decoded)) {
     return { ok: false, reason: terminal(RejectCode.malformedHello, String(decoded.failure)) };
   }
+
   return { ok: true, value: decoded.success };
 };
 
-const decodeWorkerFrameSchema = Schema.decodeUnknownResult(WorkerFrame);
-const decodeHelloReplySchema = Schema.decodeUnknownResult(HelloReply);
-const decodeDaemonFrameSchema = Schema.decodeUnknownResult(DaemonFrame);
-
-const decodeLine = <A>(line: string, decode: (u: unknown) => Result.Result<A, Schema.SchemaError>) => {
+const decodeLine = <S extends Schema.ConstraintDecoder<unknown>>(line: string, schema: S) => {
   const json = parseJson(line);
-  if (!json.ok) return { ok: false as const, detail: json.detail };
-  const decoded = decode(json.value);
+
+  if (!json.ok) {return { ok: false as const, detail: json.detail };}
+
+  const decoded = Schema.decodeUnknownResult(schema)(json.value);
+
   return Result.isFailure(decoded)
     ? { ok: false as const, detail: String(decoded.failure) }
     : { ok: true as const, value: decoded.success };
 };
 
 /** Decode a post-hello frame from a worker. */
-export const decodeWorkerFrameLine = (line: string) => decodeLine(line, decodeWorkerFrameSchema);
+export const decodeWorkerFrameLine = (line: string) => decodeLine(line, WorkerFrame);
 
 /** Decode the daemon's reply to a hello. */
-export const decodeHelloReplyLine = (line: string) => decodeLine(line, decodeHelloReplySchema);
+export const decodeHelloReplyLine = (line: string) => decodeLine(line, HelloReply);
 
 /** Decode a post-hello frame from the daemon. */
-export const decodeDaemonFrameLine = (line: string) => decodeLine(line, decodeDaemonFrameSchema);
+export const decodeDaemonFrameLine = (line: string) => decodeLine(line, DaemonFrame);
 
 /** Serialize one frame as a newline-terminated JSON line. */
 export const encodeFrame = (frame: Hello | WorkerFrame | HelloReply | DaemonFrame): string => `${JSON.stringify(frame)}\n`;
@@ -225,13 +256,15 @@ export class FrameLineSplitter {
   private pending = "";
   constructor(private readonly maxBytes: number = MAX_FRAME_BYTES) {}
 
-  push(chunk: string): string[] {
+  push(chunk: string): Array<string> {
     this.pending += chunk;
     const parts = this.pending.split("\n");
     this.pending = parts.pop() ?? "";
+
     for (const line of [...parts, this.pending]) {
-      if (Buffer.byteLength(line) > this.maxBytes) throw new Error(`frame exceeds ${this.maxBytes} bytes`);
+      if (Buffer.byteLength(line) > this.maxBytes) {throw new Error(`frame exceeds ${this.maxBytes} bytes`);}
     }
+
     return parts.filter((line) => line.trim().length > 0);
   }
 }

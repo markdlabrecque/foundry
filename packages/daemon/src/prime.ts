@@ -15,6 +15,8 @@
  * callers' job.
  */
 import { createHash } from "node:crypto";
+import { Data } from "effect";
+import { codeOf } from "@foundry/protocol/errors";
 import { readFile } from "node:fs/promises";
 import { relative, sep } from "node:path";
 
@@ -63,9 +65,12 @@ export interface PrimeSourceProblem {
   readonly detail: string;
 }
 
-export type ComposePrimeResult =
-  | { readonly _tag: "Composed"; readonly prime: Prime }
-  | { readonly _tag: "SourceUnavailable"; readonly problems: ReadonlyArray<PrimeSourceProblem> };
+export type ComposePrimeResult = Data.TaggedEnum<{
+  Composed: { readonly prime: Prime };
+  SourceUnavailable: { readonly problems: ReadonlyArray<PrimeSourceProblem> };
+}>;
+
+export const ComposePrimeResult = Data.taggedEnum<ComposePrimeResult>();
 
 /** Reads one source's bytes. Injected so composition can run without a filesystem. */
 export type ReadSource = (path: string) => Promise<Uint8Array>;
@@ -74,8 +79,9 @@ const toSource = (baseDir: string, path: string): string => relative(baseDir, pa
 
 const hashOf = (bytes: Uint8Array): string => `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
 
-const isMissing = (error: unknown): boolean => {
-  const code = (error as { code?: unknown } | null)?.code;
+const isMissing = (cause: unknown): boolean => {
+  const code = codeOf(cause);
+
   return code === "ENOENT" || code === "ENOTDIR";
 };
 
@@ -103,10 +109,12 @@ export const renderPrime = (header: PrimeHeader, parts: ReadonlyArray<PrimePart>
       ? "No instruction files are configured for this station."
       : "Configured instructions follow, factory → room → station. Each part names its source path, relative to the factory YAML's directory, and its content hash.",
   ];
+
   for (const part of parts) {
     const body = part.content.endsWith("\n") ? part.content : `${part.content}\n`;
     lines.push("", `<foundry-source path="${part.source}" hash="${part.hash}">`, `${body}</foundry-source>`);
   }
+
   return `${lines.join("\n")}\n`;
 };
 
@@ -123,8 +131,13 @@ export async function composePrime(
   const parts: Array<PrimePart> = [];
   const problems: Array<PrimeSourceProblem> = [];
   reads.forEach((outcome, index) => {
-    const path = request.instructions[index] as string;
+    const path = request.instructions[index];
+
+    // `allSettled` answers once per instruction, so every outcome has its path.
+    if (path === undefined) {return;}
+
     const source = toSource(request.baseDir, path);
+
     if (outcome.status === "rejected") {
       problems.push({
         path,
@@ -132,14 +145,20 @@ export async function composePrime(
         reason: isMissing(outcome.reason) ? "missing" : "unreadable",
         detail: outcome.reason instanceof Error ? outcome.reason.message : String(outcome.reason),
       });
+
       return;
     }
+
     let content = Buffer.from(outcome.value).toString("utf8");
-    if (content.charCodeAt(0) === 0xfeff) content = content.slice(1);
+
+    if (content.charCodeAt(0) === 0xfe_ff) {content = content.slice(1);}
+
     parts.push({ source, hash: hashOf(outcome.value), content });
   });
-  if (problems.length > 0) return { _tag: "SourceUnavailable", problems };
+
+  if (problems.length > 0) {return ComposePrimeResult.SourceUnavailable({ problems });}
 
   const text = renderPrime(request, parts);
-  return { _tag: "Composed", prime: { situation: request.situation, text, parts } };
+
+  return ComposePrimeResult.Composed({ prime: { situation: request.situation, text, parts } });
 }

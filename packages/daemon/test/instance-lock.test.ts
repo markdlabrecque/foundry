@@ -1,4 +1,5 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -9,17 +10,20 @@ import { claimStateRoot, LOCK_FILE_NAME, StateRootLockedError, TAKEOVER_GUARD_FI
 // The daemon's foreground entry point, from the built package.
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
 
-const roots: string[] = [];
-const children: ChildProcess[] = [];
+const roots: Array<string> = [];
+const children: Array<ChildProcess> = [];
+
 const tempRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "foundry-lock-"));
   roots.push(root);
+
   return root;
 };
 
 afterEach(() => {
-  for (const child of children.splice(0)) if (child.exitCode === null) child.kill("SIGKILL");
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const child of children.splice(0)) {if (child.exitCode === null) {child.kill("SIGKILL");}}
+
+  for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });}
 });
 
 const startDaemon = (home: string) => {
@@ -28,20 +32,25 @@ const startDaemon = (home: string) => {
     env: { ...process.env, FOUNDRY_HOME: join(home, "not-this-one") },
     stdio: ["ignore", "pipe", "pipe"],
   });
+
   children.push(child);
   let stdout = "";
   let stderr = "";
-  child.stdout!.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
-  child.stderr!.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+  child.stdout.on("data", (chunk: Buffer) => (stdout += chunk.toString()));
+  child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
+
   const exited = new Promise<{ code: number | null; stderr: string }>((done) =>
-    child.on("exit", (code) => done({ code, stderr })),
+    { child.on("exit", (code) => done({ code, stderr })); },
   );
+
   const claimed = new Promise<void>((done, fail) => {
-    child.stdout!.on("data", () => stdout.includes("claimed") && done());
+    child.stdout.on("data", () => stdout.includes("claimed") && done());
     void exited.then(({ code }) => fail(new Error(`daemon exited ${code} before claiming: ${stderr}`)));
   });
+
   // A refused daemon never claims; callers that do not await `claimed` must not see an unhandled rejection.
   claimed.catch(() => {});
+
   return { child, claimed, exited };
 };
 
@@ -68,19 +77,22 @@ test("a second daemon cannot take the state root while the first owns it", async
 
 const deadPid = async (): Promise<number> => {
   const dead = spawn(process.execPath, ["-e", ""]);
-  await new Promise((done) => dead.on("exit", done));
+  await new Promise((done) => { dead.on("exit", done); });
+
   return dead.pid!;
 };
 
 const ownerFile = (pid: number): string => `${JSON.stringify({ pid, startedAt: "fixture" })}\n`;
 
-const refusal = (claim: () => unknown): StateRootLockedError => {
+const refusal = (claim: () => void): StateRootLockedError => {
   try {
     claim();
   } catch (error) {
-    if (error instanceof StateRootLockedError) return error;
+    if (error instanceof StateRootLockedError) {return error;}
+
     throw error;
   }
+
   throw new Error("expected the claim to be refused");
 };
 
@@ -107,9 +119,11 @@ test("a lock placed by another owner during a stale takeover survives, and the c
   writeFileSync(lockPath, ownerFile(await deadPid()));
   // A live process other than this one: the test runner's parent.
   const otherOwner = ownerFile(process.ppid);
+
   const error = refusal(() =>
     claimStateRoot(home, { onStaleLockConfirmed: () => writeFileSync(lockPath, otherOwner) }),
   );
+
   expect(error.reason).toBe("held");
   expect(error.ownerPid).toBe(process.ppid);
   expect(readFileSync(lockPath, "utf8")).toBe(otherOwner);

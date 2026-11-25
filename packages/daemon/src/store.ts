@@ -10,8 +10,8 @@
  * beside them. Every change runs through `Store.change`, which commits the
  * state writes and their history rows in one transaction, or neither.
  */
-import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
-import * as SqliteMigrator from "@effect/sql-sqlite-node/SqliteMigrator";
+import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
+import { expectDefined } from "@foundry/protocol/errors";
 import { Clock, Data, Effect } from "effect";
 import type { Scope } from "effect";
 import { Reactivity } from "effect/reactivity";
@@ -235,7 +235,7 @@ export interface HistoryEntry {
 export * from "./history-records.js";
 
 /** Runs one statement and returns its rows (empty for writes without `RETURNING`). */
-export type Query = <Row extends object = Record<string, unknown>>(
+export type Query = <Row extends object = object>(
   statement: string,
   params?: ReadonlyArray<SqlValue>,
 ) => Effect.Effect<ReadonlyArray<Row>, StoreError>;
@@ -287,8 +287,8 @@ const describe = (cause: unknown): string =>
 
 const makeQuery =
   (sql: SqlClient.SqlClient): Query =>
-  (statement, params = []) =>
-    sql.unsafe(statement, params).pipe(Effect.mapError(sqlFailure("Sql", "Statement failed"))) as never;
+  <Row extends object = object>(statement: string, params: ReadonlyArray<SqlValue> = []) =>
+    sql.unsafe<Row>(statement, params).pipe(Effect.mapError(sqlFailure("Sql", "Statement failed")));
 
 /**
  * Opens the store for the lifetime of the enclosing scope: opens the file in
@@ -306,9 +306,11 @@ export const openStore = (
       Effect.provide(Reactivity.layer),
       Effect.mapError(sqlFailure("Open", `Could not open ${options.filename}`)),
     );
+
     const query = makeQuery(sql);
 
     const applied = yield* appliedVersion(query);
+
     if (applied > known) {
       return yield* new StoreError({
         reason: "NewerSchema",
@@ -332,34 +334,44 @@ export const openStore = (
     );
 
     const commitListeners = new Set<() => void>();
-    const change: Store["change"] = (body) =>
+
+    const change = <A, E, R>(body: (change: Change) => Effect.Effect<A, E, R>): Effect.Effect<A, E | StoreError, R> =>
       Effect.gen(function* () {
         let historyRows = 0;
+
         const recordHistory = (entry: HistoryEntry) =>
           Effect.gen(function* () {
             const recordedAt = yield* Clock.currentTimeMillis;
+
             const rows = yield* query<{ sequence: number }>(
               `INSERT INTO history (factory_id, recorded_at, kind, subject, detail)
                VALUES (?, ?, ?, ?, ?) RETURNING sequence`,
               [entry.factoryId, recordedAt, entry.kind, entry.subject, JSON.stringify(entry.detail ?? null)],
             );
-            const sequence = rows[0]!.sequence;
+
+            const sequence = expectDefined(rows[0], "the recorded history sequence").sequence;
+
             for (const record of entry.records ?? []) {
               yield* query(
                 `INSERT OR IGNORE INTO history_record (sequence, record_kind, record_id) VALUES (?, ?, ?)`,
                 [sequence, record.kind, record.id],
               );
             }
+
             historyRows += 1;
+
             return sequence;
           });
+
         const result = yield* body({ query, recordHistory });
+
         if (historyRows === 0) {
           return yield* new StoreError({
             reason: "NoHistory",
             message: "A change must record at least one history row; rolled back",
           });
         }
+
         return result;
       }).pipe(
         sql.withTransaction,
@@ -368,7 +380,7 @@ export const openStore = (
           Effect.sync(() => {
             // The change has committed. A listener must never turn that into a reported failure,
             // or the caller would think it lost and might retry, writing duplicates (ADR 0001).
-            for (const listener of [...commitListeners]) {
+            for (const listener of Array.from(commitListeners)) {
               try {
                 listener();
               } catch {
@@ -377,7 +389,7 @@ export const openStore = (
             }
           }),
         ),
-      ) as never;
+      );
 
     return {
       filename: options.filename,
@@ -387,6 +399,7 @@ export const openStore = (
       onCommit: (listener) => {
         const registered = () => listener();
         commitListeners.add(registered);
+
         return () => void commitListeners.delete(registered);
       },
     } satisfies Store;
@@ -396,9 +409,12 @@ export const openStore = (
 const appliedVersion = (query: Query) =>
   Effect.gen(function* () {
     const tables = yield* query(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`, [MIGRATIONS_TABLE]);
-    if (tables.length === 0) return 0;
+
+    if (tables.length === 0) {return 0;}
+
     const rows = yield* query<{ version: number | null }>(
       `SELECT max(migration_id) AS version FROM ${MIGRATIONS_TABLE}`,
     );
+
     return rows[0]?.version ?? 0;
   });

@@ -25,14 +25,16 @@ export class CompactionReporter {
   attach(channel: OpenChannel): void {
     this.channel = channel;
     void channel.closed.then(() => {
-      if (this.channel === channel) this.channel = undefined;
+      if (this.channel === channel) {this.channel = undefined;}
     });
     this.flush();
   }
 
   private flush(): void {
     const channel = this.channel;
-    if (!this.pending || this.sending || !channel) return;
+
+    if (!this.pending || this.sending || !channel) {return;}
+
     this.pending = false;
     this.sending = true;
     channel.send({ type: "compacted" }).then(
@@ -44,7 +46,8 @@ export class CompactionReporter {
         // The channel died under the write: drop it and keep the report for the
         // next attach(). Retrying here would spin on a channel whose `closed`
         // has not settled yet, starving the event loop.
-        if (this.channel === channel) this.channel = undefined;
+        if (this.channel === channel) {this.channel = undefined;}
+
         this.pending = true;
         this.sending = false;
       },

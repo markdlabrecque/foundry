@@ -2,12 +2,13 @@
 // depend on the registry seeing a real leader exit, while an injected group
 // probe stands in for pgid reuse, which the kernel cannot be made to do on cue.
 import { afterEach, expect, test } from "vitest";
-import { createLaunchRegistry, type GroupSignal, type LaunchRecord } from "@foundry/host";
+import { createLaunchRegistry } from "@foundry/host";
+import type { GroupSignal, LaunchRecord } from "@foundry/host";
 
 const cleanups: Array<() => void> = [];
 
 afterEach(() => {
-  for (const cleanup of cleanups.splice(0).reverse()) cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {cleanup();}
 });
 
 /**
@@ -15,10 +16,11 @@ afterEach(() => {
  * signals are recorded, and forwarded to the real group only if `forward`.
  */
 function recordingRegistry(fake: { alive: boolean; forward?: boolean }) {
-  const sent: GroupSignal[] = [];
+  const sent: Array<GroupSignal> = [];
   let onProbe: (() => void) | undefined;
-  const exits: LaunchRecord[] = [];
+  const exits: Array<LaunchRecord> = [];
   let onExit: ((record: LaunchRecord) => void) | undefined;
+
   const registry = createLaunchRegistry({
     bootId: "boot-test",
     groupWatchMs: 5,
@@ -29,30 +31,39 @@ function recordingRegistry(fake: { alive: boolean; forward?: boolean }) {
     signalGroup: (pgid, signal) => {
       if (signal === 0) {
         onProbe?.();
+
         if (fake.forward) {
           try {
             process.kill(-pgid, 0);
+
             return true;
           } catch {
             return false;
           }
         }
+
         return fake.alive;
       }
+
       sent.push(signal);
-      if (fake.forward) process.kill(-pgid, signal);
+
+      if (fake.forward) {process.kill(-pgid, signal);}
+
       return true;
     },
   });
+
   return {
     registry,
     sent,
     exited: () =>
       new Promise<LaunchRecord>((resolve) => {
-        if (exits.length > 0) resolve(exits[0] as LaunchRecord);
-        else onExit = resolve;
+        const [first] = exits;
+
+        if (first === undefined) {onExit = resolve;}
+        else {resolve(first);}
       }),
-    nextProbe: () => new Promise<void>((resolve) => (onProbe = () => ((onProbe = undefined), resolve()))),
+    nextProbe: () => new Promise<void>((resolve) => { onProbe = () => ((onProbe = undefined), resolve()); }),
   };
 }
 
@@ -64,6 +75,7 @@ async function launch(registry: ReturnType<typeof createLaunchRegistry>, script:
     args: ["-e", script],
     cwd: process.cwd(),
   });
+
   cleanups.push(() => {
     try {
       process.kill(-record.pgid, "SIGKILL");
@@ -71,6 +83,7 @@ async function launch(registry: ReturnType<typeof createLaunchRegistry>, script:
       // Already gone.
     }
   });
+
   return record;
 }
 
@@ -107,11 +120,13 @@ test("concurrent terminations of one launch share a single SIGTERM and result", 
   const { registry, sent } = recordingRegistry({ alive: true, forward: true });
   const record = await launch(registry, "setInterval(() => {}, 1000)");
 
-  const options = { graceMs: 5_000, killWaitMs: 5_000 };
+  const options = { graceMs: 5000, killWaitMs: 5000 };
+
   const [first, second] = await Promise.all([
     registry.terminate(record.launchId, options),
     registry.terminate(record.launchId, options),
   ]);
+
   expect(first).toMatchObject({
     outcome: "gone",
     escalated: false,

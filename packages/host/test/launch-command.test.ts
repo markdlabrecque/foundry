@@ -1,13 +1,8 @@
 import { existsSync } from "node:fs";
 import { expect, test } from "vitest";
 import { parseArgs } from "@earendil-works/pi-coding-agent";
-import {
-  FIXED_TOOLS,
-  buildLaunchCommand,
-  resolvePiExecutable,
-  type LaunchInputs,
-  type PiExecutable,
-} from "@foundry/host";
+import { FIXED_TOOLS, buildLaunchCommand, resolvePiExecutable } from "@foundry/host";
+import type { LaunchInputs, PiExecutable } from "@foundry/host";
 
 // Unit tier: the launch command is a pure mapping, so Pi's own argument parser
 // proves how Pi 1.6.0 reads it without spawning a process.
@@ -89,6 +84,7 @@ test("passes the host environment unfiltered and launch identity overrides inher
     FOUNDRY_SLOT: "stale/9",
     UNSET: undefined,
   };
+
   const launch = buildLaunchCommand(inputs(), pi, hostEnv);
 
   expect(launch.env).toEqual({
@@ -123,6 +119,7 @@ test.each([
 
 test("FOUNDRY_PI_BIN overrides the pinned Pi, otherwise the pinned RPC entry runs under this Node", () => {
   expect(resolvePiExecutable({ FOUNDRY_PI_BIN: "/tmp/stub-pi" })).toEqual({ command: "/tmp/stub-pi", args: [] });
+
   for (const script of ["/tmp/stub-pi.js", "/tmp/stub-pi.mjs", "/tmp/stub-pi.cjs"]) {
     expect(resolvePiExecutable({ FOUNDRY_PI_BIN: script })).toEqual({ command: process.execPath, args: [script] });
   }

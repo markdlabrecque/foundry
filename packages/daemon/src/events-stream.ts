@@ -9,6 +9,7 @@
  * being AUTOINCREMENT: a row with a lower ID can never commit after a higher one has been read.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { messageOf } from "@foundry/protocol/errors";
 import type { EventsQuery, FactoryEvent } from "@foundry/protocol/management-api";
 import type { EventSource } from "./events.js";
 
@@ -23,6 +24,7 @@ const drained = (response: ServerResponse): Promise<void> =>
       response.off("close", done);
       resolve();
     };
+
     response.on("drain", done);
     response.on("close", done);
   });
@@ -42,12 +44,16 @@ export const streamEvents = (
   let pending = false;
   // Subscribed before the first read, so a row committed during the replay is not missed.
   const unsubscribe = query.follow ? source.onCommit(() => schedule()) : () => {};
+
   const finish = (): void => {
-    if (closed) return;
+    if (closed) {return;}
+
     closed = true;
     unsubscribe();
-    if (!response.writableEnded) response.end();
+
+    if (!response.writableEnded) {response.end();}
   };
+
   // The response's `close` marks the client going away. The request's `close` fires as soon as its
   // (empty) body has been read, so it says nothing about the connection.
   response.on("close", finish);
@@ -62,39 +68,54 @@ export const streamEvents = (
 
   const pump = async (): Promise<void> => {
     pumping = true;
+
     try {
       do {
         pending = false;
+
         for (;;) {
           const page = await source.page({ after: cursor, factory: query.factory, ticket: query.ticket, limit: PAGE_SIZE });
-          if (closed) return;
+
+          if (closed) {return;}
+
           let full = false;
+
           for (const event of page) {
-            if (!response.write(formatEvent(event))) full = true;
+            if (!response.write(formatEvent(event))) {full = true;}
+
             cursor = event.id;
           }
+
           // Backpressure: a slow client holds the next page back instead of buffering history.
-          if (full && !closed) await drained(response);
-          if (closed) return;
-          if (page.length < PAGE_SIZE) break;
+          if (full && !closed) {await drained(response);}
+
+          if (closed) {return;}
+
+          if (page.length < PAGE_SIZE) {break;}
         }
       } while (pending && !closed);
     } catch (error) {
-      if (!closed) response.write(`event: error\ndata: ${JSON.stringify({ message: (error as Error).message })}\n\n`);
+      if (!closed) {response.write(`event: error\ndata: ${JSON.stringify({ message: messageOf(error) })}\n\n`);}
+
       finish();
+
       return;
     } finally {
       pumping = false;
     }
-    if (!query.follow) finish();
+
+    if (!query.follow) {finish();}
   };
 
   const schedule = (): void => {
-    if (closed) return;
+    if (closed) {return;}
+
     if (pumping) {
       pending = true;
+
       return;
     }
+
     void pump();
   };
 

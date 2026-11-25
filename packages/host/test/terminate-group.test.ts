@@ -1,18 +1,22 @@
 // Unit tier: the decision of when to escalate and when to claim "gone" is pure
 // logic over injected signal and reap probes; no process is needed to prove it.
 import { expect, test } from "vitest";
-import { terminateGroup, type GroupSignal } from "@foundry/host";
+import { terminateGroup } from "@foundry/host";
+import type { GroupSignal } from "@foundry/host";
 
 /** A fake group whose members leave after the signals named in `leavesOn`. */
 function fakeGroup(leavesOn: GroupSignal | "never") {
-  const sent: GroupSignal[] = [];
+  const sent: Array<GroupSignal> = [];
   let present = true;
+
   return {
     sent,
     deps: {
       signalGroup: (_pgid: number, signal: GroupSignal) => {
-        if (signal !== 0) sent.push(signal);
-        if (signal === leavesOn) present = false;
+        if (signal !== 0) {sent.push(signal);}
+
+        if (signal === leavesOn) {present = false;}
+
         // A probe reports whether anyone is left; a real signal reached the group.
         return signal === 0 ? present : true;
       },
@@ -42,15 +46,18 @@ test("a group whose departure is never observed is unconfirmed, not gone", async
 });
 
 test("a reaped leader with members left in the group is not gone", async () => {
-  const sent: GroupSignal[] = [];
+  const sent: Array<GroupSignal> = [];
+
   const result = await terminateGroup(42, fast, {
     signalGroup: (_pgid, signal) => {
-      if (signal !== 0) sent.push(signal);
+      if (signal !== 0) {sent.push(signal);}
+
       return true;
     },
     leaderReaped: () => true,
     sleep: async () => {},
   });
+
   expect(result.outcome).toBe("unconfirmed");
   expect(sent).toEqual(["SIGTERM", "SIGKILL"]);
 });

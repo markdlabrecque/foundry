@@ -6,16 +6,22 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import { closeHold, openStore, raiseHold, serveManagementApi, storeHoldsReader, type Store } from "@foundry/daemon";
+import { closeHold, openStore, raiseHold, serveManagementApi, storeHoldsReader } from "@foundry/daemon";
+import type { Store } from "@foundry/daemon";
+import type { HoldEvidence } from "@foundry/protocol/holds";
 import { EXIT_OK, EXIT_REFUSED, runHoldList, runHoldShow } from "@foundry/cli";
 
 const cleanups: Array<() => Promise<void> | void> = [];
+
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 // FOUNDRY_HOME is never the operator's root: every call names --home.
 const env = { FOUNDRY_HOME: "/nonexistent-foundry-home" };
+
+const run = <A>(effect: Effect.Effect<A, unknown>) => Effect.runPromise(effect);
+
 
 const serveHolds = async (): Promise<{ home: string; store: Store }> => {
   const home = mkdtempSync(join(tmpdir(), "foundry-holds-"));
@@ -26,15 +32,15 @@ const serveHolds = async (): Promise<{ home: string; store: Store }> => {
   const status = () => ({ instance: { stateRoot: home, daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } });
   const api = await serveManagementApi({ stateRoot: home, status, holds: storeHoldsReader(store) });
   cleanups.push(() => api.close());
+
   return { home, store };
 };
 
-const frozen = (evidence: Record<string, unknown>) =>
+const frozen = (evidence: HoldEvidence) =>
   ({ factoryId: "f1", kind: "frozen_slot", subject: "impl/1", evidence }) as const;
 
 test("a repeated hold keeps one open record, refreshes its evidence, and shows it with its commands", async () => {
   const { home, store } = await serveHolds();
-  const run = <A>(effect: Effect.Effect<A, unknown>) => Effect.runPromise(effect);
 
   const first = await run(raiseHold(store, frozen({ cause: "host lost", launchId: "L1" })));
   const again = await run(raiseHold(store, frozen({ cause: "host lost", launchId: "L1" })));
@@ -66,6 +72,7 @@ test("a repeated hold keeps one open record, refreshes its evidence, and shows i
       }),
     ),
   );
+
   expect(duplicate).toMatchObject(Exit.fail({ reason: "Sql" }));
 
   const list = await runHoldList({ json: false, home, env });

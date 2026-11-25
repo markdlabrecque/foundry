@@ -1,17 +1,29 @@
 // Tier: unit. RunInterrupter wired to a fake Pi through interruptRuns; no socket.
 // The channel round trip is in test/interrupt.test.ts, the real Pi journey in e2e.
 import { expect, test } from "vitest";
-import { interruptRuns, RunInterrupter, type RunControl } from "@foundry/extension";
+import { interruptRuns, RunInterrupter } from "@foundry/extension";
+import type { RunControl } from "@foundry/extension";
+
+/** Pi gives each handler its own event and context types; the fake passes what the test gives. */
+type PiHandler = (...args: Array<any>) => void;
+
+/** The event fields these tests give Pi's handlers. */
+interface PiEventPayload {
+  readonly reason?: "startup";
+  readonly aborted?: boolean;
+}
 
 /** A stand-in for Pi's extension API: records handlers so the test can fire Pi's events. */
 const fakePi = () => {
-  const handlers = new Map<string, Array<(event: unknown, ctx: unknown) => void>>();
+  const handlers = new Map<string, Array<PiHandler>>();
+
   return {
-    on: ((event: string, handler: (event: unknown, ctx: unknown) => void) => {
+    on: (event: string, handler: PiHandler) => {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+
       return () => {};
-    }) as never,
-    emit: (event: string, payload: unknown = {}, ctx: unknown = undefined) =>
+    },
+    emit: (event: string, payload: PiEventPayload = {}, ctx?: RunControl) =>
       (handlers.get(event) ?? []).forEach((h) => h(payload, ctx)),
   };
 };
@@ -24,15 +36,21 @@ const busyPi = () => {
   const interrupter = new RunInterrupter();
   interruptRuns(pi, interrupter);
   pi.emit("session_start", { reason: "startup" }, control);
+
   return { pi, state, interrupter };
 };
 
-const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+const tick = () => new Promise<void>((resolve) => { setImmediate(resolve); });
 
 const track = <T>(promise: Promise<T>) => {
-  const seen: { value?: T } = {};
-  void promise.then((value) => (seen.value = value));
-  return seen;
+  const settled: Array<T> = [];
+  void promise.then((value) => settled.push(value));
+
+  return {
+    get value(): T | undefined {
+      return settled[0];
+    },
+  };
 };
 
 test("a standalone compaction that completes despite the abort is acknowledged once Pi clears it", async () => {

@@ -5,9 +5,12 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { ChannelUnavailableError, startChannelServer, type ChannelServer, type SlotClaim } from "@foundry/daemon";
-import { openChannel, RunInterrupter, type OpenChannel, type RunControl } from "@foundry/extension";
-import { PROTOCOL_VERSION, type Hello, type WorkerFrame } from "@foundry/protocol";
+import { ChannelUnavailableError, startChannelServer } from "@foundry/daemon";
+import type { ChannelServer, SlotClaim } from "@foundry/daemon";
+import { openChannel, RunInterrupter } from "@foundry/extension";
+import type { OpenChannel, RunControl } from "@foundry/extension";
+import { PROTOCOL_VERSION } from "@foundry/protocol";
+import type { Hello, WorkerFrame } from "@foundry/protocol";
 
 const hello: Hello = {
   type: "hello",
@@ -33,7 +36,8 @@ const fakeRun = (interrupter: RunInterrupter, active: boolean) => {
   let running = active;
   let aborts = 0;
   let aborted!: () => void;
-  const abortedOnce = new Promise<void>((r) => (aborted = r));
+  const abortedOnce = new Promise<void>((r) => { aborted = r; });
+
   const control: RunControl = {
     isIdle: () => !running,
     abort: () => {
@@ -41,52 +45,60 @@ const fakeRun = (interrupter: RunInterrupter, active: boolean) => {
       aborted();
     },
   };
+
   const settle = () => {
     running = false;
     interrupter.settled(true);
   };
+
   return { control, aborts: () => aborts, abortedOnce, settle };
 };
 
 /** Let every pending promise callback and socket write queued so far run. */
-const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+const tick = () => new Promise<void>((resolve) => { setImmediate(resolve); });
 
 let dir: string;
 let server: ChannelServer | undefined;
-const channels: OpenChannel[] = [];
+const channels: Array<OpenChannel> = [];
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "foundry-interrupt-"));
 });
 
 afterEach(async () => {
-  for (const channel of channels.splice(0)) channel.close();
+  for (const channel of channels.splice(0)) {channel.close();}
+
   await server?.close();
   server = undefined;
   await rm(dir, { recursive: true, force: true });
 });
 
-const connect = async (interrupter: RunInterrupter, frames: WorkerFrame[] = [], onHeartbeat = () => {}) => {
+const connect = async (interrupter: RunInterrupter, frames: Array<WorkerFrame> = [], onHeartbeat = () => {}) => {
   let accepted = 0;
   server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: acceptAll,
     onAccepted: () => (accepted += 1),
     onFrame: (_slot, frame) => {
-      if (frame.type === "heartbeat") return onHeartbeat();
+      if (frame.type === "heartbeat") {return onHeartbeat();}
+
       frames.push(frame);
     },
   });
+
   const opened = await openChannel({
     socketPath: server.socketPath,
     hello,
     heartbeatIntervalMs: 60_000,
     onFrame: (frame, channel) => {
-      if (frame.type === "interrupt") interrupter.handle(frame, channel);
+      if (frame.type === "interrupt") {interrupter.handle(frame, channel);}
     },
   });
-  if (!opened.accepted) throw new Error("hello was not accepted");
+
+  if (!opened.accepted) {throw new Error("hello was not accepted");}
+
   channels.push(opened.channel);
+
   return { server, channel: opened.channel, accepted: () => accepted };
 };
 
@@ -94,9 +106,9 @@ test("an interrupt is acknowledged only after the aborted run settles, once, on 
   const interrupter = new RunInterrupter();
   const run = fakeRun(interrupter, true);
   interrupter.bind(run.control);
-  const frames: WorkerFrame[] = [];
+  const frames: Array<WorkerFrame> = [];
   let heartbeatSeen!: () => void;
-  const heartbeat = new Promise<void>((r) => (heartbeatSeen = r));
+  const heartbeat = new Promise<void>((r) => { heartbeatSeen = r; });
   const { server, channel, accepted } = await connect(interrupter, frames, () => heartbeatSeen());
 
   let resolved = false;

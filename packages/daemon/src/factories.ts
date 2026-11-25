@@ -28,12 +28,15 @@ export const listLoadedFactories = (
   Effect.gen(function* () {
     const runs = yield* store.read<{ started_at: number }>(`SELECT started_at FROM run WHERE id = ?`, [runId]);
     const run = runs[0];
-    if (run === undefined) return yield* Effect.fail(new RunNotRecordedError(`run ${runId} is not recorded`));
+
+    if (run === undefined) {return yield* Effect.fail(new RunNotRecordedError(`run ${runId} is not recorded`));}
+
     const rows = yield* store.read<LoadRow>(
       `SELECT id, factory_id, yaml_file, config_hash, knowledge_root
        FROM factory_config_load WHERE run_id = ? ORDER BY id`,
       [runId],
     );
+
     const factories = rows.map(
       (row): FactorySummary => ({
         factoryId: row.factory_id,
@@ -45,6 +48,7 @@ export const listLoadedFactories = (
         knowledgeRoot: row.knowledge_root,
       }),
     );
+
     return { runId, loadedAt: new Date(run.started_at).toISOString(), factories };
   });
 

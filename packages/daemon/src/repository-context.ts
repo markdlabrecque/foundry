@@ -28,6 +28,7 @@ import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import ignore from "ignore";
 import { parse as parseYaml } from "yaml";
+import { Schema } from "effect";
 
 /** A file reproduced verbatim, with its path relative to the worktree root. */
 export interface RepositoryContextFile {
@@ -53,7 +54,7 @@ export interface RepositoryContext {
   /** `.pi/APPEND_SYSTEM.md`. */
   readonly appendSystem: RepositoryContextFile | null;
   /** Skill headers, sorted by name. */
-  readonly skills: readonly SkillHeader[];
+  readonly skills: ReadonlyArray<SkillHeader>;
 }
 
 /** Pi 1.6.0's candidate order; the first regular file wins. */
@@ -62,7 +63,8 @@ const IGNORE_FILE_NAMES = [".gitignore", ".ignore", ".fdignore"] as const;
 
 /** Pi's two skill layouts: `.pi/skills` takes root-level `.md` files, `.agents/skills` only nested ones. */
 type SkillDirMode = "pi" | "agents";
-const SKILL_DIRS: readonly { readonly path: string; readonly mode: SkillDirMode }[] = [
+
+const SKILL_DIRS: ReadonlyArray<{ readonly path: string; readonly mode: SkillDirMode }> = [
   { path: join(".pi", "skills"), mode: "pi" },
   { path: join(".agents", "skills"), mode: "agents" },
 ];
@@ -97,8 +99,11 @@ class RootScope {
   async inspect(path: string): Promise<{ readonly kind: "file" | "dir" | "other"; readonly real: string } | null> {
     try {
       const real = await realpath(path);
-      if (!isWithin(this.realRoot, real)) return null;
+
+      if (!isWithin(this.realRoot, real)) {return null;}
+
       const stats = await stat(real);
+
       return { kind: stats.isFile() ? "file" : stats.isDirectory() ? "dir" : "other", real };
     } catch {
       return null;
@@ -113,43 +118,54 @@ class RootScope {
 async function findContextFile(scope: RootScope): Promise<RepositoryContextFile | null> {
   for (const name of CONTEXT_FILE_CANDIDATES) {
     const found = await readContextFile(scope, join(scope.root, name));
-    if (found) return found;
+
+    if (found) {return found;}
   }
+
   return null;
 }
 
 async function readContextFile(scope: RootScope, path: string): Promise<RepositoryContextFile | null> {
   const target = await scope.inspect(path);
-  if (target?.kind !== "file") return null;
+
+  if (target?.kind !== "file") {return null;}
+
   const content = await readText(target.real);
+
   return content === null ? null : { path: scope.relativePath(path), content };
 }
 
-async function indexSkills(scope: RootScope): Promise<SkillHeader[]> {
+async function indexSkills(scope: RootScope): Promise<Array<SkillHeader>> {
   const byName = new Map<string, { readonly header: SkillHeader; readonly hidden: boolean }>();
   const seenFiles = new Set<string>();
 
   for (const { path, mode } of SKILL_DIRS) {
     const dir = join(scope.root, path);
     const target = await scope.inspect(dir);
-    if (target?.kind !== "dir") continue;
+
+    if (target?.kind !== "dir") {continue;}
 
     const files = await collectSkillFiles(scope, dir, mode, ignore(), dir, new Set([target.real]));
+
     for (const file of files) {
       const real = (await scope.inspect(file))?.real;
-      if (real === undefined || seenFiles.has(real)) continue;
+
+      if (real === undefined || seenFiles.has(real)) {continue;}
+
       const parsed = await readSkillHeader(scope, file, real);
-      if (!parsed) continue;
+
+      if (!parsed) {continue;}
+
       seenFiles.add(real);
+
       // Pi keeps the first skill discovered under a name: `.pi/skills` before
       // `.agents/skills`. A hidden skill still claims its name.
-      if (!byName.has(parsed.header.name)) byName.set(parsed.header.name, parsed);
+      if (!byName.has(parsed.header.name)) {byName.set(parsed.header.name, parsed);}
     }
   }
 
   return [...byName.values()]
-    .filter((skill) => !skill.hidden)
-    .map((skill) => skill.header)
+    .flatMap((skill) => (skill.hidden ? [] : [skill.header]))
     .sort((a, b) => compare(a.name, b.name) || compare(a.path, b.path));
 }
 
@@ -165,13 +181,15 @@ async function collectSkillFiles(
   ig: Ignore,
   skillsRoot: string,
   visitedDirs: Set<string>,
-): Promise<string[]> {
-  let entries: Dirent[];
+): Promise<Array<string>> {
+  let entries: Array<Dirent>;
+
   try {
     entries = await readdir(dir, { withFileTypes: true });
   } catch {
     return [];
   }
+
   entries.sort((a, b) => compare(a.name, b.name));
   await addIgnoreRules(scope, ig, dir, skillsRoot);
   const relativeToSkills = (path: string): string => toPosix(relative(skillsRoot, path));
@@ -179,27 +197,37 @@ async function collectSkillFiles(
   if (entries.some((entry) => entry.name === "SKILL.md")) {
     const skillFile = join(dir, "SKILL.md");
     const target = await scope.inspect(skillFile);
-    if (target?.kind === "file" && !ig.ignores(relativeToSkills(skillFile))) return [skillFile];
+
+    if (target?.kind === "file" && !ig.ignores(relativeToSkills(skillFile))) {return [skillFile];}
   }
 
-  const files: string[] = [];
+  const files: Array<string> = [];
+
   for (const entry of entries) {
-    if (entry.name.startsWith(".") || entry.name === "node_modules") continue;
+    if (entry.name.startsWith(".") || entry.name === "node_modules") {continue;}
+
     const path = join(dir, entry.name);
     const target = await scope.inspect(path);
-    if (!target) continue;
+
+    if (!target) {continue;}
+
     const rel = relativeToSkills(path);
 
     if (target.kind === "file") {
       const atSkillsRoot = dir === skillsRoot;
       const takesMarkdown = mode === "pi" ? atSkillsRoot : !atSkillsRoot;
-      if (takesMarkdown && entry.name.endsWith(".md") && !ig.ignores(rel)) files.push(path);
+
+      if (takesMarkdown && entry.name.endsWith(".md") && !ig.ignores(rel)) {files.push(path);}
+
       continue;
     }
-    if (target.kind !== "dir" || ig.ignores(`${rel}/`) || visitedDirs.has(target.real)) continue;
+
+    if (target.kind !== "dir" || ig.ignores(`${rel}/`) || visitedDirs.has(target.real)) {continue;}
+
     visitedDirs.add(target.real);
     files.push(...(await collectSkillFiles(scope, path, mode, ig, skillsRoot, visitedDirs)));
   }
+
   return files;
 }
 
@@ -207,38 +235,51 @@ async function collectSkillFiles(
 async function addIgnoreRules(scope: RootScope, ig: Ignore, dir: string, skillsRoot: string): Promise<void> {
   const relativeDir = relative(skillsRoot, dir);
   const prefix = relativeDir ? `${toPosix(relativeDir)}/` : "";
+
   for (const name of IGNORE_FILE_NAMES) {
     // Through the scope, so an ignore file symlinked outside the root is absent.
     const target = await scope.inspect(join(dir, name));
-    if (target?.kind !== "file") continue;
+
+    if (target?.kind !== "file") {continue;}
+
     let content: string;
+
     try {
       content = await readFile(target.real, "utf8");
     } catch {
       continue;
     }
+
     const patterns = content
       .split(/\r?\n/)
       .map((line) => prefixIgnorePattern(line, prefix))
       .filter((line): line is string => line !== null);
-    if (patterns.length > 0) ig.add(patterns);
+
+    if (patterns.length > 0) {ig.add(patterns);}
   }
 }
 
 function prefixIgnorePattern(line: string, prefix: string): string | null {
   const trimmed = line.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith("#") && !trimmed.startsWith("\\#")) return null;
+
+  if (!trimmed) {return null;}
+
+  if (trimmed.startsWith("#") && !trimmed.startsWith(String.raw`\#`)) {return null;}
+
   let pattern = line;
   let negated = false;
+
   if (pattern.startsWith("!")) {
     negated = true;
     pattern = pattern.slice(1);
-  } else if (pattern.startsWith("\\!")) {
+  } else if (pattern.startsWith(String.raw`\!`)) {
     pattern = pattern.slice(1);
   }
-  if (pattern.startsWith("/")) pattern = pattern.slice(1);
+
+  if (pattern.startsWith("/")) {pattern = pattern.slice(1);}
+
   const prefixed = `${prefix}${pattern}`;
+
   return negated ? `!${prefixed}` : prefixed;
 }
 
@@ -254,31 +295,57 @@ async function readSkillHeader(
   real: string,
 ): Promise<{ readonly header: SkillHeader; readonly hidden: boolean } | null> {
   const raw = await readText(real);
-  if (raw === null) return null;
-  let frontmatter: Record<string, unknown>;
+
+  if (raw === null) {return null;}
+
+  let frontmatter: Frontmatter;
+
   try {
     frontmatter = parseFrontmatter(raw);
   } catch {
     return null;
   }
-  const description = frontmatter["description"];
-  if (typeof description !== "string" || description.trim() === "") return null;
+
+  const description = frontmatter.description;
+
+  if (!isText(description) || description.trim() === "") {return null;}
+
   const hidden = frontmatter["disable-model-invocation"] === true;
-  const declaredName = frontmatter["name"];
-  const name = typeof declaredName === "string" && declaredName !== "" ? declaredName : basename(dirname(file));
+  const declaredName = frontmatter.name;
+  const name = isText(declaredName) && declaredName !== "" ? declaredName : basename(dirname(file));
+
   return { header: { name, description, path: scope.relativePath(file) }, hidden };
 }
 
+/** The frontmatter keys a skill header reads; any other keys are ignored. */
+const Frontmatter = Schema.Struct({
+  name: Schema.optionalKey(Schema.Unknown),
+  description: Schema.optionalKey(Schema.Unknown),
+  "disable-model-invocation": Schema.optionalKey(Schema.Unknown),
+});
+
+type Frontmatter = typeof Frontmatter.Type;
+
+const isFrontmatter = Schema.is(Frontmatter);
+
+const isText = Schema.is(Schema.String);
+
+/** A YAML mapping, as opposed to a scalar or a list. */
+const isMapping = Schema.is(Schema.Record(Schema.String, Schema.Unknown));
+
 /** Pi's frontmatter extraction: a leading `---` block, closed by the next line starting `---`. */
-function parseFrontmatter(content: string): Record<string, unknown> {
-  const normalized = content.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
-  if (!normalized.startsWith("---")) return {};
+function parseFrontmatter(content: string): Frontmatter {
+  const normalized = content.replaceAll('\r\n', "\n").replaceAll('\r', "\n");
+
+  if (!normalized.startsWith("---")) {return {};}
+
   const end = normalized.indexOf("\n---", 3);
-  if (end === -1) return {};
+
+  if (end === -1) {return {};}
+
   const parsed: unknown = parseYaml(normalized.slice(4, end));
-  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-    ? (parsed as Record<string, unknown>)
-    : {};
+
+  return isMapping(parsed) && isFrontmatter(parsed) ? parsed : {};
 }
 
 async function readText(path: string): Promise<string | null> {
@@ -290,11 +357,12 @@ async function readText(path: string): Promise<string | null> {
 }
 
 function stripBom(text: string): string {
-  return text.charCodeAt(0) === 0xfeff ? text.slice(1) : text;
+  return text.charCodeAt(0) === 0xfe_ff ? text.slice(1) : text;
 }
 
 function isWithin(parent: string, child: string): boolean {
   const rel = relative(parent, child);
+
   return rel === "" || (rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel));
 }
 

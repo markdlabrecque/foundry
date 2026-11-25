@@ -1,9 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { codeOf } from "@foundry/protocol/errors";
 import { linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { Option, Schema } from "effect";
 
 /** The lock file's name inside the state root. */
 export const LOCK_FILE_NAME = "daemon.lock";
+
 /** The guard file held while one process takes over a stale lock. */
 export const TAKEOVER_GUARD_FILE_NAME = "daemon.lock.takeover";
 
@@ -69,42 +72,41 @@ interface OwnerFile {
   readonly owner: OwnerContent | undefined;
 }
 
-const isErrno = (error: unknown, code: string): boolean =>
-  error instanceof Error && (error as NodeJS.ErrnoException).code === code;
+const decodeOwner = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ pid: Schema.Number, startedAt: Schema.String })),
+);
+
+const isErrno = (cause: unknown, code: string): boolean => codeOf(cause) === code;
 
 const unlinkIfPresent = (path: string): void => {
   try {
     unlinkSync(path);
   } catch (error) {
-    if (!isErrno(error, "ENOENT")) throw error;
+    if (!isErrno(error, "ENOENT")) {throw error;}
   }
 };
 
 const readOwnerFile = (path: string): OwnerFile | undefined => {
   let raw: string;
+
   try {
     raw = readFileSync(path, "utf8");
   } catch (error) {
-    if (isErrno(error, "ENOENT")) return undefined;
+    if (isErrno(error, "ENOENT")) {return undefined;}
+
     throw error;
   }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    if (typeof parsed === "object" && parsed !== null) {
-      const { pid, startedAt } = parsed as Record<string, unknown>;
-      if (typeof pid === "number" && Number.isInteger(pid) && pid > 0 && typeof startedAt === "string") {
-        return { raw, owner: { pid, startedAt } };
-      }
-    }
-  } catch {
-    // Fall through: unreadable content names no owner.
-  }
-  return { raw, owner: undefined };
+
+  // Unreadable content, or content without a positive integer pid, names no owner.
+  const owner = Option.getOrUndefined(decodeOwner(raw));
+
+  return { raw, owner: owner !== undefined && Number.isInteger(owner.pid) && owner.pid > 0 ? owner : undefined };
 };
 
 const isProcessAlive = (pid: number): boolean => {
   try {
     process.kill(pid, 0);
+
     return true;
   } catch (error) {
     // EPERM: the process exists but belongs to someone else.
@@ -120,11 +122,14 @@ const isProcessAlive = (pid: number): boolean => {
 const publishExclusive = (path: string, content: string): boolean => {
   const tempPath = `${path}.${process.pid}.${randomUUID()}.tmp`;
   writeFileSync(tempPath, content, { mode: 0o600 });
+
   try {
     linkSync(tempPath, path);
+
     return true;
   } catch (error) {
-    if (isErrno(error, "EEXIST")) return false;
+    if (isErrno(error, "EEXIST")) {return false;}
+
     throw error;
   } finally {
     unlinkIfPresent(tempPath);
@@ -133,7 +138,7 @@ const publishExclusive = (path: string, content: string): boolean => {
 
 /** Remove `path` only if it still holds `content`; used for files this process published. */
 const removeIfOurs = (path: string, content: string): void => {
-  if (readOwnerFile(path)?.raw === content) unlinkIfPresent(path);
+  if (readOwnerFile(path)?.raw === content) {unlinkIfPresent(path);}
 };
 
 const ownerContent = (): string =>
@@ -161,47 +166,64 @@ export const claimStateRoot = (stateRoot: string, options: ClaimStateRootOptions
 
   // Bounded: each pass claims, refuses, or makes progress past one changed lock.
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (publishExclusive(lockPath, content)) return claimed();
+    if (publishExclusive(lockPath, content)) {return claimed();}
+
     const existing = readOwnerFile(lockPath);
-    if (existing === undefined) continue; // Released between our link and read.
-    if (existing.owner === undefined) throw new StateRootLockedError("no-owner", stateRoot, lockPath, undefined);
+
+    if (existing === undefined) {continue;} // Released between our link and read.
+
+    if (existing.owner === undefined) {throw new StateRootLockedError("no-owner", stateRoot, lockPath, undefined);}
+
     if (isProcessAlive(existing.owner.pid)) {
       throw new StateRootLockedError("held", stateRoot, lockPath, existing.owner.pid);
     }
 
     const guardContent = ownerContent();
+
     if (!publishExclusive(guardPath, guardContent)) {
       const guard = readOwnerFile(guardPath);
-      if (guard === undefined) continue; // The other takeover just finished; look again.
+
+      if (guard === undefined) {continue;} // The other takeover just finished; look again.
+
       if (guard.owner !== undefined && isProcessAlive(guard.owner.pid)) {
         throw new StateRootLockedError("contended", stateRoot, guardPath, guard.owner.pid);
       }
+
       throw new StateRootLockedError("takeover-interrupted", stateRoot, guardPath, guard.owner?.pid);
     }
+
     try {
       // Holding the guard, re-check: the lock may have been replaced since we judged it.
       const current = readOwnerFile(lockPath);
-      if (current !== undefined && current.raw !== existing.raw) continue;
+
+      if (current !== undefined && current.raw !== existing.raw) {continue;}
+
       if (current !== undefined) {
         options.onStaleLockConfirmed?.();
+
         // Removal stays conditional so the hook, or anything outside the protocol, cannot make
         // us delete a lock we did not judge stale.
-        if (readOwnerFile(lockPath)?.raw !== existing.raw) continue;
+        if (readOwnerFile(lockPath)?.raw !== existing.raw) {continue;}
+
         unlinkIfPresent(lockPath);
       }
-      if (publishExclusive(lockPath, content)) return claimed();
+
+      if (publishExclusive(lockPath, content)) {return claimed();}
       // A fresh claimer took the empty slot first; the next pass sees it as live.
     } finally {
       removeIfOurs(guardPath, guardContent);
     }
   }
+
   throw new StateRootLockedError("contended", stateRoot, lockPath, readOwnerFile(lockPath)?.owner?.pid);
 };
 
 const releaser = (lockPath: string, content: string) => {
   let released = false;
+
   return (): void => {
-    if (released) return;
+    if (released) {return;}
+
     released = true;
     removeIfOurs(lockPath, content);
   };

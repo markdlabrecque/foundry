@@ -20,13 +20,13 @@ export const AGENT_TOOLS = [
 ] as const;
 
 /** The twelve fixed tools of every worker's Tool Set, in launch order. */
-export const FIXED_TOOLS: readonly string[] = [...PI_BUILTIN_TOOLS, ...AGENT_TOOLS];
+export const FIXED_TOOLS: ReadonlyArray<string> = [...PI_BUILTIN_TOOLS, ...AGENT_TOOLS];
 
 /**
  * Every tool Pi 1.6.0 builds in, enabled or not. All are reserved, not only the four a
  * worker gets. The host's tests pin this against the installed Pi's own list.
  */
-export const PI_ALL_BUILTIN_TOOLS: readonly string[] = [
+export const PI_ALL_BUILTIN_TOOLS: ReadonlyArray<string> = [
   "read",
   "bash",
   "powershell",

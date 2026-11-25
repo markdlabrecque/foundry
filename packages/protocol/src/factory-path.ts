@@ -2,6 +2,8 @@
  * `foundry factory path <name>` over the management API (PRD §9.1, §11.1): the path of the
  * factory's dedicated clone, which the operator adds as an ordinary Git remote.
  */
+import { Schema } from "effect";
+
 import { MANAGEMENT_API_PREFIX } from "./management-api.js";
 
 const FACTORIES_PREFIX = `${MANAGEMENT_API_PREFIX}/factories/`;
@@ -16,9 +18,12 @@ export const factoryPathPath = (factory: string): string =>
  * when it is but the name segment is not valid percent-encoding.
  */
 export const matchFactoryPathPath = (path: string): string | null | undefined => {
-  if (!path.startsWith(FACTORIES_PREFIX) || !path.endsWith(PATH_SUFFIX)) return undefined;
+  if (!path.startsWith(FACTORIES_PREFIX) || !path.endsWith(PATH_SUFFIX)) {return undefined;}
+
   const segment = path.slice(FACTORIES_PREFIX.length, path.length - PATH_SUFFIX.length);
-  if (segment === "" || segment.includes("/")) return undefined;
+
+  if (segment === "" || segment.includes("/")) {return undefined;}
+
   try {
     return decodeURIComponent(segment);
   } catch {
@@ -26,14 +31,12 @@ export const matchFactoryPathPath = (path: string): string | null | undefined =>
   }
 };
 
-export interface FactoryPathResult {
-  readonly factory: string;
+export const FactoryPathResult = Schema.Struct({
+  factory: Schema.String,
   /** Absolute path of the factory's Foundry-owned clone. */
-  readonly path: string;
-}
+  path: Schema.String,
+});
 
-export const isFactoryPathResult = (value: unknown): value is FactoryPathResult =>
-  typeof value === "object" &&
-  value !== null &&
-  typeof (value as Record<string, unknown>)["factory"] === "string" &&
-  typeof (value as Record<string, unknown>)["path"] === "string";
+export type FactoryPathResult = typeof FactoryPathResult.Type;
+
+export const isFactoryPathResult = Schema.is(FactoryPathResult);

@@ -20,6 +20,7 @@ export function launchStderrPath(stateRoot: string, launchId: string): string {
 
 /** Bytes of stderr kept in memory per launch. */
 export const LAUNCH_STDERR_TAIL_BYTES = 64 * 1024;
+
 /** Retained stderr files per slot. */
 export const LAUNCH_STDERR_KEEP_PER_SLOT = 3;
 
@@ -37,15 +38,15 @@ export function createHostLog(
   write: (line: string) => void = (line) => void process.stderr.write(line),
 ): (level: HostLogLevel, msg: string, refs?: HostLogRefs, detail?: Record<string, string | number | boolean | null>) => void {
   return (level, msg, refs = {}, detail) => {
-    const line: Record<string, unknown> = { time: new Date().toISOString(), level, hostId, msg, ...refs };
-    if (detail !== undefined) line["detail"] = detail;
-    write(`${JSON.stringify(line)}\n`);
+    const line = { time: new Date().toISOString(), level, hostId, msg, ...refs };
+
+    write(`${JSON.stringify(detail === undefined ? line : { ...line, detail })}\n`);
   };
 }
 
 /** The last `limit` bytes written to it; older bytes are dropped. */
 export class StderrTail {
-  private chunks: Buffer[] = [];
+  private chunks: Array<Buffer> = [];
   private size = 0;
 
   constructor(private readonly limit: number = LAUNCH_STDERR_TAIL_BYTES) {}
@@ -53,9 +54,10 @@ export class StderrTail {
   push(chunk: Buffer): void {
     this.chunks.push(chunk);
     this.size += chunk.length;
-    while (this.size > this.limit && this.chunks.length > 0) {
-      const head = this.chunks[0]!;
+
+    for (let head = this.chunks[0]; this.size > this.limit && head !== undefined; head = this.chunks[0]) {
       const excess = this.size - this.limit;
+
       if (head.length <= excess) {
         this.chunks.shift();
         this.size -= head.length;
@@ -76,7 +78,8 @@ export class StderrTail {
  * newest `keepPerSlot` files. It remembers only files it wrote in this host's lifetime.
  */
 export function createLaunchStderrStore(stateRoot: string, keepPerSlot: number = LAUNCH_STDERR_KEEP_PER_SLOT) {
-  const retained = new Map<string, string[]>();
+  const retained = new Map<string, Array<string>>();
+
   return {
     async retain(factoryId: string, slotId: string, launchId: string, tail: Buffer): Promise<string> {
       const dir = join(stateRoot, LAUNCH_LOGS_DIR);
@@ -85,19 +88,24 @@ export function createLaunchStderrStore(stateRoot: string, keepPerSlot: number =
       await chmod(dir, 0o700);
       const path = launchStderrPath(stateRoot, launchId);
       const file = await open(path, "w", 0o600);
+
       try {
         await file.writeFile(tail);
       } finally {
         await file.close();
       }
+
       await chmod(path, 0o600);
       const key = JSON.stringify([factoryId, slotId]);
       const paths = retained.get(key) ?? [];
       paths.push(path);
-      while (paths.length > keepPerSlot) {
-        await unlink(paths.shift()!).catch(() => {});
+
+      for (let oldest = paths.length > keepPerSlot ? paths.shift() : undefined; oldest !== undefined; oldest = paths.length > keepPerSlot ? paths.shift() : undefined) {
+        await unlink(oldest).catch(() => {});
       }
+
       retained.set(key, paths);
+
       return path;
     },
   };

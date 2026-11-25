@@ -4,26 +4,20 @@ import { mkdtemp, readFile, readdir, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import {
-  LAUNCH_STDERR_KEEP_PER_SLOT,
-  connectHost,
-  hostLogPath,
-  launchStderrPath,
-  startHost,
-  type HostConnection,
-  type LaunchRecord,
-  type LaunchSpec,
-} from "@foundry/host";
+import { LAUNCH_STDERR_KEEP_PER_SLOT, connectHost, hostLogPath, launchStderrPath, startHost } from "@foundry/host";
+import type { HostConnection, LaunchRecord, LaunchSpec } from "@foundry/host";
+import { Schema } from "effect";
 
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
+
     return true;
   } catch {
     return false;
@@ -35,26 +29,25 @@ const stub = (out: string, err: string, code: number): string =>
   `process.stdout.write(${JSON.stringify(out)}); process.stderr.write(${JSON.stringify(err)}, () => process.exit(${code}));`;
 
 /** Runs one launch to its end and returns the exit the host reported. */
-async function runToExit(control: HostConnection, spec: LaunchSpec, groups: number[]): Promise<LaunchRecord> {
+async function runToExit(control: HostConnection, spec: LaunchSpec, groups: Array<number>): Promise<LaunchRecord> {
   const launched = await control.launch(spec);
   groups.push(launched.pgid);
+
   return new Promise<LaunchRecord>((resolve) => {
     control.onLaunchExited((launch) => {
-      if (launch.launchId === launched.launchId) resolve(launch);
+      if (launch.launchId === launched.launchId) {resolve(launch);}
     });
   });
 }
 
-const lines = (text: string): Array<Record<string, unknown>> =>
-  text
-    .split("\n")
-    .filter((l) => l !== "")
-    .map((l) => JSON.parse(l) as Record<string, unknown>);
+const decodeLine = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Json)));
+
+const lines = (text: string) => text.split("\n").flatMap((l) => (l === "" ? [] : [decodeLine(l)]));
 
 test("the host logs launches with references and keeps stderr only for unexpected ends, separately per launch", async () => {
   const stateRoot = await mkdtemp(join(tmpdir(), "foundry-host-logs-"));
   cleanups.push(() => rm(stateRoot, { recursive: true, force: true }));
-  const groups: number[] = [];
+  const groups: Array<number> = [];
   // Registered before anything starts, so a failed check still leaves no process behind.
   cleanups.push(async () => {
     for (const pgid of groups) {
@@ -65,13 +58,10 @@ test("the host logs launches with references and keeps stderr only for unexpecte
       }
     }
   });
-  let hostPid: number | undefined;
-  cleanups.push(async () => {
-    if (hostPid !== undefined && isAlive(hostPid)) process.kill(hostPid, "SIGTERM");
-  });
-
   const host = await startHost(stateRoot);
-  hostPid = host.pid;
+  cleanups.push(async () => {
+    if (isAlive(host.pid)) {process.kill(host.pid, "SIGTERM");}
+  });
   const control = await connectHost(stateRoot);
   cleanups.push(async () => control.close());
 
@@ -98,9 +88,11 @@ test("the host logs launches with references and keeps stderr only for unexpecte
 
   // Each slot keeps only its newest few retained stderr files.
   const slot1 = [failed];
+
   for (let i = 1; i <= LAUNCH_STDERR_KEEP_PER_SLOT; i++) {
     slot1.push(await runToExit(control, spec("slot-1", stub("", `boom: launch ${i} failed\n`, 3)), groups));
   }
+
   const retained = (await readdir(join(stateRoot, "logs", "launches"))).sort();
   expect(retained).toEqual(
     [...slot1.slice(1), other].map((l) => `${l.launchId}.stderr`).sort(),

@@ -2,6 +2,8 @@
  * The factory list over the management API (PRD §11.1–§11.2, §13.1): `foundry factory list`.
  * The daemon answers from its state: the configuration loads recorded for the run it is serving.
  */
+import { Schema } from "effect";
+
 import { MANAGEMENT_API_PREFIX } from "./management-api.js";
 
 /** `GET`: the factories loaded by the answering daemon's run (`foundry factory list`). */
@@ -11,46 +13,37 @@ export const FACTORIES_PATH = `${MANAGEMENT_API_PREFIX}/factories`;
  * A factory's state. P0 serves `running` for every factory loaded in this run; stopping a factory
  * and refusing its start (`stopped`, `refused`) arrive with their own tickets.
  */
-export type FactoryState = "running";
+export const FactoryState = Schema.Literal("running");
+
+export type FactoryState = typeof FactoryState.Type;
 
 /** One loaded factory and the configuration load the daemon recorded for it. */
-export interface FactorySummary {
+export const FactorySummary = Schema.Struct({
   /** The factory's name: its stable identifier. */
-  readonly factoryId: string;
-  readonly state: FactoryState;
+  factoryId: Schema.String,
+  state: FactoryState,
   /** The recorded configuration load: what transitions in this run carry. */
-  readonly loadId: number;
+  loadId: Schema.Number,
   /** Absolute path of the YAML file the configuration was read from. */
-  readonly yamlFile: string;
+  yamlFile: Schema.String,
   /** `sha256:<hex>` of the validated configuration. */
-  readonly configHash: string;
-  readonly knowledgeRoot: string;
-}
+  configHash: Schema.String,
+  knowledgeRoot: Schema.String,
+});
+
+export type FactorySummary = typeof FactorySummary.Type;
 
 /** Result of `GET /api/v1/factories`, ordered by load. */
-export interface FactoryListResult {
+export const FactoryListResult = Schema.Struct({
   /** The run the answering daemon serves. */
-  readonly runId: string;
+  runId: Schema.String,
   /** ISO 8601 time the run started, when its configuration was loaded. */
-  readonly loadedAt: string;
-  readonly factories: ReadonlyArray<FactorySummary>;
-}
+  loadedAt: Schema.String,
+  factories: Schema.Array(FactorySummary),
+});
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+export type FactoryListResult = typeof FactoryListResult.Type;
 
-export const isFactorySummary = (value: unknown): value is FactorySummary =>
-  isRecord(value) &&
-  typeof value["factoryId"] === "string" &&
-  value["state"] === "running" &&
-  typeof value["loadId"] === "number" &&
-  typeof value["yamlFile"] === "string" &&
-  typeof value["configHash"] === "string" &&
-  typeof value["knowledgeRoot"] === "string";
+export const isFactorySummary = Schema.is(FactorySummary);
 
-export const isFactoryListResult = (value: unknown): value is FactoryListResult =>
-  isRecord(value) &&
-  typeof value["runId"] === "string" &&
-  typeof value["loadedAt"] === "string" &&
-  Array.isArray(value["factories"]) &&
-  value["factories"].every(isFactorySummary);
+export const isFactoryListResult = Schema.is(FactoryListResult);

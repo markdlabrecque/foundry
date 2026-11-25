@@ -40,8 +40,16 @@
     "./factory-path": {
       "types": "./dist/factory-path.d.ts",
       "default": "./dist/factory-path.js"
+    },
+    "./errors": {
+      "types": "./dist/errors.d.ts",
+      "default": "./dist/errors.js"
     }
   },
-  "files": ["dist"],
-  "dependencies": { "effect": "4.1.5" }
+  "files": [
+    "dist"
+  ],
+  "dependencies": {
+    "effect": "4.1.5"
+  }
 }

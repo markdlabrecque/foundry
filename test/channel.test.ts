@@ -2,20 +2,21 @@
 // server and the extension's channel client; the slot claim and lapse timer are
 // test doubles so the heartbeat lapse needs no wall-clock waits.
 import { mkdtemp, rm, stat } from "node:fs/promises";
-import { connect, type Socket } from "node:net";
+import { connect } from "node:net";
+import type { Socket } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import {
-  startChannelServer,
-  type ChannelLostCause,
-  type ChannelServer,
-  type ClaimedSlot,
-  type LapseTimer,
-  type SlotClaim,
-} from "@foundry/daemon";
+import { startChannelServer } from "@foundry/daemon";
+import type { ChannelLostCause, ChannelServer, ClaimedSlot, LapseTimer, SlotClaim } from "@foundry/daemon";
 import { openChannel } from "@foundry/extension";
-import { PROTOCOL_VERSION, type Hello, type HelloRejectReason, type WorkerFrame } from "@foundry/protocol";
+import { PROTOCOL_VERSION } from "@foundry/protocol";
+import type { Hello, HelloRejectReason, WorkerFrame } from "@foundry/protocol";
+import { Schema } from "effect";
+
+const isText = Schema.is(Schema.String);
+
+const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
 
 const hello: Hello = {
   type: "hello",
@@ -38,27 +39,32 @@ const manualTimer = () => {
   let pending: (() => void) | undefined;
   let arms = 0;
   const waiters: Array<{ count: number; resolve: () => void }> = [];
+
   const timer: LapseTimer = (_ms, onLapse) => {
     arms += 1;
     pending = onLapse;
+
     for (const w of waiters.filter((w) => arms >= w.count)) {
       waiters.splice(waiters.indexOf(w), 1);
       w.resolve();
     }
+
     return () => {
-      if (pending === onLapse) pending = undefined;
+      if (pending === onLapse) {pending = undefined;}
     };
   };
+
   /** Resolves once the deadline has been armed at least `count` times. */
   const armed = (count: number): Promise<void> =>
-    arms >= count ? Promise.resolve() : new Promise((resolve) => waiters.push({ count, resolve }));
+    arms >= count ? Promise.resolve() : new Promise((resolve) => { waiters.push({ count, resolve }); });
+
   return { timer, fire: () => pending?.(), arms: () => arms, armed };
 };
 
 const waitFor = <T>(register: (resolve: (value: T) => void) => void): Promise<T> => new Promise(register);
 
 /** Send raw lines and collect every line the daemon sends back until it closes the connection. */
-const rawExchange = (socketPath: string, lines: string[]): Promise<unknown[]> =>
+const rawExchange = (socketPath: string, lines: Array<string>): Promise<Array<unknown>> =>
   new Promise((resolve, reject) => {
     const socket: Socket = connect(socketPath);
     let received = "";
@@ -67,7 +73,7 @@ const rawExchange = (socketPath: string, lines: string[]): Promise<unknown[]> =>
     socket.on("data", (chunk: string) => (received += chunk));
     socket.on("error", reject);
     socket.on("close", () =>
-      resolve(received.split("\n").filter(Boolean).map((line) => JSON.parse(line) as unknown)),
+      resolve(received.split("\n").filter(Boolean).map((line) => decodeJson(line))),
     );
   });
 
@@ -88,12 +94,13 @@ test("a valid hello is accepted, and heartbeats arrive attributed to the claimed
   const frames: Array<[ClaimedSlot, WorkerFrame]> = [];
   let gotHeartbeat!: () => void;
   const heartbeat = waitFor<void>((r) => (gotHeartbeat = r));
-  const claimed: Hello[] = [];
+  const claimed: Array<Hello> = [];
   server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: {
       claim: async (h) => {
         claimed.push(h);
+
         // The claim decides the slot; the connection speaks for it, whatever the frames say.
         return { accepted: true, slot: { factoryId: "f1", slotId: "authorized-slot", launchId: "launch-1" } };
       },
@@ -109,7 +116,8 @@ test("a valid hello is accepted, and heartbeats arrive attributed to the claimed
   const opened = await openChannel({ socketPath: server.socketPath, hello, heartbeatIntervalMs: 1 });
   expect(opened.accepted).toBe(true);
   await heartbeat;
-  if (opened.accepted) opened.channel.close();
+
+  if (opened.accepted) {opened.channel.close();}
 
   expect(claimed).toEqual([hello]);
   expect(frames[0]).toEqual([{ factoryId: "f1", slotId: "authorized-slot", launchId: "launch-1" }, { type: "heartbeat" }]);
@@ -122,14 +130,14 @@ test.each([
   ["a heartbeat before hello", { type: "heartbeat" }, "hello_required"],
 ])("%s is rejected with a terminal reason and never reaches the slot claim or slot work", async (_name, first, code) => {
   let claims = 0;
-  const frames: WorkerFrame[] = [];
+  const frames: Array<WorkerFrame> = [];
   server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: { claim: async (h) => (claims++, acceptAll.claim(h)) },
     onFrame: (_slot, frame) => frames.push(frame),
   });
 
-  const firstLine = typeof first === "string" ? `${first}\n` : `${JSON.stringify(first)}\n`;
+  const firstLine = isText(first) ? `${first}\n` : `${JSON.stringify(first)}\n`;
   const replies = await rawExchange(server.socketPath, [firstLine, `${JSON.stringify({ type: "heartbeat" })}\n`]);
 
   expect(replies).toEqual([{ type: "hello_rejected", reason: expect.objectContaining({ kind: "terminal", code }) }]);
@@ -139,7 +147,7 @@ test.each([
 
 test("a refused slot claim is relayed to the worker and its later frames reach no slot work", async () => {
   const reason: HelloRejectReason = { kind: "retryable", code: "host_unreachable", detail: "host did not answer" };
-  const frames: WorkerFrame[] = [];
+  const frames: Array<WorkerFrame> = [];
   server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: { claim: async () => ({ accepted: false, reason }) },
@@ -150,6 +158,7 @@ test("a refused slot claim is relayed to the worker and its later frames reach n
     `${JSON.stringify(hello)}\n`,
     `${JSON.stringify({ type: "heartbeat" })}\n`,
   ]);
+
   const viaClient = await openChannel({ socketPath: server.socketPath, hello });
 
   expect(replies).toEqual([{ type: "hello_rejected", reason }]);
@@ -159,7 +168,7 @@ test("a refused slot claim is relayed to the worker and its later frames reach n
 
 test("a connection that never sends a hello is dropped on the lapse deadline without reporting a slot", async () => {
   const lapse = manualTimer();
-  const lost: ClaimedSlot[] = [];
+  const lost: Array<ClaimedSlot> = [];
   server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: acceptAll,
@@ -198,7 +207,9 @@ test("a heartbeat lapse reports only channel loss and closes the connection", as
 
   // A heartbeat after acceptance must push the deadline back; then the worker goes silent.
   const opened = await openChannel({ socketPath: server.socketPath, hello, heartbeatIntervalMs: 1 });
-  if (!opened.accepted) throw new Error("hello was not accepted");
+
+  if (!opened.accepted) {throw new Error("hello was not accepted");}
+
   await heartbeat;
   expect(armsAtAccept).toBeGreaterThan(0);
   expect(lapse.arms()).toBeGreaterThan(armsAtAccept);
@@ -212,7 +223,7 @@ test("a heartbeat lapse reports only channel loss and closes the connection", as
 test("a slot claim that throws is refused as retryable", async () => {
   server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
-    slotClaim: { claim: async () => Promise.reject(new Error("host gone")) },
+    slotClaim: { claim: async () => { throw new Error("host gone"); } },
   });
 
   const opened = await openChannel({ socketPath: server.socketPath, hello });

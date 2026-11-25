@@ -3,10 +3,13 @@
  * with optional filters. Events are only ever read from history; nothing here writes or rebuilds
  * state (ADR 0001).
  */
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import type { EventRecordRef, FactoryEvent } from "@foundry/protocol/management-api";
 import { TICKET_RECORD_KIND } from "./history-records.js";
 import type { SqlValue, Store } from "./store.js";
+
+/** A history row's `detail` column: JSON text of any shape, passed through unchecked. */
+const decodeDetail = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 export interface EventPageQuery {
   /** Only events with an ID greater than this. */
@@ -46,11 +49,13 @@ interface RecordRow {
 export const readEvents = (store: Store, query: EventPageQuery): Effect.Effect<ReadonlyArray<FactoryEvent>, unknown> =>
   Effect.gen(function* () {
     const where = ["h.sequence > ?"];
-    const params: SqlValue[] = [query.after];
+    const params: Array<SqlValue> = [query.after];
+
     if (query.factory !== undefined) {
       where.push("h.factory_id = ?");
       params.push(query.factory);
     }
+
     if (query.ticket !== undefined) {
       where.push(
         `EXISTS (SELECT 1 FROM history_record r
@@ -58,20 +63,28 @@ export const readEvents = (store: Store, query: EventPageQuery): Effect.Effect<R
       );
       params.push(TICKET_RECORD_KIND, String(query.ticket));
     }
+
     params.push(query.limit);
+
     const rows = yield* store.read<HistoryRow>(
       `SELECT h.sequence, h.factory_id, h.recorded_at, h.kind, h.subject, h.detail
        FROM history h WHERE ${where.join(" AND ")} ORDER BY h.sequence LIMIT ?`,
       params,
     );
-    if (rows.length === 0) return [];
 
-    const records = new Map<number, EventRecordRef[]>();
+    const first = rows[0];
+    const last = rows.at(-1);
+
+    if (first === undefined || last === undefined) {return [];}
+
+    const records = new Map<number, Array<EventRecordRef>>();
+
     const refs = yield* store.read<RecordRow>(
       `SELECT sequence, record_kind, record_id FROM history_record
        WHERE sequence BETWEEN ? AND ? ORDER BY sequence, record_kind, record_id`,
-      [rows[0]!.sequence, rows[rows.length - 1]!.sequence],
+      [first.sequence, last.sequence],
     );
+
     for (const ref of refs) {
       const list = records.get(ref.sequence) ?? [];
       list.push({ kind: ref.record_kind, id: ref.record_id });
@@ -86,7 +99,7 @@ export const readEvents = (store: Store, query: EventPageQuery): Effect.Effect<R
         kind: row.kind,
         subject: row.subject,
         records: records.get(row.sequence) ?? [],
-        detail: JSON.parse(row.detail) as unknown,
+        detail: decodeDetail(row.detail),
       }),
     );
   });

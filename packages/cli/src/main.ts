@@ -3,14 +3,16 @@
  * The `foundry` entry point. This is the only Foundry module that imports
  * `effect/cli` (PRD §3.1: unstable Effect modules sit behind one module).
  */
-import { Console, Effect, Option } from "effect";
+import { Console, Effect, Option, Predicate } from "effect";
 import { Argument, CliError, Command, Flag } from "effect/cli";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { EXIT_USAGE, runStatus } from "./status.js";
 import { runLogs } from "./logs.js";
 import { validateFactoryFile } from "./validate.js";
-import { runTicketList, runTicketShow, runTicketSubmit, type TicketOutcome } from "./tickets.js";
-import { runHoldList, runHoldShow, type HoldOutcome } from "./holds.js";
+import { runTicketList, runTicketShow, runTicketSubmit } from "./tickets.js";
+import type { TicketOutcome } from "./tickets.js";
+import { runHoldList, runHoldShow } from "./holds.js";
+import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath } from "./factory.js";
 import { runFactoryList } from "./factories.js";
@@ -21,8 +23,11 @@ const validate = Command.make(
   ({ file }) =>
     Effect.gen(function* () {
       const outcome = validateFactoryFile(file);
-      for (const line of outcome.stdout) yield* Console.log(line);
-      for (const line of outcome.stderr) yield* Console.error(line);
+
+      for (const line of outcome.stdout) {yield* Console.log(line);}
+
+      for (const line of outcome.stderr) {yield* Console.error(line);}
+
       process.exitCode = outcome.exitCode;
     }),
 ).pipe(Command.withDescription("Check a factory YAML file offline, without changing anything"));
@@ -44,8 +49,11 @@ const status = Command.make(
       const outcome = yield* Effect.promise(() =>
         runStatus({ json, home: Option.getOrUndefined(home), env: process.env }),
       );
-      if (outcome.stdout !== "") process.stdout.write(outcome.stdout);
-      if (outcome.stderr !== "") process.stderr.write(outcome.stderr);
+
+      if (outcome.stdout !== "") {process.stdout.write(outcome.stdout);}
+
+      if (outcome.stderr !== "") {process.stderr.write(outcome.stderr);}
+
       process.exitCode = outcome.exitCode;
     }),
 ).pipe(Command.withDescription("Show the running instance's status from the daemon"));
@@ -79,7 +87,9 @@ const events = Command.make(
           signal,
         }),
       );
-      if (outcome.stderr !== "") process.stderr.write(outcome.stderr);
+
+      if (outcome.stderr !== "") {process.stderr.write(outcome.stderr);}
+
       process.exitCode = outcome.exitCode;
     }),
 ).pipe(Command.withDescription("Print durable factory events, optionally following new ones"));
@@ -97,8 +107,10 @@ const commonFlags = {
 
 const print = (outcome: HoldOutcome) =>
   Effect.sync(() => {
-    if (outcome.stdout !== "") process.stdout.write(outcome.stdout);
-    if (outcome.stderr !== "") process.stderr.write(outcome.stderr);
+    if (outcome.stdout !== "") {process.stdout.write(outcome.stdout);}
+
+    if (outcome.stderr !== "") {process.stderr.write(outcome.stderr);}
+
     process.exitCode = outcome.exitCode;
   });
 
@@ -149,8 +161,11 @@ const logs = Command.make(
           env: process.env,
         }),
       );
-      if (outcome.stdout !== "") process.stdout.write(outcome.stdout);
-      if (outcome.stderr !== "") process.stderr.write(outcome.stderr);
+
+      if (outcome.stdout !== "") {process.stdout.write(outcome.stdout);}
+
+      if (outcome.stderr !== "") {process.stderr.write(outcome.stderr);}
+
       process.exitCode = outcome.exitCode;
     }),
 ).pipe(Command.withDescription("Show daemon or Worker Host log lines, filtered by reference; works with the daemon down"));
@@ -166,8 +181,11 @@ const ticketFlags = {
 const report = (run: () => Promise<TicketOutcome>) =>
   Effect.gen(function* () {
     const outcome = yield* Effect.promise(run);
-    if (outcome.stdout !== "") process.stdout.write(outcome.stdout);
-    if (outcome.stderr !== "") process.stderr.write(outcome.stderr);
+
+    if (outcome.stdout !== "") {process.stdout.write(outcome.stdout);}
+
+    if (outcome.stderr !== "") {process.stderr.write(outcome.stderr);}
+
     process.exitCode = outcome.exitCode;
   });
 
@@ -243,7 +261,7 @@ Command.run(foundry, { version: "0.0.0" }).pipe(
   // effect/cli has already printed the problem and the help; PRD §11.5 makes a usage error exit 2.
   // A bare help request (ShowHelp with no errors) still exits 0.
   Effect.catchIf(
-    (error) => CliError.isCliError(error) && !(error._tag === "ShowHelp" && error.errors.length === 0),
+    (error) => CliError.isCliError(error) && !(Predicate.isTagged(error, "ShowHelp") && error.errors.length === 0),
     () => Effect.sync(() => void (process.exitCode = EXIT_USAGE)),
   ),
   Effect.provide(NodeServices.layer),

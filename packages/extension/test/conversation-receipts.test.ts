@@ -8,7 +8,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { type ConversationAdapter, createConversationAdapter } from "@foundry/extension";
+import { createConversationAdapter } from "@foundry/extension";
+import type { ConversationAdapter } from "@foundry/extension";
 import { startFauxSession } from "@foundry/testkit";
 
 let root: string;
@@ -25,14 +26,16 @@ afterEach(async () => {
 });
 
 /** A real Pi session whose conversation adapter records every receipt it issues. */
-const startWorker = async (): Promise<{ adapter: ConversationAdapter; receipts: string[]; session: AgentSession }> => {
-  const receipts: string[] = [];
+const startWorker = async (): Promise<{ adapter: ConversationAdapter; receipts: Array<string>; session: AgentSession }> => {
+  const receipts: Array<string> = [];
   let adapter: ConversationAdapter | undefined;
   session = await startFauxSession({
     root,
     extensionFactories: [(pi) => void (adapter = createConversationAdapter(pi, { onReceipt: (id) => receipts.push(id) }))],
   });
-  if (!adapter) throw new Error("conversation adapter not registered");
+
+  if (!adapter) {throw new Error("conversation adapter not registered");}
+
   return { adapter, receipts, session };
 };
 

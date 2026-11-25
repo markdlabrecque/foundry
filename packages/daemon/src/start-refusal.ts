@@ -12,7 +12,8 @@
  */
 import { Effect } from "effect";
 import type { FactoryConfig } from "./config/schema.js";
-import { ticketRecord, type HistoryRecordRef } from "./history-records.js";
+import { ticketRecord } from "./history-records.js";
+import type { HistoryRecordRef } from "./history-records.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Query, Store, StoreError } from "./store.js";
 
@@ -63,15 +64,20 @@ export const ticketReferenceCheck: ReferenceCheck = (query, factory) =>
       [factory.factoryId],
     ),
     (rows) =>
-      rows.flatMap((row): StartBlocker[] => {
+      rows.flatMap((row): Array<StartBlocker> => {
         const record = ticketRecord(row.number);
         const lines = factory.config.production_lines;
-        if (!Object.hasOwn(lines, row.production_line)) {
+
+        const line = Object.hasOwn(lines, row.production_line) ? lines[row.production_line] : undefined;
+
+        if (line === undefined) {
           return [{ record, missing: { kind: "production_line", line: row.production_line } }];
         }
-        if (row.stage !== null && !lines[row.production_line]!.stages.some((s) => s.id === row.stage)) {
+
+        if (row.stage !== null && !line.stages.some((s) => s.id === row.stage)) {
           return [{ record, missing: { kind: "stage", line: row.production_line, stage: row.stage } }];
         }
+
         return [];
       }),
   );
@@ -106,13 +112,16 @@ export const decideFactoryStarts = (
   checks: ReadonlyArray<ReferenceCheck> = START_REFERENCE_CHECKS,
 ): Effect.Effect<StartDecision, StoreError> =>
   Effect.gen(function* () {
-    const started: string[] = [];
+    const started: Array<string> = [];
     const refused: Array<RefusedFactory & { readonly loadId?: number }> = [];
+
     for (const factory of factories) {
       const blockers = (yield* Effect.forEach(checks, (check) => check(store.read, factory))).flat();
-      if (blockers.length === 0) started.push(factory.factoryId);
-      else refused.push({ factoryId: factory.factoryId, blockers, ...(factory.loadId === undefined ? {} : { loadId: factory.loadId }) });
+
+      if (blockers.length === 0) {started.push(factory.factoryId);}
+      else {refused.push(factory.loadId === undefined ? { factoryId: factory.factoryId, blockers } : { factoryId: factory.factoryId, blockers, loadId: factory.loadId });}
     }
+
     if (refused.length > 0) {
       yield* store.change(({ recordHistory }) =>
         Effect.forEach(
@@ -132,5 +141,6 @@ export const decideFactoryStarts = (
         ),
       );
     }
+
     return { started, refused: refused.map(({ factoryId, blockers }) => ({ factoryId, blockers })) };
   });

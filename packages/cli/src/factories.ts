@@ -4,9 +4,12 @@
  * returns what to print and the exit code (PRD §11.5).
  */
 import { selectStateRoot } from "@foundry/protocol/state-root";
-import { FACTORIES_PATH, isFactoryListResult, type FactoryListResult } from "@foundry/protocol/factories-api";
+import { messageOf } from "@foundry/protocol/errors";
+import { FACTORIES_PATH, isFactoryListResult } from "@foundry/protocol/factories-api";
+import type { FactoryListResult } from "@foundry/protocol/factories-api";
 import { DaemonUnreachableError, getFromDaemon } from "./management-client.js";
-import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, EXIT_USAGE, type StatusOutcome } from "./status.js";
+import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, EXIT_USAGE } from "./status.js";
+import type { StatusOutcome } from "./status.js";
 
 export interface FactoryListOptions {
   /** Print the API response body unchanged. */
@@ -28,22 +31,30 @@ const renderList = ({ factories }: FactoryListResult): string =>
 
 /** `foundry factory list`: the factories the daemon loaded, with their recorded configuration loads. */
 export const runFactoryList = async (options: FactoryListOptions): Promise<FactoryOutcome> => {
-  if (options.home === "") return { exitCode: EXIT_USAGE, stdout: "", stderr: "foundry: --home needs a directory\n" };
+  if (options.home === "") {return { exitCode: EXIT_USAGE, stdout: "", stderr: "foundry: --home needs a directory\n" };}
+
   const stateRoot = selectStateRoot({ home: options.home, env: options.env });
   let reply;
+
   try {
     reply = await getFromDaemon(stateRoot, FACTORIES_PATH);
   } catch (error) {
     if (error instanceof DaemonUnreachableError) {
       return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
     }
-    return refused((error as Error).message);
+
+    return refused(messageOf(error));
   }
+
   if (options.json) {
     const stdout = reply.body.endsWith("\n") ? reply.body : `${reply.body}\n`;
+
     return { exitCode: reply.envelope.ok ? EXIT_OK : EXIT_REFUSED, stdout, stderr: "" };
   }
-  if (!reply.envelope.ok) return refused(reply.envelope.error.message);
-  if (!isFactoryListResult(reply.envelope.result)) return refused("the daemon answered with an unexpected shape");
+
+  if (!reply.envelope.ok) {return refused(reply.envelope.error.message);}
+
+  if (!isFactoryListResult(reply.envelope.result)) {return refused("the daemon answered with an unexpected shape");}
+
   return { exitCode: EXIT_OK, stdout: renderList(reply.envelope.result), stderr: "" };
 };

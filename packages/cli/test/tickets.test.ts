@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import { DATABASE_FILE_NAME, makeTicketService, openStore, serveManagementApi } from "@foundry/daemon";
+import { DATABASE_FILE_NAME, createTicketService, openStore, serveManagementApi } from "@foundry/daemon";
 import {
   defaultTitle,
   EXIT_OK,
@@ -23,29 +23,37 @@ import {
 const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
 
 const cleanups: Array<() => Promise<void> | void> = [];
+
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 const tempRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "foundry-cli-tickets-"));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+
   return root;
 };
 
 // FOUNDRY_HOME is never the operator's root: every call names --home.
 const env = { FOUNDRY_HOME: "/nonexistent-foundry-home" };
 
+const run = (args: Array<string>): number | null =>
+  spawnSync(process.execPath, [cliMain, ...args], { env: { ...process.env, ...env }, encoding: "utf8", timeout: 20_000 }).status;
+
+
 const serve = async (home: string): Promise<void> => {
   const scope = await Effect.runPromise(Scope.make());
   cleanups.push(() => Effect.runPromise(Scope.close(scope, Exit.void)));
   const store = await Effect.runPromise(Scope.provide(scope)(openStore({ filename: join(home, DATABASE_FILE_NAME) })));
   const factories = [{ name: "shop", defaultLine: "standard", messageBudget: 100, lines: { standard: { rejectionLimit: 3 } } }];
+
   const api = await serveManagementApi({
     stateRoot: home,
     status: () => ({ instance: { stateRoot: home, daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } }),
-    tickets: makeTicketService({ stateRoot: home, store, factories: () => factories }),
+    tickets: createTicketService({ stateRoot: home, store, factories: () => factories }),
   });
+
   cleanups.push(() => api.close());
 };
 
@@ -86,8 +94,8 @@ test("the foundry binary wires ticket commands: usage errors exit 2, no daemon e
   const home = tempRoot();
   const file = join(home, "spec.md");
   writeFileSync(file, "# T\n");
-  const run = (args: string[]): number | null =>
-    spawnSync(process.execPath, [cliMain, ...args], { env: { ...process.env, ...env }, encoding: "utf8", timeout: 20_000 }).status;
+
+
   expect(run(["ticket", "show", "abc", "--home", home])).toBe(EXIT_USAGE);
   expect(run(["ticket", "submit", "--home", home])).toBe(EXIT_USAGE);
   expect(run(["ticket", "submit", join(home, "missing.md"), "--home", home])).toBe(EXIT_USAGE);

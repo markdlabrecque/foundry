@@ -11,18 +11,12 @@
  * state root is claimed. Nothing here clones, contacts a remote, runs a command or launches a worker.
  */
 import { createHash } from "node:crypto";
+import { expectDefined, messageOf } from "@foundry/protocol/errors";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { Effect } from "effect";
-import {
-  locateProblems,
-  resolveConfiguredPath,
-  resolveStations,
-  validateFactoryYaml,
-  type ConfigProblem,
-  type EffectiveStation,
-  type FactoryConfig,
-} from "./config/index.js";
+import { Data, Effect } from "effect";
+import { DecodeResult, locateProblems, resolveConfiguredPath, ResolveResult, resolveStations, validateFactoryYaml } from "./config/index.js";
+import type { ConfigProblem, EffectiveStation, FactoryConfig, OfflineCheckOptions, ResolveOptions } from "./config/index.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Store, StoreError } from "./store.js";
 
@@ -54,10 +48,17 @@ export interface LoadedFactory {
   readonly knowledge: { readonly root: string; readonly directories: ReadonlyArray<string> };
 }
 
-export type LoadFactoriesResult =
-  | { readonly _tag: "Loaded"; readonly factories: ReadonlyArray<LoadedFactory> }
+export type LoadFactoriesResult = Data.TaggedEnum<{
+  Loaded: { readonly factories: ReadonlyArray<LoadedFactory> };
   /** `message` is one line naming the first problem. */
-  | { readonly _tag: "Refused"; readonly message: string };
+  Refused: { readonly message: string };
+}>;
+
+export const LoadFactoriesResult = Data.taggedEnum<LoadFactoriesResult>();
+
+const isInvalidConfig = DecodeResult.$is("Invalid");
+
+const isUnresolved = ResolveResult.$is("Invalid");
 
 export interface LoadFactoriesOptions {
   /** The daemon's environment, read for model placeholders only. */
@@ -69,12 +70,14 @@ export interface LoadFactoriesOptions {
 const describe = (file: string, problem: ConfigProblem): string => {
   const location = problem.line === undefined ? file : `${file}:${problem.line}:${problem.column ?? 1}`;
   const setting = problem.path === "" ? "" : ` ${problem.path}:`;
+
   return `${location}:${setting} ${problem.message}`;
 };
 
 const refuseProblems = (file: string, problems: ReadonlyArray<ConfigProblem>): LoadFactoriesResult => {
   const more = problems.length > 1 ? ` (${problems.length - 1} more; run foundry validate ${file})` : "";
-  return { _tag: "Refused", message: `${describe(file, problems[0]!)}${more}` };
+
+  return LoadFactoriesResult.Refused({ message: `${describe(file, expectDefined(problems[0], "a problem to refuse with"))}${more}` });
 };
 
 /** The flat layout of §5.4.3: the root, `<root>/<room>/` and `<root>/<station>/`. */
@@ -82,6 +85,7 @@ const knowledgeLayout = (config: FactoryConfig, baseDir: string, home: string | 
   // The decoder fills in the default `knowledge`; its type still marks it optional.
   const root = resolveConfiguredPath(config.knowledge?.root ?? "knowledge", baseDir, home);
   const names = Object.entries(config.rooms).flatMap(([room, { stations }]) => [room, ...Object.keys(stations)]);
+
   return { root, directories: [root, ...names.map((name) => join(root, name))] };
 };
 
@@ -93,30 +97,42 @@ export const loadFactoryFiles = (
   files: ReadonlyArray<string>,
   options: LoadFactoriesOptions,
 ): LoadFactoriesResult => {
-  const factories: LoadedFactory[] = [];
+  const factories: Array<LoadedFactory> = [];
+
   for (const file of files) {
     let text: string;
+
     try {
       text = readFileSync(file, "utf8");
     } catch (error) {
-      return { _tag: "Refused", message: `${file}: cannot read factory YAML: ${(error as Error).message}` };
+      return LoadFactoriesResult.Refused({ message: `${file}: cannot read factory YAML: ${messageOf(error)}` });
     }
+
     const yamlFile = resolve(file);
     const baseDir = dirname(yamlFile);
-    const validated = validateFactoryYaml(text, { yamlFile, ...(options.home === undefined ? {} : { home: options.home }) });
-    if (validated._tag === "Invalid") return refuseProblems(file, validated.problems);
-    const resolved = resolveStations(validated.config, {
-      env: options.env,
-      baseDir,
-      ...(options.home === undefined ? {} : { home: options.home }),
-    });
-    if (resolved._tag === "Invalid") return refuseProblems(file, locateProblems(text, resolved.problems));
+    let offlineOptions: OfflineCheckOptions = { yamlFile };
+    let resolveOptions: ResolveOptions = { env: options.env, baseDir };
+
+    if (options.home !== undefined) {
+      offlineOptions = { ...offlineOptions, home: options.home };
+      resolveOptions = { ...resolveOptions, home: options.home };
+    }
+
+    const validated = validateFactoryYaml(text, offlineOptions);
+
+    if (isInvalidConfig(validated)) {return refuseProblems(file, validated.problems);}
+
+    const resolved = resolveStations(validated.config, resolveOptions);
+
+    if (isUnresolved(resolved)) {return refuseProblems(file, locateProblems(text, resolved.problems));}
 
     const factoryId = validated.config.name;
     const clash = factories.find((f) => f.factoryId === factoryId);
+
     if (clash !== undefined) {
-      return { _tag: "Refused", message: `${file}: factory "${factoryId}" is already loaded from ${clash.yamlFile}` };
+      return LoadFactoriesResult.Refused({ message: `${file}: factory "${factoryId}" is already loaded from ${clash.yamlFile}` });
     }
+
     const configJson = JSON.stringify({ config: validated.config, stations: resolved.stations });
     factories.push({
       factoryId,
@@ -129,12 +145,13 @@ export const loadFactoryFiles = (
       knowledge: knowledgeLayout(validated.config, baseDir, options.home),
     });
   }
-  return { _tag: "Loaded", factories };
+
+  return LoadFactoriesResult.Loaded({ factories });
 };
 
 /** Creates the reserved knowledge directories, leaving any that exist (and their contents) alone. */
 export const createKnowledgeLayout = (factory: LoadedFactory): void => {
-  for (const directory of factory.knowledge.directories) mkdirSync(directory, { recursive: true });
+  for (const directory of factory.knowledge.directories) {mkdirSync(directory, { recursive: true });}
 };
 
 /** One recorded configuration load. */
@@ -144,13 +161,16 @@ export interface RecordedLoad {
   readonly configHash: string;
 }
 
+/** The parts of a loaded factory that a run records. */
+export type RecordedFactory = Pick<LoadedFactory, "factoryId" | "yamlFile" | "configJson" | "configHash" | "knowledge">;
+
 export interface RunRecord {
   readonly runId: string;
   /** Wall-clock milliseconds since the Unix epoch. */
   readonly startedAt: number;
   /** The Foundry version that started. */
   readonly version: string;
-  readonly factories: ReadonlyArray<LoadedFactory>;
+  readonly factories: ReadonlyArray<RecordedFactory>;
 }
 
 /** Records the run and each configuration load in one change, with a history row for each. */
@@ -164,14 +184,16 @@ export const recordRun = (store: Store, run: RunRecord): Effect.Effect<ReadonlyA
         subject: run.runId,
         detail: { version: run.version, factories: run.factories.map((f) => f.factoryId) },
       });
-      const loads: RecordedLoad[] = [];
+      const loads: Array<RecordedLoad> = [];
+
       for (const factory of run.factories) {
         const rows = yield* query<{ id: number }>(
           `INSERT INTO factory_config_load (run_id, factory_id, yaml_file, config, config_hash, knowledge_root)
            VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
           [run.runId, factory.factoryId, factory.yamlFile, factory.configJson, factory.configHash, factory.knowledge.root],
         );
-        const loadId = rows[0]!.id;
+
+        const loadId = expectDefined(rows[0], "the recorded load's id").id;
         yield* recordHistory({
           factoryId: factory.factoryId,
           kind: "factory.config_loaded",
@@ -180,6 +202,7 @@ export const recordRun = (store: Store, run: RunRecord): Effect.Effect<ReadonlyA
         });
         loads.push({ loadId, factoryId: factory.factoryId, configHash: factory.configHash });
       }
+
       return loads;
     }),
   );

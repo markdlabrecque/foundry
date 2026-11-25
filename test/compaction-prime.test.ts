@@ -9,34 +9,18 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
+import { Effect, Exit, Schema, Scope } from "effect";
 import { Type } from "typebox";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import {
-  composePrime,
-  createPrimer,
-  openStore,
-  primesForConversation,
-  startChannelServer,
-  type AcceptedConnection,
-  type ChannelServer,
-  type CompactionPrimingOutcome,
-  type PrimedConnection,
-  type PrimeRequest,
-  type SlotClaim,
-  type Store,
-} from "@foundry/daemon";
-import {
-  CompactionReporter,
-  createConversationAdapter,
-  openChannel,
-  receiveDaemonFrames,
-  RunInterrupter,
-  type ConversationAdapter,
-  type OpenChannel,
-} from "@foundry/extension";
-import { PROTOCOL_VERSION, type Hello } from "@foundry/protocol";
+import { CompactionPrimingOutcome, composePrime, createPrimer, openStore, primesForConversation, startChannelServer } from "@foundry/daemon";
+import type { AcceptedConnection, ChannelServer, PrimedConnection, PrimeRequest, SlotClaim, Store } from "@foundry/daemon";
+import { CompactionReporter, createConversationAdapter, openChannel, receiveDaemonFrames, RunInterrupter } from "@foundry/extension";
+import type { ConversationAdapter, OpenChannel } from "@foundry/extension";
+import { PROTOCOL_VERSION } from "@foundry/protocol";
+import type { Hello } from "@foundry/protocol";
 import { startFauxSession } from "@foundry/testkit";
+
+const decodeFoundryDetails = Schema.decodeUnknownSync(Schema.Struct({ foundryId: Schema.String }));
 
 const hello: Hello = {
   type: "hello",
@@ -61,7 +45,7 @@ let scope: Scope.Closeable;
 let store: Store;
 let server: ChannelServer | undefined;
 let session: AgentSession | undefined;
-const channels: OpenChannel[] = [];
+const channels: Array<OpenChannel> = [];
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "foundry-compaction-prime-"));
@@ -72,7 +56,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  for (const channel of channels.splice(0)) channel.close();
+  for (const channel of channels.splice(0)) {channel.close();}
+
   await server?.close();
   server = undefined;
   session?.dispose();
@@ -93,7 +78,8 @@ const primeRequest = (): Omit<PrimeRequest, "situation"> => ({
 /** A promise with its resolver, for stepping the journey by hand. */
 const signal = <A = void>() => {
   let resolve!: (value: A) => void;
-  const promise = new Promise<A>((r) => (resolve = r));
+  const promise = new Promise<A>((r) => { resolve = r; });
+
   return { promise, resolve };
 };
 
@@ -101,7 +87,7 @@ const signal = <A = void>() => {
 const within = <A>(step: string, promise: Promise<A>): Promise<A> =>
   Promise.race([
     promise,
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out waiting for ${step}`)), 2_000).unref()),
+    new Promise<never>((_, reject) => { setTimeout(() => reject(new Error(`timed out waiting for ${step}`)), 2000).unref(); }),
   ]);
 
 const conversationPrimes = () => Effect.runPromise(primesForConversation(store, "f1", "builder-1", "conv-1"));
@@ -111,6 +97,7 @@ test("a compaction prime reaches the same launch's conversation at the next tool
   const composing = signal();
   const releaseCompose = signal();
   let n = 0;
+
   const primer = createPrimer({
     store,
     primeRequest,
@@ -120,12 +107,13 @@ test("a compaction prime reaches the same launch's conversation at the next tool
         composing.resolve();
         await releaseCompose.promise;
       }
+
       return composePrime(request);
     },
   });
 
-  const accepted: PrimedConnection[] = [];
-  const lost: string[] = [];
+  const accepted: Array<PrimedConnection> = [];
+  const lost: Array<string> = [];
   // Wrapped, so the signal settles when the frame arrives rather than adopting the outcome promise.
   const compaction = signal<{ readonly outcome: Promise<CompactionPrimingOutcome> }>();
   server = await startChannelServer({
@@ -133,7 +121,7 @@ test("a compaction prime reaches the same launch's conversation at the next tool
     slotClaim: acceptAll,
     onAccepted: (slot, h, connection) => void accepted.push(primer.prime(slot, h, connection)),
     onFrame: (slot, frame) => {
-      if (frame.type === "compacted") compaction.resolve({ outcome: primer.compacted(slot) });
+      if (frame.type === "compacted") {compaction.resolve({ outcome: primer.compacted(slot) });}
     },
     onChannelLost: (slot) => void lost.push(slot.launchId),
   });
@@ -156,17 +144,20 @@ test("a compaction prime reaches the same launch's conversation at the next tool
           async execute() {
             toolRunning.resolve();
             await releaseTool.promise;
+
             return { content: [{ type: "text", text: "released" }], details: {} };
           },
         });
       },
     ],
   });
-  if (!adapter) throw new Error("conversation adapter not registered");
 
-  const delivered: string[] = [];
+  if (!adapter) {throw new Error("conversation adapter not registered");}
+
+  const delivered: Array<string> = [];
   const deliveredWaiters: Array<{ count: number; resolve: () => void }> = [];
   const dispatch = receiveDaemonFrames({ adapter, interrupter: new RunInterrupter() });
+
   const opened = await openChannel({
     socketPath: server.socketPath,
     hello,
@@ -174,19 +165,27 @@ test("a compaction prime reaches the same launch's conversation at the next tool
     onFrame: (frame, channel) => {
       dispatch(frame, channel);
       delivered.push(frame.type === "prime" ? frame.id : frame.type);
-      for (const w of deliveredWaiters.filter((w) => delivered.length >= w.count)) w.resolve();
+
+      for (const w of deliveredWaiters.filter((w) => delivered.length >= w.count)) {w.resolve();}
     },
   });
-  if (!opened.accepted) throw new Error("hello was not accepted");
+
+  if (!opened.accepted) {throw new Error("hello was not accepted");}
+
   channels.push(opened.channel);
+
   const deliveredCount = (count: number) =>
-    new Promise<void>((resolve) => (delivered.length >= count ? resolve() : deliveredWaiters.push({ count, resolve })));
+    new Promise<void>((resolve) => {
+      if (delivered.length >= count) {resolve();}
+      else {deliveredWaiters.push({ count, resolve });}
+    });
+
   const reporter = new CompactionReporter();
   reporter.attach(opened.channel);
 
   await within("the fresh prime", deliveredCount(1));
   const [primed] = accepted;
-  expect(await primed!.outcome).toEqual({ _tag: "Sent", primeId: "prime-1" });
+  expect(await primed!.outcome).toEqual(CompactionPrimingOutcome.Sent({ primeId: "prime-1" }));
 
   const sessionId = session.sessionManager.getSessionId();
   // A run is mid-tool-round when Pi compacts.
@@ -200,7 +199,7 @@ test("a compaction prime reaches the same launch's conversation at the next tool
   // (A prime frame stands in for a message, which arrives in later tickets.)
   const work = primed!.connection.send({ type: "prime", id: "work-1", text: "Held work." });
   releaseCompose.resolve();
-  expect(await within("the compaction prime outcome", compacted)).toEqual({ _tag: "Sent", primeId: "prime-2" });
+  expect(await within("the compaction prime outcome", compacted)).toEqual(CompactionPrimingOutcome.Sent({ primeId: "prime-2" }));
   await within("the held work write", work);
   await within("delivery of both frames", deliveredCount(3));
 
@@ -214,11 +213,14 @@ test("a compaction prime reaches the same launch's conversation at the next tool
 
   // In the conversation: after the tool round's result and before the next assistant response.
   const entries = session.sessionManager.getEntries().flatMap((e) => {
-    if (e.type === "custom_message") return [`foundry:${(e.details as { foundryId: string }).foundryId}`];
+    if (e.type === "custom_message") {return [`foundry:${decodeFoundryDetails(e.details).foundryId}`];}
+
     // Pi's own system-prompt entries are not part of the ordering under test.
-    if (e.type === "message" && e.message.role !== "system") return [e.message.role];
+    if (e.type === "message" && e.message.role !== "system") {return [e.message.role];}
+
     return [];
   });
+
   expect(entries).toEqual(["foundry:prime-1", "user", "assistant", "toolResult", "foundry:prime-2", "foundry:work-1", "assistant"]);
 
   // The launch identity is unchanged: one connection, never lost, and both primes on the same launch and conversation.
@@ -232,14 +234,14 @@ test("a compaction prime reaches the same launch's conversation at the next tool
 });
 
 test("a compaction report from a launch with no primed connection sends and records nothing", async () => {
-  const written: string[] = [];
+  const written: Array<string> = [];
   const stub: AcceptedConnection = { send: async (frame) => void written.push(frame.type) };
   const primer = createPrimer({ store, primeRequest, newPrimeId: () => "prime-1" });
   const slot = { factoryId: "f1", slotId: "builder-1", launchId: "launch-1" };
 
-  expect(await primer.compacted(slot)).toEqual({ _tag: "NotConnected" });
+  expect(await primer.compacted(slot)).toEqual(CompactionPrimingOutcome.NotConnected());
   await primer.prime(slot, hello, stub).outcome;
-  expect(await primer.compacted({ ...slot, launchId: "launch-2" })).toEqual({ _tag: "NotConnected" });
+  expect(await primer.compacted({ ...slot, launchId: "launch-2" })).toEqual(CompactionPrimingOutcome.NotConnected());
 
   expect(written).toEqual(["prime"]);
   expect((await conversationPrimes()).map((p) => p.situation)).toEqual(["fresh"]);

@@ -6,33 +6,14 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
+import { Effect, Exit, Predicate, Scope } from "effect";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import {
-  composePrime,
-  createPrimer,
-  openStore,
-  primesForConversation,
-  startChannelServer,
-  type AcceptedConnection,
-  type AcknowledgeOutcome,
-  type ChannelServer,
-  type PrimedConnection,
-  type Primer,
-  type PrimeRequest,
-  type SlotClaim,
-  type Store,
-} from "@foundry/daemon";
-import {
-  createConversationAdapter,
-  openChannel,
-  ReceiptReporter,
-  receiveDaemonFrames,
-  RunInterrupter,
-  type ConversationAdapter,
-  type OpenChannel,
-} from "@foundry/extension";
-import { PROTOCOL_VERSION, type DaemonFrame, type Hello } from "@foundry/protocol";
+import { composePrime, createPrimer, openStore, primesForConversation, PrimingOutcome, startChannelServer } from "@foundry/daemon";
+import type { AcceptedConnection, AcknowledgeOutcome, ChannelServer, PrimedConnection, Primer, PrimeRequest, SlotClaim, Store } from "@foundry/daemon";
+import { createConversationAdapter, openChannel, ReceiptReporter, receiveDaemonFrames, RunInterrupter } from "@foundry/extension";
+import type { ConversationAdapter, OpenChannel } from "@foundry/extension";
+import { PROTOCOL_VERSION } from "@foundry/protocol";
+import type { DaemonFrame, Hello } from "@foundry/protocol";
 import { startFauxSession } from "@foundry/testkit";
 
 const hello: Hello = {
@@ -56,7 +37,7 @@ let scope: Scope.Closeable;
 let store: Store;
 let server: ChannelServer | undefined;
 let session: AgentSession | undefined;
-const channels: OpenChannel[] = [];
+const channels: Array<OpenChannel> = [];
 
 beforeEach(async () => {
   dir = await mkdtemp(join(tmpdir(), "foundry-prime-"));
@@ -68,7 +49,8 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
-  for (const channel of channels.splice(0)) channel.close();
+  for (const channel of channels.splice(0)) {channel.close();}
+
   await server?.close();
   server = undefined;
   session?.dispose();
@@ -88,7 +70,7 @@ const primeRequest = (): Omit<PrimeRequest, "situation"> => ({
 
 /** A daemon whose primer runs on every accepted connection and consumes every receipt. */
 const serveDaemon = async (primer: Primer) => {
-  const accepted: PrimedConnection[] = [];
+  const accepted: Array<PrimedConnection> = [];
   const acceptedWaiters: Array<(c: PrimedConnection) => void> = [];
   let taken = 0;
   const receipts: Array<Promise<AcknowledgeOutcome>> = [];
@@ -98,58 +80,69 @@ const serveDaemon = async (primer: Primer) => {
     slotClaim: acceptAll,
     onAccepted: (slot, h, connection) => {
       accepted.push(primer.prime(slot, h, connection));
-      if (acceptedWaiters.length > 0) acceptedWaiters.shift()!(accepted[taken++]!);
+
+      if (acceptedWaiters.length > 0) {acceptedWaiters.shift()!(accepted[taken++]!);}
     },
     onFrame: (slot, frame) => {
-      if (frame.type !== "receipt") return;
+      if (frame.type !== "receipt") {return;}
+
       const outcome = primer.receipt(slot, frame.id);
       receipts.push(outcome);
       receiptWaiters.shift()?.(outcome);
     },
   });
+
   return {
     /** The next accepted connection not yet taken, in acceptance order. */
     nextAccepted: (): Promise<PrimedConnection> =>
       new Promise((resolve) => {
-        if (taken < accepted.length) resolve(accepted[taken++]!);
-        else acceptedWaiters.push(resolve);
+        if (taken < accepted.length) {resolve(accepted[taken++]!);}
+        else {acceptedWaiters.push(resolve);}
       }),
     nextReceipt: (): Promise<AcknowledgeOutcome> =>
-      new Promise((resolve) => receiptWaiters.push((o) => void o.then(resolve))),
+      new Promise((resolve) => { receiptWaiters.push((o) => void o.then(resolve)); }),
   };
 };
 
 const connect = async (onFrame: (frame: DaemonFrame, channel: OpenChannel) => void, h: Hello = hello): Promise<OpenChannel> => {
   const opened = await openChannel({ socketPath: server!.socketPath, hello: h, heartbeatIntervalMs: 60_000, onFrame });
-  if (!opened.accepted) throw new Error("hello was not accepted");
+
+  if (!opened.accepted) {throw new Error("hello was not accepted");}
+
   channels.push(opened.channel);
+
   return opened.channel;
 };
 
 const conversationPrimes = () => Effect.runPromise(primesForConversation(store, "f1", "builder-1", "conv-1"));
+
 const history = () =>
   Effect.runPromise(store.read<{ kind: string; subject: string; detail: string }>(`SELECT kind, subject, detail FROM history ORDER BY sequence`));
 
 test("the fresh prime is recorded unacknowledged and reaches the worker before any later frame on that connection", async () => {
   // Composition is held open so a later frame is queued while priming is still in progress.
   let release!: () => void;
-  const held = new Promise<void>((r) => (release = r));
+  const held = new Promise<void>((r) => { release = r; });
+
   const primer = createPrimer({
     store,
     primeRequest,
     compose: async (request) => {
       await held;
+
       return composePrime(request);
     },
     newPrimeId: () => "prime-1",
   });
+
   const daemon = await serveDaemon(primer);
-  const received: DaemonFrame[] = [];
+  const received: Array<DaemonFrame> = [];
   let seenTwo!: () => void;
-  const twoFrames = new Promise<void>((r) => (seenTwo = r));
+  const twoFrames = new Promise<void>((r) => { seenTwo = r; });
   await connect((frame) => {
     received.push(frame);
-    if (received.length === 2) seenTwo();
+
+    if (received.length === 2) {seenTwo();}
   });
 
   const primed = await daemon.nextAccepted();
@@ -157,7 +150,7 @@ test("the fresh prime is recorded unacknowledged and reaches the worker before a
   const later = primed.connection.send({ type: "prime", id: "later-frame", text: "after" });
   release();
 
-  expect(await primed.outcome).toEqual({ _tag: "Sent", primeId: "prime-1" });
+  expect(await primed.outcome).toEqual(PrimingOutcome.Sent({ primeId: "prime-1" }));
   await later;
   await twoFrames;
   expect(received.map((f) => (f.type === "prime" ? f.id : f.type))).toEqual(["prime-1", "later-frame"]);
@@ -182,22 +175,23 @@ test("a reconnect from the same launch is not primed again, and a missing instru
   const daemon = await serveDaemon(primer);
 
   const first = await connect(() => {});
-  expect(await (await daemon.nextAccepted()).outcome).toMatchObject({ _tag: "Sent" });
+  expect(Predicate.isTagged(await (await daemon.nextAccepted()).outcome, "Sent")).toBe(true);
   first.close();
   await first.closed;
 
   await connect(() => {});
-  expect(await (await daemon.nextAccepted()).outcome).toEqual({ _tag: "Reconnect", unacknowledgedPrimeId: "prime-1" });
+  expect(await (await daemon.nextAccepted()).outcome).toEqual(PrimingOutcome.Reconnect({ unacknowledgedPrimeId: "prime-1" }));
   expect(await conversationPrimes()).toHaveLength(1);
 
   // A fresh conversation on another slot whose instruction file is gone (freezing is 11c).
   await rm(join(dir, "factory", "instructions", "builder.md"));
   await connect(() => {}, { ...hello, slotId: "builder-2", launchId: "launch-2", conversationRef: "conv-2" });
   const missing = await daemon.nextAccepted();
-  expect(await missing.outcome).toMatchObject({
-    _tag: "SourceUnavailable",
-    problems: [{ source: "instructions/builder.md", reason: "missing" }],
-  });
+  expect(await missing.outcome).toMatchObject(
+    PrimingOutcome.SourceUnavailable({
+    problems: [expect.objectContaining({ source: "instructions/builder.md", reason: "missing" })],
+  }),
+  );
   await expect(missing.connection.send({ type: "prime", id: "work", text: "x" })).rejects.toThrow(/priming did not complete/);
   expect(await Effect.runPromise(primesForConversation(store, "f1", "builder-2", "conv-2"))).toEqual([]);
   expect((await history()).map((h) => h.kind)).toEqual(["prime.sent"]);
@@ -213,7 +207,9 @@ test("the prime alone starts no turn; once it is in the session file its receipt
     root: join(dir, "pi"),
     extensionFactories: [(pi) => void (adapter = createConversationAdapter(pi, { onReceipt: reporter.record }))],
   });
-  if (!adapter) throw new Error("conversation adapter not registered");
+
+  if (!adapter) {throw new Error("conversation adapter not registered");}
+
   const injected = new Promise<void>((resolve) => {
     const dispatch = receiveDaemonFrames({ adapter: adapter!, interrupter: new RunInterrupter() });
     void connect((frame, channel) => {
@@ -222,7 +218,7 @@ test("the prime alone starts no turn; once it is in the session file its receipt
     }).then((channel) => reporter.attach(channel));
   });
 
-  expect(await (await daemon.nextAccepted()).outcome).toMatchObject({ _tag: "Sent" });
+  expect(Predicate.isTagged(await (await daemon.nextAccepted()).outcome, "Sent")).toBe(true);
   await injected;
 
   // Injected, but Pi started no turn and has written no session file, so no receipt.
@@ -235,7 +231,7 @@ test("the prime alone starts no turn; once it is in the session file its receipt
   const receipt = daemon.nextReceipt();
   await session.prompt("hello");
   // Bounded, so a missing receipt fails on the history assertion below rather than a vitest timeout.
-  await Promise.race([receipt, new Promise<void>((r) => setTimeout(r, 2_000).unref())]);
+  await Promise.race([receipt, new Promise<void>((r) => { setTimeout(r, 2000).unref(); })]);
 
   expect((await conversationPrimes())[0]?.acknowledgedAt).toEqual(expect.any(Number));
   expect((await history()).map((h) => [h.kind, h.subject])).toEqual([
@@ -251,19 +247,21 @@ const slot = { factoryId: "f1", slotId: "builder-1", launchId: "launch-1" };
 
 test("the prime is on record before its frame is written, so a sent prime always has a record", async () => {
   const recordedAtSend: Array<ReadonlyArray<string>> = [];
+
   const stub: AcceptedConnection = {
     send: async () => {
       recordedAtSend.push((await conversationPrimes()).map((p) => p.id));
     },
   };
+
   const primer = createPrimer({ store, primeRequest, newPrimeId: () => "prime-1" });
 
-  expect(await primer.prime(slot, hello, stub).outcome).toEqual({ _tag: "Sent", primeId: "prime-1" });
+  expect(await primer.prime(slot, hello, stub).outcome).toEqual(PrimingOutcome.Sent({ primeId: "prime-1" }));
   expect(recordedAtSend).toEqual([["prime-1"]]);
 });
 
 test("two hellos from one launch send one fresh prime; the reconnect names it while it is unacknowledged", async () => {
-  const written: string[] = [];
+  const written: Array<string> = [];
   const stub: AcceptedConnection = { send: async (frame) => void written.push(frame.type === "prime" ? frame.id : frame.type) };
   let n = 0;
   const primer = createPrimer({ store, primeRequest, newPrimeId: () => `prime-${++n}` });
@@ -271,12 +269,12 @@ test("two hellos from one launch send one fresh prime; the reconnect names it wh
   const outcomes = await Promise.all([primer.prime(slot, hello, stub).outcome, primer.prime(slot, hello, stub).outcome]);
 
   expect(outcomes).toEqual([
-    { _tag: "Sent", primeId: "prime-1" },
-    { _tag: "Reconnect", unacknowledgedPrimeId: "prime-1" },
+    PrimingOutcome.Sent({ primeId: "prime-1" }),
+    PrimingOutcome.Reconnect({ unacknowledgedPrimeId: "prime-1" }),
   ]);
   expect(written).toEqual(["prime-1"]);
   expect(await conversationPrimes()).toHaveLength(1);
 
   await primer.receipt(slot, "prime-1");
-  expect(await primer.prime(slot, hello, stub).outcome).toEqual({ _tag: "Reconnect" });
+  expect(await primer.prime(slot, hello, stub).outcome).toEqual(PrimingOutcome.Reconnect({}));
 });

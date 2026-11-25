@@ -1,10 +1,16 @@
 import { createHash } from "node:crypto";
+import { Predicate } from "effect";
 import { mkdtemp, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
-import { composePrime } from "@foundry/daemon";
-import type { ComposePrimeResult, Prime, PrimeRequest, ReadSource } from "@foundry/daemon";
+import { composePrime, ComposePrimeResult } from "@foundry/daemon";
+import type { Prime, PrimeRequest, ReadSource } from "@foundry/daemon";
+
+const reader =
+  (read: () => Promise<Uint8Array>): ReadSource =>
+  () =>
+    read();
 
 // Unit tier for ordering and the header: composition is a function of the
 // request and an injected reader. One integration test exercises the real
@@ -28,12 +34,15 @@ const memoryReader =
   (files: Record<string, string>): ReadSource =>
   async (path) => {
     const content = files[path];
-    if (content === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
+
+    if (content === undefined) {throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });}
+
     return new TextEncoder().encode(content);
   };
 
 const composed = (result: ComposePrimeResult): Prime => {
-  if (result._tag !== "Composed") throw new Error(JSON.stringify(result.problems));
+  if (!Predicate.isTagged(result, "Composed")) {throw new Error(JSON.stringify(result.problems));}
+
   return result.prime;
 };
 
@@ -74,6 +83,7 @@ describe("composition", () => {
         composed(await composePrime(request({ situation }), memoryReader(FILES))).text,
       ),
     );
+
     const withoutSituation = texts.map((text) => text.replace(/^Situation: .*$/m, ""));
     expect(new Set(withoutSituation).size).toBe(1);
     expect(new Set(texts).size).toBe(3);
@@ -82,7 +92,9 @@ describe("composition", () => {
   test("every missing source is named, in order, and no prime is returned", async () => {
     const result = await composePrime(request(), memoryReader({ "/factory/rooms/eng.md": "ROOM" }));
     expect(result._tag).toBe("SourceUnavailable");
-    if (result._tag !== "SourceUnavailable") return;
+
+    if (!Predicate.isTagged(result, "SourceUnavailable")) {return;}
+
     expect(result.problems.map(({ path, source, reason }) => ({ path, source, reason }))).toEqual([
       { path: "/factory/factory.md", source: "factory.md", reason: "missing" },
       { path: "/factory/roles/dev.md", source: "roles/dev.md", reason: "missing" },
@@ -91,16 +103,14 @@ describe("composition", () => {
 });
 
 describe("source bytes", () => {
-  const reader =
-    (read: () => Promise<Uint8Array>): ReadSource =>
-    () =>
-      read();
 
   test("the hash covers the raw bytes, including a byte-order mark the content drops", async () => {
     const bytes = new TextEncoder().encode("\uFEFFX");
+
     const prime = composed(
       await composePrime(request({ instructions: ["/factory/factory.md"] }), reader(async () => bytes)),
     );
+
     expect(prime.parts).toEqual([
       {
         source: "factory.md",
@@ -112,21 +122,24 @@ describe("source bytes", () => {
 
   test("a source that exists but cannot be read is reported as unreadable", async () => {
     const denied = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+
     const result = await composePrime(
       request({ instructions: ["/factory/factory.md"] }),
       reader(async () => {
         throw denied;
       }),
     );
-    expect(result).toMatchObject({
-      _tag: "SourceUnavailable",
-      problems: [{ path: "/factory/factory.md", source: "factory.md", reason: "unreadable" }],
-    });
+
+    expect(result).toMatchObject(
+      ComposePrimeResult.SourceUnavailable({
+      problems: [expect.objectContaining({ path: "/factory/factory.md", source: "factory.md", reason: "unreadable" })],
+    }),
+    );
   });
 });
 
 describe("real files", () => {
-  const dirs: string[] = [];
+  const dirs: Array<string> = [];
   afterEach(async () => {
     await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
@@ -151,9 +164,10 @@ describe("real files", () => {
 
     await unlink(stationFile);
     const third = await composePrime(req);
-    expect(third).toMatchObject({
-      _tag: "SourceUnavailable",
-      problems: [{ path: stationFile, source: "dev.md", reason: "missing" }],
-    });
+    expect(third).toMatchObject(
+      ComposePrimeResult.SourceUnavailable({
+      problems: [expect.objectContaining({ path: stationFile, source: "dev.md", reason: "missing" })],
+    }),
+    );
   });
 });

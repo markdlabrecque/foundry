@@ -30,5 +30,6 @@ export const makeGitSource = (dir: string, branch = "main"): string => {
   writeFileSync(join(dir, "README.md"), "fixture\n");
   git(dir, ["add", "README.md"]);
   git(dir, ["commit", "--quiet", "--no-verify", "-m", "fixture"]);
+
   return git(dir, ["rev-parse", "HEAD"]);
 };

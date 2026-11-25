@@ -4,11 +4,14 @@
  * (`GET /api/v1/logs`) and, because logs must work with the daemon down, reads the same files
  * itself when no daemon answers. It never opens the database (ADR 0001).
  */
-import { encodeLogQuery, isLogsResult, logQueryProblem, LOGS_PATH, type LogQuery, type LogsResult } from "@foundry/protocol/log-query";
+import { encodeLogQuery, isLogsResult, logQueryProblem, LOGS_PATH } from "@foundry/protocol/log-query";
+import { messageOf } from "@foundry/protocol/errors";
+import type { LogQuery, LogsResult } from "@foundry/protocol/log-query";
 import { readLogs } from "@foundry/protocol/log-read";
 import { selectStateRoot } from "@foundry/protocol/state-root";
 import { DaemonUnreachableError, getFromDaemon } from "./management-client.js";
-import { EXIT_OK, EXIT_REFUSED, EXIT_USAGE, type StatusOutcome } from "./status.js";
+import { EXIT_OK, EXIT_REFUSED, EXIT_USAGE } from "./status.js";
+import type { StatusOutcome } from "./status.js";
 
 export interface LogsOptions extends LogQuery {
   /** Print the API response body unchanged. */
@@ -23,10 +26,12 @@ export type LogsOutcome = StatusOutcome;
 
 const render = (result: LogsResult): string => {
   let out = result.lines.map((line) => `${line}\n`).join("");
+
   if (result.launchStderr !== undefined) {
     const { path, text } = result.launchStderr;
     out += `--- retained stderr ${path}\n${text}${text === "" || text.endsWith("\n") ? "" : "\n"}`;
   }
+
   return out;
 };
 
@@ -39,7 +44,8 @@ const print = (result: LogsResult, json: boolean): LogsOutcome => ({
 const refused = (message: string): LogsOutcome => ({ exitCode: EXIT_REFUSED, stdout: "", stderr: `foundry: ${message}\n` });
 
 export const runLogs = async (options: LogsOptions): Promise<LogsOutcome> => {
-  if (options.home === "") return { exitCode: EXIT_USAGE, stdout: "", stderr: "foundry: --home needs a directory\n" };
+  if (options.home === "") {return { exitCode: EXIT_USAGE, stdout: "", stderr: "foundry: --home needs a directory\n" };}
+
   const query: LogQuery = {
     host: options.host,
     factory: options.factory,
@@ -47,29 +53,38 @@ export const runLogs = async (options: LogsOptions): Promise<LogsOutcome> => {
     slot: options.slot,
     launch: options.launch,
   };
+
   const problem = logQueryProblem(query);
-  if (problem !== undefined) return { exitCode: EXIT_USAGE, stdout: "", stderr: `foundry: ${problem}\n` };
+
+  if (problem !== undefined) {return { exitCode: EXIT_USAGE, stdout: "", stderr: `foundry: ${problem}\n` };}
+
   const stateRoot = selectStateRoot({ home: options.home, env: options.env });
 
   let reply;
+
   try {
     const search = encodeLogQuery(query);
     reply = await getFromDaemon(stateRoot, search === "" ? LOGS_PATH : `${LOGS_PATH}?${search}`);
   } catch (error) {
-    if (!(error instanceof DaemonUnreachableError)) return refused((error as Error).message);
+    if (!(error instanceof DaemonUnreachableError)) {return refused(messageOf(error));}
+
     // No daemon: the files are read directly, as the daemon would (PRD §15.2).
     try {
       return print(readLogs(stateRoot, query), options.json);
     } catch (readError) {
-      return refused(`cannot read logs: ${(readError as Error).message}`);
+      return refused(`cannot read logs: ${messageOf(readError)}`);
     }
   }
 
   if (options.json) {
     const stdout = reply.body.endsWith("\n") ? reply.body : `${reply.body}\n`;
+
     return { exitCode: reply.envelope.ok ? EXIT_OK : EXIT_REFUSED, stdout, stderr: "" };
   }
-  if (!reply.envelope.ok) return refused(reply.envelope.error.message);
-  if (!isLogsResult(reply.envelope.result)) return refused("the daemon answered logs with an unexpected shape");
+
+  if (!reply.envelope.ok) {return refused(reply.envelope.error.message);}
+
+  if (!isLogsResult(reply.envelope.result)) {return refused("the daemon answered logs with an unexpected shape");}
+
   return print(reply.envelope.result, false);
 };
