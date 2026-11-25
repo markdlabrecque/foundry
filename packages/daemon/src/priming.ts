@@ -2,7 +2,7 @@
  * Sending fresh and recovery primes and recording their receipts (PRD §5.5, §10.1).
  *
  * On an accepted connection the daemon decides from its own records whether a
- * fresh prime is due, records it (situation and path-and-hash list) with a
+ * fresh or recovery prime is due, records it (situation and path-and-hash list) with a
  * history row, and only then writes the `prime` frame. Work frames sent on the
  * same connection wait behind it, but never for its receipt. A receipt from
  * the worker marks the prime acknowledged in the same transaction as its
@@ -28,7 +28,7 @@ import { ComposePrimeResult, composePrime } from "./prime.js";
 import type { PrimeRequest, PrimeSourceProblem, Situation } from "./prime.js";
 import type { Store, StoreError } from "./store.js";
 import { openSlotGate, whenSendable } from "./freeze.js";
-import type { FreezeOutcome, FreezeRequest, SlotGate, SlotRef } from "./freeze.js";
+import type { CauseCheck, FreezeOutcome, FreezeRequest, SlotGate, SlotRef } from "./freeze.js";
 import { instructionMissingEvidence } from "./instruction-freeze.js";
 
 /** What the daemon records about each composed part: never its content. */
@@ -175,7 +175,7 @@ export const acknowledgePrime = (
  * - `recovery`: a prime was acknowledged for this conversation and the launch is new.
  * - `fresh`: no prime has been acknowledged for this conversation.
  */
-export const decideFreshPriming = (
+export const decideConnectionPriming = (
   primes: ReadonlyArray<PrimeRecord>,
   launchId: string,
 ): "fresh" | "reconnect" | "recovery" => {
@@ -386,6 +386,8 @@ export interface PrimedConnection {
 }
 
 export interface Primer {
+  /** Unfreeze only after a live accepted hello proves the current conversation has history. */
+  readonly recheckHistory: CauseCheck;
   /** Call from `onAccepted`, after the slot claim has reconciled the hello. */
   prime(slot: ClaimedSlot, hello: Hello, connection: AcceptedConnection): PrimedConnection;
   /** Call for each `receipt` frame from the slot's accepted connection. */
@@ -402,7 +404,7 @@ export interface Primer {
 
 const run = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> => Effect.runPromise(effect);
 
-const slotKey = (slot: ClaimedSlot): string => JSON.stringify([slot.factoryId, slot.slotId]);
+const slotKey = (slot: SlotRef): string => JSON.stringify([slot.factoryId, slot.slotId]);
 
 export const createPrimer = (options: PrimerOptions): Primer => {
   const compose = options.compose ?? ((request: PrimeRequest) => composePrime(request));
@@ -415,7 +417,8 @@ export const createPrimer = (options: PrimerOptions): Primer => {
   // The latest primed connection per slot, where a compaction prime is written.
   const live = new Map<
     string,
-    { readonly launchId: string; readonly conversationRef: string; readonly writer: PrimedWriter; readonly closed: Promise<void> | undefined }
+    { readonly launchId: string; readonly conversationRef: string; readonly hasRecoverableHistory: boolean;
+      readonly writer: PrimedWriter; readonly closed: Promise<void> | undefined }
   >();
 
   const serialized = <A>(slot: ClaimedSlot, task: () => Promise<A>): Promise<A> => {
@@ -459,7 +462,7 @@ export const createPrimer = (options: PrimerOptions): Primer => {
       return PrimingOutcome.HistoryUnavailable();
     }
 
-    const decision = decideFreshPriming(primes, slot.launchId);
+    const decision = decideConnectionPriming(primes, slot.launchId);
 
     if (decision === "reconnect") {
       const unacknowledged = primes.filter((p) => p.launchId === slot.launchId && p.acknowledgedAt === null).at(-1);
@@ -556,6 +559,29 @@ export const createPrimer = (options: PrimerOptions): Primer => {
   };
 
   return {
+    async recheckHistory(slot) {
+      const key = slotKey(slot);
+      const current = live.get(key);
+
+      if (current === undefined) {
+        return { fixed: false, evidence: { recheck: "no live accepted connection; restore history and reconnect" } };
+      }
+
+      const rows = await run(options.store.read<{ launch_id: string; conversation_ref: string }>(
+        `SELECT s.current_launch AS launch_id, c.ref AS conversation_ref FROM slot s
+         JOIN conversation c ON c.factory_id = s.factory_id AND c.slot_id = s.slot_id AND c.status = 'current'
+         WHERE s.factory_id = ? AND s.slot_id = ?`, [slot.factoryId, slot.slotId],
+      ));
+
+      const recorded = rows[0];
+
+      const fixed = live.get(key) === current && current.hasRecoverableHistory &&
+        recorded?.launch_id === current.launchId && recorded.conversation_ref === current.conversationRef;
+
+      return fixed ? { fixed: true } : { fixed: false, evidence: { launchId: current.launchId,
+        conversationRef: current.conversationRef, hasRecoverableHistory: current.hasRecoverableHistory,
+        recheck: "the current launch must reconnect with recoverable history in its recorded conversation" } };
+    },
     prime(slot, hello, connection) {
       // A frozen slot's prime waits for its unfreeze and is decided afresh then; a connection
       // that ends first gets none, so it never holds up a later hello for the slot.
@@ -564,7 +590,14 @@ export const createPrimer = (options: PrimerOptions): Primer => {
       );
 
       const writer = new PrimedWriter(connection, outcome, gate, slot);
-      live.set(slotKey(slot), { launchId: slot.launchId, conversationRef: hello.conversationRef, writer, closed: connection.closed });
+
+      const current = { launchId: slot.launchId, conversationRef: hello.conversationRef,
+        hasRecoverableHistory: hello.hasRecoverableHistory, writer, closed: connection.closed };
+
+      live.set(slotKey(slot), current);
+      void connection.closed?.then(() => {
+        if (live.get(slotKey(slot)) === current) {live.delete(slotKey(slot));}
+      });
 
       const guarded: AcceptedConnection = { send: (frame: DaemonFrame) => writer.send(frame) };
 

@@ -442,6 +442,8 @@ const main = async (): Promise<void> => {
       const primer = createPrimer({ store, gate: freezer, freeze: (request) => freezer.freeze(request),
         primeRequest: plannedPrimeRequests(factories, plannedSlots) });
 
+      freezeChecks.prime_without_history = primer.recheckHistory;
+
       const delivery = createMessageDelivery({ store, gate: freezer,
         inScope: (factoryId) => factoryStates.isRunning(factoryId),
         onError: (cause) => log.error("message delivery failed", { detail: { error: messageOf(cause) } }) });
