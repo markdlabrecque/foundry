@@ -98,4 +98,6 @@ export {
 
 export * from "./start-refusal.js";
 
+export * from "./operations.js";
+
 export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";
