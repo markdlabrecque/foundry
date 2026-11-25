@@ -328,6 +328,19 @@ const main = async (): Promise<void> => {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
+  const sync = createFactorySyncer({
+    store,
+    target: (factory) => {
+      const clone = clones.get(factory);
+      const loaded = factories.find((f) => f.factoryId === factory);
+
+      return clone === undefined || loaded === undefined || !decision.started.includes(factory)
+        ? undefined
+        : { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch };
+    },
+    onError: (factory, error) => log.error("sync queue run failed", { factoryId: factory, detail: { error: messageOf(error) } }),
+  });
+
   try {
     api = await serveManagementApi({
       stateRoot,
@@ -341,19 +354,7 @@ const main = async (): Promise<void> => {
       }),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,
-      // Operator-requested syncs only (PRD §9.1): nothing else here contacts the source.
-      sync: createFactorySyncer({
-        store,
-        target: (factory) => {
-          const clone = clones.get(factory);
-          const loaded = factories.find((f) => f.factoryId === factory);
-
-          return clone === undefined || loaded === undefined || !decision.started.includes(factory)
-            ? undefined
-            : { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch };
-        },
-        onError: (factory, error) => log.error("sync queue run failed", { factoryId: factory, detail: { error: messageOf(error) } }),
-      }),
+      sync,
       // Read from the recorded run and its configuration loads, not from memory.
       factories: storeFactoriesReader(store, log.runId),
     });
@@ -378,6 +379,10 @@ const main = async (): Promise<void> => {
 
     return;
   }
+
+  // Resume only accepted, not-yet-started work (PRD §9.4). An empty queue does not fetch, and a
+  // running operation still blocks admission until interrupted-operation recovery handles it.
+  for (const factory of decision.started) {void sync.resumeQueued(factory);}
 
   log.info("daemon started", {
     detail: { pid: process.pid, stateRoot, socket: api.socketPath, logLevel: log.level },

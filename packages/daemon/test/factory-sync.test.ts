@@ -56,8 +56,8 @@ const withStore = <A>(dir: string, use: (store: Store) => Promise<A>): Promise<A
     Effect.scoped(Effect.flatMap(openStore({ filename: join(dir, "foundry.db") }), (store) => Effect.promise(() => use(store)))),
   );
 
-const syncer = (store: Store, f: Fixture) =>
-  createFactorySyncer({ store, target: (name) => (name === "alpha" ? { clonePath: f.clone, defaultBranch: "main" } : undefined), env: isolatedGitEnv() });
+const syncer = (store: Store, f: Fixture, defaultBranch = "main") =>
+  createFactorySyncer({ store, target: (name) => (name === "alpha" ? { clonePath: f.clone, defaultBranch } : undefined), env: isolatedGitEnv() });
 
 test("an explicit sync fast-forwards the clone, records the previous and fetched heads, and never pushes", async () => {
   const f = fixture();
@@ -83,6 +83,22 @@ test("an explicit sync fast-forwards the clone, records the previous and fetched
   ]);
   expect(git(f.clone, ["rev-parse", "main"])).toBe(fetched);
   expect(git(f.clone, ["status", "--porcelain"])).toBe("");
+  expect(refsOf(f.source)).toBe(sourceBefore);
+});
+
+test("sync advances the configured default branch without moving the previously checked-out branch", async () => {
+  const f = fixture();
+  const previous = git(f.clone, ["rev-parse", "HEAD"]);
+  git(f.clone, ["branch", "next"]);
+  const otherHead = commit(f.clone, "main-only.md", "main only\n");
+  const fetched = commit(f.seed, "next-only.md", "next only\n");
+  git(f.seed, ["push", "--quiet", f.source, "HEAD:refs/heads/next"]);
+  const sourceBefore = refsOf(f.source);
+
+  const reply = await withStore(f.dir, (store) => syncer(store, f, "next").request("alpha", true));
+
+  expect(reply).toMatchObject({ operation: { status: "complete", result: { previousHead: previous, fetchedHead: fetched, head: fetched, fastForward: true } } });
+  expect(git(f.clone, ["rev-parse", "next", "main"]).split("\n")).toEqual([fetched, otherHead]);
   expect(refsOf(f.source)).toBe(sourceBefore);
 });
 

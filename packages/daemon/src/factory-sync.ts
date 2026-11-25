@@ -77,6 +77,13 @@ export const syncClone = (
       reason: `cannot read ${branch}: ${reason}`,
     }));
 
+    // Git merges into the current checkout. Align Foundry's dedicated checkout with its configured
+    // default branch without moving the branch that was checked out before the sync.
+    yield* git([...NO_HOOKS, "switch", "--quiet", "--no-guess", "--no-recurse-submodules", "--", branch], (reason) => ({
+      previousHead,
+      reason: `cannot switch the clone to ${branch}: ${reason}`,
+    }));
+
     const fetchFailed = (reason: string) => ({ previousHead, reason: `fetch failed: ${reason}` });
 
     yield* git([...NO_HOOKS, "fetch", "--quiet", "--no-tags", "origin", `+refs/heads/${branch}:${tracking}`], fetchFailed);
@@ -115,6 +122,8 @@ export type SyncRequestReply =
 
 /** Queues and runs operator-requested syncs (`foundry factory sync`). */
 export interface FactorySyncer {
+  /** Drain previously accepted requests without creating a new operation. */
+  readonly resumeQueued: (factory: string) => Promise<void>;
   /**
    * Queues a sync of `factory`'s clone and starts the queue. Answers with the queued operation once
    * it is committed, or, with `wait`, once the queue has run it. `found: false` for a factory that
@@ -155,7 +164,22 @@ export const createFactorySyncer = (options: FactorySyncerOptions): FactorySynce
   // One queue run at a time per factory; a later request waits behind the earlier run.
   const runs = new Map<string, Promise<void>>();
 
+  const scheduleDrain = (factory: string, target: SyncTarget): Promise<void> => {
+    const run = (runs.get(factory) ?? Promise.resolve()).then(() =>
+      Effect.runPromise(drainQueue(options.store, factory, target, env)).catch((cause: unknown) => options.onError?.(factory, cause)),
+    );
+
+    runs.set(factory, run);
+
+    return run;
+  };
+
   return {
+    resumeQueued: async (factory) => {
+      const target = options.target(factory);
+
+      if (target !== undefined) {await scheduleDrain(factory, target);}
+    },
     request: async (factory, wait) => {
       const target = options.target(factory);
 
@@ -165,11 +189,7 @@ export const createFactorySyncer = (options: FactorySyncerOptions): FactorySynce
         enqueueOperation(options.store, { factoryId: factory, kind: "sync", intent: { defaultBranch: target.defaultBranch } }),
       );
 
-      const run = (runs.get(factory) ?? Promise.resolve()).then(() =>
-        Effect.runPromise(drainQueue(options.store, factory, target, env)).catch((cause: unknown) => options.onError?.(factory, cause)),
-      );
-
-      runs.set(factory, run);
+      const run = scheduleDrain(factory, target);
 
       if (!wait) {return { found: true, operation: queued };}
 
