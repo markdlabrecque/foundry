@@ -3,6 +3,8 @@ export const packageName = "@foundry/daemon" as const;
 
 export * from "./message-delivery.js";
 
+export * from "./stuck-workers.js";
+
 export * from "./channel/server.js";
 
 export { channelLogEvents } from "./channel/log-events.js";

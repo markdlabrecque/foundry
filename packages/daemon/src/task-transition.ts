@@ -3,6 +3,7 @@ import { Clock, Effect, Schema } from "effect";
 import type { AssignmentFactory } from "./assignments.js";
 import { inspectCode } from "./code-observation.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
+import { outcomeRoute } from "./outcome-route.js";
 import { ToolRefusal } from "./submissions.js";
 import type { ToolHandler, ToolCallContext } from "./submissions.js";
 import type { Query } from "./store.js";
@@ -69,7 +70,6 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
   const stages = config?.production_lines[assignment.production_line]?.stages;
   const index = stages?.findIndex((s) => s.id === assignment.stage) ?? -1;
   const stage = index < 0 ? undefined : stages?.[index];
-  const next = index < 0 ? undefined : stages?.[index + 1];
 
   if (stage === undefined) {
     return yield* new ToolRefusal({ code: "unsupported_transition", detail: "assignment stage is not configured" });
@@ -78,7 +78,7 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
   const room = config?.rooms[stage.station.split(".")[0] ?? ""];
   const station = room?.stations[stage.station.split(".")[1] ?? ""];
 
-  if (args.outcome === "done" && (next === undefined || stage.approval)) {
+  if (args.outcome === "done" && (stages?.[index + 1] === undefined || stage.approval)) {
     return yield* new ToolRefusal({ code: "unsupported_transition", detail: "approval, completion and integration are not supported yet" });
   }
 
@@ -142,12 +142,18 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
     return { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: assignment.stage, status: "paused", approvalId };
   }
 
-  if (args.outcome === "rejected" || next === undefined) {
-    return yield* new ToolRefusal({ code: "unsupported_transition", detail: "routed rejection, completion and integration are not supported yet" });
+  const target = outcomeRoute(stages ?? [], assignment.stage, args.outcome);
+
+  if (target === undefined) {
+    return yield* new ToolRefusal({ code: "unsupported_transition", detail: "no configured route; completion and integration are not supported yet" });
   }
 
-  if (stage.approval || station === undefined || (stage.writing && station.isolation !== "worktree")) {
+  if ((args.outcome === "done" && stage.approval) || station === undefined || (stage.writing && station.isolation !== "worktree")) {
     return yield* new ToolRefusal({ code: "unsupported_transition", detail: "approval and invalid stage configurations are not supported" });
+  }
+
+  if (station.isolation === "worktree" && observation === undefined) {
+    return yield* new ToolRefusal({ code: "invalid_code_outcome", detail: "code outcomes require an inspected ticket worktree" });
   }
 
   // Delegation acceptance can land independently of outcome handling. Never strand open work
@@ -158,30 +164,30 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
   );
 
   if (openDelegations.length > 0) {
-    return yield* new ToolRefusal({ code: "open_delegations", detail: "done is refused while the assignment has open delegations" });
+    return yield* new ToolRefusal({ code: "open_delegations", detail: "outcome is refused while the assignment has open delegations" });
   }
 
   const now = yield* Clock.currentTimeMillis;
-  yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = ?, end_reason = 'done' WHERE id = ?`,
-    [now, args.assignmentId]);
-  yield* change.query(`UPDATE ticket SET stage = ?, status = 'queued' WHERE factory_id = ? AND number = ?`,
-    [next.id, call.factoryId, assignment.ticket_number]);
+  yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = ?, end_reason = ? WHERE id = ?`,
+    [now, args.outcome, args.assignmentId]);
+  yield* change.query(`UPDATE ticket SET stage = ?, status = 'queued', rejections = rejections + ? WHERE factory_id = ? AND number = ?`,
+    [target, args.outcome === "rejected" ? 1 : 0, call.factoryId, assignment.ticket_number]);
   yield* change.query(
     `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
        from_state, from_stage, from_status, to_state, to_stage, to_status, outcome, reason, git_commit, evidence, config_load)
-     VALUES (?, ?, ?, ?, 'stage', ?, 'assigned', 'stage', ?, 'queued', 'done', ?, ?, ?, ?)`,
-    [call.factoryId, assignment.ticket_number, now, call.slotId, assignment.stage, next.id,
+     VALUES (?, ?, ?, ?, 'stage', ?, 'assigned', 'stage', ?, 'queued', ?, ?, ?, ?, ?)`,
+    [call.factoryId, assignment.ticket_number, now, call.slotId, assignment.stage, target, args.outcome,
       args.reason, observation?.head ?? null, JSON.stringify(args.evidence), options.configLoad?.(call.factoryId) ?? null],
   );
   yield* change.recordHistory({
     factoryId: call.factoryId, kind: "ticket.transitioned", subject: String(assignment.ticket_number),
-    detail: { assignment: args.assignmentId, outcome: "done", fromStage: assignment.stage, stage: next.id, status: "queued" },
+    detail: { assignment: args.assignmentId, outcome: args.outcome, fromStage: assignment.stage, stage: target, status: "queued" },
     records: [ticketRecord(assignment.ticket_number), slotRecord(call.slotId)],
   });
 
   if (observation !== undefined) {yield* observation.validate();}
 
-  return { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: next.id, status: "queued" };
+  return { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: target, status: "queued" };
 });
 
 /** Git inspection is read-only and outside the submission transaction. No failed inspection can
