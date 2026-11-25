@@ -8,6 +8,10 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./management-api": {
+      "types": "./dist/management-api.d.ts",
+      "default": "./dist/management-api.js"
     }
   },
   "files": ["dist"],

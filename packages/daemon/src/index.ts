@@ -17,3 +17,10 @@ export {
   type RepositoryContextFile,
   type SkillHeader,
 } from "./repository-context.js";
+export {
+  ManagementSocketError,
+  serveManagementApi,
+  type ManagementApi,
+  type ManagementApiInputs,
+  type ManagementSocketRefusal,
+} from "./management-api.js";
