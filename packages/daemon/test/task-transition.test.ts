@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Schema } from "effect";
 import {
-  createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
+  agentDelegateHandler, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
   StoreError, taskTransitionHandler, ticketFactoryFrom,
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
@@ -139,6 +139,21 @@ test("different slots/factories, suspended assignments, missing IDs and worker d
     expect(yield* Effect.promise(() => submissions.submit(owner, frame(id))))
       .toMatchObject({ status: "refused", code: "not_assignment_owner" });
     expect(yield* snapshot(store)).toEqual(suspended);
+  }));
+});
+
+test("new delegation acceptance cannot strand open work under an ended assignment", async () => {
+  await fixture((store, id) => Effect.gen(function* () {
+    yield* store.change((change) => agentDelegateHandler(slots)(change, {
+      ...owner, callId: "delegate", tool: "agent_delegate", args: { recipient: "floor.worker", body: "Help with plan" },
+    }));
+    const before = yield* snapshot(store);
+    const delegations = yield* store.read(`SELECT * FROM delegation`);
+    expect(delegations).toHaveLength(1);
+    expect(yield* Effect.promise(() => createSubmissions({ store, handlers }).submit(owner, frame(id))))
+      .toMatchObject({ status: "refused", code: "open_delegations" });
+    expect(yield* snapshot(store)).toEqual(before);
+    expect(yield* store.read(`SELECT * FROM delegation`)).toEqual(delegations);
   }));
 });
 

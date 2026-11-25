@@ -5,6 +5,7 @@
  * - `POST /api/v1/tickets` with a `SubmitTicketRequest` body: `201` with a `TicketDetail`.
  * - `GET /api/v1/tickets[?factory=<name>]`: a `TicketListResult`.
  * - `GET /api/v1/tickets/<n>[?factory=<name>]`: a `TicketDetail`.
+ * - `POST /api/v1/tickets/<n>/pause[?factory=<name>]`: a `TicketDetail`, after worker settlement.
  *
  * `factory` may be left out only when exactly one factory is loaded (PRD §11.1); listing without
  * it lists every factory's tickets.

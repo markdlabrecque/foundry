@@ -65,6 +65,17 @@ export const taskTransitionHandler = (options: TaskTransitionOptions): ToolHandl
     return yield* new ToolRefusal({ code: "unsupported_transition", detail: "approval and code-stage outcome checks are not supported yet" });
   }
 
+  // Delegation acceptance can land independently of outcome handling. Never strand open work
+  // under an ended root assignment, including descendants owned by other slots.
+  const openDelegations = yield* change.query(
+    `SELECT 1 FROM delegation WHERE factory_id = ? AND root_assignment = ? AND status = 'open' LIMIT 1`,
+    [call.factoryId, args.assignmentId],
+  );
+
+  if (openDelegations.length > 0) {
+    return yield* new ToolRefusal({ code: "open_delegations", detail: "done is refused while the assignment has open delegations" });
+  }
+
   const now = yield* Clock.currentTimeMillis;
   yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = ?, end_reason = 'done' WHERE id = ?`,
     [now, args.assignmentId]);

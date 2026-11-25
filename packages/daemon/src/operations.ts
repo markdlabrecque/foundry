@@ -162,10 +162,15 @@ export const enqueueOperation = (
  * Records a worktree creation, hook run or cleanup as running, with its intent, before its action
  * starts. These do not go through the queue.
  */
+export const beginOperationIn = (
+  change: Change,
+  request: OperationRequest<DirectOperationKind>,
+): Effect.Effect<Operation, StoreError> => insert(change, request, "running");
+
 export const beginOperation = (
   store: Store,
   request: OperationRequest<DirectOperationKind>,
-): Effect.Effect<Operation, StoreError> => store.change((change) => insert(change, request, "running"));
+): Effect.Effect<Operation, StoreError> => store.change((change) => beginOperationIn(change, request));
 
 /** Rolls back an admission that found nothing to start; never leaves this module. */
 class NothingAdmitted extends Data.TaggedError("NothingAdmitted") {}
