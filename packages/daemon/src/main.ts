@@ -30,6 +30,7 @@ import type { StartBlocker, StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Predicate, Schema, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
+import { storeApprovalsReader } from "./approvals.js";
 import { storeFactoriesReader } from "./factories.js";
 import { importStoreQuietly } from "./quiet-store.js";
 import type { Store } from "./store.js";
@@ -692,6 +693,7 @@ const main = async (): Promise<void> => {
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
+      approvals: storeApprovalsReader(store),
       tickets: createTicketService(ticketOptions),
       worktrees: createWorktreeService({ store, factories: () => factories.map((f) => f.factoryId),
         target: (factoryId) => {
