@@ -180,6 +180,7 @@ interface TransitionRow {
   git_commit: string | null;
   evidence: string;
   config_load: string | null;
+  voided_transitions: string;
 }
 
 const iso = (ms: number): string => new Date(ms).toISOString();
@@ -221,6 +222,7 @@ const transition = (row: TransitionRow): TicketTransition => ({
   commit: row.git_commit,
   evidence: decodeEvidence(row.evidence),
   configLoad: row.config_load,
+  voidedTransitions: Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.Number)))(row.voided_transitions ?? "[]"),
 });
 
 const refuse = (code: TicketErrorCode, message: string) => Effect.fail(new TicketError({ code, message }));

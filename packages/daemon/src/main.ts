@@ -33,6 +33,8 @@ import { storeHoldsReader } from "./holds.js";
 import { storeApprovalsReader } from "./approvals.js";
 import { createApprovalAnswers } from "./approval-answer.js";
 import { createApprovalDecisions } from "./approval-decision.js";
+import { watchApprovalHeads } from "./approval-voiding.js";
+import type { ApprovalVoidingOptions } from "./approval-voiding.js";
 import { storeFactoriesReader } from "./factories.js";
 import { importStoreQuietly } from "./quiet-store.js";
 import type { Store } from "./store.js";
@@ -604,6 +606,19 @@ const main = async (): Promise<void> => {
   let api: ManagementApi | undefined;
   let stopping = false;
 
+  let approvalHeadOptions: ApprovalVoidingOptions = {
+    store, factories, configLoad: (factory) => loadIds.get(factory),
+    inScope: (factory) => !stopping && factoryStates.isRunning(factory),
+  };
+
+  if (channel !== undefined) {
+    const interrupter = storeSlotInterrupter({ store, factories: decision.started, slots: plannedSlots, channel });
+    approvalHeadOptions = { ...approvalHeadOptions, interrupt: async (slot, factory) => { await interrupter.interrupt(slot, factory); } };
+  }
+
+  const stopApprovalHeads = watchApprovalHeads(approvalHeadOptions,
+    (cause) => log.error("approval heads not checked", { detail: { error: messageOf(cause) } }));
+
   const stopAssignments = watchAssignments({
     store, factories, slots: plannedSlots,
     clonePath: (factoryId) => {
@@ -642,6 +657,7 @@ const main = async (): Promise<void> => {
       try {
         try {
           // Closing the connections leaves the host and its launches running (PRD §3.2).
+          await stopApprovalHeads();
           await stopAssignments?.();
           await channel?.close().catch(() => {});
           host?.close();
@@ -778,6 +794,7 @@ const main = async (): Promise<void> => {
       },
     });
   } catch (error) {
+    await stopApprovalHeads();
     await stopAssignments();
     await channel?.close().catch(() => {});
     host?.close();

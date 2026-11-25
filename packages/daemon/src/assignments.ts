@@ -5,6 +5,7 @@ import { Cause, Clock, Data, Effect, Exit } from "effect";
 import { acceptMessage } from "./agent-message.js";
 import { abandonAssignment } from "./assignment-abandon.js";
 import { composeResumeNotice } from "./resume-notice.js";
+import { voidStaleApprovals } from "./approval-voiding.js";
 import { isAssignmentSlotReserved, onAssignmentSlotReleased } from "./assignment-reservation.js";
 import { eligibleAssignmentSlots } from "./assignment-slots.js";
 import { composeAssignmentRepositoryContext, recordAssignmentRepositoryContext } from "./assignment-repository-context.js";
@@ -65,6 +66,7 @@ export interface AssignmentSchedulerOptions {
   readonly inScope?: (factoryId: string) => boolean;
   /** Worktree creation is separate; false leaves this ticket queued, without reserving capacity. */
   readonly ready?: (ticket: QueuedTicket, slot: PlannedSlot) => boolean;
+  readonly onApprovalError?: (cause: unknown) => void;
   /** Runs outside the assignment transaction, only for an eligible isolated assignment. */
   readonly prepareWorktree?: (ticket: QueuedTicket) => Effect.Effect<void, StoreError>;
   /** Factory clone's default-branch checkout, for non-isolated stations. Enables repository context. */
@@ -91,7 +93,7 @@ class NoAssignments extends Data.TaggedError("NoAssignments")<{
 
 /** One transaction chooses capacity and persists assignments, transitions and context together. */
 export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) => {
-  const scan = () => options.store.change((change) =>
+  const scan = (unverified: ReadonlySet<string>) => options.store.change((change) =>
     Effect.gen(function* () {
       const queued = yield* change.query<QueuedTicket>(
         `SELECT * FROM ticket t WHERE (state = 'backlog' OR (state = 'stage' AND status = 'queued'))
@@ -105,7 +107,7 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
       const preparingSlots = new Set<string>();
 
       for (const ticket of queued) {
-        if (options.inScope?.(ticket.factory_id) === false) {continue;}
+        if (options.inScope?.(ticket.factory_id) === false || unverified.has(JSON.stringify([ticket.factory_id, ticket.number]))) {continue;}
 
         const factory = options.factories.find((f) => f.factoryId === ticket.factory_id);
         const line = factory?.config.production_lines[ticket.production_line];
@@ -282,7 +284,17 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
 
   return {
     schedule: (): Effect.Effect<ReadonlyArray<Assignment>, StoreError> => Effect.gen(function* () {
-      const first = yield* scan();
+      const unverified = new Set<string>();
+      yield* voidStaleApprovals({ ...options, onUnverified: (factory, ticket, cause) => {
+        unverified.add(JSON.stringify([factory, ticket]));
+        options.onApprovalError?.(cause);
+      } }).pipe(Effect.catch((cause) => Effect.gen(function* () {
+        // Preserve main's quiet, deferred SQLite loading; the store is already open here.
+        const { StoreError } = yield* Effect.promise(() => import("./store.js"));
+
+        return yield* new StoreError({ reason: "Sql", message: "Could not verify ticket approvals against HEAD", cause });
+      })));
+      const first = yield* scan(unverified);
 
       if (options.prepareWorktree === undefined || first.pending.length === 0) {return first.assigned;}
 
@@ -291,7 +303,7 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
       }
 
       // Recheck capacity, lifecycle and readiness after Git, before committing any assignment.
-      const second = yield* scan();
+      const second = yield* scan(unverified);
 
       return [...first.assigned, ...second.assigned];
     }),
@@ -320,7 +332,8 @@ export const watchAssignments = (
       preparations.set(key, { controller, done });
     });
 
-  const scheduler = createAssignmentScheduler(prepare === undefined ? options : { ...options, prepareWorktree: backgroundPrepare });
+  const scheduling = { ...options, onApprovalError: (cause: unknown) => onError(cause instanceof Error ? cause : new Error(String(cause))) };
+  const scheduler = createAssignmentScheduler(prepare === undefined ? scheduling : { ...scheduling, prepareWorktree: backgroundPrepare });
   let stopped = false;
   let dirty = false;
   let running: Promise<void> | undefined;
