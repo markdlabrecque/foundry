@@ -37,7 +37,7 @@ default_production_line: f
 rooms:
   r:
     stations:
-      s: {}
+      s: { model: p/m }
 production_lines:
   f:
     stages:
@@ -51,7 +51,7 @@ test("foundry validate accepts a valid factory with exit 0", () => {
 });
 
 test("foundry validate reports the location of each problem and exits 1", () => {
-  const result = run(valid.replace("version: 1", "version: 2").replace("      s: {}", "      s:\n        on_demand: true"));
+  const result = run(valid.replace("version: 1", "version: 2").replace("      s: { model: p/m }", "      s:\n        on_demand: true"));
   expect(result.status).toBe(1);
   expect(result.stderr).toContain("F:1:10: version: Unsupported version");
   expect(result.stderr).toContain("F:11:9: rooms.r.stations.s.on_demand: Unknown key");
