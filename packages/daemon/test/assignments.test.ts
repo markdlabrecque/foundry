@@ -76,7 +76,7 @@ test("oldest first, one context per assignment across repeated and concurrent sc
     expect(before.messages).toHaveLength(2);
     expect(before.transitions).toHaveLength(5); // submit plus exactly one assignment transition
     expect(before.messages).toMatchObject([
-      { ticket_number: 3, recipient: "floor.worker", sender_slot: "", status: "unbound", delivery: "after_turn" },
+      { ticket_number: 3, recipient: "floor.worker", sender_kind: "daemon", sender_slot: null, status: "unbound", delivery: "after_turn" },
       { ticket_number: 1 },
     ]);
     expect(before.messages[0]?.body).toContain("Specification:");

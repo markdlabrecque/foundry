@@ -407,6 +407,55 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       ) STRICT`,
     ],
   },
+  {
+    id: 17,
+    name: "operator_message_attribution",
+    statements: [
+      // Keep request, assignment and delivery-attempt references on the final `message` name.
+      // Defer the transient missing parent while rebuilding; validate final integrity below.
+      `PRAGMA defer_foreign_keys = ON`,
+      `CREATE TABLE message_with_sender (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK (sequence > 0),
+        sender_kind TEXT NOT NULL DEFAULT 'agent' CHECK (sender_kind IN ('agent', 'operator', 'daemon')),
+        sender_slot TEXT,
+        recipient TEXT NOT NULL,
+        body TEXT NOT NULL,
+        delivery TEXT NOT NULL CHECK (delivery IN ('after_turn', 'when_idle')),
+        kind TEXT NOT NULL CHECK (kind IN ('ordinary', 'request_notice', 'delegation_notice', 'reply', 'resume_notice')),
+        ticket_number INTEGER,
+        request_id TEXT,
+        delegation_id TEXT,
+        status TEXT NOT NULL CHECK (status IN ('unbound', 'bound', 'sent', 'acknowledged', 'indeterminate', 'dropped', 'expired')),
+        accepted_at INTEGER NOT NULL,
+        bound_slot TEXT,
+        bound_at INTEGER,
+        acknowledged_at INTEGER,
+        CHECK ((sender_kind = 'agent' AND sender_slot IS NOT NULL) OR (sender_kind IN ('operator', 'daemon') AND sender_slot IS NULL)),
+        UNIQUE (factory_id, sequence)
+      ) STRICT`,
+      // Before attribution existed, assignment context used the empty sender slot as daemon.
+      `INSERT INTO message_with_sender (id, factory_id, sequence, sender_kind, sender_slot, recipient, body, delivery,
+        kind, ticket_number, request_id, delegation_id, status, accepted_at, bound_slot, bound_at, acknowledged_at)
+       SELECT id, factory_id, sequence, CASE WHEN sender_slot = '' THEN 'daemon' ELSE 'agent' END,
+        NULLIF(sender_slot, ''), recipient, body, delivery,
+        kind, ticket_number, request_id, delegation_id, status, accepted_at, bound_slot, bound_at, acknowledged_at FROM message`,
+      `DROP TABLE message`,
+      `ALTER TABLE message_with_sender RENAME TO message`,
+      `CREATE TRIGGER message_binding_immutable BEFORE UPDATE OF bound_slot, bound_at ON message
+       WHEN OLD.bound_slot IS NOT NULL AND
+         (NEW.bound_slot IS NOT OLD.bound_slot OR NEW.bound_at IS NOT OLD.bound_at)
+       BEGIN SELECT RAISE(ABORT, 'message binding is immutable'); END`,
+      `CREATE INDEX message_unbound ON message (factory_id, sequence) WHERE status = 'unbound'`,
+      // SQLite retains deferred DROP violations even when the parent is restored. Check actual
+      // final foreign keys before clearing that transient violation counter, never disable FKs.
+      `CREATE TEMP TABLE message_fk_valid (valid INTEGER NOT NULL CHECK (valid = 1))`,
+      `INSERT INTO message_fk_valid SELECT 0 FROM pragma_foreign_key_check`,
+      `DROP TABLE message_fk_valid`,
+      `PRAGMA defer_foreign_keys = OFF`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */
