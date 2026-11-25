@@ -5,16 +5,17 @@
  * releases the lock and exits 0; a held lock or a socket in use exits 1 (PRD §11.6).
  * Once the root is claimed, diagnostics go to `logs/daemon.log` as well as stderr (PRD §15.2).
  * The database (`foundry.db` in the state root) is opened after the log and before serving; it
- * serves operator holds. Stop order: API close, store close, log close, lock release.
+ * serves operator holds and the event stream. Stop order: API close, store close, log close, lock release.
  * Factory files named on the command line are validated read-only before the root is claimed; an
  * invalid one refuses start with one line and exit 1. Once the store is open, each factory's empty
  * knowledge layout is created and the run and each configuration load are recorded in it.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadFactoryFiles, startRun, type LoadedFactory, type RecordedLoad } from "./factory-loads.js";
+import { createKnowledgeLayout, loadFactoryFiles, recordRun, type LoadedFactory, type RecordedLoad } from "./factory-loads.js";
 import { makeTicketService, ticketFactoryFrom } from "./tickets.js";
 import { Effect, Exit, Scope } from "effect";
+import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
 import { importStoreQuietly } from "./quiet-store.js";
 import type { Store } from "./store.js";
@@ -128,8 +129,10 @@ const main = async (): Promise<void> => {
   const startedAt = new Date().toISOString();
   let loads: ReadonlyArray<RecordedLoad>;
   try {
+    // The reserved, empty knowledge layout (PRD §5.4.3); existing directories are left alone.
+    for (const factory of factories) createKnowledgeLayout(factory);
     loads = await Effect.runPromise(
-      startRun(store, { runId: log.runId, startedAt: Date.parse(startedAt), version: foundryVersion(), factories }),
+      recordRun(store, { runId: log.runId, startedAt: Date.parse(startedAt), version: foundryVersion(), factories }),
     );
   } catch (error) {
     log.error("run not recorded", { detail: { error: (error as Error).message } });
@@ -184,6 +187,7 @@ const main = async (): Promise<void> => {
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
       tickets: makeTicketService({ stateRoot, store, factories: () => ticketFactories }),
+      events: storeEventSource(store),
     });
   } catch (error) {
     if (error instanceof ManagementSocketError) {

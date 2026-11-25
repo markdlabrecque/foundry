@@ -12,12 +12,16 @@ import { join } from "node:path";
 import type { HoldsReader } from "./holds.js";
 import { HOLDS_PATH } from "@foundry/protocol/holds";
 import {
+  EVENTS_PATH,
   managementSocketPath,
+  parseEventsQuery,
   STATUS_PATH,
   type ApiError,
   type ApiResponse,
   type StatusResult,
 } from "@foundry/protocol/management-api";
+import type { EventSource } from "./events.js";
+import { streamEvents } from "./events-stream.js";
 import { TICKETS_PATH } from "@foundry/protocol/tickets-api";
 import { handleTickets } from "./tickets-routes.js";
 import type { TicketService } from "./tickets.js";
@@ -29,6 +33,8 @@ export interface ManagementApiInputs {
   readonly stateRoot: string;
   /** Called on every status request, so each answer is current. */
   readonly status: () => StatusResult;
+  /** Durable history for `GET /api/v1/events`; without it the route answers 503. */
+  readonly events?: EventSource;
   /** Operator holds (PRD §10.2). Without it the hold routes answer 503. */
   readonly holds?: HoldsReader;
   /** Serves the ticket routes when given; without it they answer 404. */
@@ -217,6 +223,7 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
   }
   request.resume(); // The remaining routes read no body; drain it so the connection stays usable.
   if (path === LOGS_PATH) return handleLogs(inputs, request, response, url.searchParams);
+  if (path === EVENTS_PATH) return handleEvents(inputs, url, request, response);
   const route = routeFor(inputs, path);
   if (route === undefined) {
     return send(response, 404, failure("not_found", `no route for ${request.method} ${path}`));
@@ -229,6 +236,18 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
     ([status, body]) => send(response, status, body),
     (error: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${describeError(error)}`)),
   );
+};
+
+const handleEvents = (inputs: ManagementApiInputs, url: URL, request: IncomingMessage, response: ServerResponse): void => {
+  if (request.method !== "GET") {
+    response.setHeader("allow", "GET");
+    return send(response, 405, failure("method_not_allowed", `${EVENTS_PATH} only accepts GET`));
+  }
+  if (inputs.events === undefined) return send(response, 503, failure("unavailable", "events are not available"));
+  const lastEventId = request.headers["last-event-id"];
+  const parsed = parseEventsQuery(url.searchParams, Array.isArray(lastEventId) ? lastEventId[0] : lastEventId);
+  if (!parsed.ok) return send(response, 400, { ok: false, error: parsed.error });
+  streamEvents(inputs.events, parsed.query, request, response);
 };
 
 const handleLogs = (

@@ -44,7 +44,11 @@ export interface LoadedFactory {
   readonly warnings: ReadonlyArray<ConfigProblem>;
   /** The stored, validated configuration: the decoded config and its effective stations, as JSON. */
   readonly configJson: string;
-  /** `sha256:<hex>` of `configJson`. */
+  /**
+   * `sha256:<hex>` of `configJson`, not of the YAML text: comments and formatting do not change it,
+   * while a changed `${NAME}` model value does. The effective stations hold resolved absolute
+   * paths, so moving the checkout (or the YAML) also changes it.
+   */
   readonly configHash: string;
   /** Absolute knowledge root and the empty directories reserved beneath it (§5.4.3). */
   readonly knowledge: { readonly root: string; readonly directories: ReadonlyArray<string> };
@@ -179,18 +183,3 @@ export const recordRun = (store: Store, run: RunRecord): Effect.Effect<ReadonlyA
       return loads;
     }),
   );
-
-/**
- * Creates each factory's knowledge layout, then records the run in the daemon's store. The store
- * is the daemon's one open database; the caller must hold the state-root lock.
- */
-export const startRun = (store: Store, run: RunRecord): Effect.Effect<ReadonlyArray<RecordedLoad>, StoreError | Error> =>
-  Effect.gen(function* () {
-    yield* Effect.try({
-      try: () => {
-        for (const factory of run.factories) createKnowledgeLayout(factory);
-      },
-      catch: (cause) => new Error(`cannot create the knowledge layout: ${(cause as Error).message}`),
-    });
-    return yield* recordRun(store, run);
-  });

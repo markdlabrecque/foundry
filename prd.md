@@ -704,7 +704,7 @@ After a successful integration the daemon removes the worktree and deletes the b
 
 **Two stores, two owners.** Foundry's database holds orchestration state and every accepted message, and is authoritative for both. Pi saves and restores a worker's conversation, not its execution: a restored conversation does not mean the interrupted work resumed, and an interrupted tool call is not safe to replay because the session reopened.
 
-**Current state is authoritative** ([ADR 0001](docs/adr/0001-current-state-is-authoritative.md)). The database holds current-state records with an append-only history beside them. Every change writes its history row in the same transaction, and nothing is rebuilt by replay. History is kept forever in P0. Every row carries a factory ID.
+**Current state is authoritative** ([ADR 0001](docs/adr/0001-current-state-is-authoritative.md)). The database holds current-state records with an append-only history beside them. Every change writes its history row in the same transaction, and nothing is rebuilt by replay. History is kept forever in P0. Every row carries a factory ID; a row about the instance rather than one factory, such as `run.started`, carries the empty factory ID `""`.
 
 Durable records:
 
@@ -1009,6 +1009,8 @@ Events are the durable history rows, nothing ephemeral. Each row gets a per-inst
 Names follow the record that changed. This is the full P0 list; adding a name is a change to this document.
 
 ```text
+run.started
+factory.config_loaded
 factory.started
 factory.stopping
 factory.stopped

@@ -3,7 +3,7 @@
 // knowledge directories on disk — so it runs the built foreground daemon against temp dirs.
 // Validation rules themselves are covered by the config unit tests; one invalid case suffices here.
 import { execFile, spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,6 +12,10 @@ import { Effect } from "effect";
 import { DATABASE_FILE_NAME, openStore } from "@foundry/daemon";
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
+// The version the daemon records is its package's.
+const daemonVersion = (
+  JSON.parse(readFileSync(new URL("../package.json", import.meta.resolve("@foundry/daemon")), "utf8")) as { version: string }
+).version;
 const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
 
 /** Runs the built `foundry` CLI without blocking, so the daemon's pipes keep draining. */
@@ -76,10 +80,10 @@ interface Run {
   readonly serving: Promise<void>;
 }
 
-const startDaemon = (home: string, files: ReadonlyArray<string>): Run => {
+const startDaemon = (home: string, files: ReadonlyArray<string>, env: Record<string, string> = {}): Run => {
   // FOUNDRY_HOME points elsewhere so the operator's root is never used.
   const child = spawn(process.execPath, [daemonMain, "--home", home, ...files], {
-    env: { ...process.env, FOUNDRY_HOME: join(home, "not-this-one") },
+    env: { ...process.env, ...env, FOUNDRY_HOME: join(home, "not-this-one") },
     stdio: ["ignore", "pipe", "pipe"],
   });
   children.push(child);
@@ -100,8 +104,13 @@ const startDaemon = (home: string, files: ReadonlyArray<string>): Run => {
 };
 
 /** Starts the daemon, waits until it serves, runs `whileServing`, and stops it cleanly. */
-const runOnce = async (home: string, files: ReadonlyArray<string>, whileServing?: () => Promise<void>): Promise<void> => {
-  const run = startDaemon(home, files);
+const runOnce = async (
+  home: string,
+  files: ReadonlyArray<string>,
+  env: Record<string, string>,
+  whileServing?: () => Promise<void>,
+): Promise<void> => {
+  const run = startDaemon(home, files, env);
   await run.serving;
   await whileServing?.();
   run.child.kill("SIGTERM");
@@ -138,29 +147,38 @@ test("an invalid factory refuses start with one line and exit 1, leaving the sta
   expect(existsSync(join(dirname(file), "knowledge"))).toBe(false);
 });
 
-test("a valid start records the run and its load, creates the empty knowledge layout, and a restart reloads the same hash", async () => {
+test("a valid start records the run and its load and creates the empty knowledge layout; the hash follows the resolved config", async () => {
   const home = tempRoot();
-  const file = factoryDir(factoryYaml("alpha"));
+  const yaml = factoryYaml("alpha");
+  const fixed = "      dev: { isolation: worktree, model: p/m }";
+  expect(yaml).toContain(fixed);
+  const file = factoryDir(yaml.replace(fixed, "      dev: { isolation: worktree, model: \"${FOU52_DEV_MODEL}\" }"));
   const knowledge = join(dirname(file), "knowledge");
 
   // The loaded factory takes tickets through the real daemon's management API.
-  await runOnce(home, [file], async () => {
+  await runOnce(home, [file], { FOU52_DEV_MODEL: "p/m" }, async () => {
     const spec = join(dirname(file), "spec.md");
     writeFileSync(spec, "# First ticket\n");
     const submitted = await foundry(["ticket", "submit", spec, "--home", home], home);
     expect(submitted).toEqual({ code: 0, stderr: "" });
   });
-  await runOnce(home, [file]);
+  // Only a comment and blank lines change: the validated configuration, so its hash, is the same.
+  appendFileSync(file, "\n# a comment only\n\n");
+  await runOnce(home, [file], { FOU52_DEV_MODEL: "p/m" });
+  // Only the model variable changes: the resolved configuration, so its hash, differs.
+  await runOnce(home, [file], { FOU52_DEV_MODEL: "p/other" });
 
   const state = await readState(home);
-  expect(state.runs).toHaveLength(2);
-  expect(state.runs.every((r) => r.version === "0.0.0")).toBe(true);
+  expect(state.runs).toHaveLength(3);
+  expect(state.runs.map((r) => r.version)).toEqual([daemonVersion, daemonVersion, daemonVersion]);
   expect(state.loads.map((l) => [l.run_id, l.factory_id, l.knowledge_root])).toEqual(
     state.runs.map((r) => [r.id, "alpha", knowledge]),
   );
-  const [first, second] = state.loads;
+  const [first, second, third] = state.loads;
   expect(first!.config_hash).toMatch(/^sha256:[0-9a-f]{64}$/);
   expect(second!.config_hash).toBe(first!.config_hash);
+  expect(third!.config_hash).not.toBe(first!.config_hash);
+  expect(JSON.parse(third!.config)).toMatchObject({ stations: [{ address: "eng.dev", model: "p/other" }, { address: "eng.rev" }] });
   expect(JSON.parse(first!.config)).toMatchObject({ config: { name: "alpha" }, stations: [{ address: "eng.dev" }, { address: "eng.rev" }] });
   expect(state.history).toEqual(
     state.runs.flatMap((r, i) => [
