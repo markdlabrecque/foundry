@@ -56,6 +56,7 @@ const matching: ReadonlyArray<ReportedTool> = [
   { name: "agent_status", source: FOUNDRY },
   { name: "agent_message", source: FOUNDRY },
   { name: "agent_request", source: FOUNDRY },
+  { name: "agent_reply", source: FOUNDRY },
   { name: "web_fetch", source: PROJECT },
 ];
 

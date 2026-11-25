@@ -5,9 +5,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Clock, Effect } from "effect";
-import { agentRequestHandler, createSubmissions, openStore, ToolRefusal } from "@foundry/daemon";
+import { agentReplyHandler, agentRequestHandler, bindStationMessages, createSubmissions, openStore, ToolRefusal } from "@foundry/daemon";
 import type { MessageAcceptanceGuards, PlannedSlot, Store, ToolHandler } from "@foundry/daemon";
-import { AGENT_REQUEST } from "@foundry/protocol";
+import { AGENT_REPLY, AGENT_REQUEST } from "@foundry/protocol";
 
 const dirs: Array<string> = [];
 
@@ -150,5 +150,137 @@ test("request, notice, budget and submission roll back together on SQL failure o
     expect(state.messages).toMatchObject([{ ticket_number: 42, sequence: 1 }]);
     expect(state.history.map((row) => row.kind)).toEqual(["budget.charged", "message.accepted", "request.accepted", "submission.recorded"]);
     expect(state.submissions).toHaveLength(1);
+  }));
+});
+
+
+/** Real acceptance and routing, with no launches: correlation belongs to logical slots. */
+const selectedRequest = (store: Store) => Effect.gen(function* () {
+  const outcome = yield* Effect.promise(() => dispatcher(store, agentRequestHandler(slots, {
+    assignmentTicket: () => Effect.succeed(42),
+  })).submit(sender, { type: "tool_call", callId: "request", tool: AGENT_REQUEST, args }));
+
+  expect(outcome.status).toBe("committed");
+  yield* store.change((change) => Effect.gen(function* () {
+    yield* change.query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition)
+      VALUES ('alpha', 'eng.reviewer/1', 'eng.reviewer', 1, 'normal')`);
+    yield* change.recordHistory({ factoryId: "alpha", kind: "fixture", subject: "slots" });
+  }));
+  yield* bindStationMessages({ store, slots });
+  const requests = yield* store.read<{ id: string; recipient_slot: string }>(`SELECT id, recipient_slot FROM agent_request`);
+  const request = requests[0];
+
+  if (request === undefined) {throw new Error("request missing");}
+
+  expect(request.recipient_slot).toBe("eng.reviewer/1");
+
+  return request.id;
+});
+
+const responder = { factoryId: "alpha", slotId: "eng.reviewer/1", launchId: "replacement-reviewer" };
+
+const replyCalls = (store: Store, time: number, handler = agentReplyHandler()) =>
+  createSubmissions({ store, handlers: new Map([[AGENT_REPLY, at(time, handler)]]) });
+
+test("only the selected slot may reply; first valid reply completes atomically and replay cannot duplicate it", async () => {
+  const filename = await database();
+
+  const saved = await withStore(filename, (store) => Effect.promise(async () => {
+    const requestId = await Effect.runPromise(selectedRequest(store));
+    const before = await Effect.runPromise(snapshot(store));
+    const calls = replyCalls(store, now + args.timeoutMs - 1);
+
+    const frame = { type: "tool_call", callId: "reply", tool: AGENT_REPLY,
+      args: { requestId, body: "reviewed", requesterSlot: "spoof", ticket: 999 } } as const;
+
+    for (const identity of [{ ...responder, slotId: "eng.reviewer/2" }, sender, { ...responder, factoryId: "beta" }]) {
+      expect(await calls.submit(identity, frame)).toMatchObject({ status: "refused" });
+      expect(await Effect.runPromise(snapshot(store))).toEqual(before);
+    }
+
+    const outcome = await calls.submit(responder, frame);
+    expect(outcome).toMatchObject({ status: "committed", value: { requestId, status: "completed", replyId: expect.any(String) } });
+    const completed = await Effect.runPromise(snapshot(store));
+    expect(completed.requests).toMatchObject([{ status: "completed" }]);
+    expect(completed.messages).toMatchObject([
+      { kind: "request_notice", bound_slot: responder.slotId },
+      { kind: "reply", request_id: requestId, ticket_number: 42, body: "reviewed",
+        recipient: sender.slotId, bound_slot: sender.slotId, status: "bound" },
+    ]);
+    expect(completed.history.map((row) => row.kind)).toContain("request.completed");
+    expect(await calls.submit({ ...responder, launchId: "new-launch" }, { ...frame, callId: "duplicate" }))
+      .toMatchObject({ status: "refused", code: "request_closed" });
+    expect(await Effect.runPromise(snapshot(store))).toEqual(completed);
+
+    return { frame, outcome, completed };
+  }));
+
+  // Reopen the database after downtime: submission replay is unchanged, even past deadline.
+  await withStore(filename, (store) => Effect.promise(async () => {
+    expect(await replyCalls(store, now + 999_999).submit(responder, saved.frame)).toEqual(saved.outcome);
+    expect(await Effect.runPromise(snapshot(store))).toEqual(saved.completed);
+    // Station routing never reconsiders the already bound logical-slot destination.
+    expect(await Effect.runPromise(bindStationMessages({ store, slots }))).toEqual([]);
+  }));
+});
+
+test.each([0, 1])("reply at deadline + %i is durably recorded without completing or routing", async (offset) => {
+  await withStore(await database(), (store) => Effect.promise(async () => {
+    const requestId = await Effect.runPromise(selectedRequest(store));
+    const calls = replyCalls(store, now + args.timeoutMs + offset);
+    const frame = { type: "tool_call", callId: "late", tool: AGENT_REPLY, args: { requestId, body: "too late" } } as const;
+    expect(await calls.submit(responder, frame)).toEqual({ status: "committed", value: { requestId, status: "late" } });
+    const state = await Effect.runPromise(snapshot(store));
+    expect(state.requests).toMatchObject([{ status: "open" }]);
+    expect(state.messages).toHaveLength(1);
+    expect(state.submissions).toHaveLength(2);
+    expect(state.history).toContainEqual(expect.objectContaining({ kind: "request.reply_late",
+      detail: expect.stringContaining("too late") }));
+    expect(await calls.submit(responder, frame)).toMatchObject({ status: "committed" });
+    expect(await Effect.runPromise(snapshot(store))).toEqual(state);
+
+    // An expiry sweep having closed the request cannot be undone by another late attempt.
+    await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE agent_request SET status = 'expired' WHERE id = ?`, [requestId]);
+      yield* change.recordHistory({ factoryId: "alpha", kind: "request.expired", subject: requestId });
+    })));
+    expect(await calls.submit(responder, { ...frame, callId: "later" })).toMatchObject({ value: { status: "late" } });
+    expect(await Effect.runPromise(store.read(`SELECT status FROM agent_request`))).toEqual([{ status: "expired" }]);
+    expect(await Effect.runPromise(store.read(`SELECT id FROM message`))).toHaveLength(1);
+  }));
+});
+
+test("competing reply submissions commit exactly one completion and reply", async () => {
+  await withStore(await database(), (store) => Effect.promise(async () => {
+    const requestId = await Effect.runPromise(selectedRequest(store));
+    const calls = replyCalls(store, now + 1);
+
+    const outcomes = await Promise.all(["first", "second"].map((callId) => calls.submit(responder, {
+      type: "tool_call", callId, tool: AGENT_REPLY, args: { requestId, body: callId },
+    })));
+
+    expect(outcomes.filter((outcome) => outcome.status === "committed")).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.status === "refused")).toMatchObject([{ code: "request_closed" }]);
+    expect(await Effect.runPromise(store.read(`SELECT id FROM message WHERE kind = 'reply'`))).toHaveLength(1);
+    expect(await Effect.runPromise(store.read(`SELECT sequence FROM history WHERE kind = 'request.completed'`))).toHaveLength(1);
+  }));
+});
+
+const failReply: ToolHandler = (change, call) => Effect.gen(function* () {
+  yield* agentReplyHandler()(change, call);
+  yield* change.query(`INSERT INTO nonexistent_table VALUES (1)`);
+
+  return null;
+});
+
+test("reply, completion, history and submission all roll back if the transaction fails", async () => {
+  await withStore(await database(), (store) => Effect.promise(async () => {
+    const requestId = await Effect.runPromise(selectedRequest(store));
+    const before = await Effect.runPromise(snapshot(store));
+
+    const frame = { type: "tool_call", callId: "retry", tool: AGENT_REPLY, args: { requestId, body: "reviewed" } } as const;
+    expect(await replyCalls(store, now + 1, failReply).submit(responder, frame)).toMatchObject({ status: "refused" });
+    expect(await Effect.runPromise(snapshot(store))).toEqual(before);
+    expect(await replyCalls(store, now + 1).submit(responder, frame)).toMatchObject({ value: { status: "completed" } });
   }));
 });
