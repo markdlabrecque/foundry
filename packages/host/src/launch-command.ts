@@ -7,18 +7,13 @@
  */
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
-import { FIXED_TOOLS, isPlainToolName } from "@foundry/protocol";
+import { FIXED_TOOLS, isPlainToolName, LAUNCH_ENV } from "@foundry/protocol";
 
 // The fixed tools live in @foundry/protocol, shared with the daemon and the extension.
 export { AGENT_TOOLS, FIXED_TOOLS, PI_BUILTIN_TOOLS } from "@foundry/protocol";
 
-/** Environment variables carrying launch identity to the Foundry extension (PRD §3.2). */
-export const LAUNCH_ENV = {
-  factoryId: "FOUNDRY_FACTORY_ID",
-  /** Also the slot marker: its presence means "running inside a worker". */
-  slotId: "FOUNDRY_SLOT",
-  launchId: "FOUNDRY_LAUNCH_ID",
-} as const;
+// Launch identity variables live in @foundry/protocol too: the extension reads them.
+export { LAUNCH_ENV } from "@foundry/protocol";
 
 /** Environment variable overriding the pinned Pi executable, for tests (P0 build plan). */
 export const PI_BIN_ENV = "FOUNDRY_PI_BIN";

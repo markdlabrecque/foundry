@@ -21,6 +21,7 @@ import { join } from "node:path";
 import { Clock, Effect, Schema } from "effect";
 import { buildLaunchArgs, connectHost, HostRefusedError, launchStderrPath, startHost } from "@foundry/host";
 import type { HostConnection, LaunchRecord, LaunchSpec, PiExecutable } from "@foundry/host";
+import { CHANNEL_SOCKET_ENV, channelSocketPath } from "@foundry/protocol";
 import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { SLOT_INTERRUPT_ACK_TIMEOUT_MS, SlotCondition, slotIdOf } from "@foundry/protocol/slots-api";
 import type { LaunchEndReason, SlotLaunch, SlotLaunchHistoryEntry, SlotSummary } from "@foundry/protocol/slots-api";
@@ -405,7 +406,13 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
     let launched: LaunchRecord;
 
     try {
-      launched = await host.launch({ factoryId: slot.factoryId, slotId: slot.slotId, ...args });
+      // The worker dials the instance's channel socket; the host adds the launch identity itself.
+      launched = await host.launch({
+        factoryId: slot.factoryId,
+        slotId: slot.slotId,
+        ...args,
+        env: { [CHANNEL_SOCKET_ENV]: channelSocketPath(options.stateRoot) },
+      });
     } catch (cause) {
       // A refusal proves nothing started. Any other failure (a timeout, a lost connection) may hide a
       // started launch, so the request stays pending and the next start settles it from the host.
