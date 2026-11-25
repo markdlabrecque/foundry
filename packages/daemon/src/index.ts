@@ -15,6 +15,8 @@ export * from "./operator-message.js";
 
 export * from "./agent-request.js";
 
+export * from "./agent-reply.js";
+
 export * from "./message-routing.js";
 
 export * from "./agent-discover.js";

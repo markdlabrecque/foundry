@@ -11,7 +11,7 @@
  */
 import { existsSync } from "node:fs";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REQUEST, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
+import { AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello, ToolCallOutcome } from "@foundry/protocol";
 import { Type } from "typebox";
 import { openChannel } from "./channel/client.js";
@@ -132,6 +132,27 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
     }, { additionalProperties: false }),
     async execute(callId, args): Promise<AgentToolResult<ToolCallOutcome>> {
       const outcome = await toolCalls.call(callId, AGENT_REQUEST, args);
+
+      if (outcome.status === "committed") {
+        return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
+      }
+
+      const code = outcome.status === "refused" ? outcome.code : outcome.status;
+
+      return { content: [{ type: "text", text: `${code}: ${outcome.detail}` }], details: outcome, isError: true };
+    },
+  });
+
+  pi.registerTool({
+    name: AGENT_REPLY,
+    label: "Reply to a request",
+    description: "Reply by requestId from the selected recipient slot. The first reply before the deadline completes the request; late replies are recorded but not delivered.",
+    parameters: Type.Object({
+      requestId: Type.String({ minLength: 1 }),
+      body: Type.String(),
+    }, { additionalProperties: false }),
+    async execute(callId, args): Promise<AgentToolResult<ToolCallOutcome>> {
+      const outcome = await toolCalls.call(callId, AGENT_REPLY, args);
 
       if (outcome.status === "committed") {
         return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
