@@ -38,7 +38,7 @@ import { AGENT_DISCOVER, channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
 import { connectHost, resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
-import { connectOrStartHost, createSlotScheduler, ownershipCheck, planSlots, recordedCurrentLaunch, storedConversation, storeSlotsReader } from "./slots.js";
+import { connectOrStartHost, createSlotScheduler, planSlots, recordedCurrentLaunch, storedConversation, storeSlotsReader } from "./slots.js";
 import { startChannelServer } from "./channel/server.js";
 import type { ChannelServer } from "./channel/server.js";
 import { createHostSlotClaim } from "./channel/slot-claim.js";
@@ -369,11 +369,6 @@ const main = async (): Promise<void> => {
       host = await connectOrStartHost(stateRoot);
       const identity = await host.identify();
       stopHost = { connection: host, hostId: identity.hostId, bootId: identity.bootId };
-      // PRD §10.2 step 2: unfreezing a lost host or unknown ownership re-runs the ownership classification.
-      const checkOwnership = ownershipCheck(store, host, { hostId: identity.hostId, bootId: identity.bootId }, plannedSlots);
-      freezeChecks.host_lost = checkOwnership;
-      freezeChecks.unknown_ownership = checkOwnership;
-
       // Served before any launch, so a worker dialling at its session start finds the daemon. A hello
       // is accepted only for the launch the host reports current in that slot (PRD §3.2).
       // Every accepted hello is also checked against the slot's Tool Set (PRD §3.2, §14): a
@@ -443,6 +438,9 @@ const main = async (): Promise<void> => {
       const recorder = scheduler;
       markSchedulerReady(scheduler);
 
+      // PRD §10.2: prove ownership and recover any vacancy before clearing the hold.
+      freezeChecks.host_lost = recorder.recheckOwnership;
+      freezeChecks.unknown_ownership = recorder.recheckOwnership;
       freezeChecks.tool_set_mismatch = createToolSetRecheck({
         guard,
         conversationOf: (slot) => frozenConversation(store, slot),

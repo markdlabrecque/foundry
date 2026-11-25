@@ -22,11 +22,16 @@
  * ended unexpectedly: the slot is relaunched in the same conversation, and its `launch.ended` row
  * is marked `unexpected` for recovery accounting (PRD §5.3, §10.2). A clean, unasked exit (code 0)
  * is recorded but neither counted nor relaunched. A lost channel is not death evidence and never
- * causes a relaunch; only the host's exit report does.
+ * causes a relaunch.
  *
- * Out of scope here: the recovery limit and parking (FOU-67), the recovery prime (FOU-54), the
- * resume notice, and recovering slots vacated by a machine restart (FOU-89). Such slots are
- * reported and left alone.
+ * A host started after a reboot is positive proof that every launch of an earlier boot is gone
+ * (PRD §10.2): such a slot is vacant and gets an ordinary recovery launch in its conversation, and
+ * the end is counted like an unexpected one. A launch kept because it is proven still running
+ * records no end and counts nothing. A recorded launch unknown to a new host on the same boot is
+ * not proof of anything: that slot freezes (`ownership.ts`).
+ *
+ * Out of scope here: the recovery limit and parking (FOU-67), the recovery prime (FOU-54) and the
+ * resume notice.
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
@@ -46,7 +51,7 @@ import type { EffectiveStation } from "./config/index.js";
 import { slotRecord } from "./history-records.js";
 import { classifyOwnership } from "./ownership.js";
 import type { RecordedSlot, SlotOwnership } from "./ownership.js";
-import type { CauseCheck, SlotFreezer, SlotRef } from "./freeze.js";
+import type { CauseCheck, CauseCheckResult, FreezeRequest, SlotFreezer, SlotRef } from "./freeze.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Change, Store, StoreError } from "./store.js";
 
@@ -293,33 +298,6 @@ const applyOwnership = async (store: Store, slot: PlannedSlot, ownership: SlotOw
   if (end !== undefined) {await Effect.runPromise(recordEnd(store, ownership.launch.launchId, end));}
 };
 
-/**
- * The unfreeze check for `host_lost` and `unknown_ownership` (PRD §5.3): asks the host again and
- * passes only when ownership is now proven or the slot is provably vacant, recording what that
- * proves before the slot is unfrozen.
- */
-export const ownershipCheck =
-  (
-    store: Store,
-    host: Pick<SlotHost, "inventory">,
-    identity: { readonly hostId: string; readonly bootId: string },
-    slots: ReadonlyArray<PlannedSlot>,
-  ): CauseCheck =>
-  async (ref) => {
-    const slot = slots.find((s) => s.factoryId === ref.factoryId && s.slotId === ref.slotId);
-
-    if (slot === undefined) {return { fixed: false, evidence: { reason: "slot_not_configured" } };}
-
-    const inventory = await host.inventory();
-    const ownership = await Effect.runPromise(classifySlot(store, slot, { ...identity, inventory }));
-
-    if (ownership.kind === "frozen") {return { fixed: false, evidence: ownership.evidence };}
-
-    await applyOwnership(store, slot, ownership);
-
-    return { fixed: true };
-  };
-
 interface LaunchEnd {
   readonly reason: LaunchEndReason;
   /** Wall-clock ms. */
@@ -330,8 +308,8 @@ interface LaunchEnd {
 
 /**
  * Records the end of a recorded launch once; a launch already ended or never recorded is left alone.
- * An unasked exit by a signal or a non-zero code is marked `unexpected`: the event recovery
- * accounting counts (PRD §5.3). A clean exit, a requested stop or a machine restart is not.
+ * An unasked exit by a signal or a non-zero code, and a machine restart, are marked `unexpected`:
+ * the event recovery accounting counts (PRD §5.3, §10.2). A clean exit or a requested stop is not.
  */
 const recordEnd = (store: Store, launchId: string, end: LaunchEnd): Effect.Effect<boolean, StoreError> =>
   Effect.gen(function* () {
@@ -364,9 +342,12 @@ const recordEnd = (store: Store, launchId: string, end: LaunchEnd): Effect.Effec
     return true;
   });
 
-/** Whether a recorded end counts as unexpected: the host's rule, for exits it saw unasked. */
+/**
+ * Whether a recorded end counts against the recovery limit: the host's rule for exits it saw
+ * unasked, and every launch a machine restart ended (PRD §10.2).
+ */
 const unexpectedEnd = (reason: LaunchEndReason | null, code: number | null, signal: string | null): boolean =>
-  reason === "exited" && exitWasUnexpected({ code, signal });
+  reason === "machine_restarted" || (reason === "exited" && exitWasUnexpected({ code, signal }));
 
 const endOf = (launch: LaunchRecord): LaunchEnd | undefined =>
   launch.exit === undefined
@@ -382,11 +363,10 @@ const endOf = (launch: LaunchRecord): LaunchEnd | undefined =>
  * What scheduling did with one slot.
  *
  * - `started`: the host started its first launch.
- * - `relaunched`: its launch ended unexpectedly (a signal or non-zero code, unasked); the host
- *   started a new one in the same conversation.
+ * - `relaunched`: its launch ended unexpectedly (a signal or non-zero code, unasked) or with a
+ *   machine restart; the host started a new one in the same conversation.
  * - `running`: its recorded launch is still live, whether or not its worker's channel is connected.
- * - `ended`: its launch exited cleanly, was stopped on request or ended with a machine restart; it
- *   is not relaunched here.
+ * - `ended`: its launch exited cleanly or was stopped on request; it is not relaunched here.
  * - `frozen`: ownership is unproven (`ownership.ts`); the slot is now frozen and nothing is adopted or started.
  * - `held`: its condition is not normal; nothing is launched into it.
  * - `stopped`: its factory is stopping or stopped (PRD §10.3); the slot is not touched.
@@ -445,9 +425,11 @@ export interface LaunchExitResult {
 export interface SlotScheduler {
   /**
    * Reconciles every slot with the host, launches into each vacant, never-launched one, and
-   * relaunches each whose launch ended unexpectedly.
+   * relaunches each whose launch ended unexpectedly or with a machine restart.
    */
   schedule(): Promise<ReadonlyArray<SlotScheduleResult>>;
+  /** Reconciles ownership and recovers a proven vacancy before clearing the frozen-slot hold. */
+  readonly recheckOwnership: CauseCheck;
   /** Records a launch exit the host reported, without relaunching; true when it ended a recorded launch. */
   recordExit(launch: LaunchRecord): Promise<boolean>;
   /**
@@ -480,7 +462,35 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
     return run;
   };
 
-  const scheduleSlot = async (slot: PlannedSlot, inventory: ReadonlyArray<LaunchRecord>): Promise<SlotScheduleResult> => {
+  // A cause check may hold the freezer queue while calling the scheduler. Persist scheduling
+  // freezes only after releasing the scheduler queue, and don't schedule their slots in between.
+  const pendingFreezes = new Set<PlannedSlot>();
+
+  const scheduleWithFreezes = async <A>(work: (defer: (request: FreezeRequest, slot: PlannedSlot) => void) => Promise<A>): Promise<A> => {
+    const freezes: Array<{ request: FreezeRequest; slot: PlannedSlot }> = [];
+
+    try {
+      return await serial(() => work((request, slot) => {
+        pendingFreezes.add(slot);
+        freezes.push({ request, slot });
+      }));
+    } finally {
+      await Promise.all(freezes.map(async ({ request, slot }) => {
+        try {
+          await options.freezer.freeze(request);
+        } finally {
+          pendingFreezes.delete(slot);
+        }
+      }));
+    }
+  };
+
+  const scheduleSlot = async (
+    slot: PlannedSlot,
+    inventory: ReadonlyArray<LaunchRecord>,
+    onUnproven: (request: FreezeRequest, slot: PlannedSlot) => void,
+    rechecking = false,
+  ): Promise<SlotScheduleResult> => {
     const result = (outcome: SlotScheduleOutcome, launchId?: string): SlotScheduleResult =>
       launchId === undefined
         ? { factoryId: slot.factoryId, slotId: slot.slotId, outcome }
@@ -490,13 +500,15 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
     const row = await Effect.runPromise(readSlot(store, slot.factoryId, slot.slotId));
 
-    if (row !== undefined && row.condition !== "normal") {return result("held");}
+    if (pendingFreezes.has(slot) || (rechecking ? row?.condition !== "frozen" : row !== undefined && row.condition !== "normal")) {
+      return result("held");
+    }
 
     const ownership = await Effect.runPromise(
       classifySlot(store, slot, { hostId: options.hostId, bootId: options.bootId, inventory }),
     );
 
-    /** The host saw the launch exit unasked: positive death evidence, so the slot continues its conversation. */
+    /** A recorded unexpected exit or reboot lets the slot continue its conversation. */
     const relaunchIfUnexpected = async (launchId: string): Promise<SlotScheduleResult> => {
       const recorded = await Effect.runPromise(readLaunch(store, launchId));
 
@@ -511,10 +523,11 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
       case "ended":
         return relaunchIfUnexpected(ownership.launchId);
       case "rebooted":
-        // Not live on the host, from an earlier boot: the machine restart proves it gone.
+        // Not live on the host, from an earlier boot: the machine restart proves it gone, so the
+        // slot is vacant and gets an ordinary recovery launch, counted by its recorded end.
         await applyOwnership(store, slot, ownership);
 
-        return result("ended", ownership.launchId);
+        return relaunchIfUnexpected(ownership.launchId);
       case "claimed":
         // This same host started it for the daemon's pending request; record it, and its end if gone.
         await applyOwnership(store, slot, ownership);
@@ -524,13 +537,13 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
           : relaunchIfUnexpected(ownership.launch.launchId);
       case "frozen":
         // The freeze creates a first-seen slot's record in its own transaction; nothing is adopted.
-        await options.freezer.freeze({
+        onUnproven({
           factoryId: slot.factoryId,
           slotId: slot.slotId,
           cause: ownership.cause,
           evidence: ownership.evidence,
           create: { station: slot.station.address, ordinal: slot.ordinal },
-        });
+        }, slot);
 
         return ownership.launchId === null ? result("frozen") : result("frozen", ownership.launchId);
       case "unlaunched":
@@ -605,7 +618,7 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
   return {
     schedule: () =>
-      serial(async () => {
+      scheduleWithFreezes(async (defer) => {
         const inventory = await host.inventory();
 
         // Ends the host reported while no daemon was listening.
@@ -615,13 +628,44 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
         const results: Array<SlotScheduleResult> = [];
 
-        for (const slot of options.slots) {results.push(await scheduleSlot(slot, inventory));}
+        for (const slot of options.slots) {results.push(await scheduleSlot(slot, inventory, defer));}
 
         return results;
       }),
+    recheckOwnership: (ref) =>
+      serial(async (): Promise<CauseCheckResult> => {
+        const slot = options.slots.find((s) => s.factoryId === ref.factoryId && s.slotId === ref.slotId);
+
+        if (slot === undefined) {return { fixed: false, evidence: { reason: "slot_not_configured" } };}
+
+        let inventory: ReadonlyArray<LaunchRecord>;
+
+        try {
+          inventory = (await host.inventory()).filter((l) => l.factoryId === ref.factoryId && l.slotId === ref.slotId);
+        } catch (error) {
+          return { fixed: false, evidence: { reason: "host_inventory_unavailable", error: messageOf(error) } };
+        }
+
+        for (const launch of inventory) {
+          if (launch.liveness === "gone") {await recordGone(launch);}
+        }
+
+        let unproven: FreezeRequest | undefined;
+        // This is the operator's ownership check, so it may recover the frozen slot. If the
+        // host cannot prove ownership or the recovery fails, the freezer keeps the existing hold.
+        const result = await scheduleSlot(slot, inventory, (request) => { unproven = request; }, true);
+
+        if (unproven !== undefined) {return { fixed: false, evidence: unproven.evidence };}
+
+        if (result.outcome === "refused" || result.outcome === "held" || result.outcome === "stopped") {
+          return { fixed: false, evidence: { reason: "recovery_not_started", outcome: result.outcome, error: result.error ?? "" } };
+        }
+
+        return { fixed: true };
+      }),
     recordExit: (launch) => serial(() => recordGone(launch)),
     launchExited: (launch) =>
-      serial(async (): Promise<LaunchExitResult> => {
+      scheduleWithFreezes(async (defer): Promise<LaunchExitResult> => {
         const ended = await recordGone(launch);
         const slot = options.slots.find((s) => s.factoryId === launch.factoryId && s.slotId === launch.slotId);
 
@@ -630,7 +674,7 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
         // The same checks as scheduling: a frozen slot, a stopping factory or a newer live launch
         // is left alone; only an unexpectedly ended current launch is relaunched.
         try {
-          return { ended, recovery: await scheduleSlot(slot, await host.inventory()) };
+          return { ended, recovery: await scheduleSlot(slot, await host.inventory(), defer) };
         } catch (cause) {
           return { ended, recovery: { factoryId: slot.factoryId, slotId: slot.slotId, outcome: "refused", error: messageOf(cause) } };
         }
@@ -640,6 +684,8 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
         const slot = options.slots.find((s) => s.factoryId === ref.factoryId && s.slotId === ref.slotId);
 
         if (slot === undefined) {throw new Error(`slot ${ref.slotId} of factory ${ref.factoryId} is not configured in this run`);}
+
+        if (pendingFreezes.has(slot)) {throw new Error(`slot ${ref.slotId} is being frozen because ownership is unproven`);}
 
         const inventory = await host.inventory();
 
