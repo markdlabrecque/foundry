@@ -1,10 +1,12 @@
 // Tier: integration. Real boundaries: the Unix-socket channel between the daemon's server and the
 // extension's client, a real SQLite store file, and the management socket driven through the
-// `foundry slot unfreeze` core. The Worker Host is a double (its launches are proved by
-// slots.test.ts) and the freeze cause's check is a test double: the causes that raise freezes
-// arrive with their own tickets. Claim: one frozen slot is sent and launched nothing while the
-// other carries on, and unfreeze is refused while its cause persists.
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+// `foundry slot unfreeze` core, and (in the missing-instruction test) real prime composition and
+// its unfreeze check reading instruction files from a temp fixture. The Worker Host is a double
+// (its launches are proved by slots.test.ts); elsewhere the freeze cause's check is a test double.
+// Claims: one frozen slot is sent and launched nothing while the other carries on, unfreeze is
+// refused while its cause persists, and an instruction file missing at priming freezes the slot
+// until the file is restored and the operator unfreezes.
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
@@ -14,6 +16,7 @@ import {
   createPrimer,
   createSlotFreezer,
   createSlotScheduler,
+  instructionFilesCheck,
   listOpenHolds,
   openStore,
   planSlots,
@@ -24,7 +27,7 @@ import {
   storeSlotControl,
   storeSlotsReader,
 } from "@foundry/daemon";
-import type { AcceptedConnection, PrimedConnection, SlotClaim, SlotGate, SlotHost, Store } from "@foundry/daemon";
+import type { AcceptedConnection, FreezeRequest, PrimedConnection, SlotClaim, SlotGate, SlotHost, SlotRef, Store } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import type { LaunchRecord } from "@foundry/host";
 import { openChannel } from "@foundry/extension";
@@ -450,4 +453,127 @@ test("a slot frozen while its prime is being composed gets the prime only once u
   expect(await freezer.unfreeze(slot)).toMatchObject({ outcome: "unfrozen" });
   expect(await within("the prime after unfreeze", primed.outcome)).toEqual(PrimingOutcome.Sent({ primeId: "prime-1" }));
   expect(written).toEqual([{ id: "prime-1", frozen: false }]);
+});
+
+test("an instruction file missing at priming freezes the slot, and no work goes out until it is restored and unfrozen", async () => {
+  const { dir, store, slots, scheduler } = await fixture();
+  await scheduler.schedule();
+  const builder = join(dir, "factory", "builder.md");
+
+  const primeRequest = (slot: SlotRef) => ({
+    address: "eng.builder",
+    slotId: slot.slotId,
+    isolation: "none" as const,
+    instructions: [builder],
+    knowledgeRoot: join(dir, "knowledge"),
+    baseDir: join(dir, "factory"),
+  });
+
+  const freezer = await createSlotFreezer({ store, checks: { instruction_missing: instructionFilesCheck(primeRequest) } });
+  const frozen = signal<FreezeRequest>();
+  let n = 0;
+
+  const primer = createPrimer({
+    store,
+    gate: freezer,
+    freeze: async (request) => {
+      const outcome = await freezer.freeze(request);
+      frozen.resolve(request);
+
+      return outcome;
+    },
+    newPrimeId: () => `prime-${++n}`,
+    primeRequest,
+  });
+
+  const accepted = signal<PrimedConnection>();
+
+  const server = await startChannelServer({
+    socketPath: join(dir, "channel.sock"),
+    slotClaim: acceptAll,
+    onAccepted: (slot, h, connection) => accepted.resolve(primer.prime(slot, h, connection)),
+  });
+
+  cleanups.push(() => server.close());
+
+  // The file passed validation at load; it goes missing before the slot's first prime.
+  await rename(builder, `${builder}.away`);
+
+  const received: Array<string> = [];
+  const primeAndWork = signal();
+
+  const opened = await openChannel({
+    socketPath: server.socketPath,
+    hello: {
+      type: "hello",
+      protocolVersion: PROTOCOL_VERSION,
+      factoryId: "f1",
+      slotId: "builder/1",
+      launchId: "launch-1",
+      conversationRef: "conv-builder/1",
+      hasRecoverableHistory: false,
+      mode: "headless",
+      tools: [],
+    },
+    heartbeatIntervalMs: 60_000,
+    onFrame: (frame: DaemonFrame) => {
+      received.push(frame.type === "prime" ? frame.id : frame.type);
+
+      if (received.length === 2) {primeAndWork.resolve();}
+    },
+  });
+
+  if (!opened.accepted) {throw new Error("hello was not accepted");}
+
+  cleanups.push(() => opened.channel.close());
+
+  const primed = await within("the connection accepted", accepted.promise);
+  const work = primed.connection.send({ type: "prime", id: "work-1", text: "held work" });
+  await within("the slot frozen for its missing file", frozen.promise);
+
+  // The hold names the missing file; nothing was sent or recorded as a prime.
+  const [hold] = await run(listOpenHolds(store));
+  expect(hold).toMatchObject({
+    kind: "frozen_slot",
+    subject: "builder/1",
+    evidence: { cause: "instruction_missing", missing: ["builder.md"], problems: [{ source: "builder.md", reason: "missing" }] },
+  });
+  expect(received).toEqual([]);
+  expect(await run(primesForConversation(store, "f1", "builder/1", "conv-builder/1"))).toEqual([]);
+
+  const slotsReader = storeSlotsReader(store, dir, ["f1"], slots);
+
+  const api = await serveManagementApi({
+    stateRoot: dir,
+    status: () => ({ instance: { stateRoot: dir, daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } }),
+    slots: slotsReader,
+    slotControl: storeSlotControl(slotsReader, freezer),
+  });
+
+  cleanups.push(() => api.close());
+
+  // Unfreezing before the file is back re-runs the check and stays frozen.
+  const refused = await runSlotUnfreeze({ json: false, home: dir, factory: undefined, slot: "builder/1", env });
+  expect(refused.exitCode).toBe(EXIT_REFUSED);
+  expect(refused.stderr).toContain("stays frozen: instruction_missing still fails its check");
+  expect(received).toEqual([]);
+
+  // Restoring the file alone sends nothing: the operator's unfreeze is what releases the slot.
+  await rename(`${builder}.away`, builder);
+  expect(received).toEqual([]);
+  expect(freezer.isFrozen({ factoryId: "f1", slotId: "builder/1" })).toBe(true);
+
+  expect(await runSlotUnfreeze({ json: false, home: dir, factory: undefined, slot: "builder/1", env })).toEqual({
+    exitCode: EXIT_OK,
+    stdout: `slot builder/1 unfrozen; hold ${hold!.id} resolved\n`,
+    stderr: "",
+  });
+  expect(await within("the prime after unfreeze", primed.outcome)).toEqual(PrimingOutcome.Sent({ primeId: "prime-1" }));
+  await work;
+  await within("the prime and held work on the wire", primeAndWork.promise);
+  expect(received).toEqual(["prime-1", "work-1"]);
+  expect(await run(primesForConversation(store, "f1", "builder/1", "conv-builder/1"))).toMatchObject([
+    { id: "prime-1", situation: "fresh", parts: [{ source: "builder.md" }] },
+  ]);
+  expect(await run(listOpenHolds(store))).toEqual([]);
 });

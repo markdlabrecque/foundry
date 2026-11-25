@@ -156,4 +156,11 @@ export {
   type UnfreezeResult,
 } from "./freeze.js";
 
+export {
+  instructionFilesCheck,
+  instructionMissingEvidence,
+  plannedPrimeRequests,
+  type SlotPrimeRequest,
+} from "./instruction-freeze.js";
+
 export type { SlotControl } from "./slots-error.js";

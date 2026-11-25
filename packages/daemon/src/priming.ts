@@ -13,9 +13,13 @@
  * launch and conversation are kept. The extension injects it without starting
  * a turn, so Pi appends it at the next tool-round boundary.
  *
- * Out of scope here: recovery primes (41b), freezing on a missing instruction
- * file (11c) and re-sending repository context after a compaction. Those are
- * reported as outcomes.
+ * A prime that cannot be composed because an instruction file is missing or
+ * unreadable is never sent: given `freeze`, the primer freezes the slot with
+ * the `instruction_missing` cause and a hold naming the files (PRD §5.3,
+ * §5.5), waits for the operator's unfreeze, and composes the prime afresh.
+ *
+ * Out of scope here: recovery primes (41b) and re-sending repository context
+ * after a compaction. Those are reported as outcomes.
  */
 import { randomUUID } from "node:crypto";
 import { Clock, Data, Effect, Schema } from "effect";
@@ -25,7 +29,8 @@ import { ComposePrimeResult, composePrime } from "./prime.js";
 import type { PrimeRequest, PrimeSourceProblem, Situation } from "./prime.js";
 import type { Store, StoreError } from "./store.js";
 import { openSlotGate, whenSendable } from "./freeze.js";
-import type { SlotGate, SlotRef } from "./freeze.js";
+import type { FreezeOutcome, FreezeRequest, SlotGate, SlotRef } from "./freeze.js";
+import { instructionMissingEvidence } from "./instruction-freeze.js";
 
 /** What the daemon records about each composed part: never its content. */
 export const PrimePartRecord = Schema.Struct({
@@ -194,7 +199,10 @@ export type PrimingOutcome = Data.TaggedEnum<{
   NotFresh: Record<never, never>;
   /** No effective station is known for the slot. Nothing was sent. */
   UnknownStation: Record<never, never>;
-  /** An instruction file could not be read; freezing belongs to 11c. Nothing was recorded or sent. */
+  /**
+   * An instruction file could not be read and the slot could not be frozen for it (no `freeze`
+   * configured, or no slot record). Nothing was recorded or sent.
+   */
   SourceUnavailable: { readonly problems: ReadonlyArray<PrimeSourceProblem> };
   /** Recorded, but the write failed; the record stays unacknowledged. */
   SendFailed: { readonly primeId: string; readonly error: unknown };
@@ -220,7 +228,10 @@ export type CompactionPrimingOutcome = Data.TaggedEnum<{
   NotPrimed: Record<never, never>;
   /** No effective station is known for the slot. Nothing was sent. */
   UnknownStation: Record<never, never>;
-  /** An instruction file could not be read; freezing belongs to 11c. Nothing was recorded or sent. */
+  /**
+   * An instruction file could not be read and the slot could not be frozen for it (no `freeze`
+   * configured, or no slot record). Nothing was recorded or sent.
+   */
   SourceUnavailable: { readonly problems: ReadonlyArray<PrimeSourceProblem> };
   /** Recorded, but the write failed; the record stays unacknowledged. */
   SendFailed: { readonly primeId: string; readonly error: unknown };
@@ -358,6 +369,11 @@ export interface PrimerOptions {
    * Defaults to a gate that holds nothing back.
    */
   readonly gate?: SlotGate;
+  /**
+   * Freezes a slot whose prime cannot be composed (PRD §5.5): pass the freezer that backs `gate`.
+   * Without it a missing instruction file ends priming with `SourceUnavailable`.
+   */
+  readonly freeze?: (request: FreezeRequest) => Promise<FreezeOutcome>;
 }
 
 export interface PrimedConnection {
@@ -421,6 +437,16 @@ export const createPrimer = (options: PrimerOptions): Primer => {
     return next;
   };
 
+  /** Freezes the slot for its unreadable instruction files; `false` when it could not be frozen. */
+  const freezeForMissing = async (slot: ClaimedSlot, problems: ReadonlyArray<PrimeSourceProblem>): Promise<boolean> =>
+    options.freeze !== undefined &&
+    (await options.freeze({
+      factoryId: slot.factoryId,
+      slotId: slot.slotId,
+      cause: "instruction_missing",
+      evidence: instructionMissingEvidence(problems),
+    })) === "frozen";
+
   const decideAndSend = async (slot: ClaimedSlot, hello: Hello, connection: AcceptedConnection): Promise<PrimingOutcome> => {
     const primes = await run(primesForConversation(options.store, slot.factoryId, slot.slotId, hello.conversationRef));
     const decision = decideFreshPriming(primes, slot.launchId);
@@ -441,7 +467,12 @@ export const createPrimer = (options: PrimerOptions): Primer => {
 
     const composed = await compose({ ...request, situation: "fresh" });
 
-    if (isSourceUnavailable(composed)) {return composed;}
+    if (isSourceUnavailable(composed)) {
+      // PRD §5.5: the prime fails and the slot freezes. Once unfrozen, priming is decided afresh.
+      if (!(await freezeForMissing(slot, composed.problems))) {return composed;}
+
+      return (await whenSendable(gate, slot, connection.closed)) ? decideAndSend(slot, hello, connection) : PrimingOutcome.Closed();
+    }
 
     const primeId = newPrimeId();
     // Recorded before it is written, so a prime that reaches the worker is always on record.
@@ -475,6 +506,7 @@ export const createPrimer = (options: PrimerOptions): Primer => {
     slot: ClaimedSlot,
     conversationRef: string,
     writer: PrimedWriter,
+    closed: Promise<void> | undefined,
   ): Promise<CompactionPrimingOutcome> => {
     if (!(await writer.opened)) {return CompactionPrimingOutcome.NotPrimed();}
 
@@ -484,7 +516,14 @@ export const createPrimer = (options: PrimerOptions): Primer => {
 
     const composed = await compose({ ...request, situation: "compaction" });
 
-    if (isSourceUnavailable(composed)) {return composed;}
+    if (isSourceUnavailable(composed)) {
+      // Work frames stay held behind the compaction prime while the slot is frozen for its files.
+      if (!(await freezeForMissing(slot, composed.problems))) {return composed;}
+
+      return (await whenSendable(gate, slot, closed))
+        ? sendCompactionPrime(slot, conversationRef, writer, closed)
+        : CompactionPrimingOutcome.NotConnected();
+    }
 
     const primeId = newPrimeId();
     await run(
@@ -533,7 +572,7 @@ export const createPrimer = (options: PrimerOptions): Primer => {
 
       const outcome = serialized(slot, async () =>
         (await whenSendable(gate, slot, current.closed))
-          ? sendCompactionPrime(slot, current.conversationRef, current.writer)
+          ? sendCompactionPrime(slot, current.conversationRef, current.writer, current.closed)
           : CompactionPrimingOutcome.NotConnected(),
       );
 
