@@ -109,6 +109,68 @@ test("done commits evidence, ended assignment and queued next stage; replay and 
   })));
 });
 
+test("routed rejection ends its assignment and only later scheduling creates a fresh assignment", async () => {
+  await fixture((store, firstId) => Effect.gen(function* () {
+    // Non-code assessment isolates routing from the separately owned Git outcome guards.
+    const routedConfig = { ...config, production_lines: { standard: {
+      ...config.production_lines.standard,
+      stages: [
+        { id: "plan", station: "floor.worker", approval: false, writing: false },
+        { id: "assess", station: "floor.worker", approval: true, writing: false, on_rejection: "plan" },
+      ],
+    } } };
+
+    const routedHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({
+      factories: [{ factoryId: "shop", config: routedConfig }], configLoad: () => "load-route",
+    })]]);
+
+    const submissions = createSubmissions({ store, handlers: routedHandlers });
+    const scheduler = createAssignmentScheduler({ store, slots, factories: [{ factoryId: "shop", config: routedConfig }] });
+    yield* Effect.promise(() => submissions.submit(owner, frame(firstId)));
+    const assessment = (yield* scheduler.schedule())[0];
+
+    if (assessment === undefined) {throw new Error("assessment not assigned");}
+
+    const rejection = { ...frame(assessment.id), callId: "reject-1",
+      args: { ...frame(assessment.id).args, outcome: "rejected", reason: "Revise plan" },
+    };
+
+    const before = yield* snapshot(store);
+    const result = yield* Effect.promise(() => submissions.submit(owner, rejection));
+    expect(result).toMatchObject({ status: "committed", value: { stage: "plan", status: "queued" } });
+    const after = yield* snapshot(store);
+    expect(after.tickets).toMatchObject([{ stage: "plan", status: "queued", rejections: 1 }]);
+    expect(after.assignments).toHaveLength(2); // No inline assignment creation or continuation.
+    expect(after.assignments.at(-1)).toMatchObject({ id: assessment.id, status: "ended", end_reason: "rejected" });
+    expect(after.messages).toEqual(before.messages);
+    expect(after.transitions).toHaveLength(before.transitions.length + 1);
+    expect(after.transitions.at(-1)).toMatchObject({ actor: owner.slotId, from_stage: "assess", from_status: "assigned",
+      to_stage: "plan", to_status: "queued", outcome: "rejected", reason: "Revise plan",
+      git_commit: "evaluated-commit", evidence: '["evidence/plan.md"]', config_load: "load-route" });
+    expect(yield* Effect.promise(() => submissions.submit(owner, rejection))).toEqual(result);
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...rejection, callId: "stale-reject" })))
+      .toMatchObject({ status: "refused", code: "not_assignment_owner" });
+    expect(yield* snapshot(store)).toEqual(after);
+
+    const returned = (yield* scheduler.schedule())[0];
+    expect(returned).toMatchObject({ stage: "plan", slotId: owner.slotId });
+    expect(returned?.id).not.toBe(firstId);
+    expect(returned?.id).not.toBe(assessment.id);
+    expect(yield* store.read(`SELECT status, end_reason FROM assignment WHERE id = ?`, [assessment.id]))
+      .toEqual([{ status: "ended", end_reason: "rejected" }]);
+  }));
+});
+
+test("rejection without a route stays untouched for the separately owned blocked path", async () => {
+  await fixture((store, id) => Effect.gen(function* () {
+    const before = yield* snapshot(store);
+    expect(yield* Effect.promise(() => createSubmissions({ store, handlers }).submit(owner, {
+      ...frame(id), args: { ...frame(id).args, outcome: "rejected" },
+    }))).toMatchObject({ status: "refused", code: "unsupported_transition" });
+    expect(yield* snapshot(store)).toEqual(before);
+  }));
+});
+
 test("different slots/factories, suspended assignments, missing IDs and worker destinations cannot advance", async () => {
   await fixture((store, id) => Effect.gen(function* () {
     const submissions = createSubmissions({ store, handlers });
@@ -121,7 +183,7 @@ test("different slots/factories, suspended assignments, missing IDs and worker d
 
     for (const args of [
       { ...frame(id).args, destination: "review" }, { ...frame(id).args, stage: "review" },
-      { ...frame(id).args, ticket: 99 }, { ...frame(id).args, outcome: "rejected" },
+      { ...frame(id).args, ticket: 99 }, { ...frame(id).args, outcome: "unknown" },
       { ...frame(id).args, reason: "" }, { ...frame(id).args, evidence: [""] },
     ]) {
       expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args })))
