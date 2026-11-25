@@ -52,6 +52,7 @@ import { createInstanceShutdown } from "./shutdown.js";
 import type { ShutdownHost } from "./shutdown.js";
 import { createToolSetGuard, createToolSetRecheck, expectedToolSet, frozenConversation } from "./tool-set-check.js";
 import { createSubmissions } from "./submissions.js";
+import { AGENT_DISCOVER, agentDiscoverHandler } from "./agent-discover.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -418,7 +419,11 @@ const main = async (): Promise<void> => {
         socketPath: channelSocketPath(stateRoot),
         slotClaim: guard,
         // Each agent tool registers its handler with its own ticket; until then calls are refused.
-        toolCalls: createSubmissions({ store, handlers: new Map(), gate: freezer }),
+        toolCalls: createSubmissions({
+          store,
+          handlers: new Map([[AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)]]),
+          gate: freezer,
+        }),
         ...channelLogEvents(log),
       });
 
