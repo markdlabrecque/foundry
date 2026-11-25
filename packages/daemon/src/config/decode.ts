@@ -2,6 +2,9 @@ import { Schema, SchemaIssue } from "effect";
 import * as Result from "effect/Result";
 import { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } from "yaml";
 import type { Document, Node as YamlNode } from "yaml";
+import { checkProductionLines } from "./lines.js";
+import type { LineIssue } from "./lines.js";
+import { checkNames } from "./names.js";
 import { FactoryConfig } from "./schema.js";
 
 /** One reason a factory YAML file is rejected, with its YAML location where available. */
@@ -15,7 +18,12 @@ export interface ConfigProblem {
 }
 
 export type DecodeResult =
-  | { readonly _tag: "Valid"; readonly config: FactoryConfig }
+  | {
+      readonly _tag: "Valid";
+      readonly config: FactoryConfig;
+      /** Findings that do not reject the configuration, such as a line with no `verify`. */
+      readonly warnings: ReadonlyArray<ConfigProblem>;
+    }
   | { readonly _tag: "Invalid"; readonly problems: ReadonlyArray<ConfigProblem> };
 
 const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1({
@@ -56,7 +64,28 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
     onExcessProperty: "error",
     errors: "all",
   });
-  if (Result.isSuccess(decoded)) return { _tag: "Valid", config: decoded.success };
+  if (Result.isSuccess(decoded)) {
+    const config = decoded.success;
+    // Name rules (PRD §4) run first; a name problem points at its key. Line
+    // rules resolve station references by name, so they run only on valid names.
+    const nameProblems = checkNames(config).map((problem) => ({
+      path: problem.path.join("."),
+      message: problem.message,
+      ...at(locate(doc, problem.path, true) ?? 0),
+    }));
+    if (nameProblems.length > 0) return { _tag: "Invalid", problems: nameProblems };
+
+    const located = (issue: LineIssue): ConfigProblem => ({
+      path: issue.path.map(String).join("."),
+      message: issue.message,
+      ...at(locate(doc, issue.path, false) ?? 0),
+    });
+    const lines = checkProductionLines(config);
+    if (lines.errors.length > 0) {
+      return { _tag: "Invalid", problems: byLocation(lines.errors.map(located)) };
+    }
+    return { _tag: "Valid", config, warnings: byLocation(lines.warnings.map(located)) };
+  }
 
   const problems = formatIssue(decoded.failure.issue).issues.map((issue) => {
     const path = (issue.path ?? []).map((segment) =>
@@ -70,8 +99,29 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
       ...at(range),
     };
   });
+  return { _tag: "Invalid", problems: byLocation(problems) };
+};
+
+const byLocation = (problems: ConfigProblem[]): ConfigProblem[] =>
   problems.sort((a, b) => (a.line ?? 0) - (b.line ?? 0) || (a.column ?? 0) - (b.column ?? 0));
-  return { _tag: "Invalid", problems };
+
+/**
+ * Adds YAML locations to problems found on an already decoded configuration
+ * (such as effective-station resolution), whose paths are dotted setting paths.
+ * Problems that already carry a line are returned unchanged.
+ */
+export const locateProblems = (
+  text: string,
+  problems: ReadonlyArray<ConfigProblem>,
+): ReadonlyArray<ConfigProblem> => {
+  const lineCounter = new LineCounter();
+  const doc = parseDocument(text, { uniqueKeys: true, prettyErrors: false, lineCounter });
+  return problems.map((problem) => {
+    if (problem.line !== undefined) return problem;
+    const path = problem.path === "" ? [] : problem.path.split(".");
+    const { line, col } = lineCounter.linePos(locate(doc, path, false) ?? 0);
+    return { ...problem, line, column: col };
+  });
 };
 
 /**
