@@ -1,13 +1,15 @@
 #!/usr/bin/env node
 /**
- * Foreground daemon entry point: select the state root, claim it exclusively, and hold it until
- * SIGINT or SIGTERM. A clean stop releases the lock and exits 0; a held lock exits 1 (PRD §11.6).
+ * Foreground daemon entry point: select the state root, claim it exclusively, serve the
+ * management API, and hold both until SIGINT or SIGTERM. A clean stop closes the socket,
+ * releases the lock and exits 0; a held lock or a socket in use exits 1 (PRD §11.6).
  * Once the root is claimed, diagnostics go to `logs/daemon.log` as well as stderr (PRD §15.2).
- * Factory loading, the database and the management socket arrive in later tickets.
+ * Factory loading and the database arrive in later tickets.
  */
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
-import { isLogLevel, LOG_LEVELS, openDaemonLog, type LogLevel } from "./log.js";
-import { selectStateRoot } from "./state-root.js";
+import { isLogLevel, LOG_LEVELS, openDaemonLog, type DaemonLogger, type LogLevel } from "./log.js";
+import { ManagementSocketError, serveManagementApi, type ManagementApi } from "./management-api.js";
+import { selectStateRoot } from "@foundry/protocol/state-root";
 
 const EXIT_USAGE = 2;
 const EXIT_INSTANCE_FAILURE = 1;
@@ -42,7 +44,12 @@ const parseFlags = (args: readonly string[]): Flags => {
   return flags;
 };
 
-const main = (): void => {
+const fail = (message: string): never => {
+  process.stderr.write(`foundry daemon: ${message}\n`);
+  process.exit(EXIT_INSTANCE_FAILURE);
+};
+
+const main = async (): Promise<void> => {
   let flags: Flags;
   try {
     flags = parseFlags(process.argv.slice(2));
@@ -58,25 +65,69 @@ const main = (): void => {
     // A held lock, or a root we cannot create or write (EACCES and the like), is an instance-level
     // failure: one line and exit 1, not a stack trace. Without the lock this daemon must not
     // write the daemon log, which belongs to the daemon that holds it.
-    const message = error instanceof StateRootLockedError ? error.message : `cannot claim state root ${stateRoot}: ${(error as Error).message}`;
-    process.stderr.write(`foundry daemon: ${message}\n`);
-    process.exit(EXIT_INSTANCE_FAILURE);
+    fail(error instanceof StateRootLockedError ? error.message : `cannot claim state root ${stateRoot}: ${(error as Error).message}`);
+    return;
   }
-  const log = openDaemonLog({ stateRoot, ...(flags.logLevel === undefined ? {} : { level: flags.logLevel }) });
-  log.info("daemon started", { detail: { pid: process.pid, stateRoot, logLevel: log.level } });
   process.on("exit", () => claim.release());
-  // Keep the foreground process alive until asked to stop.
-  const keepAlive = setInterval(() => {}, 1 << 30);
+
+  let log: DaemonLogger;
+  try {
+    log = openDaemonLog({ stateRoot, ...(flags.logLevel === undefined ? {} : { level: flags.logLevel }) });
+  } catch (error) {
+    claim.release();
+    fail(`cannot open the daemon log in ${stateRoot}: ${(error as Error).message}`);
+    return;
+  }
+
+  // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
+  // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
+  let api: ManagementApi | undefined;
+  let stopping = false;
   const stop = (signal: NodeJS.Signals): void => {
-    clearInterval(keepAlive);
+    if (stopping) return;
+    stopping = true;
     log.info("daemon stopping", { detail: { signal } });
+    // Before the API is up, the code after `serveManagementApi` sees `stopping` and finishes the stop.
+    if (api !== undefined) finish(api);
+  };
+  const finish = (served: ManagementApi): void => {
+    void served.close().finally(() => {
+      log.close();
+      claim.release();
+      process.exit(0);
+    });
+  };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+
+  const startedAt = new Date().toISOString();
+  try {
+    api = await serveManagementApi({
+      stateRoot,
+      status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
+    });
+  } catch (error) {
+    if (error instanceof ManagementSocketError) {
+      log.error("management API refused", { detail: { reason: error.reason, socket: error.socketPath } });
+    } else {
+      log.error("management API failed", { detail: { error: (error as Error).message } });
+    }
     log.close();
     claim.release();
-    process.exit(0);
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
+    fail(error instanceof ManagementSocketError ? error.message : `cannot serve the management API: ${(error as Error).message}`);
+    return;
+  }
+
+  // The listening socket keeps the foreground process alive until asked to stop.
+  if (stopping) {
+    finish(api);
+    return;
+  }
+  log.info("daemon started", {
+    detail: { pid: process.pid, stateRoot, socket: api.socketPath, logLevel: log.level },
+  });
   process.stdout.write(`foundry daemon: state root ${stateRoot} claimed (pid ${process.pid})\n`);
+  process.stdout.write(`foundry daemon: management API on ${api.socketPath}\n`);
 };
 
-main();
+await main();
