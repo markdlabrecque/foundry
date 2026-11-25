@@ -391,9 +391,27 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
   },
   {
     id: 16,
+    name: "message_delivery",
+    statements: [
+      `ALTER TABLE message ADD COLUMN acknowledged_at INTEGER`,
+      `CREATE TABLE message_attempt (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        message_id TEXT NOT NULL REFERENCES message(id),
+        slot_id TEXT NOT NULL,
+        launch_id TEXT NOT NULL,
+        connection_id TEXT NOT NULL,
+        sent_at INTEGER NOT NULL,
+        acknowledged_at INTEGER,
+        UNIQUE (message_id, connection_id)
+      ) STRICT`,
+    ],
+  },
+  {
+    id: 17,
     name: "operator_message_attribution",
     statements: [
-      // Keep references in agent_request/assignment pointing at the final `message` name.
+      // Keep request, assignment and delivery-attempt references on the final `message` name.
       // Defer the transient missing parent while rebuilding; validate final integrity below.
       `PRAGMA defer_foreign_keys = ON`,
       `CREATE TABLE message_with_sender (
@@ -413,15 +431,16 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
         accepted_at INTEGER NOT NULL,
         bound_slot TEXT,
         bound_at INTEGER,
+        acknowledged_at INTEGER,
         CHECK ((sender_kind = 'agent' AND sender_slot IS NOT NULL) OR (sender_kind IN ('operator', 'daemon') AND sender_slot IS NULL)),
         UNIQUE (factory_id, sequence)
       ) STRICT`,
       // Before attribution existed, assignment context used the empty sender slot as daemon.
       `INSERT INTO message_with_sender (id, factory_id, sequence, sender_kind, sender_slot, recipient, body, delivery,
-        kind, ticket_number, request_id, delegation_id, status, accepted_at, bound_slot, bound_at)
+        kind, ticket_number, request_id, delegation_id, status, accepted_at, bound_slot, bound_at, acknowledged_at)
        SELECT id, factory_id, sequence, CASE WHEN sender_slot = '' THEN 'daemon' ELSE 'agent' END,
         NULLIF(sender_slot, ''), recipient, body, delivery,
-        kind, ticket_number, request_id, delegation_id, status, accepted_at, bound_slot, bound_at FROM message`,
+        kind, ticket_number, request_id, delegation_id, status, accepted_at, bound_slot, bound_at, acknowledged_at FROM message`,
       `DROP TABLE message`,
       `ALTER TABLE message_with_sender RENAME TO message`,
       `CREATE TRIGGER message_binding_immutable BEFORE UPDATE OF bound_slot, bound_at ON message
