@@ -4,8 +4,8 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
-import { acknowledgeMessage, createMessageDelivery, createPrimer, createReconciler, openSlotGate, openStore, raiseHold, startChannelServer } from "@foundry/daemon";
+import { Effect, Exit, Predicate, Scope } from "effect";
+import { acknowledgeMessage, acknowledgePrime, createMessageDelivery, createPrimer, createReconciler, createSlotFreezer, openSlotGate, openStore, primesForConversation, raiseHold, recordPrime, startChannelServer } from "@foundry/daemon";
 import type { ChannelServer, Store } from "@foundry/daemon";
 import { createConversationAdapter, openChannel, receiveDaemonFrames } from "@foundry/extension";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
@@ -237,6 +237,110 @@ test("reconnect compares a lost receipt and a held copy against real Pi without 
   expect(frames.filter((frame) => frame.type === "prime")).toHaveLength(1);
   expect(frames.findIndex((frame) => frame.type === "reconcile")).toBeLessThan(
     frames.findIndex((frame) => frame.type === "message" && frame.id === "m3"));
+  expect(errors).toEqual([]);
+});
+
+test.each([
+  { name: "persisted receipt", acknowledged: true, recoverable: true, oldStatus: "history", sameLaunch: false, expected: "recovery" },
+  { name: "lost receipt recovered by comparison", acknowledged: false, recoverable: true, oldStatus: "history", sameLaunch: false, expected: "recovery" },
+  { name: "no prior receipt or history", acknowledged: false, recoverable: false, oldStatus: "absent", sameLaunch: false, expected: "fresh" },
+  { name: "recoverable conversation without a prime receipt", acknowledged: false, recoverable: true, oldStatus: "absent", sameLaunch: false, expected: "fresh" },
+  { name: "lost acknowledged history on replacement", acknowledged: true, recoverable: false, oldStatus: "absent", sameLaunch: false, expected: "frozen" },
+  { name: "lost acknowledged history on reconnect", acknowledged: true, recoverable: false, oldStatus: "absent", sameLaunch: true, expected: "frozen" },
+  { name: "same-launch reconnect", acknowledged: true, recoverable: true, oldStatus: "history", sameLaunch: true, expected: "reconnect" },
+] as const)("reconcile before priming and delivery: $name", async ({ acknowledged, recoverable, oldStatus, sameLaunch, expected }) => {
+  const oldSlot = { ...slot, launchId: "old-launch" };
+  const current = sameLaunch ? oldSlot : slot;
+  await Effect.runPromise(store.change(({ query, recordHistory }) => Effect.gen(function* () {
+    yield* query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition) VALUES (?, ?, 'eng.builder', 1, 'normal')`,
+      [slot.factoryId, slot.slotId]);
+    yield* recordHistory({ factoryId: slot.factoryId, kind: "fixture.slot", subject: slot.slotId });
+  })));
+  await Effect.runPromise(recordPrime(store, { ...oldSlot, id: "old-prime", conversationRef: hello.conversationRef,
+    situation: "fresh", parts: [] }));
+
+  if (acknowledged) {await Effect.runPromise(acknowledgePrime(store, { ...oldSlot, id: "old-prime" }));}
+
+  await seed(1);
+  await Effect.runPromise(store.change(({ query, recordHistory }) => Effect.gen(function* () {
+    yield* query(`UPDATE message SET status = 'sent' WHERE id = 'm1'`);
+    yield* query(`INSERT INTO message_attempt (id, factory_id, message_id, slot_id, launch_id, connection_id, sent_at)
+      VALUES ('old-attempt', ?, 'm1', ?, ?, 'old-connection', 1)`, [slot.factoryId, slot.slotId, oldSlot.launchId]);
+    yield* recordHistory({ factoryId: slot.factoryId, kind: "fixture.sent", subject: "m1" });
+  })));
+  await seed(2);
+  const freezer = await createSlotFreezer({ store, checks: {} });
+  const reconciler = createReconciler(store);
+
+  const primer = createPrimer({ store, gate: freezer, freeze: (request) => freezer.freeze(request),
+    newPrimeId: () => "new-prime", primeRequest: () => ({ address: "eng.builder", slotId: slot.slotId,
+      isolation: "worktree", instructions: [], knowledgeRoot: join(dir, "knowledge"), baseDir: dir }) });
+
+  let finish!: (outcome: string) => void;
+  const finished = new Promise<string>((resolve) => { finish = resolve; });
+  let seeWork!: () => void;
+  const work = new Promise<void>((resolve) => { seeWork = resolve; });
+  const frames: Array<DaemonFrame> = [];
+  server = await startChannelServer({ socketPath: join(dir, "channel.sock"),
+    slotClaim: { claim: async () => ({ accepted: true, slot: current }) },
+    onAccepted: (claimed, greeting, connection) => {
+      void reconciler.reconcile(claimed, greeting, connection).then(async () => {
+        const primed = primer.prime(claimed, greeting, connection);
+        const outcome = await primed.outcome;
+
+        if (Predicate.isTagged(outcome, "Sent") || Predicate.isTagged(outcome, "Reconnect")) {delivery.attach(claimed, primed.connection);}
+        else {await expect(primed.connection.send({ type: "message", id: "forbidden", body: "no", delivery: "after_turn" })).rejects.toThrow();}
+
+        finish(outcome._tag);
+      }).catch((cause: unknown) => { errors.push(cause); finish("error"); });
+    },
+    onFrame: (claimed, frame) => {
+      if (frame.type === "reconciliation_answer") {reconciler.receive(claimed, frame);}
+    },
+  });
+
+  const opened = await openChannel({ socketPath: server.socketPath, hello: { ...hello, ...current, hasRecoverableHistory: recoverable },
+    onFrame: (frame, channel) => {
+      frames.push(frame);
+
+      if (frame.type === "reconcile") {
+        void channel.send({ type: "reconciliation_answer", requestId: frame.requestId,
+          answers: frame.ids.map((id) => ({ id, status: id === "old-prime" ? oldStatus : "history" })), lifecycle: "idle" });
+      }
+
+      if (frame.type === "message") {seeWork();}
+    } });
+
+  if (!opened.accepted) {throw new Error("fixture hello refused");}
+
+  clients.push(opened.channel);
+  const outcomeTags = { frozen: "HistoryUnavailable", reconnect: "Reconnect", fresh: "Sent", recovery: "Sent" };
+  expect(await finished).toBe(outcomeTags[expected]);
+  await delivery.idle();
+  const primes = await Effect.runPromise(primesForConversation(store, slot.factoryId, slot.slotId, hello.conversationRef));
+  expect((await state())[0]).toMatchObject({ status: "acknowledged" });
+
+  if (expected === "frozen") {
+    expect(freezer.isFrozen(slot)).toBe(true);
+    expect(await Effect.runPromise(store.read(`SELECT freeze_cause FROM slot`))).toEqual([{ freeze_cause: "prime_without_history" }]);
+    expect(await Effect.runPromise(store.read(`SELECT kind, evidence FROM operator_hold WHERE closed_at IS NULL`))).toMatchObject([
+      { kind: "frozen_slot", evidence: expect.stringContaining("old-prime") },
+    ]);
+    expect(primes).toHaveLength(1);
+    expect((await state())[1]).toMatchObject({ status: "bound" });
+    expect(await attempts()).toHaveLength(1);
+    expect(frames.map((frame) => frame.type)).toEqual(["reconcile"]);
+  } else {
+    await work;
+    expect(frames.map((frame) => frame.type)).toEqual(expected === "reconnect" ? ["reconcile", "message"] : ["reconcile", "prime", "message"]);
+    expect(primes).toHaveLength(expected === "reconnect" ? 1 : 2);
+
+    if (expected !== "reconnect") {
+      expect(primes[1]).toMatchObject({ situation: expected, launchId: current.launchId, acknowledgedAt: null });
+      expect(frames[1]).toMatchObject({ type: "prime", text: expect.stringContaining(`Situation: ${expected}`) });
+    }
+  }
+
   expect(errors).toEqual([]);
 });
 
