@@ -19,6 +19,7 @@ import type { OpenChannel } from "./channel/client.js";
 import { CompactionReporter } from "./compaction.js";
 import { createConversationAdapter } from "./conversation/adapter.js";
 import { interruptRuns, RunInterrupter } from "./interrupt.js";
+import { deliverMessages, MessageReceiver } from "./messages.js";
 import { ReceiptReporter, receiveDaemonFrames } from "./priming.js";
 import { ToolCallClient } from "./tool-calls.js";
 import { registeredToolSet } from "./tool-set.js";
@@ -72,6 +73,8 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   interruptRuns(pi, interrupter);
   const receipts = new ReceiptReporter();
   const adapter = createConversationAdapter(pi, { onReceipt: receipts.record });
+  const messages = new MessageReceiver(adapter);
+  deliverMessages(pi, messages);
   const compactions = new CompactionReporter();
   pi.on("session_compact", () => compactions.record());
 
@@ -211,7 +214,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
     },
   });
 
-  const onFrame = receiveDaemonFrames({ adapter, interrupter, toolCalls });
+  const onFrame = receiveDaemonFrames({ adapter, messages, interrupter, toolCalls });
   let channel: OpenChannel | undefined;
   let dialling = false;
 
