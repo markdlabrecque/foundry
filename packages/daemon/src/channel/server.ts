@@ -57,7 +57,10 @@ const realTimer: LapseTimer = (ms, onLapse) => {
 export type ChannelLostCause = "heartbeat_lapse" | "peer_closed" | "protocol_error" | "server_closed";
 
 export interface ChannelEvents {
-  /** An authenticated frame from an accepted connection, attributed to its claimed slot. */
+  /**
+   * An authenticated frame from an accepted connection, attributed to its claimed
+   * slot. Includes `interrupt_ack`, after it has settled the matching `interrupt()` call.
+   */
   onFrame?(slot: ClaimedSlot, frame: WorkerFrame): void;
   onAccepted?(slot: ClaimedSlot, hello: Hello): void;
   onRejected?(reason: HelloRejectReason): void;

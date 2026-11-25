@@ -70,7 +70,10 @@ export const Interrupt = Schema.Struct({
 });
 export type Interrupt = typeof Interrupt.Type;
 
-/** `aborted`: a run was active and has settled after the abort. `idle`: no run was active. */
+/**
+ * `aborted`: work was active (a run, or a compaction) and Pi is idle after the
+ * abort. `idle`: nothing was active, or the work completed despite the abort.
+ */
 export const InterruptOutcome = Schema.Literals(["aborted", "idle"]);
 export type InterruptOutcome = typeof InterruptOutcome.Type;
 

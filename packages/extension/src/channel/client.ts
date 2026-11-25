@@ -115,7 +115,13 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
           socket.destroy();
           return;
         }
-        options.onFrame?.(frame.value, channel);
+        try {
+          options.onFrame?.(frame.value, channel);
+        } catch {
+          // A throwing handler must not crash the Pi process; drop the channel instead.
+          socket.destroy();
+          return;
+        }
       }
     });
   });

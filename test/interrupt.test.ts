@@ -25,22 +25,31 @@ const acceptAll: SlotClaim = {
   claim: async (h) => ({ accepted: true, slot: { factoryId: h.factoryId, slotId: h.slotId, launchId: h.launchId } }),
 };
 
-/** A Pi run that is active until aborted; abort settles it the way Pi does (idle, then `agent_settled`). */
+/**
+ * A Pi run that stays active until the test calls `settle()`, which goes idle
+ * and then reports the settle, the way Pi does (idle, then `agent_settled`).
+ */
 const fakeRun = (interrupter: RunInterrupter, active: boolean) => {
   let running = active;
   let aborts = 0;
+  let aborted!: () => void;
+  const abortedOnce = new Promise<void>((r) => (aborted = r));
   const control: RunControl = {
     isIdle: () => !running,
     abort: () => {
       aborts += 1;
-      setImmediate(() => {
-        running = false;
-        interrupter.settled(true);
-      });
+      aborted();
     },
   };
-  return { control, aborts: () => aborts };
+  const settle = () => {
+    running = false;
+    interrupter.settled(true);
+  };
+  return { control, aborts: () => aborts, abortedOnce, settle };
 };
+
+/** Let every pending promise callback and socket write queued so far run. */
+const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 
 let dir: string;
 let server: ChannelServer | undefined;
@@ -57,13 +66,16 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-const connect = async (interrupter: RunInterrupter, frames: WorkerFrame[] = []) => {
+const connect = async (interrupter: RunInterrupter, frames: WorkerFrame[] = [], onHeartbeat = () => {}) => {
   let accepted = 0;
   server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: acceptAll,
     onAccepted: () => (accepted += 1),
-    onFrame: (_slot, frame) => frames.push(frame),
+    onFrame: (_slot, frame) => {
+      if (frame.type === "heartbeat") return onHeartbeat();
+      frames.push(frame);
+    },
   });
   const opened = await openChannel({
     socketPath: server.socketPath,
@@ -76,14 +88,28 @@ const connect = async (interrupter: RunInterrupter, frames: WorkerFrame[] = []) 
   return { server, channel: opened.channel, accepted: () => accepted };
 };
 
-test("an interrupt aborts the active run once and is acknowledged on the same channel", async () => {
+test("an interrupt is acknowledged only after the aborted run settles, once, on the same channel", async () => {
   const interrupter = new RunInterrupter();
   const run = fakeRun(interrupter, true);
   interrupter.bind(run.control);
   const frames: WorkerFrame[] = [];
-  const { server, accepted } = await connect(interrupter, frames);
+  let heartbeatSeen!: () => void;
+  const heartbeat = new Promise<void>((r) => (heartbeatSeen = r));
+  const { server, channel, accepted } = await connect(interrupter, frames, () => heartbeatSeen());
 
-  expect(await server.interrupt("launch-1")).toBe("aborted");
+  let resolved = false;
+  const pending = server.interrupt("launch-1").then((outcome) => ((resolved = true), outcome));
+  await run.abortedOnce;
+  // Barrier: an ack written before this heartbeat would reach the daemon ahead of it.
+  await tick();
+  await channel.send({ type: "heartbeat" });
+  await heartbeat;
+  await tick();
+  expect(resolved).toBe(false);
+
+  run.settle();
+
+  expect(await pending).toBe("aborted");
   expect(run.aborts()).toBe(1);
   expect(accepted()).toBe(1);
   expect(frames).toEqual([{ type: "interrupt_ack", requestId: expect.any(String), outcome: "aborted" }]);
