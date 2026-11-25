@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createKnowledgeLayout, loadFactoryFiles, recordRun, type LoadedFactory, type RecordedLoad } from "./factory-loads.js";
 import { makeTicketService, ticketFactoryFrom } from "./tickets.js";
+import { decideFactoryStarts, describeBlocker, type StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
@@ -154,8 +155,34 @@ const main = async (): Promise<void> => {
       detail: { loadId: load.loadId, configHash: load.configHash },
     });
   }
-  // Configuration is read only at start (PRD §4), so the loaded set is fixed for this run.
-  const ticketFactories = factories.map((f) => ticketFactoryFrom(f.config));
+  // A factory whose open records name removed configuration is refused alone (PRD §4, §11.6):
+  // the daemon keeps running and the other factories start.
+  let decision: StartDecision;
+  try {
+    decision = await Effect.runPromise(
+      decideFactoryStarts(
+        store,
+        loads.map((l) => ({ factoryId: l.factoryId, loadId: l.loadId, config: factories.find((f) => f.factoryId === l.factoryId)!.config })),
+      ),
+    );
+  } catch (error) {
+    log.error("factory start checks failed", { detail: { error: (error as Error).message } });
+    await closeStore();
+    log.close();
+    claim.release();
+    fail(`cannot check open records in ${stateRoot}: ${(error as Error).message}`);
+    return;
+  }
+  for (const refused of decision.refused) {
+    log.warn("factory start refused", {
+      factoryId: refused.factoryId,
+      detail: { blockers: refused.blockers.length, first: describeBlocker(refused.blockers[0]!) },
+    });
+  }
+  // Configuration is read only at start (PRD §4), so the started set is fixed for this run.
+  const ticketFactories = factories
+    .filter((f) => decision.started.includes(f.factoryId))
+    .map((f) => ticketFactoryFrom(f.config));
   // Each factory's transitions carry this run's recorded configuration load.
   const loadIds = new Map(loads.map((l) => [l.factoryId, String(l.loadId)]));
 
