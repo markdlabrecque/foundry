@@ -159,6 +159,7 @@ flowchart LR
 - **Resume notice lands with operator actions (26).** Resume is the first command that sends one; worker relaunch (41) and daemon restart (43) reuse the same composer.
 - **Holds land early (11).** The first operator hold kind, frozen slot, brings the hold record type and `foundry hold list | show`; every later hold kind adds to it.
 - **Freeze before messaging.** Agent tool calls from a frozen worker must be refused, so 14 waits on 11.
+- **host.log: no rotation in P0.** The detached host's stderr is an fd its starter opens, so the host cannot reopen it; growth is bounded by launch count (49a).
 
 ### Investigations
 

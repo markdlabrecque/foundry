@@ -13,6 +13,18 @@
       "types": "./dist/management-api.d.ts",
       "default": "./dist/management-api.js"
     },
+    "./log-query": {
+      "types": "./dist/log-query.d.ts",
+      "default": "./dist/log-query.js"
+    },
+    "./log-read": {
+      "types": "./dist/log-read.d.ts",
+      "default": "./dist/log-read.js"
+    },
+    "./holds": {
+      "types": "./dist/holds.d.ts",
+      "default": "./dist/holds.js"
+    },
     "./state-root": {
       "types": "./dist/state-root.d.ts",
       "default": "./dist/state-root.js"

@@ -9,3 +9,5 @@ export {
   type StatusOptions,
   type StatusOutcome,
 } from "./status.js";
+export { runLogs, type LogsOptions, type LogsOutcome } from "./logs.js";
+export { runHoldList, runHoldShow, type HoldOptions, type HoldOutcome } from "./holds.js";

@@ -135,3 +135,13 @@ test("resolution problems are located at their YAML setting", () => {
     expect.objectContaining({ path: "rooms.eng.stations.dev.model", line: 11 }),
   );
 });
+
+test("a leading ~ expands to the home directory, as in the offline checks", () => {
+  const decoded = decodeFactoryYaml(factory(`${MODEL}  instructions: ~/shared/factory.md\n`, "", "        skills: [~/skills/a/SKILL.md]\n"));
+  if (decoded._tag === "Invalid") throw new Error(JSON.stringify(decoded.problems));
+  const resolved = stationOf(resolveStations(decoded.config, { env: {}, baseDir, home: "/home/op" }));
+  expect({ instructions: resolved.instructions, skills: resolved.skills }).toEqual({
+    instructions: ["/home/op/shared/factory.md"],
+    skills: ["/home/op/skills/a/SKILL.md"],
+  });
+});
