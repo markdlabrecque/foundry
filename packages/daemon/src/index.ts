@@ -2,6 +2,7 @@
 export const packageName = "@foundry/daemon" as const;
 
 export * from "./channel/server.js";
+export * from "./channel/slot-claim.js";
 export { selectStateRoot, type StateRootInputs } from "./state-root.js";
 export {
   claimStateRoot,
