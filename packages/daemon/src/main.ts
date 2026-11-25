@@ -39,7 +39,7 @@ import type { DaemonLogger, LogLevel, LogRefs } from "./log.js";
 import { ManagementSocketError, serveManagementApi } from "./management-api.js";
 import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
-import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, channelSocketPath } from "@foundry/protocol";
+import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, TASK_TRANSITION, channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
 import { connectHost, resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
@@ -56,6 +56,7 @@ import type { FreezeChecks, SlotFreezer } from "./freeze.js";
 import { instructionFilesCheck, plannedPrimeRequests } from "./instruction-freeze.js";
 import { createPrimer } from "./priming.js";
 import { acknowledgeMessage, createMessageDelivery } from "./message-delivery.js";
+import { createReconciler } from "./reconciliation.js";
 import { createInstanceShutdown } from "./shutdown.js";
 import type { ShutdownHost } from "./shutdown.js";
 import { createToolSetGuard, createToolSetRecheck, expectedToolSet, frozenConversation } from "./tool-set-check.js";
@@ -66,6 +67,7 @@ import { agentMessageHandler } from "./agent-message.js";
 import { agentDelegateHandler } from "./agent-delegate.js";
 import { agentRequestHandler } from "./agent-request.js";
 import { agentReplyHandler } from "./agent-reply.js";
+import { taskTransitionHandler } from "./task-transition.js";
 import { startMessageRouting } from "./message-routing.js";
 import { startRequestExpiry } from "./request-expiry.js";
 
@@ -422,6 +424,7 @@ const main = async (): Promise<void> => {
             const refs = { factoryId: changed.factoryId, slotId: changed.slotId, launchId: changed.launchId };
 
             if (outcome === "frozen") {log.warn("slot frozen: conversation changed", refs);}
+            else if (outcome === "parked") {log.warn("conversation changed on a parked slot; reset required", refs);}
             else {log.error("conversation changed on a slot with no record; not frozen", refs);}
           },
         }),
@@ -442,6 +445,7 @@ const main = async (): Promise<void> => {
         inScope: (factoryId) => factoryStates.isRunning(factoryId),
         onError: (cause) => log.error("message delivery failed", { detail: { error: messageOf(cause) } }) });
 
+      const reconciler = createReconciler(store);
       stopDelivery = () => delivery.stop();
       const channelEvents = channelLogEvents(log);
 
@@ -455,24 +459,31 @@ const main = async (): Promise<void> => {
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
             [AGENT_STATUS, agentStatusHandler(plannedSlots)],
             [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket })],
-            [AGENT_DELEGATE, agentDelegateHandler(plannedSlots)],
+            [AGENT_DELEGATE, agentDelegateHandler(plannedSlots, {
+              delegationDepthLimit: (factoryId) => expectDefined(factories.find((f) => f.factoryId === factoryId), `factory ${factoryId}`).config.delegation_depth_limit ?? 2,
+            })],
             [AGENT_REQUEST, agentRequestHandler(plannedSlots, { assignmentTicket })],
             [AGENT_REPLY, agentReplyHandler()],
+            [TASK_TRANSITION, taskTransitionHandler({ factories: factories.map((f) => ({ factoryId: f.factoryId, config: f.config })), configLoad: (id) => loadIds.get(id) })],
           ]),
           gate: freezer,
         }),
         ...channelEvents,
         onAccepted: (slot, hello, accepted) => {
           channelEvents.onAccepted(slot, hello, accepted);
-          const primed = primer.prime(slot, hello, accepted);
-          void primed.outcome.then((outcome) => {
+          void reconciler.reconcile(slot, hello, accepted).then(async () => {
+            const primed = primer.prime(slot, hello, accepted);
+            const outcome = await primed.outcome;
+
             if (Predicate.isTagged(outcome, "Sent") || Predicate.isTagged(outcome, "Reconnect")) {delivery.attach(slot, primed.connection);}
           }).catch((cause: unknown) => log.error("connection priming failed", { detail: { error: messageOf(cause) } }));
         },
         onFrame: (slot, frame) => {
           channelEvents.onFrame(slot, frame);
 
-          if (frame.type === "receipt") {
+          if (frame.type === "reconciliation_answer") {
+            reconciler.receive(slot, frame);
+          } else if (frame.type === "receipt") {
             void (async () => {
               if (await primer.receipt(slot, frame.id) === "unknown") {
                 await Effect.runPromise(acknowledgeMessage(store, slot, frame.id));
@@ -494,6 +505,8 @@ const main = async (): Promise<void> => {
         foundryExtension: foundryExtensionPath(),
         slots: plannedSlots,
         freezer,
+        recoveryLimit: (factoryId) => factories.find((f) => f.factoryId === factoryId)?.config.recovery_limit ?? 3,
+        configLoad: (factoryId) => loadIds.get(factoryId),
         inScope: (factoryId) => factoryStates.isRunning(factoryId),
       });
       const recorder = scheduler;

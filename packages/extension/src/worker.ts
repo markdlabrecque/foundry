@@ -11,7 +11,7 @@
  */
 import { existsSync } from "node:fs";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
+import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION, TASK_TRANSITION } from "@foundry/protocol";
 import type { Hello, ToolCallOutcome } from "@foundry/protocol";
 import { Type } from "typebox";
 import { openChannel } from "./channel/client.js";
@@ -176,6 +176,30 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
     }, { additionalProperties: false }),
     async execute(callId, args): Promise<AgentToolResult<ToolCallOutcome>> {
       const outcome = await toolCalls.call(callId, AGENT_REPLY, args);
+
+      if (outcome.status === "committed") {
+        return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
+      }
+
+      const code = outcome.status === "refused" ? outcome.code : outcome.status;
+
+      return { content: [{ type: "text", text: `${code}: ${outcome.detail}` }], details: outcome, isError: true };
+    },
+  });
+
+  pi.registerTool({
+    name: TASK_TRANSITION,
+    label: "Report an assignment outcome",
+    description: "Report done for your active assignment with reason and evidence references. The daemon selects the configured next stage; you cannot choose a destination. Approval, code-stage and final outcomes are not supported yet.",
+    parameters: Type.Object({
+      assignmentId: Type.String({ minLength: 1 }),
+      outcome: Type.Literal("done"),
+      reason: Type.String({ minLength: 1 }),
+      evidence: Type.Array(Type.String({ minLength: 1 })),
+      gitCommit: Type.Optional(Type.String({ minLength: 1 })),
+    }, { additionalProperties: false }),
+    async execute(callId, args): Promise<AgentToolResult<ToolCallOutcome>> {
+      const outcome = await toolCalls.call(callId, TASK_TRANSITION, args);
 
       if (outcome.status === "committed") {
         return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
