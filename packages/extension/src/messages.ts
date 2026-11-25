@@ -11,7 +11,8 @@ export class MessageReceiver {
   private batchTail: string | undefined;
   private retry: ReturnType<typeof setTimeout> | undefined;
 
-  constructor(private readonly adapter: Pick<ConversationAdapter, "inject" | "pending">) {}
+  constructor(private readonly adapter: Pick<ConversationAdapter, "inject" | "pending">,
+    private readonly onInjected: (id: string) => void = () => {}) {}
 
   bind(control: Pick<ExtensionContext, "isIdle">): void {
     this.control = control;
@@ -92,6 +93,7 @@ export class MessageReceiver {
   pending(): ReadonlyArray<string> { return [...this.held.keys()]; }
 
   private inject(message: Message, triggerTurn = true): void {
+    this.onInjected(message.id);
     this.adapter.inject({ id: message.id, kind: "message", content: message.body }, { triggerTurn });
   }
 }
