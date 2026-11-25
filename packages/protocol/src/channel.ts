@@ -46,6 +46,17 @@ export const Heartbeat = Schema.Struct({
 });
 export type Heartbeat = typeof Heartbeat.Type;
 
+/**
+ * The worker's conversation was compacted (PRD §5.5). Sent only on positive
+ * evidence of a completed compaction; a report held while the channel was down
+ * is sent once after reconnect. Several compactions while disconnected coalesce
+ * into one report, because the daemon answers with a single compaction prime.
+ */
+export const Compacted = Schema.Struct({
+  type: Schema.Literal("compacted"),
+});
+export type Compacted = typeof Compacted.Type;
+
 /** Why the daemon refused a hello. A terminal refusal stops the extension reconnecting. */
 export const HelloRejectReason = Schema.Struct({
   kind: Schema.Literals(["terminal", "retryable"]),
@@ -74,7 +85,7 @@ export const HelloRejected = Schema.Struct({
 export type HelloRejected = typeof HelloRejected.Type;
 
 /** Frames a worker sends after its hello is accepted. */
-export const WorkerFrame = Schema.Union([Heartbeat]);
+export const WorkerFrame = Schema.Union([Heartbeat, Compacted]);
 export type WorkerFrame = typeof WorkerFrame.Type;
 
 /** Frames the daemon sends in reply to a hello. */
