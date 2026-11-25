@@ -505,6 +505,78 @@ const routedHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({
   factories: [{ factoryId: "shop", config: routedConfig }], configLoad: () => "load-route",
 })]]);
 
+test.each(["resume", "retry", "cancel"] as const)("%s resolves a rejection-limit approval without resetting historical counts", async (action) => {
+  const saved = await fixture((store, firstId, root) => Effect.gen(function* () {
+    const submissions = createSubmissions({ store, handlers: routedHandlers });
+    const scheduler = createAssignmentScheduler({ store, slots, factories: [{ factoryId: "shop", config: routedConfig }] });
+    // An already-extended ceiling proves we add the current configured allowance, not reset it.
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET rejections = 5, rejection_ceiling = 6`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "ceiling" });
+    }));
+    yield* Effect.promise(() => submissions.submit(owner, frame(firstId)));
+    const assessment = (yield* scheduler.schedule())[0];
+
+    if (assessment === undefined) {throw new Error("assessment not assigned");}
+
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(assessment.id), callId: "reject-limit",
+      args: { ...frame(assessment.id).args, outcome: "rejected" } }))).toMatchObject({ status: "committed" });
+    const before = yield* snapshot(store);
+
+    const factories = () => [ticketFactoryFrom({ ...routedConfig, production_lines: { standard: {
+      ...routedConfig.production_lines.standard, rejection_limit: 2,
+    } } })];
+
+    const service = (target: Store) => createTicketService({ store: target, stateRoot: root, factories, configLoad: () => "grant-load" });
+
+    const run = (target: Store) => Effect.gen(function* () {
+      const tickets = service(target);
+
+      return action === "cancel"
+        ? yield* tickets.cancel("shop", 1, (yield* tickets.inspectCancellation("shop", 1)).confirmation)
+        : yield* tickets[action]("shop", 1);
+    });
+
+    const failing: Store = { ...store, change: (body) => store.change((change) =>
+      Effect.flatMap(body(change), () => Effect.fail(new StoreError({ reason: "Sql", message: "commit failure" })))) };
+
+    expect(yield* run(failing).pipe(Effect.flip)).toMatchObject({ message: "commit failure" });
+    expect(yield* snapshot(store)).toEqual(before);
+    const result = yield* run(store);
+    expect(result.ticket.rejections).toEqual({ spent: 6, ceiling: action === "cancel" ? 6 : 8 });
+    expect(result.ticket.messages).toEqual({ spent: 0, ceiling: 100 });
+    expect(result.ticket).toMatchObject(action === "cancel" ? { state: "cancelled" } : { stage: "plan", status: "queued" });
+    const after = yield* snapshot(store);
+    expect(after.approvals).toMatchObject([{ state: "resolved", closed_at: expect.any(Number) }]);
+    expect(after.assignments).toEqual(before.assignments);
+    expect(after.transitions.slice(0, -1)).toEqual(before.transitions);
+    expect(after.transitions).toHaveLength(before.transitions.length + 1);
+    expect(after.transitions.at(-1)).toMatchObject({ actor: "operator", config_load: "grant-load" });
+
+    if (action !== "cancel") {
+      expect(result.transitions.at(-1)?.reason).toBe(`ticket ${action}; rejection ceiling raised from 6 to 8 (+2)`);
+    }
+
+    expect(yield* run(store).pipe(Effect.flip)).toMatchObject({ code: "invalid_state" });
+    expect(yield* snapshot(store)).toEqual(after);
+
+    return { root, after, oldId: assessment.id };
+  }));
+
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    expect(yield* snapshot(store)).toEqual(saved.after);
+    const assigned = yield* createAssignmentScheduler({ store, slots, factories: [{ factoryId: "shop", config: routedConfig }] }).schedule();
+
+    if (action === "cancel") {expect(assigned).toEqual([]);}
+    else {
+      expect(assigned).toMatchObject([{ ticket: 1, stage: "plan" }]);
+      expect(assigned[0]?.id).not.toBe(saved.oldId);
+      expect(yield* store.read(`SELECT rejections, rejection_ceiling FROM ticket`)).toEqual([{ rejections: 6, rejection_ceiling: 8 }]);
+    }
+  })));
+});
+
 test.each([1, 3])("routed rejection atomically pauses at ceiling %i, releases capacity and persists its approval", async (ceiling) => {
   const saved = await fixture((store, firstId, root) => Effect.gen(function* () {
     const submissions = createSubmissions({ store, handlers: routedHandlers });
