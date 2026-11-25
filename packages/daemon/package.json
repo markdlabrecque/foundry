@@ -4,6 +4,7 @@
   "private": true,
   "description": "The Foundry daemon: an Effect 4 program and the only process that opens the database.",
   "type": "module",
+  "bin": { "foundry-daemon": "./dist/main.js" },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
