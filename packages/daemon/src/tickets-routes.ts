@@ -3,7 +3,7 @@
  * Kept apart from `management-api.ts` so it stays the socket's lifecycle and the status route.
  */
 import type { IncomingMessage } from "node:http";
-import { Cause, Effect, Exit, Schema } from "effect";
+import { Cause, Effect, Exit, Match, Schema } from "effect";
 import { messageOf } from "@foundry/protocol/errors";
 import type { ApiResponse } from "@foundry/protocol/management-api";
 import { FACTORY_PARAM, TICKETS_PATH } from "@foundry/protocol/tickets-api";
@@ -192,14 +192,18 @@ export const handleTickets = async (tickets: TicketService, request: IncomingMes
   }
 
   request.resume();
-  const action = /^\/([1-9][0-9]{0,8})\/(pause|retry)$/.exec(rest);
+  const action = /^\/([1-9][0-9]{0,8})\/(pause|resume|retry)$/.exec(rest);
 
   if (action !== null) {
     if (request.method !== "POST") {
       return { ...fail(405, "method_not_allowed", `${url.pathname} only accepts POST`), allow: "POST" };
     }
 
-    const perform = action[2] === "retry" ? tickets.retry : tickets.pause;
+    const perform = Match.value(action[2]).pipe(
+      Match.when("retry", () => tickets.retry),
+      Match.when("resume", () => tickets.resume),
+      Match.orElse(() => tickets.pause),
+    );
 
     return run(perform(factory, Number(action[1])), 200);
   }

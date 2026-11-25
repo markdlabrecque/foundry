@@ -16,6 +16,7 @@ import {
   EXIT_UNREACHABLE,
   EXIT_USAGE,
   runTicketList,
+  runTicketResume,
   runTicketShow,
   runTicketSubmit,
 } from "@foundry/cli";
@@ -80,6 +81,20 @@ test("ticket submit copies the file into the ticket directory; list and show pri
   expect(badLine.exitCode).toBe(EXIT_REFUSED);
   expect(badLine.stderr).toContain('No production line "nope"');
   expect((await runTicketShow({ ...common, number: 9 })).exitCode).toBe(EXIT_REFUSED);
+});
+
+test("resume forwards daemon refusals without changing a backlog ticket", async () => {
+  const home = tempRoot();
+  await serve(home);
+  const file = join(home, "spec.md");
+  writeFileSync(file, "# Backlog fixture\n");
+  const common = { json: false, home, factory: undefined, env };
+  await runTicketSubmit({ ...common, file, title: undefined, line: undefined });
+  const result = await runTicketResume({ ...common, number: 1 });
+  expect(result.exitCode).toBe(EXIT_REFUSED);
+  expect(result.stderr).toContain("Resume requires a paused ticket with a suspended assignment");
+  expect((await runTicketShow({ ...common, number: 1 })).stdout).toContain("backlog");
+  expect((await runTicketResume({ ...common, number: 0 })).exitCode).toBe(EXIT_USAGE);
 });
 
 test("titles default to the first heading, else the file name", () => {
