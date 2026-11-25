@@ -1,7 +1,7 @@
 /** Authorized done outcomes (PRD §8.2, §10.1). Scheduling reads the committed queue later. */
 import { Clock, Effect, Schema } from "effect";
 import type { AssignmentFactory } from "./assignments.js";
-import { runCloneGit } from "./factory-clone.js";
+import { inspectCode } from "./code-observation.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import { ToolRefusal } from "./submissions.js";
 import type { ToolHandler, ToolCallContext } from "./submissions.js";
@@ -41,6 +41,7 @@ interface CodeObservation {
   readonly head: string;
   readonly branch: string;
   readonly dirty: boolean;
+  readonly validate: () => Effect.Effect<void, ToolRefusal>;
 }
 
 export interface TaskTransitionOptions {
@@ -81,8 +82,8 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
     return yield* new ToolRefusal({ code: "unsupported_transition", detail: "approval and invalid stage configurations are not supported" });
   }
 
-  if (station.isolation === "worktree") {
-    if (args.gitCommit === undefined) {
+  if (station.isolation === "worktree" || assignment.worktree_path !== null) {
+    if (station.isolation === "worktree" && args.gitCommit === undefined) {
       return yield* new ToolRefusal({ code: "commit_required", detail: "done for a code stage requires the evaluated commit" });
     }
 
@@ -90,7 +91,9 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
       return yield* new ToolRefusal({ code: "invalid_code_outcome", detail: "code assignment changed or its worktree could not be inspected; retry" });
     }
 
-    if (observation.branch !== `refs/heads/${assignment.branch}` || args.gitCommit !== observation.head) {
+    yield* observation.validate();
+
+    if (observation.branch !== `refs/heads/${assignment.branch}` || (args.gitCommit !== undefined && args.gitCommit !== observation.head)) {
       return yield* new ToolRefusal({ code: "invalid_code_outcome", detail: "the evaluated commit must be the ticket branch HEAD" });
     }
 
@@ -120,13 +123,15 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
        from_state, from_stage, from_status, to_state, to_stage, to_status, outcome, reason, git_commit, evidence, config_load)
      VALUES (?, ?, ?, ?, 'stage', ?, 'assigned', 'stage', ?, 'queued', 'done', ?, ?, ?, ?)`,
     [call.factoryId, assignment.ticket_number, now, call.slotId, assignment.stage, next.id,
-      args.reason, args.gitCommit ?? null, JSON.stringify(args.evidence), options.configLoad?.(call.factoryId) ?? null],
+      args.reason, observation?.head ?? null, JSON.stringify(args.evidence), options.configLoad?.(call.factoryId) ?? null],
   );
   yield* change.recordHistory({
     factoryId: call.factoryId, kind: "ticket.transitioned", subject: String(assignment.ticket_number),
     detail: { assignment: args.assignmentId, outcome: "done", fromStage: assignment.stage, stage: next.id, status: "queued" },
     records: [ticketRecord(assignment.ticket_number), slotRecord(call.slotId)],
   });
+
+  if (observation !== undefined) {yield* observation.validate();}
 
   return { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: next.id, status: "queued" };
 });
@@ -146,17 +151,12 @@ export const taskTransitionHandler = (options: TaskTransitionOptions): ToolHandl
       return transitionHandler(options);
     }
 
-    const path = assignment.worktree_path;
+    if (assignment.branch === null) {
+      return yield* new ToolRefusal({ code: "invalid_code_outcome", detail: "ticket branch identity is missing" });
+    }
 
-    const git = (args: ReadonlyArray<string>) => Effect.tryPromise({
-      try: () => runCloneGit(["--no-optional-locks", ...args], process.env, path),
-      catch: () => new ToolRefusal({ code: "invalid_code_outcome", detail: "cannot inspect the ticket worktree; restore it before reporting an outcome" }),
-    });
+    const observation = yield* inspectCode(assignment.worktree_path, assignment.branch);
 
-    const head = yield* git(["rev-parse", "--verify", "HEAD^{commit}"]);
-    const branch = yield* git(["symbolic-ref", "HEAD"]);
-    const dirty = (yield* git(["status", "--porcelain=v1", "--untracked-files=no"])) !== "";
-
-    return transitionHandler(options, { assignment, head, branch, dirty });
+    return transitionHandler(options, { assignment, ...observation });
   }) },
 );

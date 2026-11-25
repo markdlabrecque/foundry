@@ -96,7 +96,7 @@ test("done commits evidence, ended assignment and queued next stage; replay and 
     expect(after.transitions).toHaveLength(before.transitions.length + 1);
     expect(after.transitions.at(-1)).toMatchObject({ actor: "worker/1", from_state: "stage", from_stage: "plan",
       from_status: "assigned", to_state: "stage", to_stage: "implement", to_status: "queued", outcome: "done",
-      reason: "Plan ready", git_commit: "evaluated-commit", evidence: '["evidence/plan.md"]', config_load: "load-1" });
+      reason: "Plan ready", git_commit: null, evidence: '["evidence/plan.md"]', config_load: "load-1" });
     expect(after.submissions).toHaveLength(1);
     expect(yield* Effect.promise(() => submissions.submit(owner, frame(id)))).toEqual(result);
     expect(yield* snapshot(store)).toEqual(after);
@@ -263,6 +263,12 @@ test.each([
 
 test.each([
   { mode: "moved", writing: false, code: "non_writing_changes" },
+  { mode: "mixed moved", writing: false, code: "non_writing_changes" },
+  { mode: "mixed dirty", writing: false, code: "non_writing_changes" },
+  { mode: "mixed wrong commit", writing: false, code: "invalid_code_outcome" },
+  { mode: "mixed clean", writing: false, code: null },
+  { mode: "race before transaction", writing: false, code: "invalid_code_outcome" },
+  { mode: "race during writes", writing: false, code: "invalid_code_outcome" },
   { mode: "dirty", writing: false, code: "non_writing_changes" },
   { mode: "staged", writing: false, code: "non_writing_changes" },
   { mode: "missing commit", writing: true, code: "commit_required" },
@@ -288,18 +294,18 @@ test.each([
 
     const codeConfig = { ...config, production_lines: { standard: {
       ...config.production_lines.standard,
-      stages: [{ id: "plan", station: "floor.reviewer", approval: false, writing },
+      stages: [{ id: "plan", station: mode.startsWith("mixed") ? "floor.worker" : "floor.reviewer", approval: false, writing },
         { id: "next", station: "floor.worker", approval: false, writing: false }],
     } } };
 
     const codeHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({ factories: [{ factoryId: "shop", config: codeConfig }] })]]);
 
-    if (["moved", "new commit", "dirty", "staged"].includes(mode)) {
+    if (["moved", "mixed moved", "mixed dirty", "new commit", "dirty", "staged"].includes(mode)) {
       writeFileSync(join(path, "tracked.txt"), "changed\n");
 
-      if (mode !== "dirty") {git(path, "add", ".");}
+      if (!mode.endsWith("dirty")) {git(path, "add", ".");}
 
-      if (mode === "moved" || mode === "new commit") {git(path, "commit", "--quiet", "-m", "worker change");}
+      if (mode.endsWith("moved") || mode === "new commit") {git(path, "commit", "--quiet", "-m", "worker change");}
     }
 
     if (mode === "untracked") {writeFileSync(join(path, "notes.txt"), "not tracked\n");}
@@ -307,10 +313,21 @@ test.each([
     if (mode === "wrong branch") {git(path, "checkout", "--quiet", "-b", "other");}
 
     const head = git(path, "rev-parse", "HEAD");
-    const gitCommit = mode === "missing commit" ? {} : { gitCommit: mode === "wrong commit" ? "not-a-commit" : head };
+    const gitCommit = mode === "missing commit" ? {} : { gitCommit: mode.endsWith("wrong commit") ? "not-a-commit" : head };
     const outcome = { ...frame(id), args: { assignmentId: id, outcome: "done", reason: "Code evaluated", evidence: ["evidence/tests.md"], ...gitCommit } } as const;
     const before = yield* snapshot(store);
-    const submissions = createSubmissions({ store, handlers: codeHandlers });
+
+    const submissionStore: Store = mode.startsWith("race") ? { ...store, change: (body) => store.change((change) => Effect.gen(function* () {
+      if (mode === "race before transaction") {writeFileSync(join(path, "tracked.txt"), "raced\n");}
+
+      return yield* body({ ...change, query: (sql, params) => {
+        if (mode === "race during writes" && sql.startsWith("UPDATE assignment")) {writeFileSync(join(path, "tracked.txt"), "raced\n");}
+
+        return change.query(sql, params);
+      } });
+    })) } : store;
+
+    const submissions = createSubmissions({ store: submissionStore, handlers: codeHandlers });
     const result = yield* Effect.promise(() => submissions.submit(owner, outcome));
 
     if (code !== null) {
