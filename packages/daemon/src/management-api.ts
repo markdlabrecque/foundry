@@ -22,6 +22,11 @@ import {
 } from "@foundry/protocol/management-api";
 import type { EventSource } from "./events.js";
 import { streamEvents } from "./events-stream.js";
+import { TICKETS_PATH } from "@foundry/protocol/tickets-api";
+import { handleTickets } from "./tickets-routes.js";
+import type { TicketService } from "./tickets.js";
+import { decodeLogQuery, LOGS_PATH } from "@foundry/protocol/log-query";
+import { readLogs } from "@foundry/protocol/log-read";
 
 /** What the API reports, injected so the server is independent of where status comes from. */
 export interface ManagementApiInputs {
@@ -32,6 +37,8 @@ export interface ManagementApiInputs {
   readonly events?: EventSource;
   /** Operator holds (PRD §10.2). Without it the hold routes answer 503. */
   readonly holds?: HoldsReader;
+  /** Serves the ticket routes when given; without it they answer 404. */
+  readonly tickets?: TicketService;
 }
 
 export interface ManagementApi {
@@ -201,9 +208,21 @@ const clearStaleSocket = async (socketPath: string): Promise<void> => {
 };
 
 const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse): void => {
-  request.resume(); // No route reads a body; drain it so the connection stays usable.
   const url = new URL(request.url ?? "/", "http://foundry");
   const path = url.pathname;
+  // Ticket routes first: submit reads a POST body, so it must not be drained.
+  if (inputs.tickets !== undefined && (path === TICKETS_PATH || path.startsWith(`${TICKETS_PATH}/`))) {
+    void handleTickets(inputs.tickets, request, url).then(
+      (reply) => {
+        if (reply.allow !== undefined) response.setHeader("allow", reply.allow);
+        send(response, reply.status, reply.body);
+      },
+      (error: unknown) => send(response, 500, failure("internal", `ticket request failed: ${String(error)}`)),
+    );
+    return;
+  }
+  request.resume(); // The remaining routes read no body; drain it so the connection stays usable.
+  if (path === LOGS_PATH) return handleLogs(inputs, request, response, url.searchParams);
   if (path === EVENTS_PATH) return handleEvents(inputs, url, request, response);
   const route = routeFor(inputs, path);
   if (route === undefined) {
@@ -229,6 +248,25 @@ const handleEvents = (inputs: ManagementApiInputs, url: URL, request: IncomingMe
   const parsed = parseEventsQuery(url.searchParams, Array.isArray(lastEventId) ? lastEventId[0] : lastEventId);
   if (!parsed.ok) return send(response, 400, { ok: false, error: parsed.error });
   streamEvents(inputs.events, parsed.query, request, response);
+};
+
+const handleLogs = (
+  inputs: ManagementApiInputs,
+  request: IncomingMessage,
+  response: ServerResponse,
+  params: URLSearchParams,
+): void => {
+  if (request.method !== "GET") {
+    response.setHeader("allow", "GET");
+    return send(response, 405, failure("method_not_allowed", `${LOGS_PATH} only accepts GET`));
+  }
+  const query = decodeLogQuery(params);
+  if (typeof query === "string") return send(response, 400, failure("bad_request", query));
+  try {
+    send(response, 200, { ok: true, result: readLogs(inputs.stateRoot, query) });
+  } catch (error) {
+    send(response, 500, failure("internal", `logs unavailable: ${(error as Error).message}`));
+  }
 };
 
 type Route = () => Promise<readonly [number, ApiResponse<unknown>]>;
