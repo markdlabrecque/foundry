@@ -450,6 +450,10 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
 
       if (row.status === 'queued' && !allowAbandon) {return yield* refuse("invalid_state", "The ticket is already queued for resume");}
 
+      const limit = yield* change.query(`SELECT id FROM approval WHERE factory_id = ? AND ticket_number = ? AND kind = 'limit_reached' AND state = 'open'`, [factory, number]);
+
+      if (limit.length > 0) {return yield* refuse("invalid_state", "Resuming a limit-reached ticket requires an allowance grant");}
+
       const now = yield* Clock.currentTimeMillis;
       yield* change.query(`INSERT INTO assignment_resume (assignment_id, operator_message, allow_abandon) VALUES (?, ?, ?)
         ON CONFLICT(assignment_id) DO UPDATE SET operator_message = excluded.operator_message, allow_abandon = excluded.allow_abandon`, [row.id, message ?? null, allowAbandon ? 1 : 0]);

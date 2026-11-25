@@ -5,10 +5,10 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Schema } from "effect";
 import {
-  acceptMessage, agentMessageHandler, agentRequestHandler, assignedSlot, assignmentContextSlot, assignmentTicket, bindStationMessages, createAssignmentScheduler, createTicketService,
-  openStore, planSlots, StoreError, ticketFactoryFrom, watchAssignments, composeResumeNotice,
+  acceptMessage, agentDelegateHandler, agentMessageHandler, agentReplyHandler, agentRequestHandler, assignedSlot, assignmentContextSlot, assignmentTicket, bindStationMessages, createAssignmentScheduler, createTicketService,
+  foundryMigrations, messageBudget, openStore, planSlots, StoreError, storeApprovalsReader, taskTransitionHandler, ticketFactoryFrom, watchAssignments, composeResumeNotice,
 } from "@foundry/daemon";
-import type { Change, Store } from "@foundry/daemon";
+import type { Change, MessageAcceptance, Migration, Store } from "@foundry/daemon";
 import { FactoryConfig } from "../src/config/schema.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
@@ -27,12 +27,12 @@ const roots: Array<string> = [];
 
 afterEach(() => { for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });} });
 
-const fixture = async <A, E>(use: (store: Store, root: string) => Effect.Effect<A, E>) => {
+const fixture = async <A, E>(use: (store: Store, root: string) => Effect.Effect<A, E>, migrations: ReadonlyArray<Migration> = foundryMigrations) => {
   const root = mkdtempSync(join(tmpdir(), "foundry-assignments-"));
   roots.push(root);
 
   return Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const store = yield* openStore({ filename: join(root, "foundry.db") });
+    const store = yield* openStore({ filename: join(root, "foundry.db"), migrations });
     yield* store.change((change) => Effect.gen(function* () {
       for (const slot of slots) {
         yield* change.query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition) VALUES ('shop', ?, 'worker', ?, 'normal')`, [slot.slotId, slot.ordinal]);
@@ -151,6 +151,25 @@ test("parked-slot resume waits for fallback capacity then abandons and notifies 
     expect(yield* store.read(`SELECT body FROM message WHERE kind = 'resume_notice'`)).toEqual([{ body: expect.stringContaining('Use the preserved worktree') }]);
     expect(yield* scheduler.schedule()).toEqual([]);
     expect(yield* store.read(`SELECT condition FROM slot WHERE slot_id = 'worker/1'`)).toEqual([{ condition: 'parked' }]);
+  }));
+});
+
+test('resume cannot bypass a message-limit decision before the allowance-grant workflow is implemented', async () => {
+  await fixture((store, root) => Effect.gen(function* () {
+    yield* createAssignmentScheduler(options(store)).schedule();
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET message_ceiling = 1 WHERE number = 1`);
+      yield* change.recordHistory({ factoryId: 'shop', kind: 'fixture', subject: 'one-message' });
+    }));
+    yield* store.change((change) => agentMessageHandler(slots, { assignmentTicket, budget: messageBudget() })(change, {
+      factoryId: 'shop', slotId: 'worker/1', launchId: 'fixture', callId: 'last-message', tool: 'agent_message',
+      args: { recipient: 'floor.worker', body: 'last allowed message' },
+    }));
+    const before = yield* snapshot(store);
+    const tickets = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(config)] });
+    expect(Exit.isFailure(yield* Effect.exit(tickets.resume('shop', 1)))).toBe(true);
+    expect(yield* snapshot(store)).toEqual(before);
+    expect(yield* store.read(`SELECT state FROM approval WHERE kind = 'limit_reached'`)).toEqual([{ state: 'open' }]);
   }));
 });
 
@@ -428,5 +447,179 @@ test("database rejects a second unended assignment per ticket and a second activ
     }
 
     expect(yield* snapshot(store)).toEqual(before);
+  }));
+});
+
+// Store integration: exercise shared acceptance rather than duplicate each tool's validation.
+test("message threshold commits with suspension and readable approval; exempt sends spend nothing", async () => {
+  await fixture((store) => Effect.gen(function* () {
+    yield* createAssignmentScheduler(options(store)).schedule();
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET message_ceiling = 4 WHERE number = 1`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "allowance" });
+    }));
+    const guards = { assignmentTicket, budget: messageBudget(() => "load-1") };
+
+    const send = (kind: "ordinary" | "request_notice" | "reply" | "delegation_notice") => {
+      const input: MessageAcceptance = {
+        factoryId: "shop", senderSlot: "worker/1", recipient: "floor.worker", body: kind,
+        kind, delivery: "after_turn",
+      };
+
+      const attributed = kind === "ordinary" ? input : { ...input, correlation: { ticket: 1 } };
+
+      return store.change((change) => acceptMessage(change, attributed, guards));
+    };
+
+    for (const senderKind of ["daemon", "operator"] as const) {
+      yield* store.change((change) => acceptMessage(change, {
+        factoryId: "shop", senderKind, senderSlot: null, recipient: "floor.worker", body: "context",
+        kind: "ordinary", delivery: "after_turn", correlation: { ticket: 1 },
+      }, guards));
+    }
+
+    yield* store.change((change) => acceptMessage(change, {
+      factoryId: "shop", senderSlot: "unassigned/1", recipient: "floor.worker", body: "no ticket",
+      kind: "ordinary", delivery: "after_turn",
+    }, guards));
+    expect(yield* store.read(`SELECT messages_spent FROM ticket WHERE number = 1`)).toEqual([{ messages_spent: 0 }]);
+    yield* send("ordinary");
+    yield* send("request_notice");
+    yield* send("reply");
+    expect(yield* store.read(`SELECT status, messages_spent FROM ticket WHERE number = 1`)).toEqual([{ status: "assigned", messages_spent: 3 }]);
+    const before = yield* snapshot(store);
+
+    const failed = yield* Effect.exit(store.change((change) => Effect.gen(function* () {
+      yield* acceptMessage(change, { factoryId: "shop", senderSlot: "worker/1", recipient: "floor.worker",
+        body: "rolled back", kind: "delegation_notice", delivery: "after_turn" }, guards);
+      yield* change.query(`INSERT INTO nonexistent_table VALUES (1)`);
+    })));
+
+    expect(Exit.isFailure(failed)).toBe(true);
+    expect(yield* snapshot(store)).toEqual(before);
+    expect(yield* store.read(`SELECT * FROM approval`)).toEqual([]);
+    const threshold = yield* send("delegation_notice");
+    expect(yield* store.read(`SELECT id FROM message WHERE id = ?`, [threshold.id])).toEqual([{ id: threshold.id }]);
+    expect(yield* store.read(`SELECT status, messages_spent, message_ceiling FROM ticket WHERE number = 1`))
+      .toEqual([{ status: "paused", messages_spent: 4, message_ceiling: 4 }]);
+    expect(yield* assignedSlot(store.read, "shop", 1)).toBeNull();
+    expect(yield* store.read(`SELECT status FROM assignment WHERE ticket_number = 1`)).toEqual([{ status: "suspended" }]);
+    const approvals = yield* Effect.promise(() => storeApprovalsReader(store).list());
+    expect(approvals.approvals).toMatchObject([{ kind: "limit_reached", ticket: 1, outcome: null, configLoad: "load-1" }]);
+    const after = yield* snapshot(store);
+    expect(Exit.isFailure(yield* Effect.exit(send("reply")))).toBe(true);
+    expect(yield* snapshot(store)).toEqual(after);
+    expect(after.transitions).toHaveLength(before.transitions.length + 1);
+
+    const call = { factoryId: "shop", slotId: "worker/1", launchId: "fixture", callId: "post-limit", tool: "agent_message",
+      args: { recipient: "floor.worker", body: "must not become ticketless" } };
+
+    for (const handler of [agentMessageHandler(slots, guards), agentRequestHandler(slots, guards)]) {
+      const exit = yield* Effect.exit(store.change((change) => handler(change, { ...call, args: { ...call.args, timeoutMs: 60_000 } })));
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(yield* snapshot(store)).toEqual(after);
+    }
+
+    expect(yield* store.read(`SELECT id FROM agent_request`)).toEqual([]);
+    // Freed capacity may take another ticket; its active assignment wins attribution.
+    expect(yield* createAssignmentScheduler(options(store)).schedule()).toMatchObject([{ ticket: 3, slotId: "worker/1" }]);
+    yield* store.change((change) => agentMessageHandler(slots, guards)(change, call));
+    expect(yield* store.read(`SELECT messages_spent FROM ticket WHERE number = 3`)).toEqual([{ messages_spent: 1 }]);
+    expect(yield* store.read(`SELECT ticket_number FROM message WHERE body = ?`, [call.args.body])).toEqual([{ ticket_number: 3 }]);
+  }));
+});
+
+test("message limit migration preserves existing blocked and worker-request decisions", async () => {
+  const saved = await fixture((store, root) => Effect.gen(function* () {
+    // Historical fixtures must not invoke today's scheduler, which now needs resume tables.
+    const assignment = { id: 'historical-assignment', ticket: 1, slotId: 'worker/1' };
+    yield* store.change((change) => Effect.gen(function* () {
+      const context = yield* acceptMessage(change, { factoryId: 'shop', senderKind: 'daemon', senderSlot: null,
+        recipient: 'floor.worker', body: 'historical context', kind: 'ordinary', delivery: 'after_turn', correlation: { ticket: 1 } });
+
+      yield* change.query(`INSERT INTO assignment (id, factory_id, ticket_number, stage, slot_id, status, recovery_ceiling, created_at, context_message)
+        VALUES (?, 'shop', 1, 'plan', 'worker/1', 'active', 4, 1, ?)`, [assignment.id, context.id]);
+      yield* change.query(`UPDATE ticket SET state = 'stage', stage = 'plan', status = 'assigned' WHERE number = 1`);
+      yield* change.recordHistory({ factoryId: 'shop', kind: 'fixture', subject: assignment.id });
+    }));
+
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`INSERT INTO approval (factory_id, ticket_number, assignment_id, kind, state, raised_at, request_body, request_stage)
+        VALUES ('shop', ?, ?, 'worker_request', 'open', 1, 'operator question', 'plan')`, [assignment.ticket, assignment.id]);
+      yield* taskTransitionHandler(options(store))(change, { factoryId: "shop", slotId: assignment.slotId, launchId: "fixture", callId: "blocked", tool: "task_transition",
+        args: { assignmentId: assignment.id, outcome: "blocked", reason: "needs decision", evidence: [] } });
+    }));
+
+    return { root, approvals: yield* store.read(`SELECT * FROM approval ORDER BY id`) };
+  }), foundryMigrations.filter((migration) => migration.id < 24));
+
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    expect(yield* store.read(`SELECT * FROM approval ORDER BY id`)).toEqual(saved.approvals);
+    expect(yield* store.read(`PRAGMA foreign_key_check`)).toEqual([]);
+    expect((yield* Effect.promise(() => storeApprovalsReader(store).list())).approvals.map((approval) => approval.kind))
+      .toEqual(["worker_request", "blocked"]);
+  })));
+});
+
+test("a selected delegation reply reaches the ceiling while the root is suspended", async () => {
+  await fixture((store) => Effect.gen(function* () {
+    yield* createAssignmentScheduler(options(store)).schedule();
+    const guards = { assignmentTicket, budget: messageBudget(() => "load-1") };
+
+    const call = { factoryId: "shop", slotId: "worker/1", launchId: "fixture", callId: "delegate", tool: "agent_delegate",
+      args: { recipient: "floor.worker", body: "help" } };
+
+    yield* store.change((change) => agentDelegateHandler(slots, guards)(change, call));
+    const [delegation] = yield* store.read<{ id: string }>(`SELECT id FROM delegation`);
+
+    if (delegation === undefined) {throw new Error("delegation missing");}
+
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE delegation SET recipient_slot = 'worker/2'`);
+      yield* change.query(`UPDATE assignment SET status = 'suspended' WHERE ticket_number = 1`);
+      yield* change.query(`UPDATE ticket SET status = 'paused', message_ceiling = 2 WHERE number = 1`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "suspended root" });
+    }));
+    yield* store.change((change) => agentReplyHandler(guards)(change, { ...call, slotId: "worker/2", tool: "agent_reply",
+      args: { delegationId: delegation.id, outcome: "done", evidence: "evidence/result.md" } }));
+    expect(yield* store.read(`SELECT status FROM delegation`)).toEqual([{ status: "completed" }]);
+    expect(yield* store.read(`SELECT messages_spent, status FROM ticket WHERE number = 1`)).toEqual([{ messages_spent: 2, status: "paused" }]);
+    expect((yield* Effect.promise(() => storeApprovalsReader(store).list())).approvals).toMatchObject([{ kind: "limit_reached", ticket: 1 }]);
+    expect(yield* store.read(`SELECT kind, status, bound_slot FROM message WHERE delegation_id = ? ORDER BY sequence`, [delegation.id]))
+      .toMatchObject([{ kind: "delegation_notice" }, { kind: "reply", status: "bound", bound_slot: "worker/1" }]);
+  }));
+});
+
+test.each(["suspended", "ended"] as const)("correlated replies spend allowance after assignment is %s", async (status) => {
+  await fixture((store) => Effect.gen(function* () {
+    yield* createAssignmentScheduler(options(store)).schedule();
+    const guards = { assignmentTicket, budget: messageBudget(() => "load-1") };
+
+    const call = { factoryId: "shop", slotId: "worker/1", launchId: "fixture", callId: "request", tool: "agent_request",
+      args: { recipient: "floor.worker", body: "question", timeoutMs: 60_000 } };
+
+    yield* store.change((change) => agentRequestHandler(slots, guards)(change, call));
+    const requests = yield* store.read<{ id: string }>(`SELECT id FROM agent_request`);
+    const requestId = requests[0]?.id;
+
+    if (requestId === undefined) {throw new Error("request missing");}
+
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE agent_request SET recipient_slot = 'worker/2' WHERE id = ?`, [requestId]);
+      yield* change.query(`UPDATE assignment SET status = ?, ended_at = ? WHERE ticket_number = 1`, [status, status === "ended" ? 1 : null]);
+      yield* change.query(`UPDATE ticket SET status = ?, message_ceiling = 3 WHERE number = 1`, [status === "ended" ? "queued" : "paused"]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: status });
+    }));
+    const reply = { ...call, slotId: "worker/2", tool: "agent_reply", args: { requestId, body: "answer" } };
+    yield* store.change((change) => agentReplyHandler(guards)(change, reply));
+    expect(yield* store.read(`SELECT status FROM agent_request WHERE id = ?`, [requestId])).toEqual([{ status: "completed" }]);
+    expect(yield* store.read(`SELECT messages_spent FROM ticket WHERE number = 1`)).toEqual([{ messages_spent: 2 }]);
+    // A further correlated message reaches the limit even without an active assignment.
+    yield* store.change((change) => acceptMessage(change, { factoryId: "shop", senderSlot: "worker/2", recipient: "worker/1",
+      body: "threshold", kind: "reply", delivery: "after_turn", correlation: { ticket: 1 } }, guards));
+    expect(yield* store.read(`SELECT messages_spent, status FROM ticket WHERE number = 1`)).toEqual([{ messages_spent: 3, status: "paused" }]);
+    expect((yield* Effect.promise(() => storeApprovalsReader(store).list())).approvals).toMatchObject([{ kind: "limit_reached", ticket: 1 }]);
+    expect(yield* store.read(`SELECT status FROM assignment WHERE ticket_number = 1`)).toEqual([{ status }]);
   }));
 });

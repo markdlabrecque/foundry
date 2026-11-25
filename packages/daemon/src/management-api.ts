@@ -14,7 +14,9 @@ import { connect } from "node:net";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
 import type { ApprovalsReader } from "./approvals.js";
-import { APPROVALS_PATH } from "@foundry/protocol/approvals";
+import { APPROVALS_PATH, ApprovalAnswerRequest } from "@foundry/protocol/approvals";
+import { ApprovalAnswerError } from "./approval-answer.js";
+import type { ApprovalAnswers } from "./approval-answer.js";
 import type { HoldsReader } from "./holds.js";
 import { WORKTREES_PATH, WorktreeCleanRequest } from "@foundry/protocol/worktrees-api";
 import type { WorktreeService } from "./worktree-cleanup.js";
@@ -58,6 +60,7 @@ export interface ManagementApiInputs {
   readonly holds?: HoldsReader;
   /** Work decisions, separate from system holds. */
   readonly approvals?: ApprovalsReader;
+  readonly approvalAnswers?: ApprovalAnswers;
   /** Serves the ticket routes when given; without it they answer 404. */
   readonly tickets?: TicketService;
   readonly worktrees?: WorktreeService;
@@ -274,6 +277,10 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
   if (path === MESSAGES_PATH) {return handleOperatorMessage(inputs, request, response);}
 
+  if (path.startsWith(`${APPROVALS_PATH}/`) && path.endsWith("/answer")) {
+    return handleApprovalAnswer(inputs, request, response, path);
+  }
+
   // Ticket routes first: submit reads a POST body, so it must not be drained.
   if (inputs.tickets !== undefined && (path === TICKETS_PATH || path.startsWith(`${TICKETS_PATH}/`))) {
     void handleTickets(inputs.tickets, request, url).then(
@@ -334,7 +341,46 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
   );
 };
 
-/** Only this endpoint can author an operator message; worker frames cannot choose attribution. */
+const handleApprovalAnswer = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse, path: string): void => {
+  if (request.method !== "POST") {
+    request.resume();
+    response.setHeader("allow", "POST");
+
+    return send(response, 405, failure("method_not_allowed", "approval answer only accepts POST"));
+  }
+
+  void (async () => {
+    const id = /^\/([1-9][0-9]{0,15})\/answer$/.exec(path.slice(APPROVALS_PATH.length))?.[1];
+
+    if (id === undefined || !Number.isSafeInteger(Number(id))) {
+      request.resume();
+
+      return send(response, 404, failure("not_found", "invalid approval ID"));
+    }
+
+    const text = await readSmallBody(request, 1024 * 1024);
+
+    if (text === undefined) {return send(response, 413, failure("payload_too_large", "answer exceeds 1048576 bytes"));}
+
+    const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(ApprovalAnswerRequest))(text);
+
+    if (Option.isNone(decoded)) {return send(response, 400, failure("bad_request", "expected a non-empty answer body"));}
+
+    if (inputs.approvalAnswers === undefined) {return send(response, 503, failure("unavailable", "approval answers are not served by this daemon"));}
+
+    const result = await Effect.runPromiseExit(inputs.approvalAnswers.answer(Number(id), decoded.value.body));
+
+    if (Exit.isSuccess(result)) {return send(response, 200, { ok: true, result: result.value });}
+
+    const error = Cause.squash(result.cause);
+
+    if (error instanceof ApprovalAnswerError) {return send(response, error.code === "not_found" ? 404 : 409, failure(error.code, error.message));}
+
+    send(response, 500, failure("internal", "approval answer was not committed"));
+  })().catch(() => send(response, 500, failure("internal", "approval answer request failed")));
+};
+
+/** Worker frames cannot choose operator attribution. */
 const handleOperatorMessage = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse): void => {
   if (request.method !== "POST") {
     request.resume();
