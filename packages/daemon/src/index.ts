@@ -13,6 +13,8 @@ export * from "./agent-message.js";
 
 export * from "./agent-request.js";
 
+export * from "./message-routing.js";
+
 export * from "./agent-discover.js";
 
 export * from "./agent-status.js";
