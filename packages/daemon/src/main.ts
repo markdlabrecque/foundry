@@ -16,9 +16,11 @@ import { join } from "node:path";
 import { createKnowledgeLayout, loadFactoryFiles, recordRun, type LoadedFactory, type RecordedLoad } from "./factory-loads.js";
 import { makeTicketService, ticketFactoryFrom } from "./tickets.js";
 import { ensureFactoryClone, type EnsuredClone } from "./factory-clone.js";
+import { decideFactoryStarts, describeBlocker, type StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
+import { storeFactoriesReader } from "./factories.js";
 import { importStoreQuietly } from "./quiet-store.js";
 import type { Store } from "./store.js";
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
@@ -175,10 +177,42 @@ const main = async (): Promise<void> => {
       detail: { loadId: load.loadId, configHash: load.configHash },
     });
   }
-  // Configuration is read only at start (PRD §4), so the loaded set is fixed for this run.
-  const ticketFactories = factories.map((f) => ticketFactoryFrom(f.config));
+  // A factory whose open records name removed configuration is refused alone (PRD §4, §11.6):
+  // the daemon keeps running and the other factories start.
+  let decision: StartDecision;
+  try {
+    decision = await Effect.runPromise(
+      decideFactoryStarts(
+        store,
+        loads.map((l) => ({ factoryId: l.factoryId, loadId: l.loadId, config: factories.find((f) => f.factoryId === l.factoryId)!.config })),
+      ),
+    );
+  } catch (error) {
+    log.error("factory start checks failed", { detail: { error: (error as Error).message } });
+    await closeStore();
+    log.close();
+    claim.release();
+    fail(`cannot check open records in ${stateRoot}: ${(error as Error).message}`);
+    return;
+  }
+  for (const refused of decision.refused) {
+    log.warn("factory start refused", {
+      factoryId: refused.factoryId,
+      detail: { blockers: refused.blockers.length, first: describeBlocker(refused.blockers[0]!) },
+    });
+  }
+  // Configuration is read only at start (PRD §4), so the started set is fixed for this run.
+  // Ticket commands naming a refused factory get `unknown_factory` ("not loaded") for now; a
+  // distinct refused error belongs with showing refusals in status.
+  const ticketFactories = factories
+    .filter((f) => decision.started.includes(f.factoryId))
+    .map((f) => ticketFactoryFrom(f.config));
   // Each factory's transitions carry this run's recorded configuration load.
   const loadIds = new Map(loads.map((l) => [l.factoryId, String(l.loadId)]));
+  // This run's refusals and their blockers, held in daemon state so status and the factory list
+  // can show them without reading history. Recomputed on every start.
+  const refusedFactories = new Map(decision.refused.map((r) => [r.factoryId, r.blockers]));
+  void refusedFactories;
 
   // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
   // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
@@ -217,6 +251,8 @@ const main = async (): Promise<void> => {
       }),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,
+      // Read from the recorded run and its configuration loads, not from memory.
+      factories: storeFactoriesReader(store, log.runId),
     });
   } catch (error) {
     if (error instanceof ManagementSocketError) {

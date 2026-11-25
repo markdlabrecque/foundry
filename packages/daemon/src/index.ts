@@ -73,3 +73,5 @@ export {
   type EnsureCloneOptions,
   type EnsuredClone,
 } from "./factory-clone.js";
+export * from "./start-refusal.js";
+export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";

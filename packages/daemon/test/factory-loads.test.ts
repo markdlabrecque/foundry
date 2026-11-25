@@ -11,6 +11,7 @@ import { afterEach, expect, test } from "vitest";
 import { Effect } from "effect";
 import { DATABASE_FILE_NAME, openStore } from "@foundry/daemon";
 import { isolatedGitEnv, makeGitSource } from "@foundry/testkit";
+import { runFactoryList } from "@foundry/cli";
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
 // The version the daemon records is its package's.
@@ -166,6 +167,9 @@ test("a valid start records the run and its load and creates the empty knowledge
     writeFileSync(spec, "# First ticket\n");
     const submitted = await foundry(["ticket", "submit", spec, "--home", home], home);
     expect(submitted).toEqual({ code: 0, stderr: "" });
+    // The real daemon lists the factory from the load it recorded for this run.
+    const listed = await runFactoryList({ json: true, home, env: { FOUNDRY_HOME: join(home, "not-this-one") } });
+    expect(JSON.parse(listed.stdout)).toMatchObject({ ok: true, result: { factories: [{ factoryId: "alpha", state: "running" }] } });
   });
   // Only a comment and blank lines change: the validated configuration, so its hash, is the same.
   appendFileSync(file, "\n# a comment only\n\n");

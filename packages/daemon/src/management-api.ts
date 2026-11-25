@@ -28,6 +28,8 @@ import type { TicketService } from "./tickets.js";
 import { decodeLogQuery, LOGS_PATH } from "@foundry/protocol/log-query";
 import { readLogs } from "@foundry/protocol/log-read";
 import { matchFactoryPathPath } from "@foundry/protocol/factory-path";
+import { FACTORIES_PATH } from "@foundry/protocol/factories-api";
+import type { FactoriesReader } from "./factories.js";
 
 /** What the API reports, injected so the server is independent of where status comes from. */
 export interface ManagementApiInputs {
@@ -42,6 +44,8 @@ export interface ManagementApiInputs {
   readonly tickets?: TicketService;
   /** The dedicated clone path of a loaded factory (PRD §9.1); `undefined` for an unknown one. */
   readonly clonePath?: (factory: string) => string | undefined;
+  /** The loaded factories, read from daemon state. Without it the route answers 503. */
+  readonly factories?: FactoriesReader;
 }
 
 export interface ManagementApi {
@@ -278,6 +282,13 @@ const HOLD_ID = new RegExp(`^${HOLDS_PATH}/([1-9][0-9]{0,15})$`);
 
 const routeFor = (inputs: ManagementApiInputs, path: string): Route | undefined => {
   if (path === STATUS_PATH) return async () => [200, { ok: true, result: inputs.status() }];
+  if (path === FACTORIES_PATH) {
+    const factories = inputs.factories;
+    return async () =>
+      factories === undefined
+        ? [503, failure("unavailable", "factories are not served by this daemon")]
+        : [200, { ok: true, result: await factories.list() }];
+  }
   if (path === HOLDS_PATH) return withHolds(inputs, async (holds) => [200, { ok: true, result: await holds.list() }]);
   const factory = matchFactoryPathPath(path);
   if (factory === null) return async () => [400, failure("bad_request", `malformed factory name in ${path}`)];
