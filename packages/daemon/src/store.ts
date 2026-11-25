@@ -389,6 +389,24 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
        WHERE status = 'active'`,
     ],
   },
+  {
+    id: 16,
+    name: "message_delivery",
+    statements: [
+      `ALTER TABLE message ADD COLUMN acknowledged_at INTEGER`,
+      `CREATE TABLE message_attempt (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        message_id TEXT NOT NULL REFERENCES message(id),
+        slot_id TEXT NOT NULL,
+        launch_id TEXT NOT NULL,
+        connection_id TEXT NOT NULL,
+        sent_at INTEGER NOT NULL,
+        acknowledged_at INTEGER,
+        UNIQUE (message_id, connection_id)
+      ) STRICT`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

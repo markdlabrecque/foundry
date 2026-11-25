@@ -558,7 +558,9 @@ export const createPrimer = (options: PrimerOptions): Primer => {
       const writer = new PrimedWriter(connection, outcome, gate, slot);
       live.set(slotKey(slot), { launchId: slot.launchId, conversationRef: hello.conversationRef, writer, closed: connection.closed });
 
-      return { outcome, connection: { send: (frame: DaemonFrame) => writer.send(frame) } };
+      const guarded: AcceptedConnection = { send: (frame: DaemonFrame) => writer.send(frame) };
+
+      return { outcome, connection: connection.closed === undefined ? guarded : { ...guarded, closed: connection.closed } };
     },
     receipt: (slot, id) =>
       run(acknowledgePrime(options.store, { factoryId: slot.factoryId, slotId: slot.slotId, id })),

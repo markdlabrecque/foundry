@@ -23,7 +23,7 @@ import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
-import { Effect, Exit, Schema, Scope } from "effect";
+import { Effect, Exit, Predicate, Schema, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
 import { storeFactoriesReader } from "./factories.js";
@@ -50,6 +50,8 @@ import type { FactoryStopperOptions } from "./factory-stop.js";
 import { createSlotFreezer, storeSlotControl } from "./freeze.js";
 import type { FreezeChecks, SlotFreezer } from "./freeze.js";
 import { instructionFilesCheck, plannedPrimeRequests } from "./instruction-freeze.js";
+import { createPrimer } from "./priming.js";
+import { acknowledgeMessage, createMessageDelivery } from "./message-delivery.js";
 import { createInstanceShutdown } from "./shutdown.js";
 import type { ShutdownHost } from "./shutdown.js";
 import { createToolSetGuard, createToolSetRecheck, expectedToolSet, frozenConversation } from "./tool-set-check.js";
@@ -173,9 +175,11 @@ const main = async (): Promise<void> => {
   // One store for the daemon's lifetime, closed with its scope.
   const storeScope = Effect.runSync(Scope.make());
   let stopRouting: (() => Promise<void>) | undefined;
+  let stopDelivery: (() => Promise<void>) | undefined;
 
   const closeStore = async (): Promise<void> => {
     await stopRouting?.();
+    await stopDelivery?.();
     await Effect.runPromise(Scope.close(storeScope, Exit.void));
   };
 
@@ -351,10 +355,9 @@ const main = async (): Promise<void> => {
 
   // Frozen slots are read back from the store, so a freeze survives a daemon restart (PRD §5.3).
   // Each freeze cause registers its own unfreeze check with the ticket that raises it; until
-  // then an unfreeze is refused rather than trusted. Whichever ticket wires the primer in here
-  // must pass `gate: freezer` and `freeze: freezer.freeze` to `createPrimer`, with the same
-  // `plannedPrimeRequests` as its `primeRequest`. Checks are read at unfreeze time, so one
-  // registered below, once the scheduler exists, is honoured.
+  // then an unfreeze is refused rather than trusted. The primer below shares this freezer and
+  // the same planned prime inputs. Checks are read at unfreeze time, so one registered below,
+  // once the scheduler exists, is honoured.
   // Made before the channel is served, so agent tool calls from a frozen slot are refused from
   // the first frame.
   const freezeChecks: FreezeChecks = {
@@ -423,6 +426,16 @@ const main = async (): Promise<void> => {
           log.error("tool set mismatch not frozen", { factoryId: slot.factoryId, slotId: slot.slotId, detail: { error: messageOf(cause) } }),
       });
 
+      const primer = createPrimer({ store, gate: freezer, freeze: (request) => freezer.freeze(request),
+        primeRequest: plannedPrimeRequests(factories, plannedSlots) });
+
+      const delivery = createMessageDelivery({ store, gate: freezer,
+        inScope: (factoryId) => factoryStates.isRunning(factoryId),
+        onError: (cause) => log.error("message delivery failed", { detail: { error: messageOf(cause) } }) });
+
+      stopDelivery = () => delivery.stop();
+      const channelEvents = channelLogEvents(log);
+
       channel = await startChannelServer({
         socketPath: channelSocketPath(stateRoot),
         slotClaim: guard,
@@ -438,7 +451,27 @@ const main = async (): Promise<void> => {
           ]),
           gate: freezer,
         }),
-        ...channelLogEvents(log),
+        ...channelEvents,
+        onAccepted: (slot, hello, accepted) => {
+          channelEvents.onAccepted(slot, hello, accepted);
+          const primed = primer.prime(slot, hello, accepted);
+          void primed.outcome.then((outcome) => {
+            if (Predicate.isTagged(outcome, "Sent") || Predicate.isTagged(outcome, "Reconnect")) {delivery.attach(slot, primed.connection);}
+          }).catch((cause: unknown) => log.error("connection priming failed", { detail: { error: messageOf(cause) } }));
+        },
+        onFrame: (slot, frame) => {
+          channelEvents.onFrame(slot, frame);
+
+          if (frame.type === "receipt") {
+            void (async () => {
+              if (await primer.receipt(slot, frame.id) === "unknown") {
+                await Effect.runPromise(acknowledgeMessage(store, slot, frame.id));
+              }
+            })().catch((cause: unknown) => log.error("receipt not recorded", { detail: { error: messageOf(cause) } }));
+          } else if (frame.type === "compacted") {
+            void primer.compacted(slot).catch((cause: unknown) => log.error("compaction prime failed", { detail: { error: messageOf(cause) } }));
+          }
+        },
       });
 
       scheduler = createSlotScheduler({
