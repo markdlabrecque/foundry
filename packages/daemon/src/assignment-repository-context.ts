@@ -1,9 +1,10 @@
 /** Repository Context is an ordinary durable message, pinned to the assignment's slot. */
 import { createHash } from "node:crypto";
 import { Effect } from "effect";
+import { acceptMessage } from "./agent-message.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import { discoverRepositoryContext } from "./repository-context.js";
-import type { Change } from "./store.js";
+import type { Change, Store } from "./store.js";
 
 interface ContextPart {
   readonly path: string;
@@ -19,6 +20,8 @@ interface ContextSource {
   readonly factoryId: string;
   readonly slotId: string;
   readonly root: string;
+  /** Compaction discarded context even when the last received hashes match. */
+  readonly force?: boolean;
 }
 
 interface AssignmentRepositoryContext extends ContextSource {
@@ -63,7 +66,7 @@ export const composeAssignmentRepositoryContext = (change: Change, input: Contex
     [input.factoryId, input.slotId, conversation],
   );
 
-  if (previous[0]?.parts === hashes) {return null;}
+  if (!input.force && previous[0]?.parts === hashes) {return null;}
 
   const body = [
     "# Repository Context", `Root: ${context.worktreeRoot}`,
@@ -77,6 +80,44 @@ export const composeAssignmentRepositoryContext = (change: Change, input: Contex
 
   return { ...input, body, parts: pathsAndHashes, conversation } satisfies AssignmentRepositoryContext;
 });
+
+const unassigned = Symbol("unassigned");
+
+/** Re-read the active assignment after the prime; an idle or suspended slot gets nothing. */
+export const resendAssignmentRepositoryContext = (store: Store, input: {
+  readonly factoryId: string;
+  readonly slotId: string;
+  readonly clonePath: string;
+  readonly isolation: "worktree" | "none";
+}) => store.change((change) => Effect.gen(function* () {
+  const assignments = yield* change.query<{ id: string; ticket_number: number; station: string; worktree_path: string | null }>(
+    `SELECT a.id, a.ticket_number, s.station, t.worktree_path FROM assignment a
+     JOIN ticket t ON t.factory_id = a.factory_id AND t.number = a.ticket_number
+     JOIN slot s ON s.factory_id = a.factory_id AND s.slot_id = a.slot_id
+     WHERE a.factory_id = ? AND a.slot_id = ? AND a.status = 'active'`,
+    [input.factoryId, input.slotId],
+  );
+
+  const assignment = assignments[0];
+
+  if (assignment === undefined) {return yield* Effect.fail(unassigned);}
+
+  const context = yield* composeAssignmentRepositoryContext(change, {
+    factoryId: input.factoryId, slotId: input.slotId, force: true,
+    root: input.isolation === "worktree" && assignment.worktree_path !== null ? assignment.worktree_path : input.clonePath,
+  });
+
+  if (context === null) {return yield* Effect.fail(unassigned);}
+
+  const message = yield* acceptMessage(change, {
+    factoryId: input.factoryId, senderKind: "daemon", senderSlot: null, recipient: assignment.station,
+    kind: "ordinary", delivery: "after_turn", correlation: { ticket: assignment.ticket_number }, body: context.body,
+  }).pipe(Effect.catchTag("ToolRefusal", Effect.die));
+
+  yield* recordAssignmentRepositoryContext(change, {
+    messageId: message.id, assignmentId: assignment.id, ticket: assignment.ticket_number, context,
+  });
+})).pipe(Effect.catchIf((error) => error === unassigned, () => Effect.void));
 
 /** The same ordinary message carries both contexts: a single injection starts the assignment turn. */
 export const recordAssignmentRepositoryContext = (change: Change, input: {

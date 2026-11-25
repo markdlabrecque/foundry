@@ -445,6 +445,7 @@ const main = async (): Promise<void> => {
       });
 
       const primer = createPrimer({ store, gate: freezer, freeze: (request) => freezer.freeze(request),
+        clonePath: (factoryId) => expectDefined(clones.get(factoryId), `factory clone ${factoryId}`).path,
         primeRequest: plannedPrimeRequests(factories, plannedSlots) });
 
       const delivery = createMessageDelivery({ store, gate: freezer,
