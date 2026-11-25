@@ -36,7 +36,9 @@ export type ManagementSocketRefusal =
   /** Something other than a socket is at the socket path; it is never removed. */
   | "not-a-socket"
   /** The socket exists but could not be probed. */
-  | "unprobeable";
+  | "unprobeable"
+  /** The state root's path is too long for a Unix socket address. */
+  | "path-too-long";
 
 /** Refusal to serve the management API: an instance-level failure (PRD §11.6). */
 export class ManagementSocketError extends Error {
@@ -64,6 +66,34 @@ const lstatIfPresent = (path: string): Stats | undefined => {
 
 const sameFile = (a: Stats | undefined, b: Stats): boolean => a !== undefined && a.dev === b.dev && a.ino === b.ino;
 
+/** Longest Unix socket path, in bytes, excluding the terminating NUL: `sun_path` is 108 on Linux, 104 on macOS. */
+const SOCKET_PATH_LIMIT = process.platform === "darwin" ? 103 : 107;
+/** Name of the private bind directory: `mkdtemp` appends six characters to the prefix. */
+const PRIVATE_DIR_PREFIX = ".management-";
+const BIND_NAME = "s";
+
+const checkPathLength = (stateRoot: string, socketPath: string): void => {
+  // The bind path is the longer of the two: `<root>/.management-XXXXXX/s`.
+  const bindPath = join(stateRoot, `${PRIVATE_DIR_PREFIX}XXXXXX`, BIND_NAME);
+  const longest = Math.max(Buffer.byteLength(bindPath), Buffer.byteLength(socketPath));
+  if (longest > SOCKET_PATH_LIMIT) {
+    throw new ManagementSocketError(
+      "path-too-long",
+      socketPath,
+      `state root ${stateRoot} is too long for a Unix socket: ${longest} bytes, limit ${SOCKET_PATH_LIMIT} on ${process.platform}`,
+    );
+  }
+};
+
+/** Best-effort removal during cleanup: a failure here must never hide the error being reported. */
+const removeQuietly = (remove: () => void): void => {
+  try {
+    remove();
+  } catch {
+    // Left behind; the next start's stale-socket check and mkdtemp are unaffected.
+  }
+};
+
 /**
  * Serve the management API on the state root's socket. Resolves once it accepts connections.
  *
@@ -75,11 +105,12 @@ const sameFile = (a: Stats | undefined, b: Stats): boolean => a !== undefined &&
  */
 export const serveManagementApi = async (inputs: ManagementApiInputs): Promise<ManagementApi> => {
   const socketPath = managementSocketPath(inputs.stateRoot);
+  checkPathLength(inputs.stateRoot, socketPath);
   await clearStaleSocket(socketPath);
 
   const server = createServer((request, response) => handle(inputs, request, response));
-  const privateDir = mkdtempSync(join(inputs.stateRoot, ".management-"));
-  const bindPath = join(privateDir, "s");
+  const privateDir = mkdtempSync(join(inputs.stateRoot, PRIVATE_DIR_PREFIX));
+  const bindPath = join(privateDir, BIND_NAME);
   let published: Stats;
   try {
     await listen(server, bindPath);
@@ -95,12 +126,8 @@ export const serveManagementApi = async (inputs: ManagementApiInputs): Promise<M
     await stop(server);
     throw error;
   } finally {
-    try {
-      unlinkSync(bindPath);
-    } catch (error) {
-      if (!isErrno(error, "ENOENT")) throw error;
-    }
-    rmdirSync(privateDir);
+    removeQuietly(() => unlinkSync(bindPath));
+    removeQuietly(() => rmdirSync(privateDir));
   }
 
   let closing: Promise<void> | undefined;

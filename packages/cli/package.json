@@ -4,13 +4,17 @@
   "private": true,
   "description": "The foundry operator CLI: an Effect 4 program that talks to the management API.",
   "type": "module",
-  "bin": { "foundry": "./dist/main.js" },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./validate": {
+      "types": "./dist/validate.d.ts",
+      "default": "./dist/validate.js"
     }
   },
+  "bin": { "foundry": "./dist/main.js" },
   "files": ["dist"],
   "dependencies": { "@effect/platform-node": "4.1.5", "@foundry/daemon": "0.0.0", "@foundry/protocol": "0.0.0", "effect": "4.1.5" }
 }

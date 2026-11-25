@@ -7,7 +7,7 @@
  */
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
 import { ManagementSocketError, serveManagementApi, type ManagementApi } from "./management-api.js";
-import { selectStateRoot } from "./state-root.js";
+import { selectStateRoot } from "@foundry/protocol/state-root";
 
 const EXIT_USAGE = 2;
 const EXIT_INSTANCE_FAILURE = 1;
@@ -56,8 +56,26 @@ const main = async (): Promise<void> => {
   }
   process.on("exit", () => claim.release());
 
+  // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
+  // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
+  let api: ManagementApi | undefined;
+  let stopping = false;
+  const stop = (): void => {
+    if (stopping) return;
+    stopping = true;
+    // Before the API is up, the code after `serveManagementApi` sees `stopping` and finishes the stop.
+    if (api !== undefined) finish(api);
+  };
+  const finish = (served: ManagementApi): void => {
+    void served.close().finally(() => {
+      claim.release();
+      process.exit(0);
+    });
+  };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+
   const startedAt = new Date().toISOString();
-  let api: ManagementApi;
   try {
     api = await serveManagementApi({
       stateRoot,
@@ -70,14 +88,10 @@ const main = async (): Promise<void> => {
   }
 
   // The listening socket keeps the foreground process alive until asked to stop.
-  const stop = (): void => {
-    void api.close().finally(() => {
-      claim.release();
-      process.exit(0);
-    });
-  };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
+  if (stopping) {
+    finish(api);
+    return;
+  }
   process.stdout.write(`foundry daemon: state root ${stateRoot} claimed (pid ${process.pid})\n`);
   process.stdout.write(`foundry daemon: management API on ${api.socketPath}\n`);
 };

@@ -10,9 +10,9 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./state-root": {
-      "types": "./dist/state-root.d.ts",
-      "default": "./dist/state-root.js"
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "default": "./dist/config/index.js"
     }
   },
   "files": ["dist"],
