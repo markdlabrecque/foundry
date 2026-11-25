@@ -3,11 +3,16 @@
  * Foreground daemon entry point: select the state root, claim it exclusively, serve the
  * management API, and hold both until SIGINT or SIGTERM. A clean stop closes the socket,
  * releases the lock and exits 0; a held lock or a socket in use exits 1 (PRD §11.6).
- * Factory loading and the database arrive in later tickets.
+ * It opens the database in the state root and streams its history as events. Factory loading
+ * arrives in a later ticket.
  */
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
 import { ManagementSocketError, serveManagementApi, type ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
+import { join } from "node:path";
+import { Effect, Exit, Scope } from "effect";
+import { storeEventSource } from "./events.js";
+import { DATABASE_FILE_NAME, openStore } from "./store.js";
 
 const EXIT_USAGE = 2;
 const EXIT_INSTANCE_FAILURE = 1;
@@ -67,7 +72,7 @@ const main = async (): Promise<void> => {
     if (api !== undefined) finish(api);
   };
   const finish = (served: ManagementApi): void => {
-    void served.close().finally(() => {
+    void served.close().then(closeStore).finally(() => {
       claim.release();
       process.exit(0);
     });
@@ -76,12 +81,28 @@ const main = async (): Promise<void> => {
   process.on("SIGTERM", stop);
 
   const startedAt = new Date().toISOString();
+  // The store lives as long as the process; WAL keeps a killed daemon's commits.
+  const storeScope = Effect.runSync(Scope.make());
+  const closeStore = (): Promise<void> => Effect.runPromise(Scope.close(storeScope, Exit.void));
+  let store;
+  try {
+    store = await Effect.runPromise(
+      openStore({ filename: join(stateRoot, DATABASE_FILE_NAME) }).pipe(Scope.provide(storeScope)),
+    );
+  } catch (error) {
+    await closeStore();
+    claim.release();
+    fail(`cannot open the database: ${(error as Error).message}`);
+    return;
+  }
   try {
     api = await serveManagementApi({
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
+      events: storeEventSource(store),
     });
   } catch (error) {
+    await closeStore();
     claim.release();
     fail(error instanceof ManagementSocketError ? error.message : `cannot serve the management API: ${(error as Error).message}`);
     return;

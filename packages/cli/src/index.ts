@@ -9,3 +9,4 @@ export {
   type StatusOptions,
   type StatusOutcome,
 } from "./status.js";
+export { renderEvent, runEvents, sseParser, type EventsOptions, type EventsOutcome } from "./events.js";

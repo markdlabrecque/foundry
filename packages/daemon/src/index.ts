@@ -26,3 +26,5 @@ export {
   type ManagementApiInputs,
   type ManagementSocketRefusal,
 } from "./management-api.js";
+export { readEvents, storeEventSource, type EventPageQuery, type EventSource } from "./events.js";
+export { formatEvent } from "./events-stream.js";

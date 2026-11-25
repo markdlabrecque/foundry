@@ -6,11 +6,13 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit } from "effect";
 import { foundryMigrations, openStore, type Migration, type Store } from "@foundry/daemon";
 
+const latest = Math.max(...foundryMigrations.map((m) => m.id));
+
 // Stands in for a later ticket's current-state table.
 const withSlots: ReadonlyArray<Migration> = [
   ...foundryMigrations,
   {
-    id: 2,
+    id: latest + 1,
     name: "test_slots",
     statements: [`CREATE TABLE slot (id TEXT PRIMARY KEY, factory_id TEXT NOT NULL, condition TEXT NOT NULL) STRICT`],
   },
@@ -55,7 +57,7 @@ test("a committed change survives reopening the file in WAL mode", async () => {
     }),
   );
 
-  expect(reopened.version).toBe(2);
+  expect(reopened.version).toBe(latest + 1);
   expect(reopened.journal[0]?.journal_mode).toBe("wal");
   expect(reopened.state.slots).toEqual([{ id: "s1", condition: "frozen" }]);
   expect(reopened.state.history).toEqual([
@@ -83,7 +85,7 @@ test("an older database is migrated forward on open, keeping its history", async
     Effect.all({ version: Effect.succeed(store.schemaVersion), state: snapshot(store) }),
   );
 
-  expect(after.version).toBe(2);
+  expect(after.version).toBe(latest + 1);
   expect(after.state.slots).toEqual([]);
   expect(after.state.history).toMatchObject([{ kind: "run.started", subject: "r1" }]);
 });

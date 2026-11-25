@@ -10,18 +10,24 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import { connect } from "node:net";
 import { join } from "node:path";
 import {
+  EVENTS_PATH,
   managementSocketPath,
+  parseEventsQuery,
   STATUS_PATH,
   type ApiError,
   type ApiResponse,
   type StatusResult,
 } from "@foundry/protocol/management-api";
+import type { EventSource } from "./events.js";
+import { streamEvents } from "./events-stream.js";
 
 /** What the API reports, injected so the server is independent of where status comes from. */
 export interface ManagementApiInputs {
   readonly stateRoot: string;
   /** Called on every status request, so each answer is current. */
   readonly status: () => StatusResult;
+  /** Durable history for `GET /api/v1/events`; without it the route answers 503. */
+  readonly events?: EventSource;
 }
 
 export interface ManagementApi {
@@ -192,7 +198,9 @@ const clearStaleSocket = async (socketPath: string): Promise<void> => {
 
 const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse): void => {
   request.resume(); // No route reads a body; drain it so the connection stays usable.
-  const path = new URL(request.url ?? "/", "http://foundry").pathname;
+  const url = new URL(request.url ?? "/", "http://foundry");
+  const path = url.pathname;
+  if (path === EVENTS_PATH) return handleEvents(inputs, url, request, response);
   if (path !== STATUS_PATH) {
     return send(response, 404, failure("not_found", `no route for ${request.method} ${path}`));
   }
@@ -207,6 +215,18 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
     return send(response, 500, failure("internal", `status unavailable: ${(error as Error).message}`));
   }
   send(response, 200, { ok: true, result });
+};
+
+const handleEvents = (inputs: ManagementApiInputs, url: URL, request: IncomingMessage, response: ServerResponse): void => {
+  if (request.method !== "GET") {
+    response.setHeader("allow", "GET");
+    return send(response, 405, failure("method_not_allowed", `${EVENTS_PATH} only accepts GET`));
+  }
+  if (inputs.events === undefined) return send(response, 503, failure("unavailable", "events are not available"));
+  const lastEventId = request.headers["last-event-id"];
+  const parsed = parseEventsQuery(url.searchParams, Array.isArray(lastEventId) ? lastEventId[0] : lastEventId);
+  if (!parsed.ok) return send(response, 400, { ok: false, error: parsed.error });
+  streamEvents(inputs.events, parsed.query, request, response);
 };
 
 const failure = (code: string, message: string): ApiResponse<never> => ({ ok: false, error: { code, message } satisfies ApiError });

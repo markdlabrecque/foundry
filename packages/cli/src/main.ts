@@ -8,6 +8,7 @@ import { Argument, CliError, Command, Flag } from "effect/cli";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { EXIT_USAGE, runStatus } from "./status.js";
 import { validateFactoryFile } from "./validate.js";
+import { runEvents } from "./events.js";
 
 const validate = Command.make(
   "validate",
@@ -44,7 +45,40 @@ const status = Command.make(
     }),
 ).pipe(Command.withDescription("Show the running instance's status from the daemon"));
 
-const foundry = Command.make("foundry").pipe(Command.withSubcommands([validate, status]));
+const events = Command.make(
+  "events",
+  {
+    json: Flag.Boolean("json").pipe(Flag.withDefault(false), Flag.withDescription("Print each event's JSON unchanged")),
+    follow: Flag.Boolean("follow").pipe(Flag.withDefault(false), Flag.withDescription("Keep printing new events")),
+    since: Flag.Int("since").pipe(Flag.optional, Flag.withDescription("Only events after this event ID")),
+    ticket: Flag.Int("ticket").pipe(Flag.optional, Flag.withDescription("Only events concerning this ticket")),
+    factory: Flag.String("factory").pipe(Flag.optional, Flag.withDescription("Only events of this factory")),
+    home: Flag.String("home").pipe(
+      Flag.optional,
+      Flag.withDescription("State root of the instance (default: FOUNDRY_HOME, else ~/.foundry)"),
+    ),
+  },
+  ({ json, follow, since, ticket, factory, home }) =>
+    Effect.gen(function* () {
+      const outcome = yield* Effect.promise((signal) =>
+        runEvents({
+          json,
+          follow,
+          since: Option.getOrUndefined(since),
+          ticket: Option.getOrUndefined(ticket),
+          factory: Option.getOrUndefined(factory),
+          home: Option.getOrUndefined(home),
+          env: process.env,
+          write: (line) => void process.stdout.write(`${line}\n`),
+          signal,
+        }),
+      );
+      if (outcome.stderr !== "") process.stderr.write(outcome.stderr);
+      process.exitCode = outcome.exitCode;
+    }),
+).pipe(Command.withDescription("Print durable factory events, optionally following new ones"));
+
+const foundry = Command.make("foundry").pipe(Command.withSubcommands([validate, status, events]));
 
 Command.run(foundry, { version: "0.0.0" }).pipe(
   // effect/cli has already printed the problem and the help; PRD §11.5 makes a usage error exit 2.
