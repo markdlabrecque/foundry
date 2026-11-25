@@ -18,6 +18,7 @@ import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath, runFactorySync } from "./factory.js";
 import { runFactoryList } from "./factories.js";
+import { runWorktreeClean, runWorktreeList } from "./worktrees.js";
 import { runFactoryStop } from "./factory-stop.js";
 import { runShutdown } from "./shutdown.js";
 import { runSlotInterrupt, runSlotList, runSlotShow, runSlotUnfreeze } from "./slots.js";
@@ -379,8 +380,21 @@ const shutdown = Command.make(
     ),
 ).pipe(Command.withDescription("Stop every factory's workers, then the Worker Host, then the daemon"));
 
+const worktreeList = Command.make("list", ticketFlags, ({ json, home, factory }) =>
+  report(() => runWorktreeList({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), env: process.env })),
+).pipe(Command.withDescription("List retained ticket worktrees"));
+
+const worktreeClean = Command.make("clean", { ...ticketFlags, number: Argument.Int("n"),
+  force: Flag.Boolean("force").pipe(Flag.withDefault(false), Flag.withDescription("Discard files and unmerged commits after confirmation; skip before_remove")),
+  yes: Flag.Boolean("yes").pipe(Flag.withDefault(false), Flag.withDescription("Confirm the displayed losses without a prompt")),
+}, ({ json, home, factory, number, force, yes }) =>
+  report(() => runWorktreeClean({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), env: process.env, number, force, yes })),
+).pipe(Command.withDescription("Remove an inactive completed or cancelled ticket's worktree and branch"));
+
+const worktree = Command.make("worktree").pipe(Command.withSubcommands([worktreeList, worktreeClean]));
+
 const foundry = Command.make("foundry").pipe(
-  Command.withSubcommands([validate, status, shutdown, hold, approval, logs, ticket, events, factory, slot, message]),
+  Command.withSubcommands([validate, status, shutdown, hold, approval, logs, ticket, events, factory, slot, message, worktree]),
 );
 
 Command.run(foundry, { version: "0.0.0" }).pipe(

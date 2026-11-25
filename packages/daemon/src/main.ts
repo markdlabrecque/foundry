@@ -24,6 +24,7 @@ import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefus
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
 import { createTicketWorktrees } from "./worktrees.js";
+import { createWorktreeService } from "./worktree-cleanup.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Predicate, Schema, Scope } from "effect";
@@ -685,6 +686,14 @@ const main = async (): Promise<void> => {
       holds: storeHoldsReader(store),
       approvals: storeApprovalsReader(store),
       tickets: createTicketService(ticketOptions),
+      worktrees: createWorktreeService({ store, factories: () => factories.map((f) => f.factoryId),
+        target: (factoryId) => {
+          const factory = factories.find((f) => f.factoryId === factoryId);
+          const clone = clones.get(factoryId);
+
+          return factory === undefined || clone === undefined ? undefined : { factory, clonePath: clone.path };
+        },
+      }),
       messages: createOperatorMessages({ store, factories: () => ticketFactories.map((f) => f.name), slots: plannedSlots }),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,

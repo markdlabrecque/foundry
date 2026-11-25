@@ -16,6 +16,9 @@ import { Cause, Effect, Exit, Option, Schema } from "effect";
 import type { ApprovalsReader } from "./approvals.js";
 import { APPROVALS_PATH } from "@foundry/protocol/approvals";
 import type { HoldsReader } from "./holds.js";
+import { WORKTREES_PATH, WorktreeCleanRequest } from "@foundry/protocol/worktrees-api";
+import type { WorktreeService } from "./worktree-cleanup.js";
+import { TicketError } from "./tickets.js";
 import { HOLDS_PATH } from "@foundry/protocol/holds";
 import { EVENTS_PATH, managementSocketPath, parseEventsQuery, STATUS_PATH } from "@foundry/protocol/management-api";
 import type { ApiError, ApiResponse, StatusResult } from "@foundry/protocol/management-api";
@@ -57,6 +60,7 @@ export interface ManagementApiInputs {
   readonly approvals?: ApprovalsReader;
   /** Serves the ticket routes when given; without it they answer 404. */
   readonly tickets?: TicketService;
+  readonly worktrees?: WorktreeService;
   /** Durable daemon-authored operator acceptance (PRD §11.4). */
   readonly messages?: OperatorMessages;
   /** The dedicated clone path of a loaded factory (PRD §9.1); `undefined` for an unknown one. */
@@ -264,6 +268,8 @@ const clearStaleSocket = async (socketPath: string): Promise<void> => {
 const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse): void => {
   const url = new URL(request.url ?? "/", "http://foundry");
   const path = url.pathname;
+
+  if (path === WORKTREES_PATH || path.startsWith(`${WORKTREES_PATH}/`)) {return handleWorktrees(inputs, request, response, url);}
 
   if (path === MESSAGES_PATH) {return handleOperatorMessage(inputs, request, response);}
 
@@ -727,6 +733,73 @@ const withHolds =
   (inputs: ManagementApiInputs, use: (holds: HoldsReader) => ReturnType<Route>): Route =>
   async () =>
     inputs.holds === undefined ? [503, failure("unavailable", "holds are not served by this daemon")] : use(inputs.holds);
+
+const decodeWorktreeClean = Schema.decodeUnknownOption(Schema.fromJsonString(WorktreeCleanRequest));
+
+const runWorktree = async <A>(effect: Effect.Effect<A, unknown>): Promise<A> => {
+  const exit = await Effect.runPromiseExit(effect);
+
+  if (Exit.isSuccess(exit)) {return exit.value;}
+
+  throw Cause.squash(exit.cause);
+};
+
+const handleWorktrees = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse, url: URL): void => {
+  void (async (): Promise<readonly [number, ApiResponse<unknown>]> => {
+    const service = inputs.worktrees;
+    const rest = url.pathname.slice(WORKTREES_PATH.length);
+    const match = /^\/([1-9][0-9]{0,8})$/.exec(rest);
+    const factory = url.searchParams.get("factory") ?? undefined;
+
+    if (rest !== "" && match === null) {
+      request.resume();
+
+      return [404, failure("not_found", "unknown worktree route")];
+    }
+
+    if (request.method !== "GET" && !(match !== null && request.method === "POST")) {
+      request.resume();
+      response.setHeader("allow", match === null ? "GET" : "GET, POST");
+
+      return [405, failure("method_not_allowed", "worktree list/inspect accepts GET; clean accepts POST")];
+    }
+
+    if (service === undefined) {
+      request.resume();
+
+      return [503, failure("unavailable", "worktrees are not served by this daemon")];
+    }
+
+    if (factory === "") {
+      request.resume();
+
+      return [400, failure("invalid_request", "factory must not be empty")];
+    }
+
+    if (request.method === "GET") {
+      request.resume();
+      const result = await runWorktree<unknown>(match === null ? service.list(factory) : service.inspect(factory, Number(match[1])));
+
+      return [200, { ok: true, result }];
+    }
+
+    const text = await readSmallBody(request, STOP_BODY_LIMIT);
+
+    if (text === undefined) {return [413, failure("payload_too_large", "cleanup body is too large")];}
+
+    const decoded = decodeWorktreeClean(text);
+
+    if (Option.isNone(decoded)) {return [400, failure("invalid_request", "expected a cleanup request with boolean force and string confirmation")];}
+
+    const result = await runWorktree(service.clean(factory, Number(match?.[1]), decoded.value.force ?? false, decoded.value.confirmation));
+
+    return [200, { ok: true, result }];
+  })().then(
+    ([status, body]) => send(response, status, body),
+    (cause: unknown) => send(response, cause instanceof TicketError ? (cause.code === "invalid_state" ? 409 : cause.code === "ticket_not_found" || cause.code === "unknown_factory" ? 404 : 400) : 500,
+      failure(cause instanceof TicketError ? cause.code : "internal", messageOf(cause))),
+  );
+};
 
 const failure = (code: string, message: string): ApiResponse<never> => ({ ok: false, error: { code, message } satisfies ApiError });
 

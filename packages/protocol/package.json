@@ -17,6 +17,10 @@
       "types": "./dist/messages-api.d.ts",
       "default": "./dist/messages-api.js"
     },
+    "./worktrees-api": {
+      "types": "./dist/worktrees-api.d.ts",
+      "default": "./dist/worktrees-api.js"
+    },
     "./tickets-api": {
       "types": "./dist/tickets-api.d.ts",
       "default": "./dist/tickets-api.js"
