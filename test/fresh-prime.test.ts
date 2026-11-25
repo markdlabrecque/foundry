@@ -100,7 +100,7 @@ const serveDaemon = async (primer: Primer) => {
         else {acceptedWaiters.push(resolve);}
       }),
     nextReceipt: (): Promise<AcknowledgeOutcome> =>
-      new Promise((resolve) => receiptWaiters.push((o) => void o.then(resolve))),
+      new Promise((resolve) => { receiptWaiters.push((o) => void o.then(resolve)); }),
   };
 };
 
@@ -122,7 +122,7 @@ const history = () =>
 test("the fresh prime is recorded unacknowledged and reaches the worker before any later frame on that connection", async () => {
   // Composition is held open so a later frame is queued while priming is still in progress.
   let release!: () => void;
-  const held = new Promise<void>((r) => (release = r));
+  const held = new Promise<void>((r) => { release = r; });
 
   const primer = createPrimer({
     store,
@@ -138,7 +138,7 @@ test("the fresh prime is recorded unacknowledged and reaches the worker before a
   const daemon = await serveDaemon(primer);
   const received: Array<DaemonFrame> = [];
   let seenTwo!: () => void;
-  const twoFrames = new Promise<void>((r) => (seenTwo = r));
+  const twoFrames = new Promise<void>((r) => { seenTwo = r; });
   await connect((frame) => {
     received.push(frame);
 
@@ -230,7 +230,7 @@ test("the prime alone starts no turn; once it is in the session file its receipt
   const receipt = daemon.nextReceipt();
   await session.prompt("hello");
   // Bounded, so a missing receipt fails on the history assertion below rather than a vitest timeout.
-  await Promise.race([receipt, new Promise<void>((r) => setTimeout(r, 2000).unref())]);
+  await Promise.race([receipt, new Promise<void>((r) => { setTimeout(r, 2000).unref(); })]);
 
   expect((await conversationPrimes())[0]?.acknowledgedAt).toEqual(expect.any(Number));
   expect((await history()).map((h) => [h.kind, h.subject])).toEqual([

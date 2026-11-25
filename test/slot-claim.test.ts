@@ -86,7 +86,7 @@ test("a hello from the slot's current launch is accepted and its frames speak fo
   // The slot's earlier launch is gone; launch-2 is its current one.
   const claim = createHostSlotClaim({ host: reports([gone("launch-1"), live("launch-2")]) });
   let attributed!: (slot: ClaimedSlot) => void;
-  const firstFrame = new Promise<ClaimedSlot>((resolve) => (attributed = resolve));
+  const firstFrame = new Promise<ClaimedSlot>((resolve) => { attributed = resolve; });
   const { socketPath } = await serve(claim, (slot) => attributed(slot));
 
   const result = await say(socketPath, hello());

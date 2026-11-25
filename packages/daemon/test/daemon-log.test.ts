@@ -138,7 +138,7 @@ test("the foreground daemon writes its run to logs/daemon.log and stderr, and no
   let stderr = "";
   child.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
   child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
-  const exited = new Promise<number | null>((done) => child.on("exit", (code) => done(code)));
+  const exited = new Promise<number | null>((done) => { child.on("exit", (code) => done(code)); });
   await new Promise<void>((done, fail) => {
     child.stdout.on("data", () => stdout.includes("claimed") && done());
     void exited.then((code) => fail(new Error(`daemon exited ${code}: ${stderr}`)));

@@ -44,7 +44,7 @@ test("an interrupt aborts the active run and keeps the launch and conversation",
   dir = await mkdtemp(join(tmpdir(), "foundry-interrupt-"));
   const hellos: Array<string> = [];
   let accepted!: () => void;
-  const connected = new Promise<void>((r) => (accepted = r));
+  const connected = new Promise<void>((r) => { accepted = r; });
   server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: acceptAll,

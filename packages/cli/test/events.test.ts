@@ -107,7 +107,7 @@ test("a one-shot read whose stream drops exits as unreachable instead of retryin
   });
 
   cleanups.push(() => new Promise<void>((done) => { server.closeAllConnections(); server.close(() => done()); }));
-  await new Promise<void>((done) => server.listen(managementSocketPath(home), done));
+  await new Promise<void>((done) => { server.listen(managementSocketPath(home), done); });
 
   const dropped = await run(home);
   expect(dropped.exitCode).toBe(EXIT_UNREACHABLE);

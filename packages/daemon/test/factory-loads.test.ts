@@ -105,7 +105,7 @@ const startDaemon = (home: string, files: ReadonlyArray<string>, env: Record<str
   child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
 
   const exited = new Promise<{ code: number | null; stdout: string; stderr: string }>((done) =>
-    child.on("exit", (code) => done({ code, stdout, stderr })),
+    { child.on("exit", (code) => done({ code, stdout, stderr })); },
   );
 
   const serving = new Promise<void>((done, fail) => {

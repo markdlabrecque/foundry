@@ -36,7 +36,7 @@ const fakeRun = (interrupter: RunInterrupter, active: boolean) => {
   let running = active;
   let aborts = 0;
   let aborted!: () => void;
-  const abortedOnce = new Promise<void>((r) => (aborted = r));
+  const abortedOnce = new Promise<void>((r) => { aborted = r; });
 
   const control: RunControl = {
     isIdle: () => !running,
@@ -55,7 +55,7 @@ const fakeRun = (interrupter: RunInterrupter, active: boolean) => {
 };
 
 /** Let every pending promise callback and socket write queued so far run. */
-const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+const tick = () => new Promise<void>((resolve) => { setImmediate(resolve); });
 
 let dir: string;
 let server: ChannelServer | undefined;
@@ -108,7 +108,7 @@ test("an interrupt is acknowledged only after the aborted run settles, once, on 
   interrupter.bind(run.control);
   const frames: Array<WorkerFrame> = [];
   let heartbeatSeen!: () => void;
-  const heartbeat = new Promise<void>((r) => (heartbeatSeen = r));
+  const heartbeat = new Promise<void>((r) => { heartbeatSeen = r; });
   const { server, channel, accepted } = await connect(interrupter, frames, () => heartbeatSeen());
 
   let resolved = false;

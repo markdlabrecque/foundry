@@ -218,7 +218,7 @@ const startDaemon = (home: string, ...files: Array<string>): Promise<ChildProces
 };
 
 const stop = async (child: ChildProcess): Promise<number | null> => {
-  const exited = new Promise<number | null>((done) => child.on("exit", done));
+  const exited = new Promise<number | null>((done) => { child.on("exit", done); });
   child.kill("SIGTERM");
 
   return exited;

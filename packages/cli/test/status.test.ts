@@ -62,7 +62,7 @@ test("foundry status shows the running daemon's instance, and --json prints the 
   expect(json.exitCode).toBe(EXIT_OK);
   expect(JSON.parse(json.stdout)).toMatchObject({ ok: true, result: { instance: { stateRoot: home, daemonPid: daemon.pid } } });
 
-  const exited = new Promise<number | null>((done) => daemon.on("exit", done));
+  const exited = new Promise<number | null>((done) => { daemon.on("exit", done); });
   daemon.kill("SIGTERM");
   expect(await exited).toBe(0);
 

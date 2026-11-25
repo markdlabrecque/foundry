@@ -40,7 +40,7 @@ const startDaemon = (home: string) => {
   child.stderr.on("data", (chunk: Buffer) => (stderr += chunk.toString()));
 
   const exited = new Promise<{ code: number | null; stderr: string }>((done) =>
-    child.on("exit", (code) => done({ code, stderr })),
+    { child.on("exit", (code) => done({ code, stderr })); },
   );
 
   const claimed = new Promise<void>((done, fail) => {
@@ -77,7 +77,7 @@ test("a second daemon cannot take the state root while the first owns it", async
 
 const deadPid = async (): Promise<number> => {
   const dead = spawn(process.execPath, ["-e", ""]);
-  await new Promise((done) => dead.on("exit", done));
+  await new Promise((done) => { dead.on("exit", done); });
 
   return dead.pid!;
 };

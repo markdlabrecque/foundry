@@ -46,7 +46,7 @@ async function waitForFile(path: string, timeoutMs = 5000): Promise<string> {
     } catch (error) {
       if (Date.now() >= deadline) {throw error;}
 
-      await new Promise((resolve) => setTimeout(resolve, 20));
+      await new Promise((resolve) => { setTimeout(resolve, 20); });
     }
   }
 }
@@ -118,9 +118,9 @@ test("terminating a launch ends its whole group, non-detached child included, wh
 
   // The host writes any stderr file before it reports the exit, so the report bounds the check below.
   const targetExited = new Promise<LaunchRecord>((resolve) =>
-    control.onLaunchExited((l) => {
+    { control.onLaunchExited((l) => {
       if (l.launchId === target.launchId) {resolve(l);}
-    }),
+    }); },
   );
 
   // Both members ignore SIGTERM, so ending the group takes escalation.

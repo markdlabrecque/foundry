@@ -28,7 +28,11 @@ export default function interruptWorker(pi: ExtensionAPI): void {
     parameters: Type.Object({}),
     async execute(_id, _params, signal) {
       await new Promise<void>((resolve) => {
-        if (!signal || signal.aborted) {return resolve();}
+        if (!signal || signal.aborted) {
+          resolve();
+
+          return;
+        }
 
         signal.addEventListener("abort", () => resolve(), { once: true });
       });

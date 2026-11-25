@@ -31,7 +31,7 @@ const busyPi = () => {
   return { pi, state, interrupter };
 };
 
-const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
+const tick = () => new Promise<void>((resolve) => { setImmediate(resolve); });
 
 const track = <T>(promise: Promise<T>) => {
   const seen: { value?: T } = {};

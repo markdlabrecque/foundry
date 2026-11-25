@@ -103,7 +103,7 @@ test("the host owns a launched process group through launch and exit, across a l
   expect(isAlive(launched.pid)).toBe(true);
 
   // The launch exits on its own; the host reports the exit as its owner.
-  const exited = new Promise<LaunchRecord>((resolve) => second.onLaunchExited(resolve));
+  const exited = new Promise<LaunchRecord>((resolve) => { second.onLaunchExited(resolve); });
   await writeFile(join(launchDir, "release"), "");
   const reported = await exited;
   expect(reported).toMatchObject({ launchId: launched.launchId, liveness: "gone", exit: { code: 7, signal: null } });

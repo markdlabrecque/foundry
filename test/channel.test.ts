@@ -51,7 +51,7 @@ const manualTimer = () => {
 
   /** Resolves once the deadline has been armed at least `count` times. */
   const armed = (count: number): Promise<void> =>
-    arms >= count ? Promise.resolve() : new Promise((resolve) => waiters.push({ count, resolve }));
+    arms >= count ? Promise.resolve() : new Promise((resolve) => { waiters.push({ count, resolve }); });
 
   return { timer, fire: () => pending?.(), arms: () => arms, armed };
 };

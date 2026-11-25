@@ -196,7 +196,7 @@ test("a row committed while a followed replay is being read is sent once, in seq
 test("a client that disconnects from a followed stream stops listening for commits", async () => {
   let live = 0;
   let released: () => void = () => {};
-  const unsubscribed = new Promise<void>((resolve) => (released = resolve));
+  const unsubscribed = new Promise<void>((resolve) => { released = resolve; });
 
   const { socketPath } = await serveStore((source) => ({
     ...source,

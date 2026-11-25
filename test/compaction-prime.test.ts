@@ -76,7 +76,7 @@ const primeRequest = (): Omit<PrimeRequest, "situation"> => ({
 /** A promise with its resolver, for stepping the journey by hand. */
 const signal = <A = void>() => {
   let resolve!: (value: A) => void;
-  const promise = new Promise<A>((r) => (resolve = r));
+  const promise = new Promise<A>((r) => { resolve = r; });
 
   return { promise, resolve };
 };
@@ -85,7 +85,7 @@ const signal = <A = void>() => {
 const within = <A>(step: string, promise: Promise<A>): Promise<A> =>
   Promise.race([
     promise,
-    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out waiting for ${step}`)), 2000).unref()),
+    new Promise<never>((_, reject) => { setTimeout(() => reject(new Error(`timed out waiting for ${step}`)), 2000).unref(); }),
   ]);
 
 const conversationPrimes = () => Effect.runPromise(primesForConversation(store, "f1", "builder-1", "conv-1"));
@@ -173,7 +173,7 @@ test("a compaction prime reaches the same launch's conversation at the next tool
   channels.push(opened.channel);
 
   const deliveredCount = (count: number) =>
-    new Promise<void>((resolve) => (delivered.length >= count ? resolve() : deliveredWaiters.push({ count, resolve })));
+    new Promise<void>((resolve) => { delivered.length >= count ? resolve() : deliveredWaiters.push({ count, resolve }); });
 
   const reporter = new CompactionReporter();
   reporter.attach(opened.channel);

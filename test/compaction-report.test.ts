@@ -79,7 +79,7 @@ test("compactions while the channel is down are reported exactly once after reco
   });
 
   const nextEnd = () => {
-    const wait = new Promise<void>((r) => ended.push(r));
+    const wait = new Promise<void>((r) => { ended.push(r); });
     endedWaits.push(wait);
 
     return wait;
@@ -114,11 +114,11 @@ test("compactions while the channel is down are reported exactly once after reco
   pi.emit("session_compact");
 
   // Reconnect: the held report goes out on the new channel.
-  const reported = new Promise<void>((r) => compactedSeen.push(r));
+  const reported = new Promise<void>((r) => { compactedSeen.push(r); });
   const second = await open();
   reporter.attach(second);
   // Bounded, so a missing report fails on the frame diff below rather than a vitest timeout.
-  await Promise.race([reported, new Promise<void>((r) => setTimeout(r, 2000).unref())]);
+  await Promise.race([reported, new Promise<void>((r) => { setTimeout(r, 2000).unref(); })]);
 
   // Closing flushes the stream in order, so every frame sent before it has arrived.
   const secondEnded = nextEnd();

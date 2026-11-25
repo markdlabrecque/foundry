@@ -26,7 +26,7 @@ const fakeChannel = (fail = false) => {
 };
 
 /** Let pending promise callbacks run; a reporter that spins on microtasks never gets past this. */
-const settle = () => new Promise<void>((resolve) => setImmediate(resolve));
+const settle = () => new Promise<void>((resolve) => { setImmediate(resolve); });
 
 test("a send that fails before the channel reports closed is kept for the next channel, not retried", async () => {
   const reporter = new CompactionReporter();
