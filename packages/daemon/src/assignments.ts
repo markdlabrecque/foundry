@@ -158,6 +158,19 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
             break;
           }
 
+          if (slot.station.isolation === 'worktree' && factory.config.worktrees?.after_create !== undefined) {
+            const hooks = yield* change.query<{ status: string }>(
+              `SELECT status FROM operation WHERE factory_id = ? AND ticket_number = ? AND kind = 'hook'
+               AND json_extract(intent, '$.hook') = 'after_create'
+               AND json_extract(intent, '$.operation') = 'worktree_create'
+               AND json_extract(intent, '$.path') = ? ORDER BY id DESC LIMIT 1`,
+              [ticket.factory_id, ticket.number, ticket.worktree_path],
+            );
+
+            // Missing, running, failed or interrupted setup is never assignment-ready.
+            if (hooks[0]?.status !== 'complete') {continue;}
+          }
+
           const id = randomUUID();
           const now = yield* Clock.currentTimeMillis;
 
@@ -236,7 +249,24 @@ export const watchAssignments = (
   options: AssignmentSchedulerOptions,
   onError: (error: Error) => void,
 ): (() => Promise<void>) => {
-  const scheduler = createAssignmentScheduler(options);
+  const preparations = new Map<string, { controller: AbortController; done: Promise<void> }>();
+  const prepare = options.prepareWorktree;
+
+  const backgroundPrepare = (ticket: QueuedTicket) => Effect.sync(() => {
+      const key = JSON.stringify([ticket.factory_id, ticket.number]);
+
+      if (prepare === undefined || preparations.has(key) || stopped) {return;}
+
+      const controller = new AbortController();
+
+      const done = Effect.runPromiseExit(prepare(ticket), { signal: controller.signal }).then((exit) => {
+        if (!stopped && Exit.isFailure(exit)) {onError(new Error(Cause.pretty(exit.cause)));}
+      }).finally(() => { preparations.delete(key); });
+
+      preparations.set(key, { controller, done });
+    });
+
+  const scheduler = createAssignmentScheduler(prepare === undefined ? options : { ...options, prepareWorktree: backgroundPrepare });
   let stopped = false;
   let dirty = false;
   let running: Promise<void> | undefined;
@@ -266,5 +296,15 @@ export const watchAssignments = (
   const unreserve = onAssignmentSlotReleased(options.store, wake);
   wake();
 
-  return async () => { stopped = true; unsubscribe(); unreserve(); await running; };
+  return async () => {
+    stopped = true;
+    unsubscribe();
+    unreserve();
+    await running;
+    const pending = [...preparations.values()];
+
+    for (const preparation of pending) {preparation.controller.abort();}
+
+    await Promise.all(pending.map((preparation) => preparation.done));
+  };
 };
