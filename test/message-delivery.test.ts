@@ -5,9 +5,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import { acknowledgeMessage, createMessageDelivery, createPrimer, openSlotGate, openStore, raiseHold, startChannelServer } from "@foundry/daemon";
+import { acknowledgeMessage, createMessageDelivery, createPrimer, createReconciler, openSlotGate, openStore, raiseHold, startChannelServer } from "@foundry/daemon";
 import type { ChannelServer, Store } from "@foundry/daemon";
-import { openChannel } from "@foundry/extension";
+import { createConversationAdapter, openChannel, receiveDaemonFrames } from "@foundry/extension";
+import type { AgentSession } from "@earendil-works/pi-coding-agent";
+import { startFauxSession } from "@foundry/testkit";
 import type { OpenChannel } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { DaemonFrame, Hello } from "@foundry/protocol";
@@ -22,6 +24,7 @@ let scope: Scope.Closeable;
 let store: Store;
 let delivery: ReturnType<typeof createMessageDelivery>;
 let server: ChannelServer | undefined;
+let session: AgentSession | undefined;
 const clients: Array<OpenChannel> = [];
 const errors: Array<unknown> = [];
 const noop = () => {};
@@ -40,6 +43,8 @@ afterEach(async () => {
   await server?.close();
   server = undefined;
   await delivery.stop();
+  session?.dispose();
+  session = undefined;
   await Effect.runPromise(Scope.close(scope, Exit.void));
   await rm(dir, { recursive: true, force: true });
 });
@@ -151,6 +156,147 @@ test("bound messages go in acceptance order without waiting for receipts; commit
   // Database attempt cardinality proves no extra writes without a negative socket timeout.
   expect(await attempts()).toHaveLength(3);
   expect(errors).toEqual([]);
+});
+
+test("reconnect compares a lost receipt and a held copy against real Pi without reinjecting either", async () => {
+  let dispatch: ReturnType<typeof receiveDaemonFrames> | undefined;
+  let settled!: () => void;
+  const completed = new Promise<void>((resolve) => { settled = resolve; });
+  session = await startFauxSession({ root: dir, extensionFactories: [(pi) => {
+    const adapter = createConversationAdapter(pi, { onReceipt: noop }); // Deliberately lose every receipt.
+    dispatch = receiveDaemonFrames({ adapter, interrupter: { handle: noop, handleDrain: noop } });
+    pi.on("agent_settled", () => settled());
+  }] });
+  await seed(1);
+  await seed(2, "when_idle");
+  const reconciler = createReconciler(store);
+
+  const primer = createPrimer({ store, primeRequest: () => ({ address: "eng.builder", slotId: slot.slotId,
+    isolation: "worktree", instructions: [], knowledgeRoot: join(dir, "knowledge"), baseDir: dir }) });
+
+  let attached!: () => void;
+  let attachment = new Promise<void>((resolve) => { attached = resolve; });
+  const comparisons: Array<Awaited<ReturnType<typeof reconciler.reconcile>>> = [];
+  const frames: Array<DaemonFrame> = [];
+  let delivered!: () => void;
+  const newWork = new Promise<void>((resolve) => { delivered = resolve; });
+
+  const start = () => startChannelServer({ socketPath: join(dir, "channel.sock"),
+    slotClaim: { claim: async () => ({ accepted: true as const, slot }) },
+    onAccepted: (claimed, greeting, connection) => {
+      void reconciler.reconcile(claimed, greeting, connection).then(async (comparison) => {
+        comparisons.push(comparison);
+        const primed = primer.prime(claimed, greeting, connection);
+        await primed.outcome;
+        delivery.attach(claimed, primed.connection);
+        attached();
+      }).catch((cause: unknown) => errors.push(cause));
+    },
+    onFrame: (claimed, frame) => {
+      if (frame.type === "reconciliation_answer") {reconciler.receive(claimed, frame);}
+    },
+  });
+
+  const connect = async () => {
+    const opened = await openChannel({ socketPath: join(dir, "channel.sock"), hello, onFrame: (frame, channel) => {
+      frames.push(frame);
+      dispatch?.(frame, channel);
+
+      if (frame.type === "message" && frame.id === "m3") {delivered();}
+    } });
+
+    if (!opened.accepted) {throw new Error("fixture hello refused");}
+
+    clients.push(opened.channel);
+
+    return opened.channel;
+  };
+
+  server = await start();
+  const first = await connect();
+  await attachment;
+  await completed;
+  await delivery.idle();
+  first.close();
+  await server.close();
+  server = undefined;
+  await seed(3);
+  attachment = new Promise<void>((resolve) => { attached = resolve; });
+  server = await start();
+  await connect();
+  await attachment;
+  await delivery.idle();
+  await newWork;
+  expect(comparisons[1]).toMatchObject({ history: expect.arrayContaining(["m1"]), pending: ["m2"], absent: [] });
+  expect(comparisons[1]?.history).toHaveLength(2); // Previously sent prime is recoverable too.
+  expect(await state()).toMatchObject([{ status: "acknowledged" }, { status: "sent" }, { status: "sent" }]);
+  expect(await Effect.runPromise(store.read(`SELECT acknowledged_at FROM prime`))).toEqual([{ acknowledged_at: expect.any(Number) }]);
+  expect(await attempts()).toHaveLength(3);
+  expect(frames.filter((frame) => frame.type === "message" && frame.id === "m1")).toHaveLength(1);
+  expect(frames.filter((frame) => frame.type === "message" && frame.id === "m2")).toHaveLength(1);
+  expect(frames.filter((frame) => frame.type === "prime")).toHaveLength(1);
+  expect(frames.findIndex((frame) => frame.type === "reconcile")).toBeLessThan(
+    frames.findIndex((frame) => frame.type === "message" && frame.id === "m3"));
+  expect(errors).toEqual([]);
+});
+
+test("replacement-launch history acknowledges old attempts; invalid answers, absence and closure never replay", async () => {
+  await seed(1);
+  await seed(2);
+  delivery.attach(slot, { send: async () => {} });
+  await delivery.idle();
+  const reconciler = createReconciler(store);
+  let requested!: () => void;
+  const sent = new Promise<void>((resolve) => { requested = resolve; });
+  let requestId = "";
+  let closed!: () => void;
+  const ended = new Promise<void>((resolve) => { closed = resolve; });
+
+  const replacement = { ...slot, launchId: "replacement" };
+  expect(await Effect.runPromise(acknowledgeMessage(store, replacement, "m2"))).toBe(false);
+
+  const comparison = reconciler.reconcile(replacement, { ...hello, launchId: replacement.launchId }, { closed: ended, send: async (frame) => {
+    if (frame.type !== "reconcile") {throw new Error("expected comparison");}
+
+    requestId = frame.requestId;
+    requested();
+  } });
+
+  await sent;
+
+  const valid = { type: "reconciliation_answer" as const, requestId,
+    answers: [{ id: "m1", status: "absent" as const }, { id: "m2", status: "history" as const }] };
+
+  reconciler.receive(slot, valid);
+  reconciler.receive({ ...replacement, slotId: "wrong" }, valid);
+  reconciler.receive({ ...replacement, factoryId: "wrong" }, valid);
+  reconciler.receive(replacement, { ...valid, answers: [] });
+  reconciler.receive(replacement, { ...valid, answers: [{ id: "unknown", status: "history" }, valid.answers[0]!] });
+  reconciler.receive(replacement, { ...valid, answers: [valid.answers[0]!, valid.answers[0]!] });
+  reconciler.receive(replacement, valid);
+  expect(await comparison).toEqual({ history: ["m2"], pending: [], absent: ["m1"] });
+  expect(await state()).toEqual([{ id: "m1", status: "sent", acknowledged_at: null },
+    { id: "m2", status: "acknowledged", acknowledged_at: expect.any(Number) }]);
+  expect(await attempts()).toEqual([{ message_id: "m1", acknowledged_at: null },
+    { message_id: "m2", acknowledged_at: expect.any(Number) }]);
+  expect(await Effect.runPromise(store.read(`SELECT subject FROM history WHERE kind = 'message.acknowledged'`))).toEqual([{ subject: "m2" }]);
+  const interrupted = reconciler.reconcile(slot, hello, { closed: ended, send: async () => { closed(); } });
+  await expect(interrupted).rejects.toThrow("channel ended during reconciliation");
+  let staleRequest = "";
+  await expect(reconciler.reconcile(slot, hello, { send: async (frame) => {
+    if (frame.type === "reconcile") {staleRequest = frame.requestId;}
+
+    throw new Error("fixture send failed");
+  } })).rejects.toThrow("fixture send failed");
+  reconciler.receive(slot, { type: "reconciliation_answer", requestId: staleRequest, answers: [{ id: "m1", status: "history" }] });
+
+  const later = await reconciler.reconcile(slot, hello, { send: async (frame) => {
+    if (frame.type === "reconcile") {
+      reconciler.receive(slot, { type: "reconciliation_answer", requestId: frame.requestId, answers: [{ id: "m1", status: "pending" }] });
+    }
+  } });
+
+  expect(later).toEqual({ history: [], pending: ["m1"], absent: [] });
 });
 
 test("a failed channel write leaves a recorded unacknowledged attempt and never retries on that connection", async () => {
