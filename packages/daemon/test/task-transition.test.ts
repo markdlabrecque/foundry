@@ -12,6 +12,7 @@ import {
 } from "@foundry/daemon";
 import type { Migration, SqlValue, Store } from "@foundry/daemon";
 import { HUMAN_REQUEST, TASK_TRANSITION } from "@foundry/protocol";
+import { expectDefined } from "@foundry/protocol/errors";
 import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow, runTicketCancel } from "@foundry/cli";
 import { git as fixtureGit, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { FactoryConfig } from "../src/config/schema.js";
@@ -1223,7 +1224,7 @@ test("final approval wakes the durable integration queue after commit", async ()
 
 // Reuse the gate fixture: this boundary test includes worker outcome, operator approval,
 // durable queue reopen and real Git; no daemon, HTTP or production state is needed.
-test.each(["complete", "merge", "cleanup-dirty", "cleanup-hook-failed", "moved", "dirty", "cancelled", "merge-error", "stale"] as const)("approved integration: %s", async (scenario) => {
+test.each(["complete", "merge", "cleanup-dirty", "cleanup-hook-failed", "moved", "conflict", "conflict-limit", "dirty", "cancelled", "merge-error", "stale"] as const)("approved integration: %s", async (scenario) => {
   const saved = await gateFixture(true, true, (store, id, root, base, gatedConfig) => Effect.gen(function* () {
     const repository = join(root, "repository");
     const path = join(root, "worktree");
@@ -1271,8 +1272,15 @@ test.each(["complete", "merge", "cleanup-dirty", "cleanup-hook-failed", "moved",
 
     const branchHead = git(path, "rev-parse", "HEAD");
 
-    if (scenario === "moved") {
-      writeFileSync(join(repository, "default.txt"), "concurrent\n");
+    if (scenario === "conflict-limit") {
+      yield* store.change((change) => Effect.gen(function* () {
+        yield* change.query(`UPDATE ticket SET rejections = rejection_ceiling - 1`);
+        yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "near limit" });
+      }));
+    }
+
+    if (scenario === "moved" || scenario === "conflict" || scenario === "conflict-limit") {
+      writeFileSync(join(repository, scenario === "moved" ? "default.txt" : "reviewed.txt"), "concurrent\n");
       git(repository, "add", ".");
       git(repository, "commit", "--quiet", "-m", "default advanced");
     } else if (scenario === "dirty") {
@@ -1296,13 +1304,19 @@ test.each(["complete", "merge", "cleanup-dirty", "cleanup-hook-failed", "moved",
       worktrees: { before_remove: scenario === "cleanup-hook-failed" ? ["sh", "-c", "exit 19"] : undefined },
     }));
 
-    return { root, repository, path, source, sourceRefs, base, approved, branchHead, yamlFile, previousHead: git(repository, "rev-parse", "main") };
+    return { root, repository, path, source, sourceRefs, base, approved, branchHead, yamlFile, gatedConfig, previousHead: git(repository, "rev-parse", "main") };
   }));
 
   // Reopen before consuming: approved integration is not an in-memory callback.
   await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
     const env = isolatedGitEnv();
+
+    // The daemon must not depend on an operator's configured identity.
+    for (const key of ["GIT_AUTHOR_NAME", "GIT_AUTHOR_EMAIL", "GIT_COMMITTER_NAME", "GIT_COMMITTER_EMAIL", "EMAIL"]) {
+      delete env[key];
+    }
+
     let queueError = "";
 
     if (scenario === "merge-error") {
@@ -1333,7 +1347,7 @@ exit "$status"
     const worktrees = createWorktreeService({ store, stateRoot: saved.root, env, factories: () => ["shop"],
       target: () => ({ factory, clonePath: saved.repository }) });
 
-    const queue = createFactorySyncer({ store, env, worktrees, target: () => ({ clonePath: saved.repository, defaultBranch: "main" }),
+    const queue = createFactorySyncer({ store, env, worktrees, target: () => ({ clonePath: saved.repository, defaultBranch: "main", config: saved.gatedConfig }),
       onError: (_factory, cause) => { queueError = String(cause); } });
 
     yield* Effect.promise(() => queue.resumeQueued("shop"));
@@ -1363,10 +1377,36 @@ exit "$status"
     ...(scenario === "cleanup-hook-failed" ? [{ kind: "hook", status: "failed" }] : [])]);
     expect(yield* store.read(`SELECT state, status, worktree_path, branch FROM ticket`)).toEqual([{
       state: complete ? "completed" : scenario === "cancelled" ? "cancelled" : "stage",
-      status: complete || scenario === "cancelled" ? null : "paused", worktree_path: removed ? null : saved.path, branch: removed ? null : "ticket/1",
+      status: complete || scenario === "cancelled" ? null : scenario === "conflict" ? "queued" : "paused", worktree_path: removed ? null : saved.path, branch: removed ? null : "ticket/1",
     }]);
 
     if (!complete) {expect(landed).toBe(saved.previousHead);}
+
+    const service = createTicketService({ store, stateRoot: saved.root, factories: () => [ticketFactoryFrom(saved.gatedConfig)] });
+    const detail = yield* service.show("shop", 1);
+    expect(detail.transitions.at(-1)?.evidence).toEqual(scenario === "conflict" || scenario === "conflict-limit" ? ["reviewed.txt"] : []);
+
+    if (scenario === "conflict" || scenario === "conflict-limit") {
+      expect(yield* listOperations(store, "shop")).toMatchObject([{ status: "failed", result: {
+        previousHead: saved.previousHead, approvedCommit: saved.approved, conflictingFiles: ["reviewed.txt"], reason: "Merge conflict in: reviewed.txt",
+      } }]);
+      expect(yield* store.read(`SELECT stage, rejections, rejection_ceiling FROM ticket`)).toMatchObject([{
+        stage: "revise", rejections: scenario === "conflict" ? 1 : 3,
+      }]);
+      expect(yield* store.read(`SELECT outcome, reason FROM ticket_transition ORDER BY sequence DESC LIMIT 1`))
+        .toEqual([{ outcome: "rejected", reason: "Merge conflict in: reviewed.txt" }]);
+      expect(yield* store.read(`SELECT * FROM integration_intent`)).toEqual([]);
+      expect(git(saved.repository, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(2);
+      expect(git(saved.repository, "status", "--porcelain")).toBe("");
+
+      if (scenario === "conflict-limit") {
+        const reader = storeApprovalsReader(store);
+        const listed = yield* Effect.promise(() => reader.list());
+        expect(listed.approvals).toMatchObject([{ kind: "limit_reached", state: "open", evidence: ["reviewed.txt"] }]);
+        const approval = expectDefined(listed.approvals[0], "limit approval");
+        expect(yield* Effect.promise(() => reader.show(approval.id))).toMatchObject({ approval: { evidence: ["reviewed.txt"] } });
+      }
+    }
 
     expect(existsSync(saved.path)).toBe(!removed);
 

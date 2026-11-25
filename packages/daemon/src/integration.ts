@@ -1,16 +1,19 @@
 /** Exact-SHA integration for the unchanged-default path (PRD §9.3–4).
- * Moved-default verification/conflict handling and worktree cleanup have separate owners.
+ * Moved-default conflicts are rejected from a disposable worktree. Clean moved-default
+ * verification and completed-ticket worktree cleanup have separate owners.
  * Returns whether completion committed; the queue can then clean up after releasing Git locks.
  * No fetch, push, ticket-branch rewrite, or cleanup runs here.
  */
-import { closeSync, mkdirSync, openSync, unlinkSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { closeSync, mkdirSync, mkdtempSync, openSync, rmSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { ticketApprovalLock } from "./approval-coordination.js";
 import { Clock, Data, Effect, Schema } from "effect";
-import { messageOf } from "@foundry/protocol/errors";
+import { expectDefined, messageOf } from "@foundry/protocol/errors";
 import { runCloneGit } from "./factory-clone.js";
 import type { SyncTarget } from "./factory-sync.js";
 import { ticketRecord } from "./history-records.js";
+import { outcomeRoute } from "./outcome-route.js";
 import { extendOperationIntent, recordOperationResult } from "./operations.js";
 import type { Operation, OperationDetail, OperationOutcome } from "./operations.js";
 import type { Store, StoreError } from "./store.js";
@@ -19,6 +22,9 @@ class IntegrationRefused extends Data.TaggedError("IntegrationRefused")<{ readon
 
 interface IntegrationTicket {
   readonly state: string;
+  readonly production_line: string;
+  readonly rejections: number;
+  readonly rejection_ceiling: number;
   readonly stage: string;
   readonly status: string;
   readonly start_commit: string | null;
@@ -42,7 +48,7 @@ export const integrateApprovedCommit = (
   const git = (args: ReadonlyArray<string>) => integrationGit(clonePath, env, args);
 
   const rows = yield* store.read<IntegrationTicket>(
-    `SELECT t.state, t.stage, t.status, t.start_commit, t.branch, i.approved_commit
+    `SELECT t.state, t.production_line, t.rejections, t.rejection_ceiling, t.stage, t.status, t.start_commit, t.branch, i.approved_commit
      FROM ticket t JOIN integration_intent i ON i.factory_id = t.factory_id AND i.ticket_number = t.number
      JOIN approval a ON a.id = i.approval_id
      WHERE t.factory_id = ? AND t.number = ? AND i.approval_id = ? AND a.decision = 'approved'`,
@@ -85,6 +91,45 @@ export const integrateApprovedCommit = (
     yield* extendOperationIntent(store, operation.id, { ...recorded, defaultBranch: target.defaultBranch });
 
     if (previousHead !== ticket.start_commit) {
+      // A detached scratch checkout keeps both named branches and their worktrees untouched.
+      // Disable rerere: a remembered resolution must not conceal conflicting-file evidence.
+      const conflictingFiles = yield* Effect.scoped(Effect.gen(function* () {
+        const directory = yield* Effect.acquireRelease(
+          Effect.sync(() => mkdtempSync(join(tmpdir(), "foundry-integration-"))),
+          (path) => Effect.sync(() => rmSync(path, { recursive: true, force: true })),
+        );
+
+        const path = join(directory, "merge");
+        yield* Effect.acquireRelease(
+          git(["worktree", "add", "--detach", path, previousHead]),
+          () => git(["worktree", "remove", "--force", path]).pipe(Effect.orDie),
+        );
+        const scratchGit = (args: ReadonlyArray<string>) => integrationGit(path, env, args);
+
+        const merged = yield* scratchGit(["-c", "user.name=Foundry", "-c", "user.email=foundry@foundry.invalid",
+          "-c", "rerere.enabled=false", "-c", "rerere.autoupdate=false",
+          "merge", "--no-commit", "--no-ff", "--no-gpg-sign", approved]).pipe(Effect.as(undefined), Effect.catchTag("IntegrationRefused", (error) => Effect.succeed(error)));
+
+        const files = yield* Effect.tryPromise({
+          try: () => runCloneGit(["diff", "--name-only", "--diff-filter=U", "-z"], env, path, true),
+          catch: (cause) => new IntegrationRefused({ reason: messageOf(cause) }),
+        });
+
+        const conflicts = files.split("\u0000").filter((file) => file !== "");
+
+        if (merged !== undefined && conflicts.length === 0) {return yield* merged;}
+
+        if (conflicts.length > 0) {yield* scratchGit(["merge", "--abort"]);}
+
+        return conflicts;
+      }));
+
+      if (conflictingFiles.length > 0) {
+        recorded = { ...recorded, conflictingFiles };
+
+        return yield* new IntegrationRefused({ reason: `Merge conflict in: ${conflictingFiles.join(", ")}` });
+      }
+
       return yield* new IntegrationRefused({ reason: "default branch moved; integration requires moved-default verification" });
     }
 
@@ -151,16 +196,42 @@ export const integrateApprovedCommit = (
     if (ticket === undefined || current?.stage !== ticket.stage || current.approved_commit !== ticket.approved_commit) {return false;}
 
     const complete = outcome.status === "complete";
+    const conflict = Array.isArray(outcome.result["conflictingFiles"]);
+    const stages = target.config?.production_lines[ticket.production_line]?.stages ?? [];
+    const rejectedStage = conflict ? outcomeRoute(stages, ticket.stage, "rejected") : undefined;
+    const nextStage = rejectedStage ?? ticket.stage;
+    const limitReached = conflict && ticket.rejections + 1 >= ticket.rejection_ceiling;
+    const nextStatus = conflict && rejectedStage !== undefined && !limitReached ? "queued" : "paused";
     const now = yield* Clock.currentTimeMillis;
+
+    if (conflict) {
+      yield* change.query(`UPDATE ticket SET rejections = rejections + 1 WHERE factory_id = ? AND number = ?`, [operation.factoryId, operation.ticket]);
+      yield* change.query(`DELETE FROM integration_intent WHERE approval_id = ?`, [intent.approvalId]);
+    }
+
     yield* change.query(`UPDATE ticket SET state = ?, stage = ?, status = ? WHERE factory_id = ? AND number = ?`,
-      [complete ? "completed" : "stage", complete ? null : ticket.stage, complete ? null : "paused", operation.factoryId, operation.ticket]);
-    yield* change.query(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
-      from_state, from_stage, from_status, to_state, to_stage, to_status, reason, git_commit)
-      VALUES (?, ?, ?, 'daemon', 'stage', ?, 'awaiting_approval', ?, ?, ?, ?, ?)`,
+      [complete ? "completed" : "stage", complete ? null : nextStage, complete ? null : nextStatus, operation.factoryId, operation.ticket]);
+
+    const transitions = yield* change.query<{ sequence: number }>(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
+      from_state, from_stage, from_status, to_state, to_stage, to_status, reason, git_commit, outcome, evidence)
+      VALUES (?, ?, ?, 'daemon', 'stage', ?, 'awaiting_approval', ?, ?, ?, ?, ?, ?, ?) RETURNING sequence`,
       [operation.factoryId, operation.ticket, now, ticket.stage, complete ? "completed" : "stage",
-        complete ? null : ticket.stage, complete ? null : "paused", complete ? "Integrated approved commit" : String(outcome.result["reason"]), ticket.approved_commit]);
+        complete ? null : nextStage, complete ? null : nextStatus, complete ? "Integrated approved commit" : String(outcome.result["reason"]), ticket.approved_commit,
+        conflict ? "rejected" : null, JSON.stringify(conflict ? outcome.result["conflictingFiles"] : [])]);
+
+    if (conflict && nextStatus === "paused") {
+      const transition = expectDefined(transitions[0], "integration rejection transition").sequence;
+
+      const approvals = yield* change.query<{ id: number }>(`INSERT INTO approval (factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at)
+        SELECT factory_id, ticket_number, assignment_id, ?, ?, 'open', ? FROM approval WHERE id = ? RETURNING id`,
+        [transition, limitReached ? "limit_reached" : "blocked", now, intent.approvalId]);
+
+      yield* change.recordHistory({ factoryId: operation.factoryId, kind: "approval.requested", subject: String(expectDefined(approvals[0], "integration rejection approval").id),
+        detail: { kind: limitReached ? "limit_reached" : "blocked", ticket: operation.ticket, transition }, records: [ticketRecord(operation.ticket ?? 0)] });
+    }
+
     yield* change.recordHistory({ factoryId: operation.factoryId, kind: "ticket.transitioned", subject: String(operation.ticket),
-      detail: { state: complete ? "completed" : "stage", status: complete ? null : "paused", operationId: operation.id,
+      detail: { state: complete ? "completed" : "stage", stage: complete ? null : nextStage, status: complete ? null : nextStatus, operationId: operation.id,
         approvedCommit: ticket.approved_commit, cleanup: complete ? "pending" : null }, records: [ticketRecord(operation.ticket ?? 0)] });
 
     return complete;

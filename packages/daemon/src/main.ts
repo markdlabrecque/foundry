@@ -693,7 +693,7 @@ const main = async (): Promise<void> => {
 
       return stopping || clone === undefined || loaded === undefined || !factoryStates.isRunning(factory)
         ? undefined
-        : { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch };
+        : { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch, config: loaded.config };
     },
     onError: (factory, error) => log.error("sync queue run failed", { factoryId: factory, detail: { error: messageOf(error) } }),
   });
