@@ -1,4 +1,4 @@
-/** The Worker Host control server: serves identity, launches and inventory on the host socket. */
+/** The Worker Host control server: serves identity, launches, inventory and termination on the host socket. */
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { connect, createServer, type Socket } from "node:net";
@@ -11,7 +11,14 @@ import {
   type HostIdentity,
   type HostResponse,
 } from "./control.js";
-import { LaunchRefused, createLaunchRegistry, type LaunchRegistry, type LaunchSpec } from "./launches.js";
+import {
+  LaunchRefused,
+  TerminateRefused,
+  createLaunchRegistry,
+  type LaunchRegistry,
+  type LaunchSpec,
+  type TerminateOptions,
+} from "./launches.js";
 
 export interface RunningHost {
   readonly identity: HostIdentity;
@@ -117,6 +124,26 @@ async function answer(line: string, identity: HostIdentity, registry: LaunchRegi
         return { id, ok: true, launch: await registry.launch(spec as LaunchSpec) };
       } catch (error) {
         if (error instanceof LaunchRefused) return { id, ok: false, error: error.message };
+        throw error;
+      }
+    }
+    case "terminate": {
+      const { launchId, graceMs, killWaitMs } = request as Record<string, unknown>;
+      if (typeof launchId !== "string" || launchId === "") {
+        return { id, ok: false, error: "malformed terminate: launchId must be a non-empty string" };
+      }
+      for (const [name, value] of [["graceMs", graceMs], ["killWaitMs", killWaitMs]] as const) {
+        if (value !== undefined && !(typeof value === "number" && Number.isFinite(value) && value >= 0)) {
+          return { id, ok: false, error: `malformed terminate: ${name} must be a non-negative number` };
+        }
+      }
+      const options: { -readonly [K in keyof TerminateOptions]: TerminateOptions[K] } = {};
+      if (graceMs !== undefined) options.graceMs = graceMs as number;
+      if (killWaitMs !== undefined) options.killWaitMs = killWaitMs as number;
+      try {
+        return { id, ok: true, termination: await registry.terminate(launchId, options) };
+      } catch (error) {
+        if (error instanceof TerminateRefused) return { id, ok: false, error: error.message };
         throw error;
       }
     }

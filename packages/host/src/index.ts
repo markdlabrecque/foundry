@@ -10,9 +10,11 @@ export {
   type HostRequest,
   type HostResponse,
   type LaunchExitedEvent,
+  type TerminateRequest,
 } from "./control.js";
-export type { LaunchExit, LaunchRecord, LaunchSpec } from "./launches.js";
+export type { LaunchExit, LaunchRecord, LaunchSpec, TerminateOptions, Termination } from "./launches.js";
 export { serveHost, type RunningHost } from "./server.js";
+export { terminateGroup, type GroupSignal, type GroupTermination, type TerminateGroupDeps } from "./terminate.js";
 export {
   HOST_LOG_NAME,
   connectHost,
