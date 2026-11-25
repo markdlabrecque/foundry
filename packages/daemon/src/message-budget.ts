@@ -10,10 +10,12 @@ export const messageBudget = (configLoad?: (factoryId: string) => string | undef
   (change, message) => Effect.gen(function* () {
     if (message.ticket === null) {return;}
 
-    const [ticket] = yield* change.query<{ messages_spent: number; message_ceiling: number; stage: string; status: string; assignment_id: string; slot_id: string }>(
+    const [ticket] = yield* change.query<{ messages_spent: number; message_ceiling: number; stage: string; status: string; assignment_id: string | null; slot_id: string | null }>(
       `SELECT t.messages_spent, t.message_ceiling, t.stage, t.status, a.id AS assignment_id, a.slot_id
-       FROM ticket t JOIN assignment a ON a.factory_id = t.factory_id AND a.ticket_number = t.number
-       WHERE t.factory_id = ? AND t.number = ? AND a.status != 'ended'`,
+       FROM ticket t LEFT JOIN assignment a ON a.id = (
+         SELECT id FROM assignment WHERE factory_id = t.factory_id AND ticket_number = t.number
+         ORDER BY created_at DESC, rowid DESC LIMIT 1)
+       WHERE t.factory_id = ? AND t.number = ?`,
       [message.factoryId, message.ticket],
     );
 
@@ -24,7 +26,11 @@ export const messageBudget = (configLoad?: (factoryId: string) => string | undef
     yield* change.query(`UPDATE ticket SET messages_spent = messages_spent + 1 WHERE factory_id = ? AND number = ?`,
       [message.factoryId, message.ticket]);
 
-    if (ticket.messages_spent + 1 < ticket.message_ceiling || ticket.status === "paused") {return;}
+    if (ticket.messages_spent + 1 < ticket.message_ceiling) {return;}
+
+    if (ticket.assignment_id === null || ticket.slot_id === null) {
+      return yield* new ToolRefusal({ code: "message_budget_reached", detail: "ticket has no assignment for the limit decision" });
+    }
 
     const now = yield* Clock.currentTimeMillis;
     yield* suspendAssignment(change, ticket.assignment_id);
