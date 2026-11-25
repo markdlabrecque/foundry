@@ -503,6 +503,8 @@ const main = async (): Promise<void> => {
         store,
         stateRoot,
         host,
+        terminate: (launchId) => connection.terminate(launchId),
+        revokeSlot: (factoryId, slotId) => channel?.revokeSlot(factoryId, slotId),
         hostId: identity.hostId,
         bootId: identity.bootId,
         pi: resolvePiExecutable(process.env),
@@ -724,6 +726,17 @@ const main = async (): Promise<void> => {
       },
       slots: slotsReader,
       slotControl: storeSlotControl(slotsReader, freezer),
+      slotResetter: {
+        reset: async (slotId, factory, force) => {
+          const { slot } = await slotsReader.show(slotId, factory);
+
+          if (scheduler === undefined) {throw new Error("slot scheduler unavailable");}
+
+          await scheduler.reset({ factoryId: slot.factoryId, slotId }, force);
+
+          return slotsReader.show(slotId, slot.factoryId);
+        },
+      },
     });
   } catch (error) {
     await stopAssignments();
