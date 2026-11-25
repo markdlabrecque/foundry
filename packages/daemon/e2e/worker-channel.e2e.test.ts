@@ -1,7 +1,8 @@
 // Journey: the built daemon starts a slot, the Worker Host launches the real pinned `pi` with the
 // faux provider, and the Foundry extension Pi loads dials the daemon's channel. Proves the wiring
-// only (launch environment, extension entry point, channel served at startup); the claim rules are
-// covered by test/slot-claim.test.ts. No cheaper tier loads the extension into a real Pi launch.
+// only (launch environment, extension entry point, channel served at startup, discovery registered
+// by the production daemon); claim and discovery scoping rules have cheaper contract tests.
+// No cheaper tier loads the extension into a real Pi launch.
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -15,6 +16,7 @@ import { runSlotList } from "@foundry/cli";
 import { FAUX_MODEL, FAUX_PROVIDER, FAUX_PROVIDER_EXTENSION, isolatedGitEnv, makeGitSource, stopHost } from "@foundry/testkit";
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
+const discoveryDriver = join(import.meta.dirname, "fixtures", "discover-worker.ts");
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -34,7 +36,7 @@ rooms:
       dev:
         isolation: worktree
         model: ${FAUX_PROVIDER}/${FAUX_MODEL}
-        extensions: [${JSON.stringify(FAUX_PROVIDER_EXTENSION)}]
+        extensions: [${JSON.stringify(FAUX_PROVIDER_EXTENSION)}, ${JSON.stringify(discoveryDriver)}]
 production_lines:
   f:
     verify: ["true"]
@@ -88,6 +90,7 @@ const startDaemon = (root: string, home: string, factory: string): Promise<Child
       PI_CODING_AGENT_DIR: join(root, "agent"),
       PI_OFFLINE: "1",
       PI_TELEMETRY: "0",
+      FOUNDRY_TEST_DISCOVERY_RESULT: join(root, "discovery-result.json"),
       FOUNDRY_HOME: join(root, "not-this-one"),
     },
     stdio: ["ignore", "pipe", "pipe"],
@@ -110,7 +113,7 @@ const startDaemon = (root: string, home: string, factory: string): Promise<Child
   });
 };
 
-test("a launched faux-provider Pi worker says hello for the slot and launch the daemon started", async () => {
+test("a launched faux-provider Pi worker authenticates and discovers its configured station and slot", async () => {
   const root = mkdtempSync(join(tmpdir(), "foundry-worker-channel-"));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
   const home = join(root, "home");
@@ -148,4 +151,25 @@ test("a launched faux-provider Pi worker says hello for the slot and launch the 
       interval: 200,
     })
     .toEqual([{ msg: "channel accepted", factoryId: "alpha", slotId: "dev/1", launchId }]);
+
+  // Observe Pi's actual tool result, not a separate channel client or a test-owned dispatch map.
+  const resultPath = join(root, "discovery-result.json");
+  await expect.poll(() => existsSync(resultPath), { timeout: 30_000, interval: 200 }).toBe(true);
+
+  const result = Schema.decodeUnknownSync(
+    Schema.fromJsonString(Schema.Struct({
+      toolName: Schema.String,
+      isError: Schema.Boolean,
+      content: Schema.Array(Schema.Struct({ type: Schema.String, text: Schema.String })),
+    })),
+  )(readFileSync(resultPath, "utf8"));
+
+  expect(result).toEqual({
+    toolName: "agent_discover",
+    isError: false,
+    content: [{ type: "text", text: JSON.stringify({
+      factory: "alpha",
+      stations: [{ address: "eng.dev", room: "eng", station: "dev", slots: ["dev/1"] }],
+    }) }],
+  });
 });
