@@ -14,7 +14,7 @@ import type { TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow } from "./holds.js";
 import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
-import { runFactoryPath } from "./factory.js";
+import { runFactoryPath, runFactorySync } from "./factory.js";
 import { runFactoryList } from "./factories.js";
 import { runFactoryStop } from "./factory-stop.js";
 import { runShutdown } from "./shutdown.js";
@@ -251,6 +251,17 @@ const factoryPath = Command.make("path", { ...commonFlags, name: Argument.String
   ),
 ).pipe(Command.withDescription("Print the path of a factory's dedicated clone, to add as a Git remote"));
 
+const factorySync = Command.make(
+  "sync",
+  {
+    ...commonFlags,
+    name: Argument.String("name"),
+    wait: Flag.Boolean("wait").pipe(Flag.withDefault(false), Flag.withDescription("Wait until the sync has finished")),
+  },
+  ({ json, home, name, wait }) =>
+    report(() => runFactorySync({ json, home: Option.getOrUndefined(home), env: process.env, name, wait })),
+).pipe(Command.withDescription("Fetch the source's default branch and merge it into the factory's clone"));
+
 const factoryStop = Command.make(
   "stop",
   {
@@ -267,7 +278,7 @@ const factoryStop = Command.make(
 
 const factory = Command.make("factory").pipe(
   Command.withDescription("Factories loaded by the daemon and their dedicated clones"),
-  Command.withSubcommands([factoryList, factoryPath, factoryStop]),
+  Command.withSubcommands([factoryList, factoryPath, factorySync, factoryStop]),
 );
 
 const slotList = Command.make("list", ticketFlags, ({ json, home, factory }) =>

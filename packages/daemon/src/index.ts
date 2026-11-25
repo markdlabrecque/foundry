@@ -95,6 +95,7 @@ export {
   factoryClonePath,
   FactoryCloneError,
   recordCloneRefusals,
+  runCloneGit,
   type CloneMarker,
   type CloneRefusal,
   type CloneRefusalReason,
@@ -105,6 +106,8 @@ export {
 export * from "./start-refusal.js";
 
 export * from "./operations.js";
+
+export * from "./factory-sync.js";
 
 export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";
 
