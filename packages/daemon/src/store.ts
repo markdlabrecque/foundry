@@ -476,6 +476,23 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `CREATE INDEX delegation_by_root ON delegation (factory_id, root_assignment, status)`,
     ],
   },
+  {
+    id: 19,
+    name: "assignment_repository_context",
+    statements: [
+      // Message status/acknowledged_at is the receipt; attribution follows the actual delivery conversation.
+      `CREATE TABLE repository_context (
+        message_id TEXT PRIMARY KEY REFERENCES message(id),
+        assignment_id TEXT NOT NULL REFERENCES assignment(id),
+        factory_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        conversation_ref TEXT,
+        root TEXT NOT NULL,
+        parts TEXT NOT NULL
+      ) STRICT`,
+      `CREATE INDEX repository_context_by_conversation ON repository_context (factory_id, slot_id, conversation_ref)`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

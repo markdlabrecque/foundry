@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { Cause, Clock, Data, Effect, Exit } from "effect";
 import { acceptMessage } from "./agent-message.js";
 import { eligibleAssignmentSlots } from "./assignment-slots.js";
+import { acceptAssignmentRepositoryContext } from "./assignment-repository-context.js";
 import type { AssignmentSlot } from "./assignment-slots.js";
 import type { FactoryConfig } from "./config/schema.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
@@ -29,8 +30,9 @@ export const assignedSlot = (query: Query, factoryId: string, ticket: number) =>
 /** Context belongs to its original slot, even after that assignment ends. Never reroute it. */
 export const assignmentContextSlot = (change: Change, factoryId: string, messageId: string) =>
   change.query<{ slot_id: string }>(
-    `SELECT slot_id FROM assignment WHERE factory_id = ? AND context_message = ?`,
-    [factoryId, messageId],
+    `SELECT slot_id FROM assignment WHERE factory_id = ? AND context_message = ?
+     UNION ALL SELECT slot_id FROM repository_context WHERE factory_id = ? AND message_id = ?`,
+    [factoryId, messageId, factoryId, messageId],
   ).pipe(Effect.map((rows) => rows[0]?.slot_id ?? null));
 
 export const assignmentTicket = (change: Change, factoryId: string, slotId: string) =>
@@ -55,6 +57,8 @@ export interface AssignmentSchedulerOptions {
   readonly ready?: (ticket: QueuedTicket, slot: PlannedSlot) => boolean;
   /** Runs outside the assignment transaction, only for an eligible isolated assignment. */
   readonly prepareWorktree?: (ticket: QueuedTicket) => Effect.Effect<void, StoreError>;
+  /** Factory clone's default-branch checkout, for non-isolated stations. Enables repository context. */
+  readonly clonePath?: (factoryId: string) => string;
 }
 
 export interface QueuedTicket {
@@ -159,6 +163,16 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
                recovery_ceiling, created_at, context_message) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
             [id, ticket.factory_id, ticket.number, stage.id, slot.slotId, factory.config.recovery_limit ?? 3, now, message.id],
           );
+
+          if (options.clonePath !== undefined) {
+            yield* acceptAssignmentRepositoryContext(change, {
+              factoryId: ticket.factory_id, slotId: slot.slotId, recipient: slot.station.address,
+              ticket: ticket.number, assignmentId: id,
+              root: slot.station.isolation === 'worktree' && ticket.worktree_path !== null
+                ? ticket.worktree_path : options.clonePath(ticket.factory_id),
+            });
+          }
+
           yield* change.query(
             `UPDATE ticket SET state = 'stage', stage = ?, status = 'assigned' WHERE factory_id = ? AND number = ?`,
             [stage.id, ticket.factory_id, ticket.number],
