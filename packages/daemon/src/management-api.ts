@@ -27,6 +27,9 @@ import { readLogs } from "@foundry/protocol/log-read";
 import { matchFactoryPathPath } from "@foundry/protocol/factory-path";
 import { FACTORIES_PATH, FactoryStopRequest, matchFactoryStopPath } from "@foundry/protocol/factories-api";
 import type { FactoriesReader } from "./factories.js";
+import { matchFactorySyncPath, WAIT_PARAM } from "@foundry/protocol/factory-sync";
+import type { FactorySyncer } from "./factory-sync.js";
+import type { Operation } from "./operations.js";
 import { FactoryStopError } from "./factory-stop.js";
 import type { FactoryStopErrorCode, FactoryStopper } from "./factory-stop.js";
 import { SHUTDOWN_PATH, ShutdownRequest } from "@foundry/protocol/shutdown-api";
@@ -51,6 +54,8 @@ export interface ManagementApiInputs {
   readonly clonePath?: (factory: string) => string | undefined;
   /** The loaded factories, read from daemon state. Without it the route answers 503. */
   readonly factories?: FactoriesReader;
+  /** Queues operator-requested syncs (PRD §9.1). Without it the sync route answers 503. */
+  readonly sync?: FactorySyncer;
   /** The configured slots and their launches. Without it the slot routes answer 503. */
   readonly slots?: SlotsReader;
   /** Interrupts a slot's worker over its channel (PRD §5.3). Without it the route answers 503. */
@@ -277,6 +282,10 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
   if (path === EVENTS_PATH) {return handleEvents(inputs, url, request, response);}
 
+  const syncFactory = matchFactorySyncPath(path);
+
+  if (syncFactory !== undefined) {return handleSync(inputs, syncFactory, url, request, response);}
+
   const unfreezing = matchSlotUnfreezePath(path);
 
   if (unfreezing !== undefined) {return handleUnfreeze(inputs, unfreezing, url.searchParams, request, response);}
@@ -501,6 +510,41 @@ const handleEvents = (inputs: ManagementApiInputs, url: URL, request: IncomingMe
   if (!parsed.ok) {return send(response, 400, { ok: false, error: parsed.error });}
 
   streamEvents(inputs.events, parsed.query, request, response);
+};
+
+const syncView = (operation: Operation) => ({
+  id: operation.id,
+  status: operation.status,
+  intent: operation.intent,
+  result: operation.result,
+});
+
+const handleSync = (
+  inputs: ManagementApiInputs,
+  factory: string | null,
+  url: URL,
+  request: IncomingMessage,
+  response: ServerResponse,
+): void => {
+  if (request.method !== "POST") {
+    response.setHeader("allow", "POST");
+
+    return send(response, 405, failure("method_not_allowed", `${url.pathname} only accepts POST`));
+  }
+
+  if (factory === null) {return send(response, 400, failure("bad_request", `malformed factory name in ${url.pathname}`));}
+
+  const syncer = inputs.sync;
+
+  if (syncer === undefined) {return send(response, 503, failure("unavailable", "sync is not served by this daemon"));}
+
+  syncer.request(factory, url.searchParams.get(WAIT_PARAM) === "1").then(
+    (reply) =>
+      reply.found
+        ? send(response, 202, { ok: true, result: { factory, operation: syncView(reply.operation) } })
+        : send(response, 404, failure("not_found", `no loaded factory named ${JSON.stringify(factory)}`)),
+    (cause: unknown) => send(response, 500, failure("internal", `sync not queued: ${messageOf(cause)}`)),
+  );
 };
 
 const handleLogs = (

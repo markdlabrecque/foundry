@@ -272,6 +272,38 @@ export const runOperation = <E, R>(
     return yield* store.change((change) => recordOperationResult(change, operation.id, outcome));
   });
 
+/**
+ * Adds `fields` to a running operation's recorded intent, before its next step changes anything,
+ * so recovery can read what the action learned so far (a sync records the head it started from
+ * and the commit it fetched before it merges). Dies if the operation is not running.
+ */
+export const extendOperationIntent = (
+  store: Store,
+  id: number,
+  fields: OperationDetail,
+): Effect.Effect<Operation, StoreError> =>
+  store.change((change) =>
+    Effect.gen(function* () {
+      const current = yield* mustExist(change.query, id);
+
+      if (current.status !== "running") {
+        return yield* Effect.die(new Error(`operation ${id} is ${current.status}, not running; its intent is fixed`));
+      }
+
+      const intent = { ...current.intent, ...fields };
+      yield* change.query(`UPDATE operation SET intent = ? WHERE id = ?`, [JSON.stringify(intent), id]);
+      yield* change.recordHistory({
+        factoryId: current.factoryId,
+        kind: "operation.progressed",
+        subject: String(id),
+        detail: { operationId: id, kind: current.kind, intent },
+        records: recordsOf(current.ticket),
+      });
+
+      return yield* mustExist(change.query, id);
+    }),
+  );
+
 /** One operation by ID, in any status. */
 export const getOperation = (store: Store, id: number): Effect.Effect<Operation | undefined, StoreError> =>
   byId(store.read, id);

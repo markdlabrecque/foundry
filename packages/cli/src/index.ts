@@ -29,7 +29,7 @@ export { runFactoryList, type FactoryListOptions, type FactoryOutcome } from "./
 
 export { renderEvent, runEvents, sseParser, type EventsOptions, type EventsOutcome } from "./events.js";
 
-export { runFactoryPath, type FactoryPathOptions } from "./factory.js";
+export { runFactoryPath, runFactorySync, type FactoryPathOptions, type FactorySyncOptions } from "./factory.js";
 
 export { runFactoryStop, type FactoryStopOptions, type FactoryStopOutcome } from "./factory-stop.js";
 

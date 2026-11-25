@@ -49,6 +49,10 @@
       "types": "./dist/factory-path.d.ts",
       "default": "./dist/factory-path.js"
     },
+    "./factory-sync": {
+      "types": "./dist/factory-sync.d.ts",
+      "default": "./dist/factory-sync.js"
+    },
     "./errors": {
       "types": "./dist/errors.d.ts",
       "default": "./dist/errors.js"

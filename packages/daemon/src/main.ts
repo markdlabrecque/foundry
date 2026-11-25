@@ -19,6 +19,7 @@ import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
 import { createTicketService, ticketFactoryFrom } from "./tickets.js";
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
+import { createFactorySyncer } from "./factory-sync.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Schema, Scope } from "effect";
@@ -524,6 +525,19 @@ const main = async (): Promise<void> => {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
+  const sync = createFactorySyncer({
+    store,
+    target: (factory) => {
+      const clone = clones.get(factory);
+      const loaded = factories.find((f) => f.factoryId === factory);
+
+      return stopping || clone === undefined || loaded === undefined || !factoryStates.isRunning(factory)
+        ? undefined
+        : { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch };
+    },
+    onError: (factory, error) => log.error("sync queue run failed", { factoryId: factory, detail: { error: messageOf(error) } }),
+  });
+
   const stopperOptions = (): FactoryStopperOptions => {
     if (stopHost === undefined || scheduler === undefined) {return { store, states: factoryStates };}
 
@@ -567,6 +581,7 @@ const main = async (): Promise<void> => {
       }),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,
+      sync,
       // Read from the recorded run and its configuration loads, not from memory.
       factories: storeFactoriesReader(store, log.runId, (factoryId) => factoryStates.get(factoryId)),
       // A graceful stop sends `drain` on each live worker's channel before the host terminates it.
@@ -608,6 +623,10 @@ const main = async (): Promise<void> => {
 
     return;
   }
+
+  // Resume only accepted, not-yet-started work (PRD §9.4). An empty queue does not fetch, and a
+  // running operation still blocks admission until interrupted-operation recovery handles it.
+  for (const factory of decision.started) {void sync.resumeQueued(factory);}
 
   log.info("daemon started", {
     detail: { pid: process.pid, stateRoot, socket: api.socketPath, logLevel: log.level },

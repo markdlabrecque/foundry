@@ -10,7 +10,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Predicate, Schema } from "effect";
-import { clearCloneStaging, CLONE_MARKER_FILE_NAME, DATABASE_FILE_NAME, ensureFactoryClone, factoryClonePath, FactoryCloneError, loadFactoryFiles, openStore } from "@foundry/daemon";
+import { runEvents } from "@foundry/cli";
+import { clearCloneStaging, CLONE_MARKER_FILE_NAME, DATABASE_FILE_NAME, enqueueOperation, ensureFactoryClone, factoryClonePath, FactoryCloneError, loadFactoryFiles, openStore } from "@foundry/daemon";
 import type { LoadedFactory } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource, stopHost, writeStubPi } from "@foundry/testkit";
 
@@ -236,7 +237,7 @@ const stop = async (child: ChildProcess): Promise<number | null> => {
   return exited;
 };
 
-test("daemon start creates the clone and foundry factory path prints it; a restart reuses it", async () => {
+test("daemon start creates the clone and foundry factory path prints it; a restart does not fetch, an explicit sync does", async () => {
   const f = fixture();
   const first = git(f.source, ["rev-parse", "main"]);
   const path = factoryClonePath(f.home, "alpha");
@@ -251,13 +252,59 @@ test("daemon start creates the clone and foundry factory path prints it; a resta
   expect(unknown.stderr).toContain('no loaded factory named "nope"');
   expect(await stop(daemon)).toBe(0);
 
-  advanceSource(f);
+  const fetched = advanceSource(f);
+  const sourceRefs = snapshot(f.source).refs;
   daemon = await startDaemon(f.home, f.yamlFile);
   expect(await foundry(["factory", "path", "alpha"], f.home)).toMatchObject({ code: 0, stdout: `${path}\n` });
-  expect(await stop(daemon)).toBe(0);
   // The source is still there and has moved on, yet the restart never fetched it.
   expectNotFetched(path, first);
   expect(existsSync(join(f.source, CLONE_MARKER_FILE_NAME))).toBe(false);
+
+  // Only the operator's explicit sync contacts the source, and it advances the clone.
+  const synced = await foundry(["factory", "sync", "alpha", "--wait", "--json"], f.home);
+  expect(synced.code).toBe(0);
+  expect(JSON.parse(synced.stdout)).toMatchObject({
+    ok: true,
+    result: { factory: "alpha", operation: { status: "complete", result: { previousHead: first, fetchedHead: fetched, head: fetched } } },
+  });
+  expect(git(path, ["rev-parse", "main"])).toBe(fetched);
+  expect((await foundry(["factory", "sync", "nope"], f.home)).code).toBe(1);
+  expect(await stop(daemon)).toBe(0);
+  // P0 never pushes: the source's refs are as the operator left them.
+  expect(snapshot(f.source).refs).toBe(sourceRefs);
+});
+
+test("restart completes a previously queued sync without another operator request", async () => {
+  const f = fixture();
+  const path = factoryClonePath(f.home, "alpha");
+  expect(await stop(await startDaemon(f.home, f.yamlFile))).toBe(0);
+  const previous = git(path, ["rev-parse", "main"]);
+  const fetched = advanceSource(f);
+
+  // Model a stop after the operator's request committed, but before the queue admitted it.
+  const queued = await Effect.runPromise(Effect.scoped(Effect.flatMap(
+    openStore({ filename: join(f.home, DATABASE_FILE_NAME) }),
+    (store) => enqueueOperation(store, { factoryId: "alpha", kind: "sync", intent: { defaultBranch: "main" } }),
+  )));
+
+  const daemon = await startDaemon(f.home, f.yamlFile);
+  const done = new AbortController();
+  let terminal: unknown;
+  await runEvents({
+    home: f.home, env: {}, factory: "alpha", ticket: undefined, since: undefined, follow: true, json: true,
+    signal: AbortSignal.any([done.signal, AbortSignal.timeout(2000)]),
+    write: (line) => {
+      const event = JSON.parse(line);
+
+      if (event.subject === String(queued.id) && ["operation.complete", "operation.failed"].includes(event.kind)) {
+        terminal = event;
+        done.abort();
+      }
+    },
+  });
+  expect(terminal).toMatchObject({ kind: "operation.complete", detail: { result: { previousHead: previous, fetchedHead: fetched } } });
+  expect(git(path, ["rev-parse", "main"])).toBe(fetched);
+  expect(await stop(daemon)).toBe(0);
 });
 
 test("a factory whose clone path is not Foundry's is refused alone; the daemon serves the other", async () => {
