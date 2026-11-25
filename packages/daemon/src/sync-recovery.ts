@@ -4,9 +4,11 @@
  * the sync recorded before it merged (`recordedHead`, `fetchedHead`; see factory-sync.ts).
  *
  * - The fetched commit is already an ancestor of the default branch: the sync landed, so it is
- *   recorded complete, and a sync-conflict hold clears as after any completed sync.
+ *   recorded complete, a merge that landed but was never cleaned up is quit, and the sync-conflict
+ *   and interrupted-sync holds close as after any sync that records a result.
  * - Otherwise: any half-finished merge is aborted, the default branch is restored to the recorded
- *   head, and the sync is recorded interrupted, with an interrupted-sync hold showing both heads
+ *   head (only if it still points there: a branch that moved is indeterminate and is never reset),
+ *   and the sync is recorded interrupted, with an interrupted-sync hold showing both heads
  *   for the operator to run the sync again. The next sync that records a result resolves the hold.
  *
  * Either verdict reopens the factory's queue, unless another of its operations still awaits
@@ -91,7 +93,12 @@ const recoverSync = (
     const branchRef = `refs/heads/${branch}`;
     const hold = { factoryId: operation.factoryId, subject: operation.factoryId } as const;
 
+    const mergeInProgress = succeeds(["rev-parse", "--quiet", "--verify", "MERGE_HEAD"]);
+
     if (fetchedHead !== null && (yield* succeeds(["merge-base", "--is-ancestor", fetchedHead, branchRef]))) {
+      // The merge landed but died before cleaning up; left in place, every later sync would fail.
+      if (yield* mergeInProgress) {yield* git([...NO_HOOKS, "merge", "--quit"]);}
+
       const head = yield* git(["rev-parse", "--verify", `${branchRef}^{commit}`]);
 
       const done = yield* store.change((change) =>
@@ -102,6 +109,8 @@ const recoverSync = (
           });
 
           yield* closeOpenHoldIn(change, { ...hold, kind: "sync_conflict" }, "cleared");
+          // A sync the operator ran again landed: that answers any earlier interrupted sync.
+          yield* closeOpenHoldIn(change, { ...hold, kind: "interrupted_sync" }, "resolved");
 
           return recorded;
         }),
@@ -115,9 +124,20 @@ const recoverSync = (
     let head: string | null = null;
 
     if (recordedHead !== null) {
-      if (yield* succeeds(["rev-parse", "--quiet", "--verify", "MERGE_HEAD"])) {
-        yield* git([...NO_HOOKS, "merge", "--abort"]);
-        abortedMerge = true;
+      // The merge only ever moves the branch to the fetched commit, so any other head is not ours
+      // to discard (PRD §10.2): leave it, record nothing and keep the queue closed.
+      const current = yield* git(["rev-parse", "--verify", `${branchRef}^{commit}`]);
+
+      if (current !== recordedHead) {
+        return yield* new SyncRecoveryError({
+          operationId: operation.id,
+          message: `${branch} is at ${current}, not the recorded head ${recordedHead}; not resetting it`,
+        });
+      }
+
+      if (yield* mergeInProgress) {
+        // A failed abort does not block recovery: the hard reset below removes MERGE_HEAD too.
+        abortedMerge = yield* succeeds([...NO_HOOKS, "merge", "--abort"]);
       }
 
       yield* git([...NO_HOOKS, "switch", "--quiet", "--discard-changes", "--no-guess", "--no-recurse-submodules", "--", branch]);

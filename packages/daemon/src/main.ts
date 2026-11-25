@@ -863,6 +863,11 @@ const main = async (): Promise<void> => {
       } catch (error) {
         log.error("interrupted sync not recovered", { factoryId: factory, detail: { error: messageOf(error) } });
       }
+    } else {
+      log.error("interrupted sync not recovered", {
+        factoryId: factory,
+        detail: { error: clone === undefined ? "no clone for the factory" : "factory not loaded" },
+      });
     }
 
     await sync.resumeQueued(factory);

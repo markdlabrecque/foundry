@@ -15,8 +15,10 @@ import {
   listOpenHolds,
   listOperationsAwaitingRecovery,
   openStore,
+  raiseHold,
   recoverInterruptedSyncs,
   startNextOperation,
+  SyncRecoveryError,
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
 import { expectDefined } from "@foundry/protocol/errors";
@@ -101,11 +103,24 @@ test("a sync whose fetched commit already landed is recorded complete, without f
   commit(f.seed, "after-crash.md", "after crash\n");
   pushSeed(f);
 
-  const seen = await withStore(f.dir, async (store) => ({
-    recovered: await run(recoverInterruptedSyncs(store, "alpha", target(f), isolatedGitEnv())),
-    awaiting: await run(listOperationsAwaitingRecovery(store, "alpha")),
-    holds: await run(listOpenHolds(store)),
-  }));
+  const seen = await withStore(f.dir, async (store) => {
+    // Holds left by earlier syncs: one interrupted by a crash, one that conflicted. This sync was
+    // the operator's rerun, so its landing answers both.
+    for (const kind of ["interrupted_sync", "sync_conflict"] as const) {
+      await run(raiseHold(store, { factoryId: "alpha", subject: "alpha", kind, evidence: {} }));
+    }
+
+    const before = await run(listOpenHolds(store));
+
+    return {
+      before,
+      recovered: await run(recoverInterruptedSyncs(store, "alpha", target(f), isolatedGitEnv())),
+      awaiting: await run(listOperationsAwaitingRecovery(store, "alpha")),
+      holds: await run(listOpenHolds(store)),
+    };
+  });
+
+  expect(seen.before).toHaveLength(2);
 
   expect(seen.recovered).toMatchObject([{
     verdict: "complete",
@@ -154,6 +169,27 @@ test("a half-finished merge is aborted, the recorded head restored, the sync mar
   expect(git(f.clone, ["rev-parse", "main"])).toBe(previous);
   expect(git(f.clone, ["status", "--porcelain"])).toBe("");
   expect(git(f.clone, ["rev-parse", "refs/remotes/origin/main"])).toBe(fetched);
+});
+
+test("a default branch that moved off the recorded head is not reset, nothing is recorded and the queue stays closed", async () => {
+  const f = fixture();
+  commit(f.seed, "later.md", "later\n");
+  pushSeed(f);
+  // Crashed after fetching, then the branch moved to a commit that is neither head.
+  const { operationId } = await crashMidSync(f, () => {});
+  const moved = commit(f.clone, "local.md", "local\n");
+
+  const seen = await withStore(f.dir, async (store) => ({
+    error: await run(Effect.flip(recoverInterruptedSyncs(store, "alpha", target(f), isolatedGitEnv()))),
+    awaiting: await run(listOperationsAwaitingRecovery(store, "alpha")),
+    holds: await run(listOpenHolds(store)),
+  }));
+
+  expect(seen.error).toBeInstanceOf(SyncRecoveryError);
+  expect(seen.error).toMatchObject({ operationId });
+  expect(seen.awaiting).toMatchObject([{ id: operationId, kind: "sync" }]);
+  expect(seen.holds).toEqual([]);
+  expect(git(f.clone, ["rev-parse", "main"])).toBe(moved);
 });
 
 test("running the sync again resolves the interrupted-sync hold", async () => {
