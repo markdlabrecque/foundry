@@ -13,7 +13,7 @@ export const ApprovalRecord = Schema.Struct({
   assignmentId: Schema.String,
   transition: Schema.NullOr(Schema.Number),
   stage: Schema.String,
-  kind: Schema.Literals(["blocked", "worker_request"]),
+  kind: Schema.Literals(["blocked", "worker_request", "limit_reached"]),
   state: Schema.Literals(["open", "resolved"]),
   outcome: Schema.NullOr(Schema.Literals(["blocked", "rejected"])),
   reason: Schema.String,
@@ -39,7 +39,7 @@ export const isApprovalShowResult = Schema.is(ApprovalShowResult);
 
 /** Include the factory even with multiple loaded factories; quote shell metacharacters safely. */
 export const approvalCommands = (approval: Pick<ApprovalRecord, "factoryId" | "ticket" | "state" | "kind">): ReadonlyArray<string> => {
-  if (approval.state !== "open" || approval.kind !== "blocked") {return [];}
+  if (approval.state !== "open" || approval.kind === "worker_request") {return [];}
 
   const factory = `'${approval.factoryId.replaceAll("'", String.raw`'\''`)}'`;
 
