@@ -719,7 +719,7 @@ const main = async (): Promise<void> => {
       approvalAnswers: createApprovalAnswers(store, plannedSlots),
       approvalDecisions: createApprovalDecisions({ store, factories, configLoad: (factory) => loadIds.get(factory) }),
       tickets: createTicketService(ticketOptions),
-      worktrees: createWorktreeService({ store, factories: () => factories.map((f) => f.factoryId),
+      worktrees: createWorktreeService({ store, stateRoot, factories: () => factories.map((f) => f.factoryId),
         target: (factoryId) => {
           const factory = factories.find((f) => f.factoryId === factoryId);
           const clone = clones.get(factoryId);
