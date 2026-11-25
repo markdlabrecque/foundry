@@ -93,6 +93,8 @@ test("indexes both skill directories deterministically, .pi/skills winning a nam
     ".pi/skills/shared/SKILL.md": skill("Pi copy."),
     ".pi/skills/standalone.md": skill("Root .md is a skill under .pi.", "name: standalone\n"),
     ".pi/skills/renamed/SKILL.md": skill("Declared name.", "name: custom-name\n"),
+    ".pi/skills/masked/SKILL.md": skill("Hidden, still claims its name.", "disable-model-invocation: true\n"),
+    ".agents/skills/masked/SKILL.md": skill("MASKED: must not show through."),
   });
 
   const first = await discoverRepositoryContext(root);
@@ -116,8 +118,11 @@ test("discovery stops at the worktree root", async () => {
     "elsewhere/escaped/SKILL.md": skill("ESCAPED skill."),
     "elsewhere/CLAUDE.md": "ESCAPED context",
     "repo/.agents/skills/inside/SKILL.md": skill("Inside."),
+    "repo/.agents/skills/kept/SKILL.md": skill("Kept."),
+    "elsewhere/gitignore": "kept/\n",
   });
   const root = join(outer, "repo");
+  await symlink(join(outer, "elsewhere/gitignore"), join(root, ".agents/skills/.gitignore"));
   await symlink(join(outer, "elsewhere/escaped"), join(root, ".agents/skills/escaped"));
   await symlink(join(outer, "elsewhere/CLAUDE.md"), join(root, "CLAUDE.md"));
 
@@ -127,5 +132,6 @@ test("discovery stops at the worktree root", async () => {
   expect(context.appendSystem).toBeNull();
   expect(context.skills).toEqual([
     { name: "inside", description: "Inside.", path: ".agents/skills/inside/SKILL.md" },
+    { name: "kept", description: "Kept.", path: ".agents/skills/kept/SKILL.md" },
   ]);
 });

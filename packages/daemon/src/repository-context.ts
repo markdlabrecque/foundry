@@ -14,6 +14,14 @@
  * directory. Discovery stops at the worktree root: no ancestor directories are
  * consulted, and a symlink whose target resolves outside the root is treated
  * as absent.
+ *
+ * The rules mirror these Pi 1.6.0 sources; re-check them on a Pi upgrade:
+ * - `dist/core/resource-loader.js` `loadContextFileFromDir` (context file order)
+ *   and `discoverAppendSystemPromptFile`;
+ * - `dist/core/package-manager.js` `collectSkillEntries` (skill file collection);
+ * - `dist/core/skills.js` `loadSkillFromFile`, `loadSkills` (first name wins)
+ *   and `formatSkillsForPrompt` (hidden skills left out);
+ * - `dist/utils/frontmatter.js` `parseFrontmatter`.
  */
 import type { Dirent } from "node:fs";
 import { readdir, readFile, realpath, stat } from "node:fs/promises";
@@ -118,7 +126,7 @@ async function readContextFile(scope: RootScope, path: string): Promise<Reposito
 }
 
 async function indexSkills(scope: RootScope): Promise<SkillHeader[]> {
-  const byName = new Map<string, SkillHeader>();
+  const byName = new Map<string, { readonly header: SkillHeader; readonly hidden: boolean }>();
   const seenFiles = new Set<string>();
 
   for (const { path, mode } of SKILL_DIRS) {
@@ -130,16 +138,19 @@ async function indexSkills(scope: RootScope): Promise<SkillHeader[]> {
     for (const file of files) {
       const real = (await scope.inspect(file))?.real;
       if (real === undefined || seenFiles.has(real)) continue;
-      const header = await readSkillHeader(scope, file, real);
-      // Pi keeps the first skill discovered under a name: `.pi/skills` before `.agents/skills`.
-      if (header && !byName.has(header.name)) {
-        byName.set(header.name, header);
-        seenFiles.add(real);
-      }
+      const parsed = await readSkillHeader(scope, file, real);
+      if (!parsed) continue;
+      seenFiles.add(real);
+      // Pi keeps the first skill discovered under a name: `.pi/skills` before
+      // `.agents/skills`. A hidden skill still claims its name.
+      if (!byName.has(parsed.header.name)) byName.set(parsed.header.name, parsed);
     }
   }
 
-  return [...byName.values()].sort((a, b) => compare(a.name, b.name) || compare(a.path, b.path));
+  return [...byName.values()]
+    .filter((skill) => !skill.hidden)
+    .map((skill) => skill.header)
+    .sort((a, b) => compare(a.name, b.name) || compare(a.path, b.path));
 }
 
 /**
@@ -162,7 +173,7 @@ async function collectSkillFiles(
     return [];
   }
   entries.sort((a, b) => compare(a.name, b.name));
-  await addIgnoreRules(ig, dir, skillsRoot);
+  await addIgnoreRules(scope, ig, dir, skillsRoot);
   const relativeToSkills = (path: string): string => toPosix(relative(skillsRoot, path));
 
   if (entries.some((entry) => entry.name === "SKILL.md")) {
@@ -193,13 +204,16 @@ async function collectSkillFiles(
 }
 
 /** Pi's ignore-file handling: patterns are rebased onto the skills directory. */
-async function addIgnoreRules(ig: Ignore, dir: string, skillsRoot: string): Promise<void> {
+async function addIgnoreRules(scope: RootScope, ig: Ignore, dir: string, skillsRoot: string): Promise<void> {
   const relativeDir = relative(skillsRoot, dir);
   const prefix = relativeDir ? `${toPosix(relativeDir)}/` : "";
   for (const name of IGNORE_FILE_NAMES) {
+    // Through the scope, so an ignore file symlinked outside the root is absent.
+    const target = await scope.inspect(join(dir, name));
+    if (target?.kind !== "file") continue;
     let content: string;
     try {
-      content = await readFile(join(dir, name), "utf8");
+      content = await readFile(target.real, "utf8");
     } catch {
       continue;
     }
@@ -230,10 +244,15 @@ function prefixIgnorePattern(line: string, prefix: string): string | null {
 
 /**
  * Reads only what the index needs from a skill file's frontmatter. As in Pi, a
- * skill without a non-empty description, with malformed frontmatter or marked
- * `disable-model-invocation: true` (absent from Pi's prompt) is not indexed.
+ * skill without a non-empty description or with malformed frontmatter is not
+ * loaded. A skill marked `disable-model-invocation: true` is loaded as hidden:
+ * it claims its name but is absent from the index, as from Pi's prompt.
  */
-async function readSkillHeader(scope: RootScope, file: string, real: string): Promise<SkillHeader | null> {
+async function readSkillHeader(
+  scope: RootScope,
+  file: string,
+  real: string,
+): Promise<{ readonly header: SkillHeader; readonly hidden: boolean } | null> {
   const raw = await readText(real);
   if (raw === null) return null;
   let frontmatter: Record<string, unknown>;
@@ -244,10 +263,10 @@ async function readSkillHeader(scope: RootScope, file: string, real: string): Pr
   }
   const description = frontmatter["description"];
   if (typeof description !== "string" || description.trim() === "") return null;
-  if (frontmatter["disable-model-invocation"] === true) return null;
+  const hidden = frontmatter["disable-model-invocation"] === true;
   const declaredName = frontmatter["name"];
   const name = typeof declaredName === "string" && declaredName !== "" ? declaredName : basename(dirname(file));
-  return { name, description, path: scope.relativePath(file) };
+  return { header: { name, description, path: scope.relativePath(file) }, hidden };
 }
 
 /** Pi's frontmatter extraction: a leading `---` block, closed by the next line starting `---`. */
