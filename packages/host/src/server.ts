@@ -20,6 +20,9 @@ import {
   type TerminateOptions,
 } from "./launches.js";
 
+/** Upper bound on a terminate's grace and kill wait, each; keeps client timers in range. */
+const MAX_TERMINATE_WAIT_MS = 10 * 60_000;
+
 export interface RunningHost {
   readonly identity: HostIdentity;
   readonly socketPath: string;
@@ -133,8 +136,12 @@ async function answer(line: string, identity: HostIdentity, registry: LaunchRegi
         return { id, ok: false, error: "malformed terminate: launchId must be a non-empty string" };
       }
       for (const [name, value] of [["graceMs", graceMs], ["killWaitMs", killWaitMs]] as const) {
-        if (value !== undefined && !(typeof value === "number" && Number.isFinite(value) && value >= 0)) {
-          return { id, ok: false, error: `malformed terminate: ${name} must be a non-negative number` };
+        if (value !== undefined && !(typeof value === "number" && value >= 0 && value <= MAX_TERMINATE_WAIT_MS)) {
+          return {
+            id,
+            ok: false,
+            error: `malformed terminate: ${name} must be a number from 0 to ${MAX_TERMINATE_WAIT_MS}`,
+          };
         }
       }
       const options: { -readonly [K in keyof TerminateOptions]: TerminateOptions[K] } = {};
