@@ -4,12 +4,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { Effect } from "effect";
-import { acknowledgeMessage, detectStuckWorkers, openStore, recordMessageInjection, startStuckWorkerDetection, STUCK_WORKER_AFTER_MS } from "@foundry/daemon";
+import { acknowledgeMessage, detectStuckWorkers, openStore, recordMessageInjection as persistInjection, startStuckWorkerDetection, STUCK_WORKER_AFTER_MS } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
+import { InjectionReporter } from "@foundry/extension";
 
 const dirs: Array<string> = [];
 const slot = { factoryId: "shop", slotId: "builder/1", launchId: "launch" };
 const now = 1_800_000_000_000;
+const recordMessageInjection = (store: Store, claimed: typeof slot, id: string) => persistInjection(store, claimed, id, Date.now());
 
 afterEach(async () => {
   vi.useRealTimers();
@@ -109,6 +111,39 @@ test("receipt failure rolls back acknowledgement, attempt and hold together", as
       .toEqual([{ status: "sent", acknowledged_at: null }]);
     expect(await Effect.runPromise(store.read(`SELECT acknowledged_at FROM message_attempt WHERE id = 'injected'`)))
       .toEqual([{ acknowledged_at: null }]);
+  });
+});
+
+test("disconnected injection retains its original time and replays after transport success without a daemon commit", async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(now);
+  const filename = await database();
+  const reporter = new InjectionReporter();
+  reporter.record("released");
+  await withStore(filename, async (store) => {
+    await seed(store);
+    // The dying daemon's socket accepted the frame, but it crashed before persistence.
+    const transported: Array<unknown> = [];
+    reporter.attach({ send: async (frame) => { transported.push(frame); }, close: () => {},
+      closed: Promise.resolve() });
+    await Promise.resolve();
+    expect(transported).toEqual([{ type: "message_injected", id: "released", injectedAt: now }]);
+    expect(await Effect.runPromise(store.read(`SELECT injected_at FROM message_attempt WHERE id = 'released'`)))
+      .toEqual([{ injected_at: null }]);
+  });
+  vi.setSystemTime(now + 20 * 60 * 1000);
+  await withStore(filename, async (store) => {
+    const persisted: Array<Promise<boolean>> = [];
+    reporter.attach({ send: async (frame) => {
+      if (frame.type === "message_injected") {
+        persisted.push(Effect.runPromise(persistInjection(store, slot, frame.id, frame.injectedAt)));
+      }
+    }, close: () => {}, closed: new Promise<void>(() => {}) });
+    expect(await Promise.all(persisted)).toEqual([true]);
+    expect(await Effect.runPromise(detectStuckWorkers(store, () => true))).toBe(1);
+    expect(await holds(store)).toEqual([{ subject: "released", state: "open" }]);
+    expect(await Effect.runPromise(store.read(`SELECT injected_at FROM message_attempt WHERE id = 'released'`)))
+      .toEqual([{ injected_at: now }]);
   });
 });
 

@@ -506,7 +506,7 @@ const main = async (): Promise<void> => {
               }
             })().catch((cause: unknown) => log.error("receipt not recorded", { detail: { error: messageOf(cause) } }));
           } else if (frame.type === "message_injected") {
-            void Effect.runPromise(recordMessageInjection(store, slot, frame.id))
+            void Effect.runPromise(recordMessageInjection(store, slot, frame.id, frame.injectedAt))
               .catch((cause: unknown) => log.error("message injection not recorded", { detail: { error: messageOf(cause) } }));
           } else if (frame.type === "compacted") {
             void primer.compacted(slot).catch((cause: unknown) => log.error("compaction prime failed", { detail: { error: messageOf(cause) } }));

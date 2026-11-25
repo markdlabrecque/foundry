@@ -11,22 +11,20 @@ const slotKey = (slot: ClaimedSlot) => JSON.stringify([slot.factoryId, slot.slot
 
 /** Authenticate the injection against an existing attempt, just like a receipt. Duplicate
  * reports must not reset the clock; a held when_idle message has no injection time yet. */
-export const recordMessageInjection = (store: Store, slot: ClaimedSlot, id: string): Effect.Effect<boolean, StoreError> =>
+export const recordMessageInjection = (store: Store, slot: ClaimedSlot, id: string, injectedAt: number): Effect.Effect<boolean, StoreError> =>
   store.change((change) => Effect.gen(function* () {
-    const now = yield* Clock.currentTimeMillis;
-
     const rows = yield* change.query<{ id: string }>(
       `UPDATE message_attempt SET injected_at = ? WHERE message_id = ? AND factory_id = ?
        AND slot_id = ? AND launch_id = ? AND injected_at IS NULL AND acknowledged_at IS NULL
        AND EXISTS (SELECT 1 FROM message m WHERE m.id = message_attempt.message_id
          AND m.factory_id = ? AND m.bound_slot = ? AND m.status = 'sent') RETURNING id`,
-      [now, id, slot.factoryId, slot.slotId, slot.launchId, slot.factoryId, slot.slotId],
+      [injectedAt, id, slot.factoryId, slot.slotId, slot.launchId, slot.factoryId, slot.slotId],
     );
 
     if (rows.length === 0) {return yield* Effect.fail(unchanged);}
 
     yield* change.recordHistory({ factoryId: slot.factoryId, kind: "message.injected", subject: id,
-      detail: { slotId: slot.slotId, launchId: slot.launchId, injectedAt: now } });
+      detail: { slotId: slot.slotId, launchId: slot.launchId, injectedAt } });
 
     return true;
   })).pipe(Effect.catchIf((error) => error === unchanged, () => Effect.succeed(false)));

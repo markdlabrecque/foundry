@@ -22,9 +22,7 @@ export class ReceiptReporter {
   private sending = false;
   private channel: OpenChannel | undefined;
 
-  constructor(private readonly frameType: "receipt" | "message_injected" = "receipt") {}
-
-  /** Pass as the adapter's `onReceipt`, or the message receiver's injection callback. */
+  /** Pass as the adapter's `onReceipt`. */
   readonly record = (id: string): void => {
     this.held.push(id);
     this.flush();
@@ -51,7 +49,7 @@ export class ReceiptReporter {
     if (id === undefined || this.sending || !channel) {return;}
 
     this.sending = true;
-    channel.send({ type: this.frameType, id }).then(
+    channel.send({ type: "receipt", id }).then(
       () => {
         if (this.held[0] === id) {this.held.shift();}
 

@@ -236,6 +236,7 @@ export const Reconcile = Schema.Struct({
 export const MessageInjected = Schema.Struct({
   type: Schema.Literal("message_injected"),
   id: Id,
+  injectedAt: Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0)),
 });
 
 export type MessageInjected = typeof MessageInjected.Type;
