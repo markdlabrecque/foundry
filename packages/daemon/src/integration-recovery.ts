@@ -24,7 +24,7 @@ import type { SyncTarget } from "./factory-sync.js";
 import { ticketRecord } from "./history-records.js";
 import { raiseHoldIn } from "./holds.js";
 import { listOperationsAwaitingRecovery, recordRecoveryResultIn, requeueInterruptedOperationIn } from "./operations.js";
-import type { Operation } from "./operations.js";
+import type { Operation, OperationDetail } from "./operations.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Change, Store, StoreError } from "./store.js";
 import type { WorktreeService } from "./worktree-cleanup.js";
@@ -178,6 +178,24 @@ const discardTemporaryState = (
     if (existsSync(lockPath) && statSync(lockPath).size === 0) {unlinkSync(lockPath);}
   });
 });
+
+/**
+ * Discards what an interrupted integration left in `clonePath`: its scratch checkout and, if empty,
+ * the ticket-branch lock it recorded. Used when the operator declares an indeterminate integration.
+ */
+export const discardIntegrationLeftovers = (
+  clonePath: string,
+  env: NodeJS.ProcessEnv,
+  scratch: string | null,
+  lockPath: string | null,
+): Effect.Effect<void> => discardTemporaryState((args) => Effect.tryPromise({
+  try: () => runCloneGit(["-c", "core.hooksPath=/dev/null", ...args], env, clonePath),
+  catch: (cause) => new RecoveryGitFailed({ reason: messageOf(cause) }),
+}), scratch, lockPath);
+
+/** The scratch checkout an integration recorded in its intent, if any. */
+export const recordedTemporaryWorktree = (intent: OperationDetail): string | null =>
+  temporaryWorktreeOf(Option.getOrUndefined(decodeIntent(intent)));
 
 /** The integration's own setup hook, interrupted with it, goes with its temporary worktree. */
 const closeIntegrationHooksIn = (change: Change, hooks: ReadonlyArray<Operation>) => Effect.forEach(hooks, (hook) =>

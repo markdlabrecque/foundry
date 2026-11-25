@@ -457,6 +457,80 @@ export const requeueInterruptedOperationIn = (
     return operation;
   });
 
+/**
+ * The operator declared an indeterminate integration landed (PRD §10.2), inside `change`: it
+ * completes with `result`, and its recovery evidence stays in its history. Returns `undefined`,
+ * writing nothing, if the operation is not an indeterminate integration.
+ */
+export const completeIndeterminateIntegrationIn = (
+  change: Change,
+  id: number,
+  result: OperationDetail,
+): Effect.Effect<Operation | undefined, StoreError> =>
+  Effect.gen(function* () {
+    const now = yield* Clock.currentTimeMillis;
+    const [previous] = yield* change.query<{ result: string | null }>(`SELECT result FROM operation WHERE id = ?`, [id]);
+
+    const rows = yield* change.query<OperationRow>(
+      `UPDATE operation SET status = 'complete', result = ?, finished_at = ? WHERE id = ? AND ${INDETERMINATE_INTEGRATION_SQL}
+       RETURNING ${COLUMNS}`,
+      [JSON.stringify(result), now, id],
+    );
+
+    if (rows[0] === undefined) {return undefined;}
+
+    const operation = toOperation(rows[0]);
+
+    yield* change.recordHistory({
+      factoryId: operation.factoryId,
+      kind: "operation.declared",
+      subject: String(id),
+      detail: { operationId: id, kind: operation.kind, status: "complete", result,
+        previousResult: previous === undefined || previous.result === null ? null : decodeDetail(previous.result) },
+      records: recordsOf(operation.ticket),
+    });
+
+    return operation;
+  });
+
+/**
+ * The operator declared an indeterminate integration not landed (PRD §10.2), inside `change`: it
+ * goes back on its factory's queue with `intent` in place of the interrupted run's, which stays in
+ * its history with recovery's evidence. It keeps its ID, so it runs before anything queued after
+ * it. Returns `undefined`, writing nothing, if the operation is not an indeterminate integration.
+ */
+export const requeueIndeterminateIntegrationIn = (
+  change: Change,
+  id: number,
+  intent: OperationDetail,
+): Effect.Effect<Operation | undefined, StoreError> =>
+  Effect.gen(function* () {
+    const [previous] = yield* change.query<{ intent: string; result: string | null }>(`SELECT intent, result FROM operation WHERE id = ?`, [id]);
+
+    const rows = yield* change.query<OperationRow>(
+      `UPDATE operation SET status = 'queued', started_at = NULL, result = NULL, finished_at = NULL, intent = ?
+       WHERE id = ? AND ${INDETERMINATE_INTEGRATION_SQL}
+       RETURNING ${COLUMNS}`,
+      [JSON.stringify(intent), id],
+    );
+
+    if (rows[0] === undefined) {return undefined;}
+
+    const operation = toOperation(rows[0]);
+
+    yield* change.recordHistory({
+      factoryId: operation.factoryId,
+      kind: "operation.requeued",
+      subject: String(id),
+      detail: { operationId: id, kind: operation.kind, intent,
+        previousIntent: previous === undefined ? null : decodeDetail(previous.intent),
+        previousResult: previous === undefined || previous.result === null ? null : decodeDetail(previous.result) },
+      records: recordsOf(operation.ticket),
+    });
+
+    return operation;
+  });
+
 /** One operation by ID, in any status. */
 export const getOperation = (store: Store, id: number): Effect.Effect<Operation | undefined, StoreError> =>
   byId(store.read, id);

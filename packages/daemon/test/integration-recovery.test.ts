@@ -10,12 +10,13 @@ import { Effect, Schema } from "effect";
 import {
   createApprovalDecisions, createAssignmentScheduler, createFactorySyncer, createSubmissions, createTicketService, enqueueOperation,
   extendOperationIntent, interruptRunningOperations, listOpenHolds, listOperations, openStore, planSlots,
-  recoverInterruptedIntegrations, startNextOperation, taskTransitionHandler, ticketFactoryFrom,
+  recoverInterruptedIntegrations, serveManagementApi, startNextOperation, taskTransitionHandler, ticketFactoryFrom,
 } from "@foundry/daemon";
 import type { LoadedFactory, Store } from "@foundry/daemon";
 import { TASK_TRANSITION } from "@foundry/protocol";
 import { expectDefined } from "@foundry/protocol/errors";
 import { isolatedGitEnv } from "@foundry/testkit";
+import { runIntegrationLanded, runIntegrationNotLanded } from "../../cli/src/tickets.js";
 import { FactoryConfig } from "../src/config/schema.js";
 import { createWorktreeService } from "../src/worktree-cleanup.js";
 
@@ -240,4 +241,97 @@ test("an integration at the recorded head in a clone Git died writing is indeter
   }).pipe(Effect.orDie));
 
   expect(existsSync(indexLock)).toBe(true);
+});
+
+/**
+ * Restarts into an indeterminate integration, then serves the management API with the ticket
+ * service the daemon wires, so the operator's declaration goes through the real CLI client.
+ */
+const declareAfterRestart = (saved: Saved, use: (store: Store, queue: ReturnType<typeof createFactorySyncer>) => Effect.Effect<void>) =>
+  recoverAfterRestart(saved, (store) => Effect.gen(function* () {
+    expect(yield* verdictOf(store)).toMatchObject({ status: "indeterminate" });
+
+    const target = () => ({ clonePath: saved.repository, defaultBranch: "main", config: gatedConfig });
+
+    const worktrees = createWorktreeService({ store, stateRoot: saved.root, env: isolatedGitEnv(), factories: () => ["shop"],
+      target: () => ({ factory: loaded, clonePath: saved.repository }) });
+
+    const queue = createFactorySyncer({ store, env: isolatedGitEnv(), worktrees, target });
+
+    const tickets = createTicketService({ store, stateRoot: saved.root, factories: () => [ticketFactoryFrom(gatedConfig)],
+      integrationTarget: target, worktrees, env: isolatedGitEnv() });
+
+    const api = yield* Effect.promise(() => serveManagementApi({ stateRoot: saved.root,
+      status: () => ({ instance: { stateRoot: saved.root, daemonPid: process.pid, startedAt: "fixture" } }), tickets }));
+
+    yield* use(store, queue).pipe(Effect.ensuring(Effect.promise(() => api.close())));
+  }).pipe(Effect.orDie));
+
+const declare = (saved: Saved, landed: boolean) => Effect.promise(() =>
+  (landed ? runIntegrationLanded : runIntegrationNotLanded)({ home: saved.root, env: {}, factory: "shop", number: 1, json: false }));
+
+test("an indeterminate integration declared landed without its approved commit on the default branch is refused; not landed reruns it from the current head", async () => {
+  const saved = await interruptedIntegration(false);
+  const unexplained = commit(saved.repository, "elsewhere.txt", "not Foundry's\n");
+
+  await declareAfterRestart(saved, (store, queue) => Effect.gen(function* () {
+    const before = yield* store.read(`SELECT * FROM operation`);
+
+    const refused = yield* declare(saved, true);
+    expect(refused).toMatchObject({ exitCode: 1, stderr: expect.stringContaining("not an ancestor") });
+    // Nothing changed: the integration, the ticket, the hold, the closed queue.
+    expect(yield* store.read(`SELECT * FROM operation`)).toEqual(before);
+    expect(yield* store.read(`SELECT state, status FROM ticket`)).toEqual([{ state: "stage", status: "paused" }]);
+    expect(yield* listOpenHolds(store)).toMatchObject([{ kind: "indeterminate_integration", subject: "1" }]);
+    expect(git(saved.repository, "rev-parse", "main")).toBe(unexplained);
+
+    expect(yield* declare(saved, false)).toMatchObject({ exitCode: 0 });
+    expect(git(saved.repository, "rev-parse", "main")).toBe(unexplained);
+    expect(yield* verdictOf(store)).toMatchObject({ status: "queued", result: null,
+      intent: { approvedCommit: saved.approved, declaredHead: unexplained } });
+    expect(yield* store.read(`SELECT state, status FROM ticket`)).toEqual([{ state: "stage", status: "awaiting_approval" }]);
+    expect(yield* store.read(`SELECT approved_commit FROM integration_intent`)).toEqual([{ approved_commit: saved.approved }]);
+    expect(yield* listOpenHolds(store)).toEqual([]);
+    expect(existsSync(saved.lock)).toBe(false);
+    expect(existsSync(saved.scratch)).toBe(false);
+    // The interrupted run's intent stays in history.
+    const [requeued] = yield* store.read<{ detail: string }>(`SELECT detail FROM history WHERE kind = 'operation.requeued'`);
+    expect(JSON.parse(expectDefined(requeued, "requeue history").detail)).toMatchObject({ previousIntent: { previousHead: saved.recordedHead } });
+
+    // The rerun is an ordinary integration: it merges the approved commit onto the current head.
+    yield* Effect.promise(() => queue.resumeQueued("shop"));
+    expect(yield* verdictOf(store)).toMatchObject({ status: "complete", result: { previousHead: unexplained } });
+    expect(yield* store.read(`SELECT state FROM ticket`)).toEqual([{ state: "completed" }]);
+  }).pipe(Effect.orDie));
+
+  expect(git(saved.repository, "merge-base", "--is-ancestor", unexplained, "main")).toBe("");
+  expect(git(saved.repository, "merge-base", "--is-ancestor", saved.approved, "main")).toBe("");
+});
+
+test("an indeterminate integration whose approved commit is on the default branch can be declared landed: it completes, cleans up and reopens the queue", async () => {
+  const saved = await interruptedIntegration(false);
+  git(saved.repository, "merge", "--ff-only", "--quiet", saved.approved);
+  // Work on top of the approved commit leaves the head neither the approved commit nor Foundry's merge.
+  const head = commit(saved.repository, "after.txt", "later\n");
+
+  await declareAfterRestart(saved, (store) => Effect.gen(function* () {
+    expect(yield* declare(saved, true)).toMatchObject({ exitCode: 0 });
+    expect(yield* verdictOf(store)).toMatchObject({ kind: "integration", status: "complete",
+      result: { head, approvedCommit: saved.approved, declared: "landed" } });
+    expect(yield* store.read(`SELECT state, status FROM ticket`)).toEqual([{ state: "completed", status: null }]);
+    expect(yield* store.read(`SELECT actor, git_commit, to_state FROM ticket_transition ORDER BY sequence DESC LIMIT 1`))
+      .toEqual([{ actor: "operator", git_commit: saved.approved, to_state: "completed" }]);
+    expect(yield* listOpenHolds(store)).toEqual([]);
+    expect((yield* listOperations(store, "shop")).filter((operation) => operation.kind === "cleanup"))
+      .toMatchObject([{ status: "complete", result: { branch: "ticket/1" } }]);
+    expect(existsSync(saved.lock)).toBe(false);
+    expect(existsSync(saved.scratch)).toBe(false);
+    const sync = yield* enqueueOperation(store, { factoryId: "shop", kind: "sync", intent: { defaultBranch: "main" } });
+    expect((yield* startNextOperation(store, "shop"))?.id).toBe(sync.id);
+    // A second declaration finds nothing indeterminate.
+    expect(yield* declare(saved, false)).toMatchObject({ exitCode: 1 });
+  }).pipe(Effect.orDie));
+
+  expect(git(saved.repository, "rev-parse", "main")).toBe(head);
+  expect(git(saved.repository, "branch", "--list", "ticket/1")).toBe("");
 });

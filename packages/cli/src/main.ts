@@ -10,7 +10,7 @@ import { EXIT_USAGE, runStatus } from "./status.js";
 import { runLogs } from "./logs.js";
 import { runMessageSend, runMessageDisposition } from "./messages.js";
 import { validateFactoryFile } from "./validate.js";
-import { runIntegrationRetry, runTicketCancel, runTicketList, runTicketPause, runTicketResume, runTicketRetry, runTicketShow, runTicketSubmit } from "./tickets.js";
+import { runIntegrationLanded, runIntegrationNotLanded, runIntegrationRetry, runTicketCancel, runTicketList, runTicketPause, runTicketResume, runTicketRetry, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow } from "./holds.js";
 import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow } from "./approvals.js";
@@ -300,7 +300,15 @@ const integrationRetry = Command.make("retry", { ...ticketFlags, number: Argumen
   Effect.flatMap(Effect.promise(() => runIntegrationRetry({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), number, env: process.env })), print),
 ).pipe(Command.withDescription("Retry setup and integration with the preserved approval"));
 
-const integration = Command.make("integration").pipe(Command.withSubcommands([integrationRetry]));
+const integrationLanded = Command.make("landed", { ...ticketFlags, number: Argument.Int("n") }, ({ json, home, factory, number }) =>
+  Effect.flatMap(Effect.promise(() => runIntegrationLanded({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), number, env: process.env })), print),
+).pipe(Command.withDescription("Declare an indeterminate integration landed; refused unless the approved commit is on the default branch"));
+
+const integrationNotLanded = Command.make("not-landed", { ...ticketFlags, number: Argument.Int("n") }, ({ json, home, factory, number }) =>
+  Effect.flatMap(Effect.promise(() => runIntegrationNotLanded({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), number, env: process.env })), print),
+).pipe(Command.withDescription("Declare an indeterminate integration not landed and rerun it from the current default branch head"));
+
+const integration = Command.make("integration").pipe(Command.withSubcommands([integrationRetry, integrationLanded, integrationNotLanded]));
 
 const ticketCancel = Command.make("cancel", { ...ticketFlags, number: Argument.Int("n"),
   yes: Flag.Boolean("yes").pipe(Flag.withDefault(false), Flag.withDescription("Confirm cancellation without a prompt")),
