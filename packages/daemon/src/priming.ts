@@ -21,8 +21,8 @@ import { randomUUID } from "node:crypto";
 import { Clock, Data, Effect, Schema } from "effect";
 import type { DaemonFrame, Hello } from "@foundry/protocol";
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
-import { composePrime } from "./prime.js";
-import type { ComposePrimeResult, PrimeRequest, PrimeSourceProblem, Situation } from "./prime.js";
+import { ComposePrimeResult, composePrime } from "./prime.js";
+import type { PrimeRequest, PrimeSourceProblem, Situation } from "./prime.js";
 import type { Store, StoreError } from "./store.js";
 
 /** What the daemon records about each composed part: never its content. */
@@ -180,39 +180,51 @@ export const decideFreshPriming = (
   return "fresh";
 };
 
-export type PrimingOutcome =
+export type PrimingOutcome = Data.TaggedEnum<{
   /** The fresh prime was recorded and written to the connection. */
-  | { readonly _tag: "Sent"; readonly primeId: string }
+  Sent: { readonly primeId: string };
   /**
    * A reconnect from the same launch: no prime. Carries the newest prime sent
    * to this launch that is still unacknowledged, if any, for reconciliation (17a).
    */
-  | { readonly _tag: "Reconnect"; readonly unacknowledgedPrimeId?: string }
+  Reconnect: { readonly unacknowledgedPrimeId?: string };
   /** A recovery prime is due; sending it belongs to 41b. Nothing was sent. */
-  | { readonly _tag: "NotFresh" }
+  NotFresh: Record<never, never>;
   /** No effective station is known for the slot. Nothing was sent. */
-  | { readonly _tag: "UnknownStation" }
+  UnknownStation: Record<never, never>;
   /** An instruction file could not be read; freezing belongs to 11c. Nothing was recorded or sent. */
-  | { readonly _tag: "SourceUnavailable"; readonly problems: ReadonlyArray<PrimeSourceProblem> }
+  SourceUnavailable: { readonly problems: ReadonlyArray<PrimeSourceProblem> };
   /** Recorded, but the write failed; the record stays unacknowledged. */
-  | { readonly _tag: "SendFailed"; readonly primeId: string; readonly error: unknown };
+  SendFailed: { readonly primeId: string; readonly error: unknown };
+}>;
+
+export const PrimingOutcome = Data.taggedEnum<PrimingOutcome>();
+
+const isSent = PrimingOutcome.$is("Sent");
+
+const isReconnect = PrimingOutcome.$is("Reconnect");
 
 /** Outcomes after which work frames may follow on the connection. */
-const opensConnection = (outcome: PrimingOutcome): boolean => outcome._tag === "Sent" || outcome._tag === "Reconnect";
+const opensConnection = (outcome: PrimingOutcome): boolean => isSent(outcome) || isReconnect(outcome);
 
-export type CompactionPrimingOutcome =
+export type CompactionPrimingOutcome = Data.TaggedEnum<{
   /** The compaction prime was recorded and written ahead of every work frame not yet written. */
-  | { readonly _tag: "Sent"; readonly primeId: string }
+  Sent: { readonly primeId: string };
   /** No primed connection is known for this launch of the slot. Nothing was sent. */
-  | { readonly _tag: "NotConnected" }
+  NotConnected: Record<never, never>;
   /** The connection's own priming did not complete, so nothing may be written on it. */
-  | { readonly _tag: "NotPrimed" }
+  NotPrimed: Record<never, never>;
   /** No effective station is known for the slot. Nothing was sent. */
-  | { readonly _tag: "UnknownStation" }
+  UnknownStation: Record<never, never>;
   /** An instruction file could not be read; freezing belongs to 11c. Nothing was recorded or sent. */
-  | { readonly _tag: "SourceUnavailable"; readonly problems: ReadonlyArray<PrimeSourceProblem> }
+  SourceUnavailable: { readonly problems: ReadonlyArray<PrimeSourceProblem> };
   /** Recorded, but the write failed; the record stays unacknowledged. */
-  | { readonly _tag: "SendFailed"; readonly primeId: string; readonly error: unknown };
+  SendFailed: { readonly primeId: string; readonly error: unknown };
+}>;
+
+export const CompactionPrimingOutcome = Data.taggedEnum<CompactionPrimingOutcome>();
+
+const isSourceUnavailable = ComposePrimeResult.$is("SourceUnavailable");
 
 interface QueuedFrame {
   readonly frame: DaemonFrame;
@@ -277,7 +289,11 @@ class PrimedWriter {
 
   private enqueue(queue: Array<QueuedFrame>, frame: DaemonFrame): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      if (this.state instanceof Error) {return reject(this.state);}
+      if (this.state instanceof Error) {
+        reject(this.state);
+
+        return;
+      }
 
       queue.push({ frame, resolve, reject });
       this.pump();
@@ -345,14 +361,16 @@ export interface Primer {
   compacted(slot: ClaimedSlot): Promise<CompactionPrimingOutcome>;
 }
 
+const run = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> => Effect.runPromise(effect);
+
+const slotKey = (slot: ClaimedSlot): string => JSON.stringify([slot.factoryId, slot.slotId]);
+
 export const createPrimer = (options: PrimerOptions): Primer => {
   const compose = options.compose ?? ((request: PrimeRequest) => composePrime(request));
   const newPrimeId = options.newPrimeId ?? (() => `prime-${randomUUID()}`);
-  const run = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> => Effect.runPromise(effect);
   // Decide-and-send runs one at a time per slot, so two hellos from one launch
   // cannot both read "no prime yet" and both send a fresh prime.
   const slotTurns = new Map<string, Promise<unknown>>();
-  const slotKey = (slot: ClaimedSlot): string => JSON.stringify([slot.factoryId, slot.slotId]);
   // The latest primed connection per slot, where a compaction prime is written.
   const live = new Map<string, { readonly launchId: string; readonly conversationRef: string; readonly writer: PrimedWriter }>();
 
@@ -381,18 +399,20 @@ export const createPrimer = (options: PrimerOptions): Primer => {
     if (decision === "reconnect") {
       const unacknowledged = primes.filter((p) => p.launchId === slot.launchId && p.acknowledgedAt === null).at(-1);
 
-      return unacknowledged === undefined ? { _tag: "Reconnect" } : { _tag: "Reconnect", unacknowledgedPrimeId: unacknowledged.id };
+      return unacknowledged === undefined
+        ? PrimingOutcome.Reconnect({})
+        : PrimingOutcome.Reconnect({ unacknowledgedPrimeId: unacknowledged.id });
     }
 
-    if (decision === "not_fresh") {return { _tag: "NotFresh" };}
+    if (decision === "not_fresh") {return PrimingOutcome.NotFresh();}
 
     const request = options.primeRequest(slot);
 
-    if (request === undefined) {return { _tag: "UnknownStation" };}
+    if (request === undefined) {return PrimingOutcome.UnknownStation();}
 
     const composed = await compose({ ...request, situation: "fresh" });
 
-    if (composed._tag === "SourceUnavailable") {return composed;}
+    if (isSourceUnavailable(composed)) {return composed;}
 
     const primeId = newPrimeId();
     // Recorded before it is written, so a prime that reaches the worker is always on record.
@@ -411,10 +431,10 @@ export const createPrimer = (options: PrimerOptions): Primer => {
     try {
       await connection.send({ type: "prime", id: primeId, text: composed.prime.text });
     } catch (error) {
-      return { _tag: "SendFailed", primeId, error };
+      return PrimingOutcome.SendFailed({ primeId, error });
     }
 
-    return { _tag: "Sent", primeId };
+    return PrimingOutcome.Sent({ primeId });
   };
 
   const sendCompactionPrime = async (
@@ -422,15 +442,15 @@ export const createPrimer = (options: PrimerOptions): Primer => {
     conversationRef: string,
     writer: PrimedWriter,
   ): Promise<CompactionPrimingOutcome> => {
-    if (!(await writer.opened)) {return { _tag: "NotPrimed" };}
+    if (!(await writer.opened)) {return CompactionPrimingOutcome.NotPrimed();}
 
     const request = options.primeRequest(slot);
 
-    if (request === undefined) {return { _tag: "UnknownStation" };}
+    if (request === undefined) {return CompactionPrimingOutcome.UnknownStation();}
 
     const composed = await compose({ ...request, situation: "compaction" });
 
-    if (composed._tag === "SourceUnavailable") {return composed;}
+    if (isSourceUnavailable(composed)) {return composed;}
 
     const primeId = newPrimeId();
     await run(
@@ -448,10 +468,10 @@ export const createPrimer = (options: PrimerOptions): Primer => {
     try {
       await writer.sendFirst({ type: "prime", id: primeId, text: composed.prime.text });
     } catch (error) {
-      return { _tag: "SendFailed", primeId, error };
+      return CompactionPrimingOutcome.SendFailed({ primeId, error });
     }
 
-    return { _tag: "Sent", primeId };
+    return CompactionPrimingOutcome.Sent({ primeId });
   };
 
   return {
@@ -467,7 +487,7 @@ export const createPrimer = (options: PrimerOptions): Primer => {
     compacted(slot) {
       const current = live.get(slotKey(slot));
 
-      if (current === undefined || current.launchId !== slot.launchId) {return Promise.resolve({ _tag: "NotConnected" });}
+      if (current === undefined || current.launchId !== slot.launchId) {return Promise.resolve(CompactionPrimingOutcome.NotConnected());}
 
       // Held now, not once composition starts, so no work frame slips out ahead of the prime.
       const release = current.writer.hold();

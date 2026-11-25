@@ -15,6 +15,7 @@
  * callers' job.
  */
 import { createHash } from "node:crypto";
+import { Data } from "effect";
 import { codeOf } from "@foundry/protocol/errors";
 import { readFile } from "node:fs/promises";
 import { relative, sep } from "node:path";
@@ -64,9 +65,12 @@ export interface PrimeSourceProblem {
   readonly detail: string;
 }
 
-export type ComposePrimeResult =
-  | { readonly _tag: "Composed"; readonly prime: Prime }
-  | { readonly _tag: "SourceUnavailable"; readonly problems: ReadonlyArray<PrimeSourceProblem> };
+export type ComposePrimeResult = Data.TaggedEnum<{
+  Composed: { readonly prime: Prime };
+  SourceUnavailable: { readonly problems: ReadonlyArray<PrimeSourceProblem> };
+}>;
+
+export const ComposePrimeResult = Data.taggedEnum<ComposePrimeResult>();
 
 /** Reads one source's bytes. Injected so composition can run without a filesystem. */
 export type ReadSource = (path: string) => Promise<Uint8Array>;
@@ -127,7 +131,11 @@ export async function composePrime(
   const parts: Array<PrimePart> = [];
   const problems: Array<PrimeSourceProblem> = [];
   reads.forEach((outcome, index) => {
-    const path = request.instructions[index] as string;
+    const path = request.instructions[index];
+
+    // `allSettled` answers once per instruction, so every outcome has its path.
+    if (path === undefined) {return;}
+
     const source = toSource(request.baseDir, path);
 
     if (outcome.status === "rejected") {
@@ -148,9 +156,9 @@ export async function composePrime(
     parts.push({ source, hash: hashOf(outcome.value), content });
   });
 
-  if (problems.length > 0) {return { _tag: "SourceUnavailable", problems };}
+  if (problems.length > 0) {return ComposePrimeResult.SourceUnavailable({ problems });}
 
   const text = renderPrime(request, parts);
 
-  return { _tag: "Composed", prime: { situation: request.situation, text, parts } };
+  return ComposePrimeResult.Composed({ prime: { situation: request.situation, text, parts } });
 }
