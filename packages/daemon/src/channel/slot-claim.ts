@@ -28,6 +28,8 @@ export interface LaunchInventory {
 /**
  * The conversation reference each slot is bound to. A conversation outlives a
  * launch, so this is keyed by slot, not by launch.
+ *
+ * Operator reset and unfreeze (11b, 43a) will need an `unbind`/`rebind` here.
  */
 export interface SlotConversations {
   get(factoryId: string, slotId: string): string | undefined;
@@ -86,6 +88,8 @@ export const createHostSlotClaim = (options: HostSlotClaimOptions): SlotClaim =>
       }
 
       const record = launches.find((launch) => launch.launchId === hello.launchId);
+      // A host restart that lost its registry could make a live launch look unknown here;
+      // PRD §3.2 treats unknown ownership as retryable, which 43a will distinguish.
       if (record === undefined) {
         return terminal(SlotClaimRejectCode.launchUnknown, `the worker host reports no launch ${hello.launchId}`);
       }

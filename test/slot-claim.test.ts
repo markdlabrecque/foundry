@@ -16,7 +16,7 @@ import {
   type SlotClaim,
 } from "@foundry/daemon";
 import { openChannel, type ChannelOpenResult } from "@foundry/extension";
-import type { LaunchRecord } from "@foundry/host";
+import type { HostConnection, LaunchRecord } from "@foundry/host";
 import { PROTOCOL_VERSION, type Hello, type WorkerFrame } from "@foundry/protocol";
 
 const live = (launchId: string, slotId = "builder-1"): LaunchRecord => ({
@@ -48,6 +48,10 @@ const hello = (overrides: Partial<Hello> = {}): Hello => ({
   tools: [],
   ...overrides,
 });
+
+// Compile-time only: the real host connection fits the claim's inventory seam.
+const _hostConnectionIsInventory = (connection: HostConnection): LaunchInventory => connection;
+void _hostConnectionIsInventory;
 
 /** Host reports the test controls. The real `connectHost` connection satisfies the same seam. */
 const reports = (launches: readonly LaunchRecord[]): LaunchInventory => ({ inventory: async () => launches });
