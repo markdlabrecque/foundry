@@ -153,6 +153,38 @@ test("standalone compaction delivers after a later async handler finishes, witho
   expect(vi.getTimerCount()).toBe(0);
 });
 
+test("arrival after an empty compaction check restarts observation until async compaction finishes", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const { pi, receive, injected, compact } = fixture();
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+
+  pi.on("session_compact", () => blocked);
+  const compacting = compact();
+  await tick();
+  expect(vi.getTimerCount()).toBe(0);
+  receive("late-held");
+  expect(vi.getTimerCount()).toBe(1);
+  await vi.advanceTimersByTimeAsync(50);
+  expect(injected).toEqual([]);
+  release();
+  await compacting;
+  await vi.advanceTimersByTimeAsync(25);
+  expect(injected).toEqual(["late-held"]);
+  expect(vi.getTimerCount()).toBe(0);
+});
+
+test("draining a busy held queue cancels its observation timer", () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const { receive, receiver, injected } = fixture();
+  receive("held");
+  expect(vi.getTimerCount()).toBe(1);
+  receiver.drain();
+  expect(vi.getTimerCount()).toBe(0);
+  expect(receiver.pending()).toEqual(["held"]);
+  expect(injected).toEqual([]);
+});
+
 test("compaction inside a run cannot release messages; failed or aborted standalone compaction can", async () => {
   const { pi, state, receive, injected } = fixture();
   receive("held");
