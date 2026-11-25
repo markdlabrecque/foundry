@@ -137,6 +137,8 @@ test("startup reopens each queue only after its recovery, and assigns only to re
 
   // No connection is reconciled yet, and an accepted but unreconciled one is not enough: no early assignment.
   const shopWorker = gate.accepted({ factoryId: "shop", slotId: "worker/1" });
+  // A direct `schedule()` runs the same pass the watcher runs on every commit, with the same `ready`
+  // gate, so an empty result proves no pass could assign now rather than that the watcher hasn't run yet.
   expect(await Effect.runPromise(createAssignmentScheduler(assignmentOptions).schedule())).toEqual([]);
   expect(await Effect.runPromise(store.read(`SELECT id FROM assignment`))).toEqual([]);
 

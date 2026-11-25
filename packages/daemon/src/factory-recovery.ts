@@ -27,7 +27,11 @@ export interface FactoryRecoveryOptions {
   readonly factories: ReadonlyArray<string>;
   /** Run in order for each factory. Another kind's recovery is one more entry. */
   readonly steps: ReadonlyArray<RecoveryStep>;
-  /** Runs once nothing of the factory awaits recovery. Not run after `stop`. */
+  /**
+   * Runs once nothing of the factory awaits recovery. Not run after `stop`. Fire-and-forget: a
+   * resumed queue may run for a long time, and `stop` must not wait for it to drain. A rejection
+   * goes to `onError` as `resume`.
+   */
   readonly onRecovered: (factoryId: string) => Promise<void> | void;
   /** After the steps, operations still awaiting recovery, so the queue keeps waiting. */
   readonly onWaiting?: (factoryId: string, awaiting: ReadonlyArray<Operation>) => void;
@@ -52,6 +56,9 @@ const untilRecovered = (options: FactoryRecoveryOptions, factoryId: string, sign
     let checking = false;
     let dirty = false;
     let reported = false;
+    // Any commit may be the one that settles this factory's last awaiting operation, whichever code
+    // path wrote it (a background after_create verdict, an operator disposition), so every commit
+    // triggers a re-read rather than a filter on what it touched.
     // Commits arrive asynchronously, so the listener never runs before `check` is defined.
     const unsubscribe = options.store.onCommit(() => { void check(); });
 
@@ -118,11 +125,15 @@ export const startFactoryRecovery = (options: FactoryRecoveryOptions): FactoryRe
 
     if (signal.aborted) {return;}
 
-    try {
-      await options.onRecovered(factoryId);
-    } catch (error) {
-      if (!signal.aborted) {options.onError(factoryId, "resume", error);}
-    }
+    // Not awaited, so `stop` never waits for the resumed queue to drain. A synchronous throw is
+    // reported the same way as a rejection.
+    void (async () => {
+      try {
+        await options.onRecovered(factoryId);
+      } catch (error) {
+        if (!signal.aborted) {options.onError(factoryId, "resume", error);}
+      }
+    })();
   };
 
   const runs = options.factories.map(recover);

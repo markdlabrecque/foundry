@@ -529,6 +529,14 @@ const main = async (): Promise<void> => {
           void accepted.closed?.then(lost);
           const gated = channelGate.accepted(slot);
           void accepted.closed?.then(gated.closed);
+
+          // A connection that never opens its gate gets one warning, unless a freeze already explains it.
+          const notTakingWork = (reason: string): void => {
+            if (!freezer.isFrozen(slot)) {
+              log.warn("slot not taking work", { factoryId: slot.factoryId, slotId: slot.slotId, detail: { reason } });
+            }
+          };
+
           void reconciler.reconcile(slot, hello, accepted).then(async (comparison) => {
             const primed = primer.prime(slot, hello, accepted);
             const outcome = await primed.outcome;
@@ -537,8 +545,13 @@ const main = async (): Promise<void> => {
               await reconciler.resumeAssignment(slot, primed.connection, comparison.interruptedAssignmentId);
               delivery.attach(slot, primed.connection);
               gated.reconciled();
+            } else if (!Predicate.isTagged(outcome, "Closed")) {
+              notTakingWork(outcome._tag);
             }
-          }).catch((cause: unknown) => log.error("connection priming failed", { detail: { error: messageOf(cause) } }));
+          }).catch((cause: unknown) => {
+            log.error("connection priming failed", { detail: { error: messageOf(cause) } });
+            notTakingWork(`reconciliation failed: ${messageOf(cause)}`);
+          });
         },
         onFrame: (slot, frame) => {
           channelEvents.onFrame(slot, frame);
@@ -916,6 +929,8 @@ const main = async (): Promise<void> => {
     ["sync", "interrupted sync not recovered"],
     ["cleanup", "cleanup recovery failed"],
     ["worktree_create", "worktree recovery failed"],
+    ["awaiting", "queue recovery check failed"],
+    ["resume", "queue not resumed"],
   ]);
 
   factoryRecoveries.push(startFactoryRecovery({
