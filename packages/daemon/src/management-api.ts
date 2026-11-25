@@ -293,6 +293,7 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
   if (approvalAction !== null) {
     return handleApprovalDecision(inputs, request, response, Number(approvalAction[1]), approvalAction[2] === "approve" ? "approved" : "rejected");
   }
+
   if (path.startsWith(`${MESSAGES_PATH}/`)) {return handleMessageDisposition(inputs, request, response, path);}
 
   // Ticket routes first: submit reads a POST body, so it must not be drained.
