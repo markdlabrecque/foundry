@@ -42,11 +42,11 @@ const main = (): void => {
   try {
     claim = claimStateRoot(stateRoot);
   } catch (error) {
-    if (error instanceof StateRootLockedError) {
-      process.stderr.write(`foundry daemon: ${error.message}\n`);
-      process.exit(EXIT_INSTANCE_FAILURE);
-    }
-    throw error;
+    // A held lock, or a root we cannot create or write (EACCES and the like), is an instance-level
+    // failure: one line and exit 1, not a stack trace.
+    const message = error instanceof StateRootLockedError ? error.message : `cannot claim state root ${stateRoot}: ${(error as Error).message}`;
+    process.stderr.write(`foundry daemon: ${message}\n`);
+    process.exit(EXIT_INSTANCE_FAILURE);
   }
   process.on("exit", () => claim.release());
   // Keep the foreground process alive until asked to stop.

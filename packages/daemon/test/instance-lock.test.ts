@@ -1,10 +1,10 @@
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
-import { claimStateRoot, LOCK_FILE_NAME, StateRootLockedError } from "@foundry/daemon";
+import { claimStateRoot, LOCK_FILE_NAME, StateRootLockedError, TAKEOVER_GUARD_FILE_NAME } from "@foundry/daemon";
 
 // The daemon's foreground entry point, from the built package.
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
@@ -66,17 +66,70 @@ test("a second daemon cannot take the state root while the first owns it", async
   expect((await third.exited).code).toBe(0);
 });
 
-test("a lock left by a dead process is reclaimed; one naming no owner is refused", async () => {
-  const home = tempRoot();
+const deadPid = async (): Promise<number> => {
   const dead = spawn(process.execPath, ["-e", ""]);
   await new Promise((done) => dead.on("exit", done));
-  writeFileSync(join(home, LOCK_FILE_NAME), JSON.stringify({ pid: dead.pid, startedAt: "x" }));
+  return dead.pid!;
+};
+
+const ownerFile = (pid: number): string => `${JSON.stringify({ pid, startedAt: "fixture" })}\n`;
+
+const refusal = (claim: () => unknown): StateRootLockedError => {
+  try {
+    claim();
+  } catch (error) {
+    if (error instanceof StateRootLockedError) return error;
+    throw error;
+  }
+  throw new Error("expected the claim to be refused");
+};
+
+test("a lock left by a dead process is reclaimed and then released", async () => {
+  const home = tempRoot();
+  writeFileSync(join(home, LOCK_FILE_NAME), ownerFile(await deadPid()));
   const claim = claimStateRoot(home);
-  expect(() => claimStateRoot(home)).toThrow(StateRootLockedError);
+  expect(refusal(() => claimStateRoot(home)).reason).toBe("held");
   claim.release();
   expect(existsSync(join(home, LOCK_FILE_NAME))).toBe(false);
+  expect(existsSync(join(home, TAKEOVER_GUARD_FILE_NAME))).toBe(false);
+});
 
+test("a lock that names no owner is refused and kept", () => {
+  const home = tempRoot();
   writeFileSync(join(home, LOCK_FILE_NAME), "garbage");
-  expect(() => claimStateRoot(home)).toThrow(StateRootLockedError);
-  expect(existsSync(join(home, LOCK_FILE_NAME))).toBe(true);
+  expect(refusal(() => claimStateRoot(home)).reason).toBe("no-owner");
+  expect(readFileSync(join(home, LOCK_FILE_NAME), "utf8")).toBe("garbage");
+});
+
+test("a lock placed by another owner during a stale takeover survives, and the claim is refused", async () => {
+  const home = tempRoot();
+  const lockPath = join(home, LOCK_FILE_NAME);
+  writeFileSync(lockPath, ownerFile(await deadPid()));
+  // A live process other than this one: the test runner's parent.
+  const otherOwner = ownerFile(process.ppid);
+  const error = refusal(() =>
+    claimStateRoot(home, { onStaleLockConfirmed: () => writeFileSync(lockPath, otherOwner) }),
+  );
+  expect(error.reason).toBe("held");
+  expect(error.ownerPid).toBe(process.ppid);
+  expect(readFileSync(lockPath, "utf8")).toBe(otherOwner);
+  expect(existsSync(join(home, TAKEOVER_GUARD_FILE_NAME))).toBe(false);
+});
+
+test("a stale lock is not taken over while a live process holds the takeover guard", async () => {
+  const home = tempRoot();
+  const stale = ownerFile(await deadPid());
+  writeFileSync(join(home, LOCK_FILE_NAME), stale);
+  writeFileSync(join(home, TAKEOVER_GUARD_FILE_NAME), ownerFile(process.ppid));
+  expect(refusal(() => claimStateRoot(home)).reason).toBe("contended");
+  expect(readFileSync(join(home, LOCK_FILE_NAME), "utf8")).toBe(stale);
+});
+
+test("a takeover guard left by a dead process is refused with a hint to remove it", async () => {
+  const home = tempRoot();
+  writeFileSync(join(home, LOCK_FILE_NAME), ownerFile(await deadPid()));
+  writeFileSync(join(home, TAKEOVER_GUARD_FILE_NAME), ownerFile(await deadPid()));
+  const error = refusal(() => claimStateRoot(home));
+  expect(error.reason).toBe("takeover-interrupted");
+  expect(error.message).toContain(`remove ${join(home, TAKEOVER_GUARD_FILE_NAME)}`);
 });

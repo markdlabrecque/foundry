@@ -6,5 +6,8 @@ export {
   claimStateRoot,
   LOCK_FILE_NAME,
   StateRootLockedError,
+  TAKEOVER_GUARD_FILE_NAME,
+  type ClaimStateRootOptions,
   type StateRootClaim,
+  type StateRootLockedReason,
 } from "./instance-lock.js";
