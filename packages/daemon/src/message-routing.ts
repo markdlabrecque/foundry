@@ -33,6 +33,8 @@ export interface MessageRoutingOptions {
   readonly slots: ReadonlyArray<PlannedSlot>;
   /** Read-only lookup inside the binding transaction; absent until assignment scheduling is wired. */
   readonly assignedSlot?: (change: Change, factoryId: string, ticket: number) => Effect.Effect<string | null, StoreError>;
+  /** An assignment's context has an exact destination, never a fallback station slot. */
+  readonly contextSlot?: (change: Change, factoryId: string, messageId: string) => Effect.Effect<string | null, StoreError>;
   readonly inScope?: (factoryId: string) => boolean;
 }
 
@@ -82,7 +84,13 @@ export const bindStationMessages = (options: MessageRoutingOptions): Effect.Effe
       const assigned = message.ticket_number === null || options.assignedSlot === undefined
         ? null : yield* options.assignedSlot(change, message.factory_id, message.ticket_number);
 
-      const slotId = selectMessageSlot(message.factory_id, message.recipient, slots, assigned);
+      const contextSlot = options.contextSlot === undefined
+        ? null : yield* options.contextSlot(change, message.factory_id, message.id);
+
+      const slotId = contextSlot === null
+        ? selectMessageSlot(message.factory_id, message.recipient, slots, assigned)
+        : slots.find((slot) => slot.factoryId === message.factory_id && slot.station === message.recipient
+          && slot.slotId === contextSlot && slot.condition === "normal")?.slotId ?? null;
 
       if (slotId === null) {continue;}
 

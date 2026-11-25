@@ -42,6 +42,8 @@ export * from "./store.js";
 
 export * from "./tickets.js";
 
+export * from "./assignments.js";
+
 export * from "./prime.js";
 
 export * from "./priming.js";
