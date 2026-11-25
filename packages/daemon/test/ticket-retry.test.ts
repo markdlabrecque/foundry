@@ -15,6 +15,7 @@ import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { DaemonFrame, Hello } from "@foundry/protocol";
 import { FactoryConfig } from "../src/config/schema.js";
 import { resendAssignmentRepositoryContext } from "../src/assignment-repository-context.js";
+import { composeResumeNotice } from "../src/resume-notice.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
   version: 1, name: "shop", repository: { source: "/disposable", default_branch: "main" },
@@ -149,6 +150,8 @@ test("attempted old work and restored context cannot rearm after retry; fresh co
     yield* obligations(store);
     const restore = () => resendAssignmentRepositoryContext(store, { factoryId: "shop", slotId: "worker/1", clonePath: root, isolation: "none" });
     yield* restore();
+    yield* store.change((change) => composeResumeNotice(change, { assignmentId: id, factoryId: "shop", ticket: 1,
+      stage: "plan", slotId: "worker/1", recipient: "floor.worker" }));
     yield* store.change((change) => Effect.gen(function* () {
       yield* change.query(`UPDATE message SET status = 'bound', bound_slot = CASE
         WHEN kind = 'delegation_notice' AND delegation_id IN (SELECT id FROM delegation WHERE parent_id IS NOT NULL)
@@ -172,7 +175,7 @@ test("attempted old work and restored context cannot rearm after retry; fresh co
       yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "injected" });
     }));
     const attempts = yield* store.read<{ message_id: string }>(`SELECT * FROM message_attempt ORDER BY rowid`);
-    expect(attempts).toHaveLength(5);
+    expect(attempts).toHaveLength(6);
     yield* restore();
     const restored = yield* store.read<{ message_id: string }>(`SELECT message_id FROM repository_context ORDER BY rowid`);
     expect(restored).toHaveLength(2);
@@ -213,7 +216,7 @@ test("attempted old work and restored context cannot rearm after retry; fresh co
     expect(yield* detectStuckWorkers(store, () => true)).toBe(0);
     expect(yield* store.read(`SELECT * FROM operator_hold`)).toEqual([]);
     expect(yield* store.read(`SELECT status FROM message WHERE id IN (SELECT message_id FROM message_attempt)`))
-      .toEqual(Array.from({ length: 5 }, () => ({ status: "sent" })));
+      .toEqual(Array.from({ length: 6 }, () => ({ status: "sent" })));
     const [fresh] = yield* scheduler(store).schedule();
 
     if (fresh === undefined) {throw new Error("no fresh assignment");}

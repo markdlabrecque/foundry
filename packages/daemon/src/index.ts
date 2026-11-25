@@ -68,6 +68,8 @@ export * from "./tickets.js";
 
 export * from "./assignments.js";
 
+export * from "./resume-notice.js";
+
 export * from "./prime.js";
 
 export * from "./priming.js";

@@ -6,6 +6,7 @@ import type { Message } from "@foundry/protocol";
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
 import { actionableMessage } from "./message-obligations.js";
 import { closeOpenHoldIn } from "./holds.js";
+import { releaseResumeReplacement } from "./resume-notice.js";
 import type { SlotGate } from "./freeze.js";
 import type { Store, StoreError } from "./store.js";
 
@@ -29,6 +30,7 @@ export const acknowledgeMessage = (store: Store, slot: ClaimedSlot, id: string, 
     const now = yield* Clock.currentTimeMillis;
     yield* change.query(`UPDATE message SET status = 'acknowledged', acknowledged_at = ? WHERE id = ?`, [now, id]);
     yield* change.query(`UPDATE message_attempt SET acknowledged_at = ? WHERE id = ?`, [now, attempt.id]);
+    yield* releaseResumeReplacement(change, id, 'acknowledged');
     yield* closeOpenHoldIn(change, { factoryId: slot.factoryId, kind: "stuck_worker", subject: id }, "cleared");
     yield* change.recordHistory({ factoryId: slot.factoryId, kind: "message.acknowledged", subject: id,
       detail: { attemptId: attempt.id, slotId: slot.slotId, launchId: slot.launchId } });
@@ -80,12 +82,20 @@ export const createMessageDelivery = (options: {
             // Check inside the attempt transaction: the deadline may pass between sweeps,
             // or while this pump waits for the store writer. Never send that first copy.
             const now = yield* Clock.currentTimeMillis;
+            // A proven retry or explicit slot reset can re-arm an attempted notice. Supersede
+            // that old payload before another attempt, using its deferred replacement content.
+            const replacement = yield* releaseResumeReplacement(change, message.id, 'bound');
 
-            const updated = yield* change.query<{ id: string }>(
+            if (replacement !== null) {return null;}
+
+            const updated = yield* change.query<BoundMessage>(
               `UPDATE message SET status = 'sent' WHERE id = ? AND status = 'bound'
                AND ${actionableMessage}
                AND NOT EXISTS (SELECT 1 FROM agent_request r WHERE r.notice_id = message.id
-                 AND (r.status = 'expired' OR r.deadline <= ?)) RETURNING id`, [message.id, now],
+                 AND (r.status = 'expired' OR r.deadline <= ?))
+               AND NOT EXISTS (SELECT 1 FROM resume_notice n JOIN assignment a ON a.id = n.assignment_id
+                 WHERE n.message_id = message.id AND (a.status != 'active' OR a.slot_id != message.bound_slot))
+               RETURNING id, body, delivery`, [message.id, now],
             );
 
             if (updated.length === 0) {return yield* Effect.fail(unchanged);}
@@ -108,11 +118,11 @@ export const createMessageDelivery = (options: {
             yield* change.recordHistory({ factoryId: slot.factoryId, kind: "message.sent", subject: message.id,
               detail: { attemptId, slotId: slot.slotId, launchId: slot.launchId, connectionId } });
 
-            return true;
-          })).pipe(Effect.catchIf((error) => error === unchanged, () => Effect.succeed(false))));
+            return updated[0] ?? null;
+          })).pipe(Effect.catchIf((error) => error === unchanged, () => Effect.succeed(null))));
 
           if (recorded && !ended && !stopped) {
-            await connection.send({ type: "message", id: message.id, body: message.body, delivery: message.delivery });
+            await connection.send({ type: "message", ...recorded });
           }
         }
       };

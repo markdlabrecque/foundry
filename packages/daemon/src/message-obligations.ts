@@ -6,4 +6,6 @@ export const actionableMessage = `
   AND NOT EXISTS (SELECT 1 FROM assignment a WHERE a.context_message = message.id
     AND a.status = 'ended' AND a.end_reason IN ('abandoned', 'cancelled'))
   AND NOT EXISTS (SELECT 1 FROM repository_context r JOIN assignment a ON a.id = r.assignment_id
-    WHERE r.message_id = message.id AND a.status = 'ended' AND a.end_reason IN ('abandoned', 'cancelled'))`;
+    WHERE r.message_id = message.id AND a.status = 'ended' AND a.end_reason IN ('abandoned', 'cancelled'))
+  AND NOT EXISTS (SELECT 1 FROM resume_notice n JOIN assignment a ON a.id = n.assignment_id
+    WHERE n.message_id = message.id AND a.status = 'ended' AND a.end_reason IN ('abandoned', 'cancelled'))`;

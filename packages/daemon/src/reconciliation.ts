@@ -6,6 +6,7 @@ import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
 import type { Store } from "./store.js";
 import { acknowledgeMessage } from "./message-delivery.js";
 import { actionableMessage } from "./message-obligations.js";
+import { releaseResumeReplacement } from "./resume-notice.js";
 import { decideMessageRetry } from "./message-retry.js";
 import type { RetryDecision, RetryEvidence } from "./message-retry.js";
 import { acknowledgePrime } from "./priming.js";
@@ -118,6 +119,10 @@ export const createReconciler = (store: Store) => {
                   AND EXISTS (SELECT 1 FROM message m WHERE m.id = message_attempt.message_id
                     AND m.factory_id = ? AND m.bound_slot = ? AND m.status = 'sent') RETURNING id`,
                 [retiredAt, item.id, slot.factoryId, slot.slotId, slot.factoryId, slot.slotId]);
+
+                const replacement = yield* releaseResumeReplacement(change, item.id, 'sent');
+
+                if (replacement !== null) {return decided;}
 
                 const updated = yield* change.query<{ id: string }>(
                   `UPDATE message SET status = 'bound' WHERE id = ? AND factory_id = ? AND bound_slot = ? AND status = 'sent'

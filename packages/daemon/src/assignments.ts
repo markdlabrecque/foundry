@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Cause, Clock, Data, Effect, Exit } from "effect";
 import { acceptMessage } from "./agent-message.js";
+import { abandonAssignment } from "./assignment-abandon.js";
+import { composeResumeNotice } from "./resume-notice.js";
 import { isAssignmentSlotReserved, onAssignmentSlotReleased } from "./assignment-reservation.js";
 import { eligibleAssignmentSlots } from "./assignment-slots.js";
 import { composeAssignmentRepositoryContext, recordAssignmentRepositoryContext } from "./assignment-repository-context.js";
@@ -94,7 +96,7 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
       const queued = yield* change.query<QueuedTicket>(
         `SELECT * FROM ticket t WHERE (state = 'backlog' OR (state = 'stage' AND status = 'queued'))
          AND NOT EXISTS (SELECT 1 FROM assignment a WHERE a.factory_id = t.factory_id
-           AND a.ticket_number = t.number AND a.status != 'ended')
+           AND a.ticket_number = t.number AND a.status = 'active')
          ORDER BY submitted_at, factory_id, number`,
       );
 
@@ -110,6 +112,17 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
         const stage = ticket.state === 'backlog' ? line?.stages[0] : line?.stages.find((s) => s.id === ticket.stage);
 
         if (factory === undefined || stage === undefined) {continue;}
+
+        const [resuming] = yield* change.query<{ id: string; slot_id: string; operator_message: string | null; allow_abandon: number }>(
+          `SELECT a.id, a.slot_id, r.operator_message, r.allow_abandon FROM assignment a
+           JOIN assignment_resume r ON r.assignment_id = a.id
+           WHERE a.factory_id = ? AND a.ticket_number = ? AND a.status = 'suspended'`,
+          [ticket.factory_id, ticket.number],
+        );
+
+        const suspended = yield* change.query(`SELECT id FROM assignment WHERE factory_id = ? AND ticket_number = ? AND status = 'suspended'`, [ticket.factory_id, ticket.number]);
+
+        if (suspended.length > 0 && resuming === undefined) {continue;}
 
         const previous = yield* change.query<{ slot_id: string }>(
           `SELECT slot_id FROM assignment WHERE factory_id = ? AND ticket_number = ? AND stage = ?
@@ -171,8 +184,41 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
             if (hooks[0]?.status !== 'complete') {continue;}
           }
 
-          const id = randomUUID();
           const now = yield* Clock.currentTimeMillis;
+
+          if (resuming !== undefined && resuming.slot_id === slot.slotId) {
+            yield* change.query(`UPDATE assignment SET status = 'active' WHERE id = ?`, [resuming.id]);
+
+            const notice = yield* composeResumeNotice(change, {
+              assignmentId: resuming.id, factoryId: ticket.factory_id, ticket: ticket.number,
+              stage: stage.id, slotId: slot.slotId, recipient: slot.station.address,
+              message: resuming.operator_message,
+            });
+
+            yield* change.query(`UPDATE ticket SET status = 'assigned' WHERE factory_id = ? AND number = ?`, [ticket.factory_id, ticket.number]);
+            yield* change.query(`DELETE FROM assignment_resume WHERE assignment_id = ?`, [resuming.id]);
+            yield* change.query(
+              `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
+                from_state, from_stage, from_status, to_state, to_stage, to_status, config_load)
+               VALUES (?, ?, ?, 'daemon', 'stage', ?, 'queued', 'stage', ?, 'assigned', ?)`,
+              [ticket.factory_id, ticket.number, now, stage.id, stage.id, options.configLoad?.(ticket.factory_id) ?? null],
+            );
+            yield* change.recordHistory({ factoryId: ticket.factory_id, kind: "assignment.reactivated", subject: resuming.id,
+              detail: { notice }, records: [ticketRecord(ticket.number), slotRecord(slot.slotId)] });
+            assigned.push({ id: resuming.id, factoryId: ticket.factory_id, ticket: ticket.number,
+              stage: stage.id, slotId: slot.slotId, contextMessage: notice ?? '' });
+            break;
+          }
+
+          if (resuming !== undefined) {
+            if (resuming.allow_abandon === 0) {continue;}
+
+            yield* abandonAssignment(change, { id: resuming.id, factoryId: ticket.factory_id,
+              ticket: ticket.number, now, slots: options.slots });
+            yield* change.query(`DELETE FROM assignment_resume WHERE assignment_id = ?`, [resuming.id]);
+          }
+
+          const id = randomUUID();
 
           const repositoryContext = options.clonePath === undefined ? null : yield* composeAssignmentRepositoryContext(change, {
             factoryId: ticket.factory_id, slotId: slot.slotId,
@@ -191,6 +237,14 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
                recovery_ceiling, created_at, context_message) VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?)`,
             [id, ticket.factory_id, ticket.number, stage.id, slot.slotId, factory.config.recovery_limit ?? 3, now, message.id],
           );
+
+          if (resuming !== undefined) {
+            yield* composeResumeNotice(change, {
+              assignmentId: id, factoryId: ticket.factory_id, ticket: ticket.number,
+              stage: stage.id, slotId: slot.slotId, recipient: slot.station.address,
+              message: resuming.operator_message,
+            });
+          }
 
           if (repositoryContext !== null) {
             yield* recordAssignmentRepositoryContext(change, {
