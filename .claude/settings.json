@@ -1,5 +1,12 @@
 {
+  "extraKnownMarketplaces": {
+    "foundry-local": {
+      "source": { "source": "directory", "path": "." }
+    }
+  },
   "enabledPlugins": {
-    "linear@anthropic-plugin-directory": true
+    "linear@anthropic-plugin-directory": true,
+    "stack-runner@foundry-local": true,
+    "stack-tickets@foundry-local": true
   }
 }

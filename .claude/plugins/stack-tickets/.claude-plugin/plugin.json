@@ -1,0 +1,1 @@
+{ "name": "stack-tickets", "version": "0.1.0", "description": "Sidebar pane: tickets the stack-runner has in flight, their stage and total time.", "types": "./types/index.d.ts" }
