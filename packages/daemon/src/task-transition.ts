@@ -1,9 +1,11 @@
 /** Authorized done outcomes (PRD §8.2, §10.1). Scheduling reads the committed queue later. */
 import { Clock, Effect, Schema } from "effect";
 import type { AssignmentFactory } from "./assignments.js";
+import { runCloneGit } from "./factory-clone.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import { ToolRefusal } from "./submissions.js";
-import type { ToolHandler } from "./submissions.js";
+import type { ToolHandler, ToolCallContext } from "./submissions.js";
+import type { Query } from "./store.js";
 
 const TransitionArgs = Schema.Struct({
   assignmentId: Schema.NonEmptyString,
@@ -18,6 +20,27 @@ interface AssignedTicket {
   readonly slot_id: string;
   readonly stage: string;
   readonly production_line: string;
+  readonly worktree_path: string | null;
+  readonly branch: string | null;
+  readonly expected_commit: string | null;
+}
+
+const assignedTicket = (query: Query, call: ToolCallContext, assignmentId: string) => query<AssignedTicket>(
+  `SELECT a.ticket_number, a.slot_id, a.stage, t.production_line, t.worktree_path, t.branch,
+     COALESCE((SELECT git_commit FROM ticket_transition tr
+       WHERE tr.factory_id = t.factory_id AND tr.ticket_number = t.number AND tr.git_commit IS NOT NULL
+       ORDER BY tr.sequence DESC LIMIT 1), t.start_commit) AS expected_commit
+   FROM assignment a JOIN ticket t ON t.factory_id = a.factory_id AND t.number = a.ticket_number
+   WHERE a.id = ? AND a.factory_id = ? AND a.status = 'active'
+     AND t.state = 'stage' AND t.status = 'assigned' AND t.stage = a.stage`,
+  [assignmentId, call.factoryId],
+);
+
+interface CodeObservation {
+  readonly assignment: AssignedTicket;
+  readonly head: string;
+  readonly branch: string;
+  readonly dirty: boolean;
 }
 
 export interface TaskTransitionOptions {
@@ -27,18 +50,12 @@ export interface TaskTransitionOptions {
 
 /** Explicit assignment identity prevents a stale outcome from ending a later assignment on the
  * same slot. Factory and slot authority come only from the claimed channel, never arguments. */
-export const taskTransitionHandler = (options: TaskTransitionOptions): ToolHandler => (change, call) => Effect.gen(function* () {
+const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObservation): ToolHandler => (change, call) => Effect.gen(function* () {
   const args = yield* Schema.decodeUnknownEffect(TransitionArgs)(call.args, { onExcessProperty: "error" }).pipe(
     Effect.mapError(() => new ToolRefusal({ code: "invalid_arguments", detail: "task_transition needs assignmentId, outcome done, reason and evidence; no destination is accepted" })),
   );
 
-  const rows = yield* change.query<AssignedTicket>(
-    `SELECT a.ticket_number, a.slot_id, a.stage, t.production_line FROM assignment a
-     JOIN ticket t ON t.factory_id = a.factory_id AND t.number = a.ticket_number
-     WHERE a.id = ? AND a.factory_id = ? AND a.status = 'active'
-       AND t.state = 'stage' AND t.status = 'assigned' AND t.stage = a.stage`,
-    [args.assignmentId, call.factoryId],
-  );
+  const rows = yield* assignedTicket(change.query, call, args.assignmentId);
 
   const assignment = rows[0];
 
@@ -56,13 +73,30 @@ export const taskTransitionHandler = (options: TaskTransitionOptions): ToolHandl
     return yield* new ToolRefusal({ code: "unsupported_transition", detail: "no configured next stage; completion and integration are not supported yet" });
   }
 
-  // These workflows have their own tickets. Fail closed rather than bypass an approval or
-  // pretend a worker-supplied commit proves the code-stage branch/dirty-tree guards.
+  // Approval and final integration remain separate workflows.
   const room = config?.rooms[stage.station.split(".")[0] ?? ""];
   const station = room?.stations[stage.station.split(".")[1] ?? ""];
 
-  if (stage.approval || stage.writing || station === undefined || station.isolation === "worktree") {
-    return yield* new ToolRefusal({ code: "unsupported_transition", detail: "approval and code-stage outcome checks are not supported yet" });
+  if (stage.approval || station === undefined || (stage.writing && station.isolation !== "worktree")) {
+    return yield* new ToolRefusal({ code: "unsupported_transition", detail: "approval and invalid stage configurations are not supported" });
+  }
+
+  if (station.isolation === "worktree") {
+    if (args.gitCommit === undefined) {
+      return yield* new ToolRefusal({ code: "commit_required", detail: "done for a code stage requires the evaluated commit" });
+    }
+
+    if (observation === undefined || JSON.stringify(observation.assignment) !== JSON.stringify(assignment)) {
+      return yield* new ToolRefusal({ code: "invalid_code_outcome", detail: "code assignment changed or its worktree could not be inspected; retry" });
+    }
+
+    if (observation.branch !== `refs/heads/${assignment.branch}` || args.gitCommit !== observation.head) {
+      return yield* new ToolRefusal({ code: "invalid_code_outcome", detail: "the evaluated commit must be the ticket branch HEAD" });
+    }
+
+    if (!stage.writing && (observation.head !== assignment.expected_commit || observation.dirty)) {
+      return yield* new ToolRefusal({ code: "non_writing_changes", detail: "non-writing stages must revert branch movement and tracked changes before reporting an outcome; reject to request changes" });
+    }
   }
 
   // Delegation acceptance can land independently of outcome handling. Never strand open work
@@ -96,3 +130,33 @@ export const taskTransitionHandler = (options: TaskTransitionOptions): ToolHandl
 
   return { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: next.id, status: "queued" };
 });
+
+/** Git inspection is read-only and outside the submission transaction. No failed inspection can
+ * end an assignment; replay/freeze checks still run before a prepared refusal is returned. */
+export const taskTransitionHandler = (options: TaskTransitionOptions): ToolHandler => Object.assign(
+  transitionHandler(options),
+  { prepare: (query: Query, call: ToolCallContext) => Effect.gen(function* () {
+    const args = yield* Schema.decodeUnknownEffect(TransitionArgs)(call.args, { onExcessProperty: "error" }).pipe(
+      Effect.mapError(() => new ToolRefusal({ code: "invalid_arguments", detail: "invalid task_transition arguments" })),
+    );
+
+    const assignment = (yield* assignedTicket(query, call, args.assignmentId))[0];
+
+    if (assignment === undefined || assignment.slot_id !== call.slotId || assignment.worktree_path === null) {
+      return transitionHandler(options);
+    }
+
+    const path = assignment.worktree_path;
+
+    const git = (args: ReadonlyArray<string>) => Effect.tryPromise({
+      try: () => runCloneGit(["--no-optional-locks", ...args], process.env, path),
+      catch: () => new ToolRefusal({ code: "invalid_code_outcome", detail: "cannot inspect the ticket worktree; restore it before reporting an outcome" }),
+    });
+
+    const head = yield* git(["rev-parse", "--verify", "HEAD^{commit}"]);
+    const branch = yield* git(["symbolic-ref", "HEAD"]);
+    const dirty = (yield* git(["status", "--porcelain=v1", "--untracked-files=no"])) !== "";
+
+    return transitionHandler(options, { assignment, head, branch, dirty });
+  }) },
+);

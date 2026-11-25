@@ -193,7 +193,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   pi.registerTool({
     name: TASK_TRANSITION,
     label: "Report an assignment outcome",
-    description: "Report done for your active assignment with reason and evidence references. The daemon selects the configured next stage; you cannot choose a destination. Approval, code-stage and final outcomes are not supported yet.",
+    description: "Report done for your active assignment with reason and evidence references. The daemon selects the configured next stage; you cannot choose a destination. Code stages require the exact ticket branch HEAD commit; non-writing stages must revert branch movement and tracked changes. Approval and final outcomes are not supported yet.",
     parameters: Type.Object({
       assignmentId: Type.String({ minLength: 1 }),
       outcome: Type.Literal("done"),
