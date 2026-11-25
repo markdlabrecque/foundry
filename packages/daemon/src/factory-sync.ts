@@ -16,6 +16,7 @@ import { Data, Effect } from "effect";
 import { messageOf } from "@foundry/protocol/errors";
 import { runCloneGit } from "./factory-clone.js";
 import { integrateApprovedCommit } from "./integration.js";
+import type { FactoryConfig } from "./config/schema.js";
 import { closeOpenHoldIn, raiseHoldIn } from "./holds.js";
 import { enqueueOperation, extendOperationIntent, getOperation, recordOperationResult, startNextOperation } from "./operations.js";
 import type { Operation, OperationDetail, OperationOutcome } from "./operations.js";
@@ -26,6 +27,7 @@ import type { Store, StoreError } from "./store.js";
 export interface SyncTarget {
   readonly clonePath: string;
   readonly defaultBranch: string;
+  readonly config?: FactoryConfig;
 }
 
 /** The identity of a merge commit the daemon makes in its own clone. */
