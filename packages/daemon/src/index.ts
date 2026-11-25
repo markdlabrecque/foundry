@@ -15,6 +15,8 @@ export * from "./submissions.js";
 
 export * from "./agent-message.js";
 
+export * from "./message-budget.js";
+
 export * from "./operator-message.js";
 
 export * from "./agent-request.js";
@@ -28,6 +30,8 @@ export * from "./agent-reply.js";
 export * from "./task-transition.js";
 
 export * from "./approvals.js";
+
+export * from "./approval-answer.js";
 
 export * from "./human-request.js";
 

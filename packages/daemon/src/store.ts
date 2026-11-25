@@ -560,7 +560,7 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
   },
   {
     id: 24,
-    name: "limit_reached_approvals",
+    name: "message_limit_approvals",
     statements: [
       `ALTER TABLE approval RENAME TO approval_old`,
       `CREATE TABLE approval (
@@ -582,8 +582,10 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       ) STRICT`,
       `INSERT INTO approval SELECT * FROM approval_old`,
       `DROP TABLE approval_old`,
-      `CREATE UNIQUE INDEX approval_one_open_pause ON approval(factory_id, ticket_number)
-       WHERE state = 'open' AND kind IN ('blocked', 'limit_reached')`,
+      `CREATE UNIQUE INDEX approval_one_open_blocked ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'blocked'`,
+      `CREATE UNIQUE INDEX approval_one_open_limit ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'limit_reached'`,
     ],
   },
 ];
