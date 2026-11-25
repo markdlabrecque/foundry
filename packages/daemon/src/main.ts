@@ -32,6 +32,7 @@ import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
 import { storeApprovalsReader } from "./approvals.js";
 import { createApprovalAnswers } from "./approval-answer.js";
+import { createApprovalDecisions } from "./approval-decision.js";
 import { storeFactoriesReader } from "./factories.js";
 import { importStoreQuietly } from "./quiet-store.js";
 import type { Store } from "./store.js";
@@ -714,6 +715,7 @@ const main = async (): Promise<void> => {
       holds: storeHoldsReader(store),
       approvals: storeApprovalsReader(store),
       approvalAnswers: createApprovalAnswers(store, plannedSlots),
+      approvalDecisions: createApprovalDecisions({ store, factories, configLoad: (factory) => loadIds.get(factory) }),
       tickets: createTicketService(ticketOptions),
       worktrees: createWorktreeService({ store, factories: () => factories.map((f) => f.factoryId),
         target: (factoryId) => {

@@ -78,8 +78,8 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
   const room = config?.rooms[stage.station.split(".")[0] ?? ""];
   const station = room?.stations[stage.station.split(".")[1] ?? ""];
 
-  if (args.outcome === "done" && (stages?.[index + 1] === undefined || stage.approval)) {
-    return yield* new ToolRefusal({ code: "unsupported_transition", detail: "approval, completion and integration are not supported yet" });
+  if (args.outcome === "done" && stages?.[index + 1] === undefined && !stage.approval) {
+    return yield* new ToolRefusal({ code: "unsupported_transition", detail: "a final stage must require operator approval" });
   }
 
   if ((args.outcome === "done" && station?.isolation === "worktree") || assignment.worktree_path !== null) {
@@ -142,13 +142,18 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
     return { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: assignment.stage, status: "paused", approvalId };
   }
 
-  const target = outcomeRoute(stages ?? [], assignment.stage, args.outcome);
+  const gated = args.outcome === "done" && stage.approval;
+  const target = gated ? assignment.stage : outcomeRoute(stages ?? [], assignment.stage, args.outcome);
+
+  if (gated && observation === undefined) {
+    return yield* new ToolRefusal({ code: "commit_required", detail: "a stage gate requires an inspected evaluated commit" });
+  }
 
   if (target === undefined) {
     return yield* new ToolRefusal({ code: "unsupported_transition", detail: "no configured route; completion and integration are not supported yet" });
   }
 
-  if ((args.outcome === "done" && stage.approval) || station === undefined || (stage.writing && station.isolation !== "worktree")) {
+  if (station === undefined || (stage.writing && station.isolation !== "worktree")) {
     return yield* new ToolRefusal({ code: "unsupported_transition", detail: "approval and invalid stage configurations are not supported" });
   }
 
@@ -170,24 +175,46 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
   const now = yield* Clock.currentTimeMillis;
   yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = ?, end_reason = ? WHERE id = ?`,
     [now, args.outcome, args.assignmentId]);
-  yield* change.query(`UPDATE ticket SET stage = ?, status = 'queued', rejections = rejections + ? WHERE factory_id = ? AND number = ?`,
-    [target, args.outcome === "rejected" ? 1 : 0, call.factoryId, assignment.ticket_number]);
-  yield* change.query(
+  const status = gated ? "awaiting_approval" : "queued";
+  yield* change.query(`UPDATE ticket SET stage = ?, status = ?, rejections = rejections + ? WHERE factory_id = ? AND number = ?`,
+    [target, status, args.outcome === "rejected" ? 1 : 0, call.factoryId, assignment.ticket_number]);
+
+  const transitions = yield* change.query<{ sequence: number }>(
     `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
        from_state, from_stage, from_status, to_state, to_stage, to_status, outcome, reason, git_commit, evidence, config_load)
-     VALUES (?, ?, ?, ?, 'stage', ?, 'assigned', 'stage', ?, 'queued', ?, ?, ?, ?, ?)`,
-    [call.factoryId, assignment.ticket_number, now, call.slotId, assignment.stage, target, args.outcome,
+     VALUES (?, ?, ?, ?, 'stage', ?, 'assigned', 'stage', ?, ?, ?, ?, ?, ?, ?) RETURNING sequence`,
+    [call.factoryId, assignment.ticket_number, now, call.slotId, assignment.stage, target, status, args.outcome,
       args.reason, observation?.head ?? null, JSON.stringify(args.evidence), options.configLoad?.(call.factoryId) ?? null],
   );
+
+  let approvalId: number | undefined;
+
+  if (gated) {
+    const transition = expectDefined(transitions[0], "gate transition").sequence;
+
+    const approvals = yield* change.query<{ id: number }>(
+      `INSERT INTO approval (factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at)
+       VALUES (?, ?, ?, ?, 'stage_gate', 'open', ?) RETURNING id`,
+      [call.factoryId, assignment.ticket_number, args.assignmentId, transition, now],
+    );
+
+    approvalId = expectDefined(approvals[0], "stage approval").id;
+    yield* change.recordHistory({ factoryId: call.factoryId, kind: "approval.requested", subject: String(approvalId),
+      detail: { kind: "stage_gate", ticket: assignment.ticket_number, transition },
+      records: [ticketRecord(assignment.ticket_number), slotRecord(call.slotId)] });
+  }
+
   yield* change.recordHistory({
     factoryId: call.factoryId, kind: "ticket.transitioned", subject: String(assignment.ticket_number),
-    detail: { assignment: args.assignmentId, outcome: args.outcome, fromStage: assignment.stage, stage: target, status: "queued" },
+    detail: { assignment: args.assignmentId, outcome: args.outcome, fromStage: assignment.stage, stage: target, status },
     records: [ticketRecord(assignment.ticket_number), slotRecord(call.slotId)],
   });
 
   if (observation !== undefined) {yield* observation.validate();}
 
-  return { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: target, status: "queued" };
+  const result = { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: target, status };
+
+  return approvalId === undefined ? result : { ...result, approvalId };
 });
 
 /** Git inspection is read-only and outside the submission transaction. No failed inspection can

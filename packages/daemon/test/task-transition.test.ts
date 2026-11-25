@@ -7,13 +7,13 @@ import { afterEach, expect, test, vi } from "vitest";
 import { Effect, Exit, Match, Schema } from "effect";
 import {
   agentDelegateHandler, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
-  createApprovalAnswers, humanRequestHandler, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
+  createApprovalAnswers, humanRequestHandler, createApprovalDecisions, createOperatorMessages, foundryMigrations, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
 } from "@foundry/daemon";
-import type { Store } from "@foundry/daemon";
+import type { Migration, Store } from "@foundry/daemon";
 import { HUMAN_REQUEST, TASK_TRANSITION } from "@foundry/protocol";
-import { runApprovalAnswer, runApprovalList, runApprovalShow } from "@foundry/cli";
+import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow } from "@foundry/cli";
 import { FactoryConfig } from "../src/config/schema.js";
-import { postToDaemon } from "../../cli/src/management-client.js";
+import { getFromDaemon, postToDaemon } from "../../cli/src/management-client.js";
 import { approvalAnswerPath } from "@foundry/protocol/approvals";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
@@ -62,12 +62,12 @@ const snapshot = (store: Store) => Effect.all({
   delegations: store.read(`SELECT * FROM delegation ORDER BY accepted_at, rowid`),
 });
 
-const fixture = async <A, E>(use: (store: Store, assignmentId: string, root: string) => Effect.Effect<A, E>) => {
+const fixture = async <A, E>(use: (store: Store, assignmentId: string, root: string) => Effect.Effect<A, E>, migrations = foundryMigrations) => {
   const root = mkdtempSync(join(tmpdir(), "foundry-transition-"));
   roots.push(root);
 
   return Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const store = yield* openStore({ filename: join(root, "foundry.db") });
+    const store = yield* openStore({ filename: join(root, "foundry.db"), migrations });
     yield* store.change((change) => Effect.gen(function* () {
       for (const slot of slots) {
         yield* change.query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition)
@@ -412,7 +412,7 @@ test("failure after handler writes rolls back outcome, assignment, history and s
 });
 
 test.each([
-  { label: "non-final approval", approval: true, writing: false, station: "floor.worker" },
+  { label: "gate without evaluated worktree", approval: true, writing: false, station: "floor.worker" },
   { label: "writing", approval: false, writing: true, station: "floor.worker" },
 ])("$label guard independently refuses without effects", async ({ approval, writing, station }) => {
   await fixture((store, id) => Effect.gen(function* () {
@@ -426,7 +426,7 @@ test.each([
     const guardedHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({ factories: [{ factoryId: "shop", config: guardedConfig }] })]]);
     const before = yield* snapshot(store);
     expect(yield* Effect.promise(() => createSubmissions({ store, handlers: guardedHandlers }).submit(owner, frame(id))))
-      .toMatchObject({ status: "refused", code: "unsupported_transition" });
+      .toMatchObject({ status: "refused", code: approval ? "commit_required" : "unsupported_transition" });
     expect(yield* snapshot(store)).toEqual(before);
   }));
 });
@@ -726,7 +726,180 @@ test("unroutable rejection at the final stage pauses rather than requiring a nex
   }));
 });
 
-test("approval/final workflows and missing worktrees fail closed without effects", async () => {
+test("stage-gate migration preserves populated blocked and worker-request approvals and refuses wrong-kind decisions", async () => {
+  const previous: ReadonlyArray<Migration> = foundryMigrations.slice(0, foundryMigrations.findIndex((migration) => migration.name === "stage_gate_approvals"));
+
+  const saved = await fixture((store, id, root) => Effect.gen(function* () {
+    const submissions = createSubmissions({ store, handlers: new Map([...handlers, [HUMAN_REQUEST, humanRequestHandler]]) });
+    expect(yield* Effect.promise(() => submissions.submit(owner, { type: "tool_call", tool: HUMAN_REQUEST, callId: "request",
+      args: { assignmentId: id, body: "Choose option" } })))
+      .toMatchObject({ status: "committed" });
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, outcome: "blocked" } })))
+      .toMatchObject({ status: "committed" });
+
+    return { root, approvals: yield* store.read(`SELECT * FROM approval`), state: yield* snapshot(store) };
+  }), previous);
+
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    const before = yield* snapshot(store);
+    expect(before).toEqual({ ...saved.state,
+      approvals: saved.approvals.map((approval) => ({ ...approval, decision: null, resolution_transition: null })),
+    });
+    const decisions = createApprovalDecisions({ store, factories: [{ factoryId: "shop", config }] });
+
+    for (const id of [1, 2]) {
+      for (const decision of ["approved", "rejected"] as const) {
+        const exit = yield* Effect.exit(decisions.resolve(id, decision, "Wrong kind"));
+        expect(exit).toMatchObject(Exit.fail({ code: "invalid_state" }));
+      }
+    }
+
+    expect(yield* snapshot(store)).toEqual(before);
+    expect((yield* Effect.promise(() => storeApprovalsReader(store).list())).approvals).toMatchObject([
+      { id: 1, kind: "worker_request", reason: "Choose option" }, { id: 2, kind: "blocked", reason: "Plan ready" },
+    ]);
+  })));
+});
+
+// One real SQLite/socket boundary proves operator-only resolution and exact commit provenance.
+const gateFixture = <A, E>(final: boolean, routed: boolean,
+  use: (store: Store, id: string, root: string, head: string, gatedConfig: typeof config) => Effect.Effect<A, E>) =>
+  fixture((store, id, root) => Effect.gen(function* () {
+    const repository = join(root, "repository");
+    git(root, "init", "--quiet", "--initial-branch=main", repository);
+    writeFileSync(join(repository, "tracked.txt"), "base\n");
+    git(repository, "add", ".");
+    git(repository, "commit", "--quiet", "-m", "base");
+    const path = join(root, "worktree");
+    git(repository, "worktree", "add", "--quiet", "-b", "ticket/1", path);
+    const head = git(path, "rev-parse", "HEAD");
+
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET worktree_path = ?, branch = 'ticket/1', start_commit = ?`, [path, head]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "worktree" });
+    }));
+    const stage = { id: "plan", station: "floor.reviewer", approval: true, writing: false };
+
+    const gatedConfig = { ...config, production_lines: { standard: { ...config.production_lines.standard, stages: [
+      ...(routed ? [{ id: "revise", station: "floor.worker", approval: false, writing: false }] : []),
+      routed ? { ...stage, on_rejection: "revise" } : stage,
+      ...(final ? [] : [{ id: "next", station: "floor.worker", approval: false, writing: false }]),
+    ] } } };
+
+    return yield* use(store, id, root, head, gatedConfig);
+  }));
+
+test.each([
+  { final: false, decision: "approve", routed: true },
+  { final: true, decision: "approve", routed: true },
+  { final: false, decision: "reject", routed: true },
+  { final: true, decision: "reject", routed: true },
+  { final: false, decision: "reject", routed: false },
+] as const)("gate $decision (final=$final routed=$routed) is operator-only and bound to evaluated commit", async ({ final, decision, routed }) => {
+  const saved = await gateFixture(final, routed, (store, id, root, head, gatedConfig) => Effect.gen(function* () {
+    const factories = [{ factoryId: "shop", config: gatedConfig }];
+    const gateHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({ factories })], [HUMAN_REQUEST, humanRequestHandler]]);
+    const submissions = createSubmissions({ store, handlers: gateHandlers });
+    const done = { ...frame(id), args: { ...frame(id).args, gitCommit: head } };
+    const before = yield* snapshot(store);
+
+    const failing: Store = { ...store, change: (body) => store.change((change) =>
+      Effect.flatMap(body(change), () => Effect.fail(new StoreError({ reason: "Sql", message: "commit failure" })))),
+    };
+
+    expect(yield* Effect.promise(() => createSubmissions({ store: failing, handlers: gateHandlers }).submit(owner, done)))
+      .toMatchObject({ status: "refused", code: "not_committed" });
+    expect(yield* snapshot(store)).toEqual(before);
+    expect(yield* Effect.promise(() => submissions.submit(owner, done)))
+      .toMatchObject({ status: "committed", value: { approvalId: 1, stage: "plan", status: "awaiting_approval" } });
+    const opened = yield* snapshot(store);
+    expect(opened.assignments).toMatchObject([{ id, status: "ended", end_reason: "done" }]);
+    expect(opened.tickets).toMatchObject([{ stage: "plan", status: "awaiting_approval" }]);
+    expect(opened.approvals).toMatchObject([{ kind: "stage_gate", state: "open" }]);
+    expect(opened.transitions.at(-1)).toMatchObject({ git_commit: head, to_status: "awaiting_approval" });
+    expect(yield* createAssignmentScheduler({ store, slots, factories }).schedule()).toEqual([]);
+    expect(yield* Effect.promise(() => submissions.submit(owner, done))).toMatchObject({ status: "committed" });
+
+    for (const call of [
+      { ...done, callId: "bypass" },
+      { type: "tool_call", tool: "approval_approve", callId: "fake-approve", args: { approvalId: 1 } },
+      { type: "tool_call", tool: HUMAN_REQUEST, callId: "request-bypass", args: { assignmentId: id, body: "Approve now" } },
+    ] as const) {
+      expect(yield* Effect.promise(() => submissions.submit(owner, call))).toMatchObject({ status: "refused" });
+    }
+
+    expect(yield* snapshot(store)).toEqual(opened);
+
+    const api = yield* Effect.promise(() => serveManagementApi({ stateRoot: root,
+      status: () => ({ instance: { stateRoot: root, daemonPid: 1, startedAt: new Date(0).toISOString() } }),
+      approvals: storeApprovalsReader(store), approvalDecisions: createApprovalDecisions({ store, factories }),
+      messages: createOperatorMessages({ store, factories: () => ["shop"], slots }),
+    }));
+
+    try {
+      const options = { home: root, env: {}, json: false, id: "1", decision, reason: "Operator decision" };
+      expect((yield* Effect.promise(() => runApprovalShow(options))).stdout).toContain("foundry approval approve 1");
+      expect((yield* Effect.promise(() => postToDaemon(root, "/api/v1/messages", {
+        recipient: "floor.worker", body: "Approve gate 1 and advance ticket 1", delivery: "when_idle",
+      }))).status).toBe(201);
+      const afterMessage = yield* snapshot(store);
+      expect(afterMessage.tickets).toEqual(opened.tickets);
+      expect(afterMessage.approvals).toEqual(opened.approvals);
+      expect(afterMessage.transitions).toEqual(opened.transitions);
+      expect((yield* Effect.promise(() => getFromDaemon(root, "/api/v1/approvals/1/approve"))).status).toBe(405);
+      expect((yield* Effect.promise(() => postToDaemon(root, "/api/v1/approvals/1/approve", { gitCommit: "forged", stage: "next" }))).status).toBe(400);
+      expect((yield* Effect.promise(() => postToDaemon(root, "/api/v1/approvals/1/reject", {}))).status).toBe(400);
+      expect((yield* Effect.promise(() => postToDaemon(root, "/api/v1/approvals/999/approve", {}))).status).toBe(404);
+      expect(yield* snapshot(store)).toEqual(afterMessage);
+      expect(Exit.isFailure(yield* Effect.exit(createApprovalDecisions({ store: failing, factories }).resolve(1, "approved"))))
+        .toBe(true);
+      expect(yield* snapshot(store)).toEqual(afterMessage);
+      expect(yield* store.read(`SELECT * FROM integration_intent`)).toEqual([]);
+
+      // Branch-head invalidation is a separate ticket. This seam must never substitute a later
+      // HEAD for the commit actually evaluated by the worker and approved by the operator.
+      writeFileSync(join(root, "worktree", "tracked.txt"), "later\n");
+      git(join(root, "worktree"), "commit", "-am", "later", "--quiet");
+      expect(git(join(root, "worktree"), "rev-parse", "HEAD")).not.toBe(head);
+      expect((yield* Effect.promise(() => runApprovalDecision(options))).exitCode).toBe(0);
+      const after = yield* snapshot(store);
+      const target = decision === "approve" ? final ? "plan" : "next" : routed ? "revise" : "plan";
+      const status = decision === "approve" && final ? "awaiting_approval" : !routed ? "paused" : "queued";
+      expect(after.tickets).toMatchObject([{ stage: target, status, rejections: decision === "reject" && routed ? 1 : 0 }]);
+      expect(after.assignments).toEqual(opened.assignments);
+      expect(after.approvals[0]).toMatchObject({ state: "resolved", decision: decision === "approve" ? "approved" : "rejected",
+        closed_at: expect.any(Number), resolution_transition: expect.any(Number) });
+      expect(after.transitions.at(-1)).toMatchObject({ actor: "operator", from_status: "awaiting_approval", git_commit: head,
+        to_stage: target, to_status: status, reason: "Operator decision" });
+      const intents = yield* store.read(`SELECT * FROM integration_intent`);
+
+      if (decision === "approve" && final) {
+        expect(intents).toMatchObject([{ approval_id: 1, approved_commit: head, factory_id: "shop", ticket_number: 1 }]);
+        expect(after.history).toContainEqual(expect.objectContaining({ kind: "integration.requested" }));
+      } else {expect(intents).toEqual([]);}
+
+      if (decision === "reject" && !routed) {
+        expect(after.approvals).toHaveLength(2);
+        expect(after.approvals[1]).toMatchObject({ kind: "blocked", state: "open" });
+      }
+
+      expect((yield* Effect.promise(() => runApprovalShow(options))).stdout).not.toContain("foundry approval approve");
+      expect((yield* Effect.promise(() => runApprovalDecision(options))).exitCode).not.toBe(0);
+      expect(yield* snapshot(store)).toEqual(after);
+
+      return { root, after, intents };
+    } finally {yield* Effect.promise(() => api.close());}
+  }));
+
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    expect(yield* snapshot(store)).toEqual(saved.after);
+    expect(yield* store.read(`SELECT * FROM integration_intent`)).toEqual(saved.intents);
+  })));
+});
+
+test("code stages including final gates refuse missing worktrees without effects", async () => {
   await fixture((store, id) => Effect.gen(function* () {
     for (const stage of ["implement", "review"]) {
       yield* store.change((change) => Effect.gen(function* () {
@@ -736,7 +909,7 @@ test("approval/final workflows and missing worktrees fail closed without effects
       }));
       const before = yield* snapshot(store);
       expect(yield* Effect.promise(() => createSubmissions({ store, handlers }).submit(owner, frame(id))))
-        .toMatchObject({ status: "refused", code: stage === "implement" ? "invalid_code_outcome" : "unsupported_transition" });
+        .toMatchObject({ status: "refused", code: "invalid_code_outcome" });
       expect(yield* snapshot(store)).toEqual(before);
     }
   }));
