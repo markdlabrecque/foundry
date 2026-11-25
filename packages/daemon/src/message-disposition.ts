@@ -2,7 +2,15 @@
 import { Data, Effect, Option, Schema } from "effect";
 import { MessageDispositionResult } from "@foundry/protocol/messages-api";
 import { closeOpenHoldIn } from "./holds.js";
-import type { Query, Store } from "./store.js";
+import { failDroppedRequest } from "./request-failure.js";
+import type { Change, Query, Store, StoreError } from "./store.js";
+
+/** Kind-specific consequences of a drop, run in the drop's transaction after its history row. */
+type DropHandler = (change: Change, message: MessageDispositionResult) => Effect.Effect<void, StoreError>;
+
+const dropHandlers: Partial<Record<MessageDispositionResult["kind"], DropHandler>> = {
+  request_notice: failDroppedRequest,
+};
 
 export class MessageDispositionError extends Data.TaggedError("MessageDispositionError")<{
   readonly code: "not_found" | "not_indeterminate" | "confirmation_required";
@@ -42,6 +50,10 @@ export const createMessageDisposition = (store: Store) => ({
     yield* change.recordHistory({ factoryId: message.factoryId, kind: action === "drop" ? "message.dropped" : "message.resend_requested",
       subject: id, detail: { ...result, possibleDuplicate: action === "resend" },
       records: message.ticket === null ? [] : [{ kind: "ticket", id: String(message.ticket) }] });
+
+    const onDrop = action === "drop" ? dropHandlers[result.kind] : undefined;
+
+    if (onDrop !== undefined) {yield* onDrop(change, result);}
 
     return result;
   })),

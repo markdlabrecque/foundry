@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { Clock, Effect } from "effect";
-import { acknowledgeMessage, agentReplyHandler, agentRequestHandler, bindStationMessages, createMessageDelivery, createSubmissions, expireRequests, openSlotGate, openStore, startRequestExpiry, ToolRefusal } from "@foundry/daemon";
+import { acknowledgeMessage, agentReplyHandler, agentRequestHandler, bindStationMessages, createMessageDelivery, createMessageDisposition, createSubmissions, expireRequests, openSlotGate, openStore, raiseHold, startRequestExpiry, ToolRefusal } from "@foundry/daemon";
 import type { MessageAcceptanceGuards, PlannedSlot, Store, ToolHandler } from "@foundry/daemon";
 import { AGENT_REPLY, AGENT_REQUEST } from "@foundry/protocol";
 
@@ -374,5 +374,83 @@ test("reply, completion, history and submission all roll back if the transaction
     expect(await replyCalls(store, now + 1, failReply).submit(responder, frame)).toMatchObject({ status: "refused" });
     expect(await Effect.runPromise(snapshot(store))).toEqual(before);
     expect(await replyCalls(store, now + 1).submit(responder, frame)).toMatchObject({ value: { status: "completed" } });
+  }));
+});
+
+/** The selected request's notice, made ambiguous and held for the operator (PRD §10.2). */
+const heldNotice = (store: Store, requestId: string) => Effect.gen(function* () {
+  const [notice] = yield* store.read<{ id: string }>(`SELECT notice_id AS id FROM agent_request WHERE id = ?`, [requestId]);
+
+  if (notice === undefined) {throw new Error("notice missing");}
+
+  yield* store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE message SET status = 'indeterminate' WHERE id = ?`, [notice.id]);
+    yield* change.recordHistory({ factoryId: "alpha", kind: "fixture.ambiguous", subject: notice.id });
+  }));
+  yield* raiseHold(store, { factoryId: "alpha", kind: "indeterminate_message", subject: notice.id, evidence: {} });
+
+  return notice.id;
+});
+
+test("dropping a request notice fails the request and notifies the requester in the same transaction", async () => {
+  await withStore(await database(), (store) => Effect.promise(async () => {
+    const requestId = await Effect.runPromise(selectedRequest(store));
+    const noticeId = await Effect.runPromise(heldNotice(store, requestId));
+    const disposition = createMessageDisposition(store);
+    const before = await Effect.runPromise(snapshot(store));
+
+    // A failure late in the drop must leave the drop, the failure and the notification all unwritten.
+    await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+      yield* change.query(`CREATE TRIGGER refuse_failure BEFORE INSERT ON history WHEN NEW.kind = 'request.failed'
+        BEGIN SELECT RAISE(ABORT, 'fixture failure'); END`);
+      yield* change.recordHistory({ factoryId: "alpha", kind: "fixture.trigger", subject: requestId });
+    })));
+    const armed = await Effect.runPromise(snapshot(store));
+    await expect(Effect.runPromise(disposition.act(noticeId, "drop", true))).rejects.toThrow(/fixture failure/);
+    expect(await Effect.runPromise(snapshot(store))).toEqual(armed);
+    expect(armed.requests).toEqual(before.requests);
+    expect(armed.messages).toEqual(before.messages);
+    expect(await Effect.runPromise(store.read(`SELECT state FROM operator_hold`))).toEqual([{ state: "open" }]);
+    await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+      yield* change.query(`DROP TRIGGER refuse_failure`);
+      yield* change.recordHistory({ factoryId: "alpha", kind: "fixture.trigger_removed", subject: requestId });
+    })));
+
+    // Well before the deadline: the requester hears at once, not when the sweep would expire it.
+    await Effect.runPromise(disposition.act(noticeId, "drop", true));
+    const after = await Effect.runPromise(snapshot(store));
+    expect(after.requests).toMatchObject([{ id: requestId, status: "failed", deadline: now + args.timeoutMs }]);
+    const [notification] = await Effect.runPromise(store.read(`SELECT * FROM message WHERE id != ?`, [noticeId]));
+    expect(after.messages).toHaveLength(2);
+    expect(after.messages).toContainEqual(expect.objectContaining({ id: noticeId, status: "dropped" }));
+    expect(notification).toMatchObject({ sender_kind: "daemon", kind: "ordinary", request_id: requestId, ticket_number: 42,
+      recipient: sender.slotId, bound_slot: sender.slotId, status: "bound", body: expect.stringContaining(requestId) });
+    const dropEvent = after.history.findIndex((row) => row.kind === "message.dropped");
+    expect(after.history.slice(dropEvent).map((row) => row.kind))
+      .toEqual(["message.dropped", "message.accepted", "message.bound", "request.failed"]);
+    expect(await Effect.runPromise(store.read(`SELECT state FROM operator_hold`))).toEqual([{ state: "resolved" }]);
+
+    // The sweep never revisits a failed request, and a late reply cannot complete it.
+    expect(await Effect.runPromise(expireRequests(store))).toBe(0);
+    expect(await replyCalls(store, now + 1).submit(responder, { type: "tool_call", callId: "late", tool: AGENT_REPLY,
+      args: { requestId, body: "reviewed" } })).toMatchObject({ status: "refused", code: "request_closed" });
+  }));
+});
+
+test("dropping the notice of an already-closed request changes no request and sends no notification", async () => {
+  await withStore(await database(), (store) => Effect.promise(async () => {
+    const requestId = await Effect.runPromise(selectedRequest(store));
+    const noticeId = await Effect.runPromise(heldNotice(store, requestId));
+    await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE agent_request SET status = 'completed' WHERE id = ?`, [requestId]);
+      yield* change.recordHistory({ factoryId: "alpha", kind: "fixture.completed", subject: requestId });
+    })));
+    await Effect.runPromise(createMessageDisposition(store).act(noticeId, "drop", true));
+    const after = await Effect.runPromise(snapshot(store));
+    expect(after.requests).toMatchObject([{ status: "completed" }]);
+    expect(after.messages).toMatchObject([{ id: noticeId, status: "dropped" }]);
+    expect(after.history.map((row) => row.kind)).not.toContain("request.failed");
+    expect(after.history.map((row) => row.kind)).toContain("message.dropped");
+    expect(await Effect.runPromise(store.read(`SELECT state FROM operator_hold`))).toEqual([{ state: "resolved" }]);
   }));
 });

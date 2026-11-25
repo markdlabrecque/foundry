@@ -27,6 +27,8 @@ export * from "./agent-delegate.js";
 
 export * from "./request-expiry.js";
 
+export * from "./request-failure.js";
+
 export * from "./agent-reply.js";
 
 export * from "./task-transition.js";
