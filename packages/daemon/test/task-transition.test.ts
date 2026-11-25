@@ -1,9 +1,10 @@
 // Integration tier: disposable SQLite proves ownership, atomic submissions and a durable queue.
-import { mkdtempSync, rmSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
-import { Effect, Schema } from "effect";
+import { afterEach, expect, test, vi } from "vitest";
+import { Effect, Match, Schema } from "effect";
 import {
   agentDelegateHandler, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
   StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
@@ -30,6 +31,12 @@ const slots = planSlots("shop", [{
 }]);
 
 const roots: Array<string> = [];
+const byteFilename = (directory: string) => Buffer.concat([Buffer.from(`${directory}/`), Buffer.from([0xff]), Buffer.from(".txt")]);
+
+const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], {
+  cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1",
+    GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.test", GIT_COMMITTER_NAME: "Fixture", GIT_COMMITTER_EMAIL: "fixture@example.test" },
+}).trim();
 
 afterEach(() => { for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });} });
 
@@ -92,7 +99,7 @@ test("done commits evidence, ended assignment and queued next stage; replay and 
     expect(after.transitions).toHaveLength(before.transitions.length + 1);
     expect(after.transitions.at(-1)).toMatchObject({ actor: "worker/1", from_state: "stage", from_stage: "plan",
       from_status: "assigned", to_state: "stage", to_stage: "implement", to_status: "queued", outcome: "done",
-      reason: "Plan ready", git_commit: "evaluated-commit", evidence: '["evidence/plan.md"]', config_load: "load-1" });
+      reason: "Plan ready", git_commit: null, evidence: '["evidence/plan.md"]', config_load: "load-1" });
     expect(after.submissions).toHaveLength(1);
     expect(yield* Effect.promise(() => submissions.submit(owner, frame(id)))).toEqual(result);
     expect(yield* snapshot(store)).toEqual(after);
@@ -240,7 +247,6 @@ test("failure after handler writes rolls back outcome, assignment, history and s
 test.each([
   { label: "non-final approval", approval: true, writing: false, station: "floor.worker" },
   { label: "writing", approval: false, writing: true, station: "floor.worker" },
-  { label: "non-writing worktree", approval: false, writing: false, station: "floor.reviewer" },
 ])("$label guard independently refuses without effects", async ({ approval, writing, station }) => {
   await fixture((store, id) => Effect.gen(function* () {
     // Structural fixtures isolate each guard; writing/non-worktree is deliberately not a valid
@@ -257,6 +263,147 @@ test.each([
     expect(yield* snapshot(store)).toEqual(before);
   }));
 });
+
+test.each([
+  { mode: "moved", writing: false, code: "non_writing_changes" },
+  { mode: "mixed moved", writing: false, code: "non_writing_changes" },
+  { mode: "mixed dirty", writing: false, code: "non_writing_changes" },
+  { mode: "mixed wrong commit", writing: false, code: "invalid_code_outcome" },
+  { mode: "mixed clean", writing: false, code: null },
+  { mode: "planning baseline", writing: false, code: null },
+  { mode: "race before transaction", writing: false, code: "invalid_code_outcome" },
+  { mode: "race leading filename", writing: false, code: "invalid_code_outcome" },
+  { mode: "race invalid UTF8", writing: false, code: "invalid_code_outcome" },
+  { mode: "race discovery", writing: false, code: "invalid_code_outcome" },
+  { mode: "race during writes", writing: false, code: "invalid_code_outcome" },
+  { mode: "dirty", writing: false, code: "non_writing_changes" },
+  { mode: "blocked dirty", writing: false, code: "non_writing_changes" },
+  { mode: "rejected dirty", writing: false, code: "non_writing_changes" },
+  { mode: "staged", writing: false, code: "non_writing_changes" },
+  { mode: "assume-unchanged", writing: false, code: "non_writing_changes" },
+  { mode: "skip-worktree", writing: false, code: "non_writing_changes" },
+  { mode: "missing commit", writing: true, code: "commit_required" },
+  { mode: "wrong commit", writing: true, code: "invalid_code_outcome" },
+  { mode: "wrong branch", writing: false, code: "invalid_code_outcome" },
+  { mode: "clean", writing: false, code: null },
+  { mode: "untracked", writing: false, code: null },
+  { mode: "new commit", writing: true, code: null },
+])("real Git $mode (writing=$writing) preserves assignment on refusal", async ({ mode, writing, code }) => {
+  await fixture((store, id, root) => Effect.gen(function* () {
+    if (mode === "planning baseline") {
+      expect(yield* Effect.promise(() => createSubmissions({ store, handlers }).submit(owner, frame(id))))
+        .toMatchObject({ status: "committed" });
+    }
+
+    const repository = join(root, "repository");
+    const path = join(root, "worktree");
+    git(root, "init", "--quiet", "--initial-branch=main", repository);
+    writeFileSync(join(repository, "tracked.txt"), "original\n");
+    writeFileSync(join(repository, " leading.txt"), "original\n");
+
+    if (mode === "race invalid UTF8") {writeFileSync(byteFilename(repository), "original\n");}
+
+    git(repository, "add", ".");
+    git(repository, "commit", "--quiet", "-m", "base");
+    const base = git(repository, "rev-parse", "HEAD");
+    git(repository, "worktree", "add", "--quiet", "-b", "ticket/1", path);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET worktree_path = ?, branch = 'ticket/1', start_commit = ?`, [path, base]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "worktree" });
+    }));
+
+    const codeConfig = { ...config, production_lines: { standard: {
+      ...config.production_lines.standard,
+      stages: [{ id: mode === "planning baseline" ? "implement" : "plan", station: mode.startsWith("mixed") || mode === "planning baseline" ? "floor.worker" : "floor.reviewer", approval: false, writing },
+        { id: "next", station: "floor.worker", approval: false, writing: false }],
+    } } };
+
+    const activeId = mode === "planning baseline"
+      ? (yield* createAssignmentScheduler({ ...schedulerOptions(store), factories: [{ factoryId: "shop", config: codeConfig }] }).schedule())[0]?.id
+      : id;
+
+    if (activeId === undefined) {throw new Error("fixture did not assign code stage");}
+
+    const codeHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({ factories: [{ factoryId: "shop", config: codeConfig }] })]]);
+
+    if (["moved", "mixed moved", "mixed dirty", "new commit", "dirty", "blocked dirty", "rejected dirty", "staged"].includes(mode)) {
+      writeFileSync(join(path, "tracked.txt"), "changed\n");
+
+      if (!mode.endsWith("dirty")) {git(path, "add", ".");}
+
+      if (mode.endsWith("moved") || mode === "new commit") {git(path, "commit", "--quiet", "-m", "worker change");}
+    }
+
+    if (mode === "assume-unchanged" || mode === "skip-worktree") {
+      git(path, "update-index", `--${mode}`, "--", "tracked.txt");
+      writeFileSync(join(path, "tracked.txt"), "hidden change\n");
+      expect(git(path, "status", "--porcelain=v1", "--untracked-files=no")).toBe("");
+    }
+
+    if (mode === "untracked") {writeFileSync(join(path, "notes.txt"), "not tracked\n");}
+
+    if (mode === "wrong branch") {git(path, "checkout", "--quiet", "-b", "other");}
+
+    const head = git(path, "rev-parse", "HEAD");
+    const gitCommit = mode === "missing commit" ? {} : { gitCommit: mode.endsWith("wrong commit") ? "not-a-commit" : head };
+
+    const reportedOutcome = Match.value(mode).pipe(
+      Match.when("blocked dirty", () => "blocked" as const),
+      Match.when("rejected dirty", () => "rejected" as const),
+      Match.orElse(() => "done" as const),
+    );
+
+    const outcome = { ...frame(activeId), callId: "code-done", args: { assignmentId: activeId, outcome: reportedOutcome, reason: "Code evaluated", evidence: ["evidence/tests.md"], ...gitCommit } } as const;
+    const before = yield* snapshot(store);
+
+    const submissionStore: Store = mode.startsWith("race") ? { ...store, change: (body) => store.change((change) => Effect.gen(function* () {
+      if (mode === "race before transaction") {writeFileSync(join(path, "tracked.txt"), "raced\n");}
+
+      if (mode === "race leading filename") {writeFileSync(join(path, " leading.txt"), "raced\n");}
+
+      if (mode === "race invalid UTF8") {writeFileSync(byteFilename(path), "raced\n");}
+
+      return yield* body({ ...change, query: (sql, params) => {
+        if (mode === "race during writes" && sql.startsWith("UPDATE assignment")) {writeFileSync(join(path, "tracked.txt"), "raced\n");}
+
+        return change.query(sql, params);
+      } });
+    })) } : store;
+
+    const submissions = createSubmissions({ store: submissionStore, handlers: codeHandlers });
+    const cloneGit = yield* Effect.promise(() => import("../dist/factory-clone.js"));
+    const originalGit = cloneGit.runCloneGit;
+
+    const discoveryRace = mode === "race discovery" ? vi.spyOn(cloneGit, "runCloneGit").mockImplementation(async (args, env, cwd, raw) => {
+      if (!args.includes("ls-files")) {return originalGit(args, env, cwd, raw);}
+
+      // Restore identical index contents after discovery omits a tracked file. The acceptance
+      // fence must detect index replacement, not merely compare the restored content hash.
+      git(path, "rm", "--cached", "--", "tracked.txt");
+      const output = await originalGit(args, env, cwd, raw);
+      git(path, "reset", "--quiet", "HEAD", "--", "tracked.txt");
+
+      return output;
+    }) : undefined;
+
+    const result = yield* Effect.promise(() => submissions.submit(owner, outcome).finally(() => discoveryRace?.mockRestore()));
+
+    if (code !== null) {
+      expect(result).toMatchObject({ status: "refused", code });
+      expect(yield* snapshot(store)).toEqual(before);
+    } else {
+      expect(result).toMatchObject({ status: "committed", value: { stage: "next", status: "queued" } });
+      const after = yield* snapshot(store);
+      expect(after.assignments).toContainEqual(expect.objectContaining({ id: activeId, status: "ended", end_reason: "done" }));
+      expect(after.transitions.at(-1)).toMatchObject({ git_commit: head, outcome: "done" });
+      // Even if the worktree disappears, a retry returns the durable result.
+      git(repository, "worktree", "remove", "--force", path);
+      expect(yield* Effect.promise(() => submissions.submit(owner, outcome))).toEqual(result);
+      expect(yield* snapshot(store)).toEqual(after);
+    }
+  }));
+});
+
 
 test.each(["blocked", "rejected"] as const)("%s pauses atomically, frees capacity and survives replay/restart with its true outcome", async (outcome) => {
   const saved = await fixture((store, id, root) => Effect.gen(function* () {
@@ -291,7 +438,7 @@ test.each(["blocked", "rejected"] as const)("%s pauses atomically, frees capacit
     expect(after.messages).toEqual(before.messages);
     expect(after.transitions).toHaveLength(before.transitions.length + 1);
     expect(after.transitions.at(-1)).toMatchObject({ from_stage: "plan", to_stage: "plan", to_status: "paused", outcome,
-      actor: "worker/1", reason: "Need operator input", git_commit: "evaluated-commit",
+      actor: "worker/1", reason: "Need operator input", git_commit: null,
       evidence: '["evidence/plan.md"]', config_load: "load-1" });
     expect(after.approvals).toMatchObject([{ kind: "blocked", state: "open", assignment_id: id }]);
     expect(after.history.slice(before.history.length)).toMatchObject([
@@ -393,7 +540,7 @@ test("unroutable rejection at the final stage pauses rather than requiring a nex
   }));
 });
 
-test("adjacent approval/code/final workflows fail closed without effects", async () => {
+test("approval/final workflows and missing worktrees fail closed without effects", async () => {
   await fixture((store, id) => Effect.gen(function* () {
     for (const stage of ["implement", "review"]) {
       yield* store.change((change) => Effect.gen(function* () {
@@ -403,7 +550,7 @@ test("adjacent approval/code/final workflows fail closed without effects", async
       }));
       const before = yield* snapshot(store);
       expect(yield* Effect.promise(() => createSubmissions({ store, handlers }).submit(owner, frame(id))))
-        .toMatchObject({ status: "refused", code: "unsupported_transition" });
+        .toMatchObject({ status: "refused", code: stage === "implement" ? "invalid_code_outcome" : "unsupported_transition" });
       expect(yield* snapshot(store)).toEqual(before);
     }
   }));
