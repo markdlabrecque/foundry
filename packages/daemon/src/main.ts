@@ -29,6 +29,9 @@ import { recoverInterruptedIntegrations } from "./integration-recovery.js";
 import { interruptRunningOperations } from "./operations.js";
 import { recoverInterruptedSyncs } from "./sync-recovery.js";
 import { startAfterCreateRecovery } from "./after-create-recovery.js";
+import { startFactoryRecovery } from "./factory-recovery.js";
+import type { FactoryRecovery } from "./factory-recovery.js";
+import { createChannelAssignmentGate } from "./channel-assignment-gate.js";
 import { createTicketWorktrees } from "./worktrees.js";
 import { createWorktreeService } from "./worktree-cleanup.js";
 import { reconcileInterruptedCleanups } from "./cleanup-recovery.js";
@@ -392,6 +395,8 @@ const main = async (): Promise<void> => {
   // started only when there is a slot to run.
   let host: HostConnection | undefined;
   let channel: ChannelServer | undefined;
+  // PRD §10.2 steps 4-5: a slot takes new work only once its connection is reconciled and primed.
+  const channelGate = createChannelAssignmentGate();
   let scheduler: SlotScheduler | undefined;
   let markSchedulerReady!: (ready: SlotScheduler) => void;
 
@@ -522,6 +527,8 @@ const main = async (): Promise<void> => {
           channelEvents.onAccepted(slot, hello, accepted);
           const lost = stuckWorkers.accepted(slot);
           void accepted.closed?.then(lost);
+          const gated = channelGate.accepted(slot);
+          void accepted.closed?.then(gated.closed);
           void reconciler.reconcile(slot, hello, accepted).then(async (comparison) => {
             const primed = primer.prime(slot, hello, accepted);
             const outcome = await primed.outcome;
@@ -529,6 +536,7 @@ const main = async (): Promise<void> => {
             if (Predicate.isTagged(outcome, "Sent") || Predicate.isTagged(outcome, "Reconnect")) {
               await reconciler.resumeAssignment(slot, primed.connection, comparison.interruptedAssignmentId);
               delivery.attach(slot, primed.connection);
+              gated.reconciled();
             }
           }).catch((cause: unknown) => log.error("connection priming failed", { detail: { error: messageOf(cause) } }));
         },
@@ -681,11 +689,14 @@ const main = async (): Promise<void> => {
     }),
     configLoad: (factoryId) => loadIds.get(factoryId),
     inScope: (factoryId) => !stopping && factoryStates.isRunning(factoryId),
+    // PRD §10.2 step 5, per slot: work the slot already holds is resumed by its reconciliation.
+    ready: (_ticket, slot) => channelGate.isOpen(slot.factoryId, slot.slotId),
+    readinessChanged: channelGate.onOpened,
   }, (error) => log.error("tickets not assigned", { detail: { error: messageOf(error) } }));
 
   // PRD §10.2 step 3: an interrupted worktree creation is recreated when its branch is still empty,
   // or kept as created when it has commits. Its ticket is unassignable until a creation completes.
-  // Each factory's verdicts are settled in `recoverAndResume`, before its queue resumes; rebuilds and
+  // Each factory's verdicts are settled in its startup recovery step, before its queue resumes; rebuilds and
   // first after_create runs then finish in the background.
   const worktreeRecovery = createWorktreeRecovery({
     store,
@@ -699,6 +710,9 @@ const main = async (): Promise<void> => {
   });
 
   const stopWorktreeRecovery = worktreeRecovery.stop;
+
+  // Started once the API serves; stopped with the rest on shutdown.
+  const factoryRecoveries: Array<FactoryRecovery> = [];
 
   const stop = (signal: NodeJS.Signals): void => {
     if (stopping) {return;}
@@ -718,6 +732,7 @@ const main = async (): Promise<void> => {
           // Closing the connections leaves the host and its launches running (PRD §3.2).
           await stopApprovalHeads();
           await stopAfterCreateRecovery();
+          await Promise.all(factoryRecoveries.map((recovery) => recovery.stop()));
           await stopAssignments?.();
           await stopWorktreeRecovery();
           await channel?.close().catch(() => {});
@@ -891,74 +906,85 @@ const main = async (): Promise<void> => {
     return;
   }
 
-  // Resume only accepted, not-yet-started work (PRD §9.4). An empty queue does not fetch, and a
-  // factory with an operation interrupted at startup admits nothing until its recovery runs.
-  // PRD §10.2 step 3: interrupted integrations are classified landed, rerun or indeterminate first;
-  // interrupted syncs are reconciled from the clone alone, never rerun or fetched;
-  // interrupted cleanups and before_remove runs are rerun or finished; interrupted worktree creations
-  // are settled. Every recovery result lands
-  // before the queue resumes.
-  const recoverAndResume = async (factory: string): Promise<void> => {
-    try {
-      for (const { operation, verdict } of await Effect.runPromise(recoverInterruptedIntegrations({ store, worktrees, target: syncTarget,
-        onFailure: (operation, cause) => log.error("integration recovery failed", {
-          factoryId: factory, operationId: String(operation.id), detail: { error: Cause.pretty(cause) } }) }, factory))) {
-        const refs: LogRefs = { factoryId: factory, operationId: String(operation.id), ticketId: String(operation.ticket) };
+  // PRD §10.2 step 3, per factory: each kind's recovery in order, then the queue reopens once nothing
+  // of the factory awaits recovery, including after_create verdicts recovered in the background above.
+  // Resume only accepted, not-yet-started work (PRD §9.4); an empty queue does not fetch. A stuck
+  // factory holds only its own queue: workers, channels and assignment never wait on this.
+  // Another kind's recovery is one more step.
+  const recoveryFailures = new Map([
+    ["integration", "integration recovery failed"],
+    ["sync", "interrupted sync not recovered"],
+    ["cleanup", "cleanup recovery failed"],
+    ["worktree_create", "worktree recovery failed"],
+  ]);
 
-        if (verdict === "indeterminate") {log.warn("integration recovered", { ...refs, detail: { verdict } });}
-        else {log.info("integration recovered", { ...refs, detail: { verdict } });}
-      }
-    } catch (error) {
-      log.error("integration recovery failed", { factoryId: factory, detail: { error: messageOf(error) } });
-    }
+  factoryRecoveries.push(startFactoryRecovery({
+    store,
+    factories: decision.started,
+    steps: [
+      {
+        // Interrupted integrations are classified landed, rerun or indeterminate first.
+        kind: "integration",
+        recover: async (factory) => {
+          for (const { operation, verdict } of await Effect.runPromise(recoverInterruptedIntegrations({ store, worktrees, target: syncTarget,
+            onFailure: (operation, cause) => log.error("integration recovery failed", {
+              factoryId: factory, operationId: String(operation.id), detail: { error: Cause.pretty(cause) } }) }, factory))) {
+            const refs: LogRefs = { factoryId: factory, operationId: String(operation.id), ticketId: String(operation.ticket) };
 
-    const clone = clones.get(factory);
-    const loaded = factories.find((f) => f.factoryId === factory);
+            if (verdict === "indeterminate") {log.warn("integration recovered", { ...refs, detail: { verdict } });}
+            else {log.info("integration recovered", { ...refs, detail: { verdict } });}
+          }
+        },
+      },
+      {
+        // Interrupted syncs are reconciled from the clone alone, never rerun or fetched.
+        kind: "sync",
+        recover: async (factory) => {
+          const clone = clones.get(factory);
+          const loaded = factories.find((f) => f.factoryId === factory);
 
-    if (clone !== undefined && loaded !== undefined) {
-      const target = { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch };
+          if (clone === undefined || loaded === undefined) {throw new Error(clone === undefined ? "no clone for the factory" : "factory not loaded");}
 
-      try {
-        for (const recovered of await Effect.runPromise(recoverInterruptedSyncs(store, factory, target, process.env))) {
-          log.warn("interrupted sync recovered", { factoryId: factory, operationId: String(recovered.operation.id), detail: { verdict: recovered.verdict } });
-        }
-      } catch (error) {
-        log.error("interrupted sync not recovered", { factoryId: factory, detail: { error: messageOf(error) } });
-      }
-    } else {
-      log.error("interrupted sync not recovered", {
-        factoryId: factory,
-        detail: { error: clone === undefined ? "no clone for the factory" : "factory not loaded" },
-      });
-    }
+          const target = { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch };
 
-    try {
-      for (const recovery of await Effect.runPromise(reconcileInterruptedCleanups({ store, worktrees, target: cleanupTarget }, factory))) {
-        const refs: LogRefs = { factoryId: factory, operationId: String(recovery.operationId) };
-        const withTicket: LogRefs = recovery.ticket === null ? refs : { ...refs, ticketId: String(recovery.ticket) };
-        log.info("cleanup recovered", { ...withTicket, detail: { outcome: recovery.outcome, reason: recovery.reason ?? "" } });
-      }
-    } catch (error) {
-      log.error("cleanup recovery failed", { factoryId: factory, detail: { error: messageOf(error) } });
-    }
+          for (const recovered of await Effect.runPromise(recoverInterruptedSyncs(store, factory, target, process.env))) {
+            log.warn("interrupted sync recovered", { factoryId: factory, operationId: String(recovered.operation.id), detail: { verdict: recovered.verdict } });
+          }
+        },
+      },
+      {
+        // Interrupted cleanups and before_remove runs are rerun or finished.
+        kind: "cleanup",
+        recover: async (factory) => {
+          for (const recovery of await Effect.runPromise(reconcileInterruptedCleanups({ store, worktrees, target: cleanupTarget }, factory))) {
+            const refs: LogRefs = { factoryId: factory, operationId: String(recovery.operationId) };
+            const withTicket: LogRefs = recovery.ticket === null ? refs : { ...refs, ticketId: String(recovery.ticket) };
+            log.info("cleanup recovered", { ...withTicket, detail: { outcome: recovery.outcome, reason: recovery.reason ?? "" } });
+          }
+        },
+      },
+      {
+        // Interrupted worktree creations are settled; rebuilds finish in the background.
+        kind: "worktree_create",
+        recover: async (factory) => {
+          for (const recovered of await worktreeRecovery.settle(factory)) {
+            const refs: LogRefs = { factoryId: factory, operationId: String(recovered.operation.id) };
+            const withTicket: LogRefs = recovered.operation.ticket === null ? refs : { ...refs, ticketId: String(recovered.operation.ticket) };
+            const detail = { verdict: recovered.verdict, reason: recovered.reason ?? "" };
 
-    try {
-      for (const recovered of await worktreeRecovery.settle(factory)) {
-        const refs: LogRefs = { factoryId: factory, operationId: String(recovered.operation.id) };
-        const withTicket: LogRefs = recovered.operation.ticket === null ? refs : { ...refs, ticketId: String(recovered.operation.ticket) };
-        const detail = { verdict: recovered.verdict, reason: recovered.reason ?? "" };
-
-        if (recovered.verdict === "refused") {log.warn("worktree creation not recovered", { ...withTicket, detail });}
-        else {log.info("worktree creation recovered", { ...withTicket, detail });}
-      }
-    } catch (error) {
-      log.error("worktree recovery failed", { factoryId: factory, detail: { error: messageOf(error) } });
-    }
-
-    await sync.resumeQueued(factory);
-  };
-
-  for (const factory of decision.started) {void recoverAndResume(factory);}
+            if (recovered.verdict === "refused") {log.warn("worktree creation not recovered", { ...withTicket, detail });}
+            else {log.info("worktree creation recovered", { ...withTicket, detail });}
+          }
+        },
+      },
+    ],
+    onWaiting: (factory, awaiting) => log.warn("queue waits for operation recovery", {
+      factoryId: factory, detail: { operations: awaiting.map((operation) => `${operation.id}:${operation.kind}`).join(",") },
+    }),
+    onRecovered: (factory) => sync.resumeQueued(factory),
+    onError: (factory, kind, cause) => log.error(recoveryFailures.get(kind) ?? `operation recovery failed: ${kind}`,
+      { factoryId: factory, detail: { error: messageOf(cause) } }),
+  }));
 
   log.info("daemon started", {
     detail: { pid: process.pid, stateRoot, socket: api.socketPath, logLevel: log.level },
