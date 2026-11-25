@@ -1123,13 +1123,49 @@ const gateFixture = <A, E>(final: boolean, routed: boolean,
     return yield* use(store, id, root, head, gatedConfig);
   }), migrations);
 
+test("final approval wakes the durable integration queue after commit", async () => {
+  await gateFixture(true, true, (store, id, root, head, gatedConfig) => Effect.gen(function* () {
+    const factories = [{ factoryId: "shop", config: gatedConfig }];
+    const submissions = createSubmissions({ store, handlers: new Map([[TASK_TRANSITION, taskTransitionHandler({ factories })]]) });
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, gitCommit: head } })))
+      .toMatchObject({ status: "committed" });
+
+    const queue = createFactorySyncer({ store, env: isolatedGitEnv(),
+      target: () => ({ clonePath: join(root, "repository"), defaultBranch: "main" }) });
+
+    let drain = Promise.resolve();
+
+    const decisions = createApprovalDecisions({ store, factories,
+      onIntegrationQueued: () => { drain = queue.resumeQueued("shop"); } });
+
+    yield* decisions.resolve(1, "approved");
+    yield* Effect.promise(() => drain);
+
+    expect(yield* listOperations(store, "shop")).toMatchObject([{ status: "complete", result: { head } }]);
+    expect(yield* store.read(`SELECT state FROM ticket`)).toEqual([{ state: "completed" }]);
+  }));
+});
+
 // Reuse the gate fixture: this boundary test includes worker outcome, operator approval,
 // durable queue reopen and real Git; no daemon, HTTP or production state is needed.
-test.each(["complete", "moved", "dirty", "cancelled", "merge-error"] as const)("approved integration: %s", async (scenario) => {
+test.each(["complete", "merge", "moved", "dirty", "cancelled", "merge-error"] as const)("approved integration: %s", async (scenario) => {
   const saved = await gateFixture(true, true, (store, id, root, base, gatedConfig) => Effect.gen(function* () {
     const repository = join(root, "repository");
     const path = join(root, "worktree");
     const source = join(root, "source.git");
+
+    if (scenario === "merge") {
+      // Default A—B stays at the recorded start B; writing rebased the ticket to A—C.
+      writeFileSync(join(repository, "default-base.txt"), "preserve default\n");
+      git(repository, "add", ".");
+      git(repository, "commit", "--quiet", "-m", "default base B");
+      const start = git(repository, "rev-parse", "HEAD");
+      yield* store.change((change) => Effect.gen(function* () {
+        yield* change.query(`UPDATE ticket SET start_commit = ?`, [start]);
+        yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "rebased before review" });
+      }));
+    }
+
     git(root, "clone", "--quiet", "--bare", repository, source);
     git(repository, "remote", "add", "origin", source);
     const sourceRefs = git(source, "for-each-ref", "--format=%(refname) %(objectname)");
@@ -1215,18 +1251,29 @@ exit "$status"
       return;
     }
 
-    const complete = scenario === "complete";
+    const complete = scenario === "complete" || scenario === "merge";
+    const landed = git(saved.repository, "rev-parse", "main");
     expect(yield* listOperations(store, "shop")).toMatchObject([{ kind: "integration", status: complete ? "complete" : "failed",
-      result: complete ? { head: saved.approved, cleanup: "pending" } : { reason: expect.any(String) } }]);
+      result: complete ? { head: landed, fastForward: scenario !== "merge", cleanup: "pending" } : { reason: expect.any(String) } }]);
     expect(yield* store.read(`SELECT state, status, worktree_path, branch FROM ticket`)).toEqual([{
       state: complete ? "completed" : scenario === "cancelled" ? "cancelled" : "stage",
       status: complete || scenario === "cancelled" ? null : "paused", worktree_path: saved.path, branch: "ticket/1",
     }]);
-    expect(git(saved.repository, "rev-parse", "main")).toBe(complete ? saved.approved : saved.previousHead);
+
+    if (!complete) {expect(landed).toBe(saved.previousHead);}
+
     expect(git(saved.path, "rev-parse", "HEAD")).toBe(saved.branchHead);
     expect(git(saved.source, "for-each-ref", "--format=%(refname) %(objectname)")).toBe(saved.sourceRefs);
 
     if (complete) {
+      if (scenario === "merge") {
+        expect(git(saved.repository, "rev-list", "--parents", "-n", "1", "main").split(" "))
+          .toEqual([landed, saved.previousHead, saved.approved]);
+        expect(git(saved.repository, "show", "main:default-base.txt")).toBe("preserve default");
+      } else {
+        expect(landed).toBe(saved.approved);
+      }
+
       expect(git(saved.repository, "merge-base", "--is-ancestor", saved.approved, "main")).toBe("");
       expect(git(saved.repository, "show", "main:reviewed.txt")).toBe("reviewed");
       expect(yield* store.read(`SELECT git_commit, to_state FROM ticket_transition ORDER BY sequence DESC LIMIT 1`))

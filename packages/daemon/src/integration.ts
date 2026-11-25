@@ -73,17 +73,36 @@ export const integrateApprovedCommit = (
 
     if (exact !== approved) {return yield* new IntegrationRefused({ reason: "approved SHA is not an exact commit" });}
 
-    // From the first mutation onward, a subprocess error is ambiguous: Git may have changed
-    // state before losing its result. Leave the operation running and queue gated for recovery.
+    const common = yield* git(["merge-base", previousHead, approved]);
+    const fastForward = common === previousHead;
+    let plannedHead = approved;
+
+    if (!fastForward) {
+      // A writing stage may have rebased before review. Build a real merge tree without
+      // touching the default checkout, and preserve the exact approved SHA as second parent.
+      const tree = yield* git(["merge-tree", "--write-tree", previousHead, approved]);
+
+      if (!/^[a-f0-9]{40,64}$/.test(tree)) {
+        return yield* new IntegrationRefused({ reason: "merge-tree did not produce one clean tree" });
+      }
+
+      plannedHead = yield* git(["-c", "user.name=Foundry", "-c", "user.email=foundry@foundry.invalid",
+        "commit-tree", "--no-gpg-sign", tree, "-p", previousHead, "-p", approved, "-m", `Integrate approved commit ${approved}`]);
+    }
+
+    // Recovery can distinguish the approved commit from the merge commit that contains it.
+    yield* extendOperationIntent(store, operation.id, { plannedHead, fastForward });
+    // From the first checkout/ref mutation onward, a subprocess error is ambiguous: Git may
+    // have changed state before losing its result. Leave the operation running for recovery.
     yield* git(["switch", "--quiet", "--no-guess", "--no-recurse-submodules", "--", target.defaultBranch]).pipe(Effect.orDie);
-    // With the original base still current, only a descendant can land. ff-only is independent
-    // of operator merge policy and cannot manufacture or substitute an unreviewed commit.
-    yield* git(["merge", "--ff-only", "--no-gpg-sign", "--quiet", approved]).pipe(Effect.orDie);
+    // The prepared result contains the recorded default head, so landing it is always a FF.
+    // Explicit policy is independent of operator merge.ff and signing configuration.
+    yield* git(["merge", "--ff-only", "--no-gpg-sign", "--quiet", plannedHead]).pipe(Effect.orDie);
     const head = yield* git(["rev-parse", "--verify", `${ref}^{commit}`]).pipe(Effect.orDie);
 
-    if (head !== approved) {return yield* Effect.die(new Error("integration head is not the approved SHA"));}
+    if (head !== plannedHead) {return yield* Effect.die(new Error("integration head is not the prepared approved result"));}
 
-    return { status: "complete", result: { ...recorded, head, fastForward: true, cleanup: "pending" } } satisfies OperationOutcome;
+    return { status: "complete", result: { ...recorded, head, fastForward, cleanup: "pending" } } satisfies OperationOutcome;
   }).pipe(Effect.catchTag("IntegrationRefused", ({ reason }) =>
     Effect.succeed({ status: "failed", result: { ...recorded, reason } } satisfies OperationOutcome)));
 
