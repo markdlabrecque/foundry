@@ -172,11 +172,19 @@ async function runVariant(name, { yaml, slots }) {
     }
   };
 
+  const result = { variant: name, root, factoryYaml: yaml };
+
+  // The effective fixture as Foundry resolves it, before anything is launched.
+  try {
+    result.validate = { code: 0, out: execFileSync(process.execPath, [cliMain, "validate", factory], { env, encoding: "utf8" }) };
+  } catch (error) {
+    result.validate = { code: error.status, out: `${error.stdout ?? ""}${error.stderr ?? ""}` };
+  }
+
   const daemon = spawn(process.execPath, [daemonMain, "--home", home, factory], { env, stdio: ["ignore", "pipe", "pipe"] });
   let daemonOut = "";
   daemon.stdout.on("data", (c) => (daemonOut += c));
   daemon.stderr.on("data", (c) => (daemonOut += c));
-  const result = { variant: name, root, factoryYaml: yaml };
 
   try {
     await poll("the management API", () => daemonOut.includes("management API on") || (daemon.exitCode !== null && (() => { throw new Error(`daemon exited: ${daemonOut}`); })()));
@@ -197,7 +205,10 @@ async function runVariant(name, { yaml, slots }) {
     result.holdShow = holds.map((h) => cli("hold", "show", String(h.id)));
     result.slotList = cli("slot", "list");
     result.slotShow = slots.map((s) => cli("slot", "show", s));
-    result.markers = Object.fromEntries(readdirSync(markers).sort().map((f) => [f, JSON.parse(readFileSync(join(markers, f), "utf8"))]));
+    result.markers = Object.fromEntries(readdirSync(markers).sort().map((f) => {
+      const text = readFileSync(join(markers, f), "utf8");
+      return [f, f.endsWith(".log") ? text : JSON.parse(text)];
+    }));
   } finally {
     result.shutdown = cli("shutdown", "--force");
     await poll("the daemon to exit", () => daemon.exitCode !== null || daemon.signalCode !== null, 20_000).catch(() => daemon.kill("SIGKILL"));
