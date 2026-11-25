@@ -174,3 +174,21 @@ export {
 } from "./instruction-freeze.js";
 
 export type { SlotControl } from "./slots-error.js";
+
+export {
+  canonicalSource,
+  compareToolSet,
+  createToolSetGuard,
+  createToolSetRecheck,
+  expectedToolSet,
+  frozenConversation,
+  isMatch,
+  TOOL_SET_MISMATCH,
+  type ExpectedTool,
+  type HelloCheck,
+  type ReplacedTool,
+  type ToolSetDiscrepancy,
+  type ToolSetGuard,
+  type ToolSetGuardOptions,
+  type ToolSetRecheckOptions,
+} from "./tool-set-check.js";
