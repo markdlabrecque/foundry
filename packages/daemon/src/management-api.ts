@@ -13,6 +13,8 @@ import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { Cause, Effect, Exit, Option, Schema } from "effect";
+import type { ApprovalsReader } from "./approvals.js";
+import { APPROVALS_PATH } from "@foundry/protocol/approvals";
 import type { HoldsReader } from "./holds.js";
 import { HOLDS_PATH } from "@foundry/protocol/holds";
 import { EVENTS_PATH, managementSocketPath, parseEventsQuery, STATUS_PATH } from "@foundry/protocol/management-api";
@@ -51,6 +53,8 @@ export interface ManagementApiInputs {
   readonly events?: EventSource;
   /** Operator holds (PRD §10.2). Without it the hold routes answer 503. */
   readonly holds?: HoldsReader;
+  /** Work decisions, separate from system holds. */
+  readonly approvals?: ApprovalsReader;
   /** Serves the ticket routes when given; without it they answer 404. */
   readonly tickets?: TicketService;
   /** Durable daemon-authored operator acceptance (PRD §11.4). */
@@ -668,6 +672,26 @@ const routeFor = (inputs: ManagementApiInputs, path: string, params: URLSearchPa
       factories === undefined
         ? [503, failure("unavailable", "factories are not served by this daemon")]
         : [200, { ok: true, result: await factories.list() }];
+  }
+
+  if (path === APPROVALS_PATH || path.startsWith(`${APPROVALS_PATH}/`)) {
+    return async () => {
+      const approvals = inputs.approvals;
+
+      if (approvals === undefined) {return [503, failure("unavailable", "approvals are not served by this daemon")];}
+
+      if (path === APPROVALS_PATH) {return [200, { ok: true, result: await approvals.list() }];}
+
+      const id = /^\/([1-9][0-9]{0,15})$/.exec(path.slice(APPROVALS_PATH.length))?.[1];
+
+      if (id === undefined || !Number.isSafeInteger(Number(id))) {return [404, failure("not_found", "invalid approval ID")];}
+
+      const shown = await approvals.show(Number(id));
+
+      return shown === undefined
+        ? [404, failure("not_found", `no approval ${id}`)]
+        : [200, { ok: true, result: shown }];
+    };
   }
 
   if (path === HOLDS_PATH) {return withHolds(inputs, async (holds) => [200, { ok: true, result: await holds.list() }]);}

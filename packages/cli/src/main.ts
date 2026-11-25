@@ -13,6 +13,7 @@ import { validateFactoryFile } from "./validate.js";
 import { runTicketList, runTicketPause, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow } from "./holds.js";
+import { runApprovalList, runApprovalShow } from "./approvals.js";
 import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath, runFactorySync } from "./factory.js";
@@ -117,6 +118,19 @@ const print = (outcome: HoldOutcome) =>
 
     process.exitCode = outcome.exitCode;
   });
+
+const approvalList = Command.make("list", commonFlags, ({ json, home }) =>
+  Effect.flatMap(Effect.promise(() => runApprovalList({ json, home: Option.getOrUndefined(home), env: process.env })), print),
+);
+
+const approvalShow = Command.make("show", { ...commonFlags, id: Argument.String("id") }, ({ json, home, id }) =>
+  Effect.flatMap(Effect.promise(() => runApprovalShow({ json, home: Option.getOrUndefined(home), env: process.env, id })), print),
+);
+
+const approval = Command.make("approval").pipe(
+  Command.withDescription("Operator decisions about work"),
+  Command.withSubcommands([approvalList, approvalShow]),
+);
 
 const holdList = Command.make("list", commonFlags, ({ json, home }) =>
   Effect.flatMap(
@@ -366,7 +380,7 @@ const shutdown = Command.make(
 ).pipe(Command.withDescription("Stop every factory's workers, then the Worker Host, then the daemon"));
 
 const foundry = Command.make("foundry").pipe(
-  Command.withSubcommands([validate, status, shutdown, hold, logs, ticket, events, factory, slot, message]),
+  Command.withSubcommands([validate, status, shutdown, hold, approval, logs, ticket, events, factory, slot, message]),
 );
 
 Command.run(foundry, { version: "0.0.0" }).pipe(

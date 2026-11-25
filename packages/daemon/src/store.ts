@@ -483,6 +483,27 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `ALTER TABLE slot ADD COLUMN recovery_count INTEGER NOT NULL DEFAULT 0 CHECK (recovery_count >= 0)`,
     ],
   },
+  {
+    id: 20,
+    name: "blocked_approvals",
+    statements: [
+      `CREATE TABLE approval (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        assignment_id TEXT NOT NULL REFERENCES assignment(id),
+        transition_sequence INTEGER NOT NULL UNIQUE REFERENCES ticket_transition(sequence),
+        kind TEXT NOT NULL CHECK (kind IN ('blocked')),
+        state TEXT NOT NULL CHECK (state IN ('open', 'resolved')),
+        raised_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket(factory_id, number),
+        CHECK ((state = 'open') = (closed_at IS NULL))
+      ) STRICT`,
+      `CREATE UNIQUE INDEX approval_one_open_blocked ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'blocked'`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

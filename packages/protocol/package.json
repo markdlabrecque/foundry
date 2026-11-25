@@ -29,6 +29,10 @@
       "types": "./dist/log-read.d.ts",
       "default": "./dist/log-read.js"
     },
+    "./approvals": {
+      "types": "./dist/approvals.d.ts",
+      "default": "./dist/approvals.js"
+    },
     "./holds": {
       "types": "./dist/holds.d.ts",
       "default": "./dist/holds.js"
