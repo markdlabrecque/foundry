@@ -18,7 +18,8 @@ import { git as fixtureGit, isolatedGitEnv, makeGitSource } from "@foundry/testk
 import { FactoryConfig } from "../src/config/schema.js";
 import { getFromDaemon, postToDaemon } from "../../cli/src/management-client.js";
 import { approvalAnswerPath } from "@foundry/protocol/approvals";
-import { voidStaleApprovals } from "@foundry/daemon";
+import { loadFactoryFiles, LoadFactoriesResult, voidStaleApprovals } from "@foundry/daemon";
+import { createWorktreeService } from "../src/worktree-cleanup.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
   version: 1, name: "shop", repository: { source: "/disposable", default_branch: "main" },
@@ -1223,7 +1224,7 @@ test("final approval wakes the durable integration queue after commit", async ()
 
 // Reuse the gate fixture: this boundary test includes worker outcome, operator approval,
 // durable queue reopen and real Git; no daemon, HTTP or production state is needed.
-test.each(["complete", "merge", "moved", "conflict", "conflict-limit", "dirty", "cancelled", "merge-error", "stale"] as const)("approved integration: %s", async (scenario) => {
+test.each(["complete", "merge", "cleanup-dirty", "cleanup-hook-failed", "moved", "conflict", "conflict-limit", "dirty", "cancelled", "merge-error", "stale"] as const)("approved integration: %s", async (scenario) => {
   const saved = await gateFixture(true, true, (store, id, root, base, gatedConfig) => Effect.gen(function* () {
     const repository = join(root, "repository");
     const path = join(root, "worktree");
@@ -1290,7 +1291,20 @@ test.each(["complete", "merge", "moved", "conflict", "conflict-limit", "dirty", 
       yield* service.cancel("shop", 1, inspection.confirmation);
     }
 
-    return { root, repository, path, source, sourceRefs, base, approved, branchHead, gatedConfig, previousHead: git(repository, "rev-parse", "main") };
+    if (scenario === "cleanup-dirty") {writeFileSync(join(path, "untracked.txt"), "preserve ticket work\n");}
+
+    const yamlFile = join(root, "factory.yaml");
+    writeFileSync(yamlFile, JSON.stringify({ version: 1, name: "shop",
+      repository: { source: repository, default_branch: "main" }, default_production_line: "standard",
+      rooms: { floor: { stations: { worker: { isolation: "worktree", model: "fake/model" } } } },
+      production_lines: { standard: { stages: [
+        { id: "revise", station: "floor.worker", writing: true },
+        { id: "plan", station: "floor.worker", approval: true, on_rejection: "revise" },
+      ] } },
+      worktrees: { before_remove: scenario === "cleanup-hook-failed" ? ["sh", "-c", "exit 19"] : undefined },
+    }));
+
+    return { root, repository, path, source, sourceRefs, base, approved, branchHead, yamlFile, gatedConfig, previousHead: git(repository, "rev-parse", "main") };
   }));
 
   // Reopen before consuming: approved integration is not an in-memory callback.
@@ -1322,7 +1336,18 @@ exit "$status"
       env["PATH"] = `${bin}:${process.env["PATH"]}`;
     }
 
-    const queue = createFactorySyncer({ store, env, target: () => ({ clonePath: saved.repository, defaultBranch: "main", config: saved.gatedConfig }),
+    const loaded = loadFactoryFiles([saved.yamlFile], { env: {} });
+
+    if (LoadFactoriesResult.$is("Refused")(loaded)) {throw new Error(loaded.message);}
+
+    const factory = loaded.factories[0];
+
+    if (factory === undefined) {throw new Error("fixture factory missing");}
+
+    const worktrees = createWorktreeService({ store, stateRoot: saved.root, env, factories: () => ["shop"],
+      target: () => ({ factory, clonePath: saved.repository }) });
+
+    const queue = createFactorySyncer({ store, env, worktrees, target: () => ({ clonePath: saved.repository, defaultBranch: "main", config: saved.gatedConfig }),
       onError: (_factory, cause) => { queueError = String(cause); } });
 
     yield* Effect.promise(() => queue.resumeQueued("shop"));
@@ -1342,13 +1367,17 @@ exit "$status"
       return;
     }
 
-    const complete = scenario === "complete" || scenario === "merge";
+    const removed = scenario === "complete" || scenario === "merge";
+    const complete = removed || scenario === "cleanup-dirty" || scenario === "cleanup-hook-failed";
     const landed = git(saved.repository, "rev-parse", "main");
-    expect(yield* listOperations(store, "shop")).toMatchObject([{ kind: "integration", status: complete ? "complete" : "failed",
-      result: complete ? { head: landed, fastForward: scenario !== "merge", cleanup: "pending" } : { reason: expect.any(String) } }]);
+    const operations = yield* listOperations(store, "shop");
+    expect(operations).toMatchObject([{ kind: "integration", status: complete ? "complete" : "failed",
+      result: complete ? { head: landed, fastForward: scenario !== "merge", cleanup: "pending" } : { reason: expect.any(String) } },
+    ...(complete ? [{ kind: "cleanup", status: removed ? "complete" : "failed" }] : []),
+    ...(scenario === "cleanup-hook-failed" ? [{ kind: "hook", status: "failed" }] : [])]);
     expect(yield* store.read(`SELECT state, status, worktree_path, branch FROM ticket`)).toEqual([{
       state: complete ? "completed" : scenario === "cancelled" ? "cancelled" : "stage",
-      status: complete || scenario === "cancelled" ? null : scenario === "conflict" ? "queued" : "paused", worktree_path: saved.path, branch: "ticket/1",
+      status: complete || scenario === "cancelled" ? null : scenario === "conflict" ? "queued" : "paused", worktree_path: removed ? null : saved.path, branch: removed ? null : "ticket/1",
     }]);
 
     if (!complete) {expect(landed).toBe(saved.previousHead);}
@@ -1379,7 +1408,15 @@ exit "$status"
       }
     }
 
-    expect(git(saved.path, "rev-parse", "HEAD")).toBe(saved.branchHead);
+    expect(existsSync(saved.path)).toBe(!removed);
+
+    if (removed) {
+      expect(git(saved.repository, "branch", "--list", "ticket/1")).toBe("");
+      expect(git(saved.repository, "worktree", "list", "--porcelain")).not.toContain(saved.path);
+    } else {expect(git(saved.path, "rev-parse", "HEAD")).toBe(saved.branchHead);}
+
+    if (scenario === "cleanup-dirty") {expect(readFileSync(join(saved.path, "untracked.txt"), "utf8")).toBe("preserve ticket work\n");}
+
     expect(git(saved.source, "for-each-ref", "--format=%(refname) %(objectname)")).toBe(saved.sourceRefs);
 
     if (complete) {
@@ -1396,7 +1433,8 @@ exit "$status"
       expect(yield* store.read(`SELECT git_commit, to_state FROM ticket_transition ORDER BY sequence DESC LIMIT 1`))
         .toEqual([{ git_commit: saved.approved, to_state: "completed" }]);
       yield* Effect.promise(() => queue.resumeQueued("shop"));
-      expect(yield* listOperations(store, "shop")).toHaveLength(1);
+      expect(yield* listOperations(store, "shop")).toEqual(operations);
+      expect(queueError).toBe("");
     } else if (scenario === "dirty") {
       expect(readFileSync(join(saved.repository, "untracked.txt"), "utf8")).toBe("preserve me\n");
     }
