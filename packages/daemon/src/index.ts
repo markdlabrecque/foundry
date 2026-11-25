@@ -62,9 +62,11 @@ export {
 
 export {
   closeHold,
+  closeOpenHoldIn,
   getHold,
   listOpenHolds,
   raiseHold,
+  raiseHoldIn,
   storeHoldsReader,
   type HoldsReader,
   type RaiseHold,
@@ -136,3 +138,22 @@ export {
   type SlotsErrorCode,
   type SlotsReader,
 } from "./slots.js";
+
+export {
+  createSlotFreezer,
+  openSlotGate,
+  storeSlotControl,
+  whenSendable,
+  type CauseCheck,
+  type CauseCheckResult,
+  type FreezeChecks,
+  type FreezeOutcome,
+  type FreezeRequest,
+  type SlotFreezer,
+  type SlotFreezerOptions,
+  type SlotGate,
+  type SlotRef,
+  type UnfreezeResult,
+} from "./freeze.js";
+
+export type { SlotControl } from "./slots-error.js";

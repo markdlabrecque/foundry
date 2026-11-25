@@ -12,8 +12,10 @@
  * row in the same transaction (ADR 0001). Where host and database disagree, the host wins on
  * liveness and the database on everything else.
  *
+ * A frozen slot (`freeze.ts`) is never launched into: scheduling reports it `held`.
+ *
  * Out of scope here: relaunching a slot whose launch ended (recovery, the recovery limit and the
- * recovery prime), and freezing a slot whose ownership the host cannot confirm (operator holds).
+ * recovery prime), and deciding to freeze a slot whose ownership the host cannot confirm (FOU-80).
  * Such slots are reported and left alone.
  */
 import { existsSync, mkdirSync } from "node:fs";
@@ -23,7 +25,7 @@ import { buildLaunchArgs, connectHost, HostRefusedError, launchStderrPath, start
 import type { HostConnection, LaunchRecord, LaunchSpec, PiExecutable } from "@foundry/host";
 import { CHANNEL_SOCKET_ENV, channelSocketPath } from "@foundry/protocol";
 import { codeOf, messageOf } from "@foundry/protocol/errors";
-import { SLOT_INTERRUPT_ACK_TIMEOUT_MS, SlotCondition, slotIdOf } from "@foundry/protocol/slots-api";
+import { FreezeCause, SLOT_INTERRUPT_ACK_TIMEOUT_MS, SlotCondition, slotIdOf } from "@foundry/protocol/slots-api";
 import type { LaunchEndReason, SlotLaunch, SlotLaunchHistoryEntry, SlotSummary } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
 import type { SlotInterrupter, SlotsReader } from "./slots-error.js";
@@ -76,6 +78,7 @@ interface SlotRow {
   readonly current_launch: string | null;
   readonly pending_host: string | null;
   readonly pending_boot: string | null;
+  readonly freeze_cause: string | null;
 }
 
 interface LaunchRow {
@@ -92,7 +95,7 @@ interface LaunchRow {
   readonly exit_signal: string | null;
 }
 
-const SLOT_COLUMNS = `factory_id, slot_id, station, ordinal, condition, current_launch, pending_host, pending_boot`;
+const SLOT_COLUMNS = `factory_id, slot_id, station, ordinal, condition, current_launch, pending_host, pending_boot, freeze_cause`;
 const LAUNCH_COLUMNS = `launch_id, factory_id, slot_id, boot_id, pid, started_at, origin, ended_at, end_reason, exit_code, exit_signal`;
 
 const readSlot = (store: Store, factoryId: string, slotId: string) =>
@@ -489,6 +492,8 @@ const iso = (ms: number): string => new Date(ms).toISOString();
 
 const decodeCondition = Schema.decodeUnknownSync(SlotCondition);
 
+const decodeFreezeCause = Schema.decodeUnknownSync(Schema.NullOr(FreezeCause));
+
 const toLaunch = (row: LaunchRow): SlotLaunch => ({
   launchId: row.launch_id,
   bootId: row.boot_id,
@@ -514,6 +519,7 @@ const summaryOf = async (store: Store, slot: PlannedSlot): Promise<SlotSummary> 
     ordinal: slot.ordinal,
     // Read as stored: a condition this build does not serve yet fails loudly, not as `normal`.
     condition: row === undefined ? "normal" : decodeCondition(row.condition),
+    freezeCause: row === undefined ? null : decodeFreezeCause(row.freeze_cause),
     launch: launch === undefined ? null : toLaunch(launch),
   };
 };

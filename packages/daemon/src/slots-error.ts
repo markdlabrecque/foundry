@@ -2,7 +2,7 @@
  * The slot routes' reader seam and refusal, kept apart from `slots.ts` so the management API can
  * use them without loading the Worker Host client.
  */
-import type { SlotInterruptResult, SlotListResult, SlotShowResult } from "@foundry/protocol/slots-api";
+import type { SlotInterruptResult, SlotListResult, SlotShowResult, SlotUnfreezeResult } from "@foundry/protocol/slots-api";
 
 export type SlotsErrorCode =
   | "factory_required"
@@ -13,7 +13,13 @@ export type SlotsErrorCode =
   /** No authenticated channel speaks for the slot's launch, or it was lost before the ack. */
   | "channel_unavailable"
   /** The worker did not acknowledge the interrupt in time; the launch is left alone. */
-  | "interrupt_unacknowledged";
+  | "interrupt_unacknowledged"
+  /** Unfreeze of a slot that is not frozen. */
+  | "not_frozen"
+  /** Unfreeze re-ran the cause's check and it still fails; the slot stays frozen. */
+  | "cause_persists"
+  /** The slot's freeze cause has no check to re-run, so it is never unfrozen on trust. */
+  | "no_cause_check";
 
 /** A slot request the daemon refuses, with a stable API code. */
 export class SlotsError extends Error {
@@ -38,4 +44,10 @@ export interface SlotsReader {
 export interface SlotInterrupter {
   /** Aborts the slot's current run, keeping its launch and conversation; refuses with `SlotsError`. */
   readonly interrupt: (slotId: string, factory: string | undefined) => Promise<SlotInterruptResult>;
+}
+
+/** What the management API acts on for the slot verbs. */
+export interface SlotControl {
+  /** Re-runs the slot's freeze cause check and unfreezes it only if the check passes. */
+  readonly unfreeze: (slotId: string, factory: string | undefined) => Promise<SlotUnfreezeResult>;
 }

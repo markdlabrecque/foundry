@@ -256,6 +256,17 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `CREATE INDEX launch_by_slot ON launch (factory_id, slot_id, started_at)`,
     ],
   },
+  {
+    id: 9,
+    name: "slot_freeze_cause",
+    statements: [
+      // PRD §5.3: why a frozen slot is frozen, so unfreeze re-runs the same check. Set only while
+      // the slot is frozen; its frozen-slot hold carries the evidence.
+      `ALTER TABLE slot ADD COLUMN freeze_cause TEXT CHECK (freeze_cause IS NULL OR freeze_cause IN (
+        'host_lost', 'unknown_ownership', 'conversation_changed', 'prime_without_history',
+        'instruction_missing', 'tool_set_mismatch'))`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */
