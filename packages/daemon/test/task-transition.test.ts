@@ -295,7 +295,7 @@ test.each(["blocked", "rejected"] as const)("%s pauses atomically, frees capacit
       evidence: '["evidence/plan.md"]', config_load: "load-1" });
     expect(after.approvals).toMatchObject([{ kind: "blocked", state: "open", assignment_id: id }]);
     expect(after.history.slice(before.history.length)).toMatchObject([
-      { kind: "ticket.transitioned" }, { kind: "approval.requested" },
+      { kind: "ticket.transitioned" }, { kind: "approval.requested" }, { kind: "submission.recorded" },
     ]);
     expect(yield* Effect.promise(() => submissions.submit(owner, call))).toEqual(result);
     expect(yield* Effect.promise(() => submissions.submit(owner, { ...call, callId: "stale" })))
