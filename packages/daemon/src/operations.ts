@@ -407,6 +407,11 @@ export const recordRecoveryResultIn = (
 
     const operation = toOperation(expectDefined(rows[0], `operation ${id} awaiting recovery`));
 
+    // Only an indeterminate integration keeps the queue closed; any other kind would reopen it.
+    if (outcome.status === "indeterminate" && operation.kind !== "integration") {
+      return yield* Effect.die(new Error(`operation ${id} is a ${operation.kind}; only an integration can be recovered indeterminate`));
+    }
+
     yield* change.recordHistory({
       factoryId: operation.factoryId,
       kind: "operation.recovered",
@@ -430,6 +435,8 @@ export const requeueInterruptedOperationIn = (
   intent: OperationDetail,
 ): Effect.Effect<Operation, StoreError> =>
   Effect.gen(function* () {
+    const [previous] = yield* change.query<{ intent: string }>(`SELECT intent FROM operation WHERE id = ?`, [id]);
+
     const rows = yield* change.query<OperationRow>(
       `UPDATE operation SET status = 'queued', started_at = NULL, intent = ?
        WHERE id = ? AND kind IN (${QUEUED_KINDS_SQL}) AND ${AWAITING_RECOVERY_SQL}
@@ -443,7 +450,7 @@ export const requeueInterruptedOperationIn = (
       factoryId: operation.factoryId,
       kind: "operation.requeued",
       subject: String(id),
-      detail: { operationId: id, kind: operation.kind, intent },
+      detail: { operationId: id, kind: operation.kind, intent, previousIntent: previous === undefined ? null : decodeDetail(previous.intent) },
       records: recordsOf(operation.ticket),
     });
 

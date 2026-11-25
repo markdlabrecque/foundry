@@ -12,11 +12,12 @@ import {
   extendOperationIntent, interruptRunningOperations, listOpenHolds, listOperations, openStore, planSlots,
   recoverInterruptedIntegrations, startNextOperation, taskTransitionHandler, ticketFactoryFrom,
 } from "@foundry/daemon";
-import type { Store } from "@foundry/daemon";
+import type { LoadedFactory, Store } from "@foundry/daemon";
 import { TASK_TRANSITION } from "@foundry/protocol";
 import { expectDefined } from "@foundry/protocol/errors";
 import { isolatedGitEnv } from "@foundry/testkit";
 import { FactoryConfig } from "../src/config/schema.js";
+import { createWorktreeService } from "../src/worktree-cleanup.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
   version: 1, name: "shop", repository: { source: "/disposable", default_branch: "main" },
@@ -117,6 +118,7 @@ const interruptedIntegration = async (moved: boolean): Promise<Saved> => {
 
     // What `integrateApprovedCommit` commits before it touches the default branch.
     const running = expectDefined(yield* startNextOperation(store, "shop"), "admitted integration");
+    yield* extendOperationIntent(store, running.id, { branchLock: lock });
     yield* extendOperationIntent(store, running.id, { previousHead: recordedHead, approvedCommit: approved, defaultBranch: "main" });
     yield* extendOperationIntent(store, running.id, { scratchPath: scratch });
   }));
@@ -129,12 +131,18 @@ const interruptedIntegration = async (moved: boolean): Promise<Saved> => {
   return { root, repository, approved, recordedHead, scratch, lock };
 };
 
-/** Restarts: marks the integration interrupted and runs recovery against the clone. */
+const loaded: LoadedFactory = { factoryId: "shop", yamlFile: "/disposable/shop.yaml", config: gatedConfig, stations: [],
+  warnings: [], configJson: "{}", configHash: "sha256:fixture", knowledge: { root: "/disposable/knowledge", directories: [] } };
+
+/** Restarts: marks the integration interrupted and runs recovery, and the cleanup it starts, against the clone. */
 const recoverAfterRestart = (saved: Saved, use: (store: Store) => Effect.Effect<void>) =>
   withStore(saved.root, (store) => Effect.gen(function* () {
     yield* interruptRunningOperations(store);
 
-    const recovered = yield* recoverInterruptedIntegrations({ store, env: isolatedGitEnv(),
+    const worktrees = createWorktreeService({ store, stateRoot: saved.root, env: isolatedGitEnv(), factories: () => ["shop"],
+      target: () => ({ factory: loaded, clonePath: saved.repository }) });
+
+    const recovered = yield* recoverInterruptedIntegrations({ store, env: isolatedGitEnv(), worktrees,
       target: () => ({ clonePath: saved.repository, defaultBranch: "main", config: gatedConfig }) }, "shop");
 
     expect(recovered).toHaveLength(1);
@@ -166,11 +174,18 @@ test.each([
     expect(yield* store.read(`SELECT git_commit, to_state FROM ticket_transition ORDER BY sequence DESC LIMIT 1`))
       .toEqual([{ git_commit: saved.approved, to_state: "completed" }]);
     expect(yield* listOpenHolds(store)).toEqual([]);
+    // The run's ticket-branch lock went with it, so the cleanup it would have run completes.
+    expect(existsSync(saved.lock)).toBe(false);
+    expect(existsSync(saved.scratch)).toBe(false);
+    expect((yield* listOperations(store, "shop")).filter((operation) => operation.kind === "cleanup"))
+      .toMatchObject([{ status: "complete", result: { branch: "ticket/1" } }]);
+    expect(yield* store.read(`SELECT worktree_path, branch FROM ticket`)).toEqual([{ worktree_path: null, branch: null }]);
     const sync = yield* enqueueOperation(store, { factoryId: "shop", kind: "sync", intent: { defaultBranch: "main" } });
     expect((yield* startNextOperation(store, "shop"))?.id).toBe(sync.id);
   }).pipe(Effect.orDie));
 
   expect(git(saved.repository, "rev-parse", "main")).toBe(head);
+  expect(git(saved.repository, "branch", "--list", "ticket/1")).toBe("");
 });
 
 test("an integration whose default branch is still at the recorded head discards its temporary state and reruns from the start", async () => {
@@ -204,10 +219,25 @@ test("an integration whose default branch head is unexplained is indeterminate: 
     // The approval and its exact-SHA intent are kept for the operator's declaration.
     expect(yield* store.read(`SELECT approved_commit FROM integration_intent`)).toEqual([{ approved_commit: saved.approved }]);
     expect(yield* listOpenHolds(store)).toMatchObject([{ kind: "indeterminate_integration", subject: "1",
-      evidence: { currentHead: unexplained, recordedIntent: { previousHead: saved.recordedHead, approvedCommit: saved.approved } } }]);
+      evidence: { currentHead: unexplained, branchLock: saved.lock, recordedIntent: { previousHead: saved.recordedHead, approvedCommit: saved.approved } } }]);
     yield* enqueueOperation(store, { factoryId: "shop", kind: "sync", intent: { defaultBranch: "main" } });
     expect(yield* startNextOperation(store, "shop")).toBeUndefined();
   }).pipe(Effect.orDie));
 
   expect(git(saved.repository, "rev-parse", "main")).toBe(unexplained);
+});
+
+test("an integration at the recorded head in a clone Git died writing is indeterminate, not rerun on every restart", async () => {
+  const saved = await interruptedIntegration(false);
+  const indexLock = join(saved.repository, ".git", "index.lock");
+  writeFileSync(indexLock, "");
+
+  await recoverAfterRestart(saved, (store) => Effect.gen(function* () {
+    expect(yield* verdictOf(store)).toMatchObject({ kind: "integration", status: "indeterminate", result: { currentHead: saved.recordedHead } });
+    expect(yield* listOpenHolds(store)).toMatchObject([{ kind: "indeterminate_integration", evidence: { reason: expect.stringContaining(indexLock) } }]);
+    yield* enqueueOperation(store, { factoryId: "shop", kind: "sync", intent: { defaultBranch: "main" } });
+    expect(yield* startNextOperation(store, "shop")).toBeUndefined();
+  }).pipe(Effect.orDie));
+
+  expect(existsSync(indexLock)).toBe(true);
 });

@@ -15,7 +15,8 @@
  */
 import { existsSync, rmSync, statSync, unlinkSync } from "node:fs";
 import { basename, dirname, resolve } from "node:path";
-import { Clock, Data, Effect, Option, Schema } from "effect";
+import { Clock, Data, Effect, Exit, Option, Schema } from "effect";
+import type { Cause } from "effect";
 import { expectDefined, messageOf } from "@foundry/protocol/errors";
 import { ticketApprovalLock } from "./approval-coordination.js";
 import { runCloneGit } from "./factory-clone.js";
@@ -45,12 +46,15 @@ export interface IntegrationRecoveryOptions {
   readonly env?: NodeJS.ProcessEnv;
   /** Cleanup after a landed integration completes, as after an uninterrupted one. */
   readonly worktrees?: Pick<WorktreeService, "clean">;
+  /** One integration's recovery failed or died; the factory's other integrations still recover. */
+  readonly onFailure?: (operation: Operation, cause: Cause.Cause<StoreError>) => void;
 }
 
 /** What `integrateApprovedCommit` records in the intent as it goes. */
 const RecordedIntent = Schema.Struct({
   approvalId: Schema.Number,
   approvedCommit: Schema.String,
+  branchLock: Schema.optionalKey(Schema.String),
   previousHead: Schema.optionalKey(Schema.String),
   defaultBranch: Schema.optionalKey(Schema.String),
   scratchPath: Schema.optionalKey(Schema.String),
@@ -73,12 +77,50 @@ type Classification =
   | { readonly verdict: "rerun"; readonly head: string | null }
   | { readonly verdict: "indeterminate"; readonly head: string | null; readonly reason: string };
 
+/**
+ * The ticket-branch lock the interrupted run provably took: recorded right after it was taken.
+ * Older intents recorded only the head, which the run reads while already holding the lock.
+ */
+const branchLockOf = (
+  git: (args: ReadonlyArray<string>) => Effect.Effect<string, RecoveryGitFailed>,
+  clonePath: string,
+  intent: RecordedIntent | undefined,
+  branch: string | null,
+): Effect.Effect<string | null> => {
+  if (intent?.branchLock !== undefined) {return Effect.succeed(intent.branchLock);}
+
+  if (intent?.previousHead === undefined || branch === null) {return Effect.succeed(null);}
+
+  return git(["rev-parse", "--git-path", `refs/heads/${branch}.lock`]).pipe(
+    Effect.map((path) => resolve(clonePath, path)),
+    Effect.orElseSucceed(() => null),
+  );
+};
+
 /** The scratch checkout the interrupted run may have left, if it recorded one. */
 const temporaryWorktreeOf = (intent: RecordedIntent | undefined): string | null =>
   intent?.scratchPath ?? intent?.verification?.path ?? null;
 
+/**
+ * Why the clone cannot take a rerun, if it cannot: Git died mid-write (its index lock is left) or
+ * the checkout is dirty. A rerun would only refuse again on every restart, so the operator decides.
+ */
+const brokenClone = (
+  git: (args: ReadonlyArray<string>) => Effect.Effect<string, RecoveryGitFailed>,
+  clonePath: string,
+): Effect.Effect<string | undefined, RecoveryGitFailed> => Effect.gen(function* () {
+  const indexLock = resolve(clonePath, yield* git(["rev-parse", "--git-path", "index.lock"]));
+
+  if (existsSync(indexLock)) {return `factory clone has a leftover Git index lock: ${indexLock}`;}
+
+  const status = yield* git(["status", "--porcelain", "--untracked-files=all"]);
+
+  return status === "" ? undefined : `factory clone has uncommitted changes:\n${status}`;
+});
+
 const classify = (
   git: (args: ReadonlyArray<string>) => Effect.Effect<string, RecoveryGitFailed>,
+  clonePath: string,
   intent: RecordedIntent | undefined,
   defaultBranch: string,
 ): Effect.Effect<Classification> => Effect.gen(function* () {
@@ -86,8 +128,11 @@ const classify = (
     return { verdict: "indeterminate", head: null, reason: "recorded intent names no approved commit" } as const;
   }
 
+  const rerun = (head: string | null) => Effect.map(brokenClone(git, clonePath), (broken): Classification =>
+    (broken === undefined ? { verdict: "rerun", head } : { verdict: "indeterminate", head, reason: broken }));
+
   // The head is recorded before anything is prepared or moved, so without it nothing landed.
-  if (intent.previousHead === undefined) {return { verdict: "rerun", head: null } as const;}
+  if (intent.previousHead === undefined) {return yield* rerun(null);}
 
   const head = yield* git(["rev-parse", "--verify", `refs/heads/${defaultBranch}^{commit}`]);
 
@@ -99,22 +144,21 @@ const classify = (
     return { verdict: "landed", head } as const;
   }
 
-  if (head === intent.previousHead) {return { verdict: "rerun", head } as const;}
+  if (head === intent.previousHead) {return yield* rerun(head);}
 
   return { verdict: "indeterminate", head, reason: "default branch head is neither the recorded head nor the approved result" } as const;
 }).pipe(Effect.catchTag("RecoveryGitFailed", ({ reason }) =>
   Effect.succeed({ verdict: "indeterminate", head: null, reason: `cannot read the default branch: ${reason}` } as const)));
 
 /**
- * Discards what an interrupted run left in the clone before it reruns: the scratch checkout and its
- * temporary directory, and the empty ticket-branch lock the integration holds while it runs (Git's
- * own ref locks carry the new value). Best effort: the rerun prepares a fresh checkout anyway.
+ * Discards what an interrupted run left in the clone before it reruns or completes: the scratch
+ * checkout and its temporary directory, and the empty ticket-branch lock the integration took and
+ * holds while it runs (Git's own ref locks carry the new value). Best effort.
  */
 const discardTemporaryState = (
   git: (args: ReadonlyArray<string>) => Effect.Effect<string, RecoveryGitFailed>,
-  clonePath: string,
   scratch: string | null,
-  branch: string | null,
+  lockPath: string | null,
 ) => Effect.gen(function* () {
   if (scratch !== null) {
     if (existsSync(scratch)) {yield* git(["worktree", "remove", "--force", scratch]).pipe(Effect.ignore);}
@@ -128,13 +172,7 @@ const discardTemporaryState = (
 
   yield* git(["worktree", "prune"]).pipe(Effect.ignore);
 
-  if (branch === null) {return;}
-
-  const lock = yield* git(["rev-parse", "--git-path", `refs/heads/${branch}.lock`]).pipe(Effect.option);
-
-  if (Option.isNone(lock)) {return;}
-
-  const lockPath = resolve(clonePath, lock.value);
+  if (lockPath === null) {return;}
 
   yield* Effect.sync(() => {
     if (existsSync(lockPath) && statSync(lockPath).size === 0) {unlinkSync(lockPath);}
@@ -180,15 +218,17 @@ const recoverOne = (
 
   const intent = Option.getOrUndefined(decodeIntent(operation.intent));
   const defaultBranch = intent?.defaultBranch ?? target.defaultBranch;
-  const classification = yield* classify(git, intent, defaultBranch);
+  const classification = yield* classify(git, clonePath, intent, defaultBranch);
   const temporaryWorktree = temporaryWorktreeOf(intent);
   const now = yield* Clock.currentTimeMillis;
 
-  if (classification.verdict === "rerun") {
-    const [row] = yield* store.read<{ branch: string | null }>(`SELECT branch FROM ticket WHERE factory_id = ? AND number = ?`,
-      [operation.factoryId, ticketNumber]);
+  const [row] = yield* store.read<{ branch: string | null }>(`SELECT branch FROM ticket WHERE factory_id = ? AND number = ?`,
+    [operation.factoryId, ticketNumber]);
 
-    yield* discardTemporaryState(git, clonePath, temporaryWorktree, row?.branch ?? null);
+  const branchLock = yield* branchLockOf(git, clonePath, intent, row?.branch ?? null);
+
+  if (classification.verdict === "rerun") {
+    yield* discardTemporaryState(git, temporaryWorktree, branchLock);
 
     const requeued = yield* store.change((change) => Effect.gen(function* () {
       yield* closeIntegrationHooksIn(change, hooks);
@@ -204,6 +244,9 @@ const recoverOne = (
 
   if (classification.verdict === "landed") {
     const approved = expectDefined(intent, `integration ${operation.id} intent`);
+
+    // The run held the ticket-branch lock until its result committed; cleanup deletes the branch.
+    yield* discardTemporaryState(git, temporaryWorktree, branchLock);
 
     const { recovered, completed } = yield* store.change((change) => Effect.gen(function* () {
       const result = yield* recordRecoveryResultIn(change, operation.id, { status: "complete", result: {
@@ -242,6 +285,7 @@ const recoverOne = (
     recordedIntent: operation.intent,
     currentHead: classification.head,
     temporaryWorktree,
+    branchLock,
     reason: classification.reason,
   };
 
@@ -290,8 +334,11 @@ export const recoverInterruptedIntegrations = (
       candidate.intent.integrationOperationId === operation.id);
 
     const lock = ticketApprovalLock(options.store, factoryId, operation.ticket ?? 0);
+    // Each integration recovers on its own: one failure leaves only that one awaiting recovery.
+    const exit = yield* Effect.exit(lock.withPermit(recoverOne(options, target, operation, hooks)));
 
-    recovered.push(yield* lock.withPermit(recoverOne(options, target, operation, hooks)));
+    if (Exit.isSuccess(exit)) {recovered.push(exit.value);}
+    else {options.onFailure?.(operation, exit.cause);}
   }
 
   return recovered;

@@ -116,6 +116,8 @@ export const integrateApprovedCommit = (
       return openSync(lockPath, "wx", 0o600);
     }, catch: (cause) => new IntegrationRefused({ reason: `cannot lock ticket branch: ${messageOf(cause)}` }) }),
     (descriptor) => Effect.sync(() => { closeSync(descriptor); unlinkSync(lockPath); }));
+    // Recorded once taken, so recovery removes only a lock this integration provably holds.
+    yield* extendOperationIntent(store, operation.id, { branchLock: lockPath });
 
     if ((yield* git(["rev-parse", "--verify", `${ticketRef}^{commit}`])) !== approved) {
       return yield* new IntegrationRefused({ reason: "ticket head changed after approval; evaluations must be voided" });
