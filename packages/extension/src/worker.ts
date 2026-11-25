@@ -11,7 +11,7 @@
  */
 import { existsSync } from "node:fs";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { AGENT_DISCOVER, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
+import { AGENT_DISCOVER, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello, ToolCallOutcome } from "@foundry/protocol";
 import { Type } from "typebox";
 import { openChannel } from "./channel/client.js";
@@ -77,23 +77,26 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
 
   const toolCalls = new ToolCallClient();
 
-  pi.registerTool({
-    name: AGENT_DISCOVER,
-    label: "Discover stations and slots",
-    description: "List the configured stations and slots in your factory.",
-    parameters: Type.Object({}, { additionalProperties: false }),
-    async execute(callId): Promise<AgentToolResult<ToolCallOutcome>> {
-      const outcome = await toolCalls.call(callId, AGENT_DISCOVER, {});
+  for (const tool of [
+    { name: AGENT_DISCOVER, label: "Discover stations and slots", description: "List the configured stations and slots in your factory." },
+    { name: AGENT_STATUS, label: "Inspect station and slot availability", description: "Inspect your factory's station capacity and recorded slot conditions and launch state. Normal or unended does not prove idle, reachable, or host-confirmed vacant capacity." },
+  ]) {
+    pi.registerTool({
+      ...tool,
+      parameters: Type.Object({}, { additionalProperties: false }),
+      async execute(callId): Promise<AgentToolResult<ToolCallOutcome>> {
+        const outcome = await toolCalls.call(callId, tool.name, {});
 
-      if (outcome.status === "committed") {
-        return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
-      }
+        if (outcome.status === "committed") {
+          return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
+        }
 
-      const code = outcome.status === "refused" ? outcome.code : outcome.status;
+        const code = outcome.status === "refused" ? outcome.code : outcome.status;
 
-      return { content: [{ type: "text", text: `${code}: ${outcome.detail}` }], details: outcome, isError: true };
-    },
-  });
+        return { content: [{ type: "text", text: `${code}: ${outcome.detail}` }], details: outcome, isError: true };
+      },
+    });
+  }
 
   const onFrame = receiveDaemonFrames({ adapter, interrupter, toolCalls });
   let channel: OpenChannel | undefined;
