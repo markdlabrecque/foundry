@@ -120,6 +120,7 @@ const checkSource = (source: string, options: OfflineCheckOptions): SettingProbl
  */
 export const branchNameProblem = (name: string): string | undefined => {
   if (name === "@") return "is \"@\"";
+  if (name === "HEAD") return "is \"HEAD\"";
   if (name.startsWith("-")) return "starts with \"-\"";
   if (name.startsWith("/") || name.endsWith("/")) return "starts or ends with \"/\"";
   if (name.includes("//")) return "contains \"//\"";
@@ -137,6 +138,10 @@ export const branchNameProblem = (name: string): string | undefined => {
 };
 
 const BRANCH_PLACEHOLDERS = new Set(["ticket-id", "slug"]);
+
+// Requiring {ticket-id} follows from PRD §9.2: one branch per ticket for its
+// whole life. A pattern with only {slug} (or no placeholder) lets two tickets
+// collide on one branch.
 
 /** The branch pattern may use only known placeholders, must name the ticket and must form a valid branch. */
 const checkBranchPattern = (pattern: string): SettingProblem[] => {

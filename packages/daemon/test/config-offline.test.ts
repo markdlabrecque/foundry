@@ -26,6 +26,9 @@ beforeAll(() => {
   for (const file of ["factory.md", "roles/developer.md", "skills/project/SKILL.md", "extensions/audit.ts", "extensions/project.ts", "a-file"]) {
     writeFileSync(join(factoryDir, file), "x");
   }
+  // Files under the test home prove `~/` resolves there and not elsewhere.
+  writeFileSync(join(home, "shared.md"), "x");
+  writeFileSync(join(home, "a-file"), "x");
 });
 afterAll(() => {
   if (root !== "") rmSync(root, { recursive: true, force: true });
@@ -90,6 +93,7 @@ describe("accepted", () => {
     ["an scp-like source", () => valid.replace("../repo", "git@git.invalid:o/r.git")],
     ["a nested default branch", () => valid.replace("default_branch: main", "default_branch: release/2.x")],
     ["a pattern with only {ticket-id}", () => valid.replace("  root: ~/worktrees\n", "  root: ~/worktrees\n  branch_pattern: 'work/{ticket-id}'\n")],
+    ["instructions under ~ that exist only in home", () => valid.replace("instructions: factory.md", "instructions: ~/shared.md")],
     ["a command argument naming a missing file", () => valid.replace("[npm, test]", "[./missing-script, ../nope]")],
   ])("%s", (_name, text) => {
     const result = validate(text());
@@ -115,6 +119,8 @@ const rejected: ReadonlyArray<[string, string, { path: string; message: RegExp; 
   ["unknown branch placeholder", valid.replace("  root: ~/worktrees\n", "  root: ~/worktrees\n  branch_pattern: 't/{id}'\n"), { path: "worktrees.branch_pattern", message: /Unknown placeholder \{id\}/, line: 9 }],
   ["branch pattern without {ticket-id}", valid.replace("  root: ~/worktrees\n", "  root: ~/worktrees\n  branch_pattern: 't/{slug}'\n"), { path: "worktrees.branch_pattern", message: /must contain \{ticket-id\}/, line: 9 }],
   ["branch pattern forming an invalid name", valid.replace("  root: ~/worktrees\n", "  root: ~/worktrees\n  branch_pattern: 't {ticket-id}'\n"), { path: "worktrees.branch_pattern", message: /valid branch name/, line: 9 }],
+  ["instructions under ~ missing from home", valid.replace("instructions: factory.md", "instructions: ~/factory.md"), { path: "defaults.instructions", message: /not found: .*home\/factory\.md$/, line: 13 }],
+  ["worktree root under ~ that is a file", valid.replace("root: ~/worktrees", "root: ~/a-file"), { path: "worktrees.root", message: /not a directory: .*home\/a-file$/, line: 8 }],
   ["worktree root that is a file", valid.replace("root: ~/worktrees", "root: ../factory/a-file"), { path: "worktrees.root", message: /not a directory/, line: 8 }],
   ["knowledge root that is a file", valid.replace("root: knowledge", "root: a-file"), { path: "knowledge.root", message: /not a directory/, line: 11 }],
   ["empty verify", valid.replace("[npm, test]", "[]"), { path: "production_lines.feature.verify", message: /Command must not be empty/, line: 27 }],
@@ -137,6 +143,20 @@ describe("rejected", () => {
     const problems = problemsOf(valid.replace("version: 1", "version: 2").replace("factory.md", "gone.md"));
     expect(problems.map((p) => p.path)).toEqual(["version"]);
   });
+});
+
+// Root can read a mode-000 file, so the check cannot be observed there.
+test.skipIf(process.getuid?.() === 0)("an unreadable configured file is rejected", () => {
+  const locked = join(factoryDir, "locked.md");
+  writeFileSync(locked, "x", { mode: 0o000 });
+  try {
+    const problems = problemsOf(valid.replace("instructions: factory.md", "instructions: locked.md"));
+    expect(problems).toContainEqual(
+      expect.objectContaining({ path: "defaults.instructions", message: expect.stringMatching(/not readable/), line: 13 }),
+    );
+  } finally {
+    rmSync(locked, { force: true });
+  }
 });
 
 test("validation creates no directory and runs no command", () => {
@@ -165,6 +185,7 @@ describe("branch names", () => {
     ["main", undefined],
     ["release/2.x", undefined],
     ["@", /"@"/],
+    ["HEAD", /"HEAD"/],
     ["-x", /starts with "-"/],
     ["a/", /"\/"/],
     ["a//b", /"\/\/"/],
