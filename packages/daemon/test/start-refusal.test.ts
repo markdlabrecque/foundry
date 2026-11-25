@@ -25,9 +25,15 @@ afterEach(() => rmSync(dir, { recursive: true, force: true }));
 const withStore = <A, E>(use: (store: Store) => Effect.Effect<A, E>) =>
   Effect.runPromise(Effect.scoped(Effect.flatMap(openStore({ filename: join(dir, DATABASE_FILE_NAME) }), use)));
 
-const line = (...stages: string[]) => ({ stages: stages.map((id) => ({ id, station: "eng.dev" })) });
-const factory = (factoryId: string, lines: Record<string, ReturnType<typeof line>>, loadId?: number): StartingFactory =>
-  ({ factoryId, config: { production_lines: lines }, ...(loadId === undefined ? {} : { loadId }) }) as StartingFactory;
+type Lines = StartingFactory["config"]["production_lines"];
+const line = (...stages: string[]): Lines[string] => ({
+  stages: stages.map((id) => ({ id, station: "eng.dev", writing: false, approval: false })),
+});
+const factory = (factoryId: string, lines: Lines, loadId?: number): StartingFactory => ({
+  factoryId,
+  config: { production_lines: lines },
+  ...(loadId === undefined ? {} : { loadId }),
+});
 
 type Position = { state: "backlog" } | { state: "stage"; stage: string; status: string } | { state: "completed" | "cancelled"; stage: string };
 
@@ -64,8 +70,9 @@ test("an open ticket at a removed stage refuses its factory alone; closed ticket
       // shop's "review" stage, and its whole "hotfix" line, are about to be removed from the config.
       yield* seedTicket(store, "shop", 1, "feature", { state: "stage", stage: "review", status: "paused" });
       yield* seedTicket(store, "shop", 2, "feature", { state: "stage", stage: "develop", status: "assigned" });
-      yield* seedTicket(store, "shop", 3, "feature", { state: "completed", stage: "review" });
-      yield* seedTicket(store, "shop", 4, "feature", { state: "cancelled", stage: "review" });
+      // Closed tickets on the removed line: only the state filter keeps them from blocking.
+      yield* seedTicket(store, "shop", 3, "hotfix", { state: "completed", stage: "review" });
+      yield* seedTicket(store, "shop", 4, "hotfix", { state: "cancelled", stage: "review" });
       yield* seedTicket(store, "shop", 5, "hotfix", { state: "backlog" });
       // blog names the same stage IDs, but its config still has them.
       yield* seedTicket(store, "blog", 1, "feature", { state: "stage", stage: "review", status: "queued" });
@@ -82,8 +89,9 @@ test("an open ticket at a removed stage refuses its factory alone; closed ticket
   expect(result.decision.refused.map((r) => [r.factoryId, r.blockers.map(describeBlocker)])).toEqual([
     ["shop", ["ticket 1 names stage review of line feature", "ticket 5 names production line hotfix"]],
   ]);
-  // One durable row names the blockers and the load they were checked against; tickets 3 and 4,
-  // whose history names the removed stage, are not among them.
+  // One durable row names the blockers and the load they were checked against. Tickets 3 and 4
+  // name the removed line too, but are completed and cancelled, so the open-state filter excludes
+  // them; transition history is never read.
   expect(result.refused.map((r) => ({ ...r, detail: JSON.parse(r.detail) }))).toEqual([
     {
       factory_id: "shop",
