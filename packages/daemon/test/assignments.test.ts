@@ -6,10 +6,11 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Schema } from "effect";
 import {
   acceptMessage, agentDelegateHandler, agentMessageHandler, agentReplyHandler, agentRequestHandler, assignedSlot, assignmentContextSlot, assignmentTicket, bindStationMessages, createAssignmentScheduler, createTicketService,
-  foundryMigrations, messageBudget, openStore, planSlots, StoreError, storeApprovalsReader, taskTransitionHandler, ticketFactoryFrom, watchAssignments, composeResumeNotice,
+  voidStaleApprovals, foundryMigrations, messageBudget, openStore, planSlots, StoreError, storeApprovalsReader, taskTransitionHandler, ticketFactoryFrom, watchAssignments, composeResumeNotice,
 } from "@foundry/daemon";
 import type { Change, MessageAcceptance, Migration, Store } from "@foundry/daemon";
 import { FactoryConfig } from "../src/config/schema.js";
+import { makeGitSource } from "@foundry/testkit";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
   version: 1, name: "shop", repository: { source: "/disposable", default_branch: "main" },
@@ -51,6 +52,27 @@ const fixture = async <A, E>(use: (store: Store, root: string) => Effect.Effect<
 };
 
 const options = (store: Store) => ({ store, slots, factories: [{ factoryId: "shop", config }], configLoad: () => "load-1" });
+
+test("a concurrent approval sweep cannot strand a queued ticket without a scheduling wakeup", async () => {
+  await fixture((store, root) => Effect.gen(function* () {
+    const path = join(root, "repo");
+    const commit = makeGitSource(path, "ticket/1");
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET state = 'stage', stage = 'review', status = 'queued', worktree_path = ?, branch = 'ticket/1' WHERE number = 1`, [path]);
+      yield* change.query(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
+        from_state, from_stage, from_status, to_state, to_stage, to_status, outcome, git_commit)
+        VALUES ('shop', 1, 1, 'worker/1', 'stage', 'plan', 'assigned', 'stage', 'review', 'queued', 'done', ?)`, [commit]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "prepared" });
+    }));
+
+    const [, assigned] = yield* Effect.promise(() => Promise.all([
+      Effect.runPromise(voidStaleApprovals(options(store))),
+      Effect.runPromise(createAssignmentScheduler(options(store)).schedule()),
+    ]));
+
+    expect(assigned.map((assignment) => assignment.ticket)).toContain(1);
+  }));
+});
 
 const suspendWithOpenWork = (store: Store, assignmentId: string) => store.change((change) => Effect.gen(function* () {
   const notice = yield* acceptMessage(change, { factoryId: 'shop', senderSlot: 'worker/1', recipient: 'floor.worker',

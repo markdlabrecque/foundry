@@ -32,6 +32,11 @@ export interface ApprovalVoidingOptions {
   readonly inScope?: (factory: string) => boolean;
   /** Sweep callers isolate and report a failure; direct operator calls fail closed. */
   readonly onUnverified?: (factory: string, ticket: number, cause: unknown) => void;
+  /** Scheduling has no future commit to wake it after a competing read-only sweep. Wait
+   * outside the store transaction, then re-read eligibility under the approval lock. */
+  readonly waitForLock?: boolean;
+  /** Assignment scheduling only needs to validate tickets it could actually assign. */
+  readonly queuedOnly?: boolean;
   /** Must settle an active non-writing worker before releasing its assignment. */
   readonly interrupt?: (slot: string, factory: string) => Promise<void>;
 }
@@ -53,6 +58,7 @@ export const voidStaleApprovals = (options: ApprovalVoidingOptions, only?: { fac
   const tickets = yield* options.store.read<TicketHead>(
     `SELECT factory_id, number, production_line, stage, status, worktree_path, branch FROM ticket
      WHERE state = 'stage' AND worktree_path IS NOT NULL AND branch IS NOT NULL
+       ${options.queuedOnly ? "AND status = 'queued'" : ""}
        ${only === undefined ? "" : "AND factory_id = ? AND number = ?"}`,
     only === undefined ? [] : [only.factory, only.ticket],
   );
@@ -60,7 +66,13 @@ export const voidStaleApprovals = (options: ApprovalVoidingOptions, only?: { fac
   let count = 0;
 
   for (const listed of tickets) {
-    const changed = yield* ticketApprovalLock(options.store, listed.factory_id, listed.number).withPermitsIfAvailable(1)(Effect.suspend(() => {
+    const lock = ticketApprovalLock(options.store, listed.factory_id, listed.number);
+
+    const acquire = options.waitForLock
+      ? <A, E, R>(effect: Effect.Effect<A, E, R>) => lock.withPermit(effect).pipe(Effect.map(Option.some))
+      : lock.withPermitsIfAvailable(1);
+
+    const changed = yield* acquire(Effect.suspend(() => {
       let release: (() => void) | undefined;
 
       return Effect.gen(function* () {
@@ -69,7 +81,7 @@ export const voidStaleApprovals = (options: ApprovalVoidingOptions, only?: { fac
           FROM ticket WHERE factory_id = ? AND number = ? AND state = 'stage' AND worktree_path IS NOT NULL AND branch IS NOT NULL`,
           [listed.factory_id, listed.number]);
 
-        if (ticket === undefined) {return false;}
+        if (ticket === undefined || (options.queuedOnly && ticket.status !== "queued")) {return false;}
 
         if (options.inScope?.(ticket.factory_id) === false) {return false;}
 

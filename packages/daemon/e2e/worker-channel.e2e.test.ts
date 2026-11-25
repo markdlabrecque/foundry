@@ -13,9 +13,10 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { Option, Schema } from "effect";
-import { daemonLogPath } from "@foundry/daemon";
+import { daemonLogPath, factoryClonePath } from "@foundry/daemon";
+import { ApprovalListResult, ApprovalDecisionResult } from "@foundry/protocol/approvals";
 import { runSlotList } from "@foundry/cli";
-import { FAUX_MODEL, FAUX_PROVIDER, FAUX_PROVIDER_EXTENSION, isolatedGitEnv, makeGitSource, stopHost } from "@foundry/testkit";
+import { FAUX_MODEL, FAUX_PROVIDER, FAUX_PROVIDER_EXTENSION, git, isolatedGitEnv, makeGitSource, stopHost } from "@foundry/testkit";
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
 const discoveryDriver = join(import.meta.dirname, "fixtures", "discover-worker.ts");
@@ -248,4 +249,119 @@ test("concurrent tickets keep isolated artifacts and the other Pi progresses dur
   for (const ticket of [first, second]) {
     expect(readFileSync(join(ticket.evidencePath, "progressed.txt"), "utf8")).toBe(String(ticket.number));
   }
+});
+
+// Wiring tier: only real Pi loads the production extension and carries assignment/tool/message
+// frames. Routing, approval eligibility and exact-SHA policies have cheaper contract tests.
+test("a scripted ticket crosses separate Pi stages and lands only after CLI operator approval", async () => {
+  const root = mkdtempSync(join(tmpdir(), "foundry-ticket-line-"));
+  cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+  const home = join(root, "home");
+  cleanups.push(() => stopHost(home));
+  const initial = makeGitSource(join(root, "repo"));
+  const driver = join(import.meta.dirname, "fixtures", "ticket-line-worker.ts");
+
+  const station = (name: string) => `      ${name}:
+        isolation: ${name === "specify" ? "none" : "worktree"}
+        model: ${FAUX_PROVIDER}/${FAUX_MODEL}
+        extensions: [${JSON.stringify(FAUX_PROVIDER_EXTENSION)}, ${JSON.stringify(driver)}]`;
+
+  const factory = join(root, "factory.yaml");
+  writeFileSync(factory, `version: 1
+name: alpha
+repository:
+  source: ./repo
+  default_branch: main
+default_production_line: f
+rooms:
+  eng:
+    stations:
+${["specify", "implement", "review", "verify"].map(station).join("\n")}
+production_lines:
+  f:
+    verify: ["test -f ticket-result.txt"]
+    stages:
+      - id: specify
+        station: eng.specify
+      - id: implement
+        station: eng.implement
+        writing: true
+      - id: review
+        station: eng.review
+      - id: verify
+        station: eng.verify
+        approval: true
+        on_rejection: implement
+`);
+  await startDaemon(root, home, factory);
+  const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
+
+  const cli = async (...args: Array<string>): Promise<string> => (await promisify(execFile)(process.execPath,
+    [cliMain, ...args, "--home", home, "--json"], {
+      env: { ...isolatedGitEnv(), HOME: join(root, "user") }, timeout: 15_000,
+    })).stdout;
+
+  const decodeDetail = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Struct({ result: TicketDetail })));
+  const show = async () => decodeDetail(await cli("ticket", "show", "1")).result;
+  const spec = "# Disposable scripted ticket\nProduce this specification as ticket-result.txt.\n";
+  const file = join(root, "spec.md");
+  writeFileSync(file, spec);
+  const submitted = decodeDetail(await cli("ticket", "submit", file)).result.ticket;
+  expect(submitted.number).toBe(1);
+  expect(readFileSync(submitted.specPath, "utf8")).toBe(spec);
+
+  try {
+    await expect.poll(async () => (await show()).ticket.status, { timeout: 30_000, interval: 200 }).toBe("awaiting_approval");
+  } catch (cause) {
+    const journal = join(root, "discovery-result.json");
+    throw new Error(`${String(cause)}\n${JSON.stringify(await show())}\n${existsSync(journal) ? readFileSync(journal, "utf8") : "no Pi tool results"}\n${readFileSync(daemonLogPath(home), "utf8")}`, { cause });
+  }
+
+  const waiting = await show();
+  const ticket = waiting.ticket;
+
+  if (!ticket.worktree) {throw new Error("ticket did not receive a worktree");}
+
+  const commit = git(ticket.worktree.path, ["rev-parse", "HEAD"]);
+  const clone = factoryClonePath(home, "alpha");
+  expect(commit).not.toBe(initial);
+  expect(git(clone, ["rev-parse", "main"])).toBe(initial);
+  expect(git(clone, ["ls-tree", "--name-only", "main", "ticket-result.txt"])).toBe("");
+  expect(git(ticket.worktree.path, ["show", `${commit}:ticket-result.txt`])).toBe(spec.trim());
+
+  for (const stage of ["specify", "implement", "review", "verify"]) {
+    expect(readFileSync(join(ticket.evidencePath, `${stage}.txt`), "utf8")).toBe(`Completed ${stage} in ${stage}/1`);
+  }
+
+  expect(waiting.transitions.filter((t) => t.to.state === "stage" && t.to.status === "assigned").map((t) => t.to.stage))
+    .toEqual(["specify", "implement", "review", "verify"]);
+  // The receiving Pi really saw the ordinary message, not just its sender's acceptance.
+  const journalPath = join(root, "discovery-result.json");
+  await expect.poll(() => readFileSync(journalPath, "utf8"), { timeout: 30_000 }).toContain('"received":');
+  const journal = readFileSync(journalPath, "utf8");
+  expect(journal).toContain("CHANNEL_HANDOFF:");
+  expect(journal).toContain('"slot":"review/1"');
+  expect(journal).toContain('"toolName":"task_transition"');
+  expect(journal).not.toContain('"isError":true');
+  const approvals = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Struct({ result: ApprovalListResult })))(await cli("approval", "list")).result.approvals;
+  expect(approvals).toHaveLength(1);
+  const approval = approvals[0];
+
+  if (!approval) {throw new Error("missing operator gate");}
+
+  expect(approval).toMatchObject({ kind: "stage_gate", state: "open", ticket: 1, stage: "verify", commit });
+  expect(await cli("approval", "show", String(approval.id))).toContain(commit);
+  // Check again at the decision boundary: every preceding worker has finished, but nothing landed.
+  expect(git(clone, ["rev-parse", "main"])).toBe(initial);
+
+  const decision = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Struct({ result: ApprovalDecisionResult })))(
+    await cli("approval", "approve", String(approval.id)),
+  ).result;
+
+  expect(decision).toMatchObject({ decision: "approved", commit, integrationRequested: true });
+  await expect.poll(async () => (await show()).ticket.state, { timeout: 30_000 }).toBe("completed");
+  expect(git(clone, ["rev-parse", "main"])).toBe(commit);
+  expect(git(clone, ["show", "main:ticket-result.txt"])).toBe(spec.trim());
+  // Integration is local: the disposable source is never pushed to.
+  expect(git(join(root, "repo"), ["rev-parse", "main"])).toBe(initial);
 });
