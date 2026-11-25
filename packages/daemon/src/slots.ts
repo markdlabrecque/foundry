@@ -372,6 +372,13 @@ export interface SlotScheduler {
    * `refused` recovery; the end stays recorded.
    */
   launchExited(launch: LaunchRecord): Promise<LaunchExitResult>;
+  /**
+   * Starts a new launch in a slot whose launch is gone, in its current conversation, which must be
+   * `conversationRef` (PRD §5.3, unfreezing a Tool Set mismatch). Ignores the slot's condition: the
+   * caller is the unfreeze. Rejects while the host reports a live launch in the slot, when the
+   * slot's conversation has changed, or if the launch is refused.
+   */
+  relaunch(slot: { readonly factoryId: string; readonly slotId: string }, conversationRef: string): Promise<{ readonly launchId: string }>;
   /** Resolves once scheduling and exit reports queued so far have finished. */
   idle(): Promise<void>;
 }
@@ -566,6 +573,36 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
         } catch (cause) {
           return { ended, recovery: { factoryId: slot.factoryId, slotId: slot.slotId, outcome: "refused", error: messageOf(cause) } };
         }
+      }),
+    relaunch: (ref, conversationRef) =>
+      serial(async () => {
+        const slot = options.slots.find((s) => s.factoryId === ref.factoryId && s.slotId === ref.slotId);
+
+        if (slot === undefined) {throw new Error(`slot ${ref.slotId} of factory ${ref.factoryId} is not configured in this run`);}
+
+        const inventory = await host.inventory();
+
+        for (const launch of inventory) {
+          if (launch.liveness === "gone") {await recordGone(launch);}
+        }
+
+        const live = inventory.find((l) => l.factoryId === slot.factoryId && l.slotId === slot.slotId && l.liveness === "live");
+
+        // Never a second worker in a slot: the stopped launch must be gone first.
+        if (live !== undefined) {throw new Error(`launch ${live.launchId} is still live in slot ${slot.slotId}`);}
+
+        const current = await Effect.runPromise(readConversation(store, slot.factoryId, slot.slotId));
+
+        // The relaunch continues the frozen conversation, never another one.
+        if (current !== conversationRef) {
+          throw new Error(`slot ${slot.slotId} is now in conversation ${current ?? "(none)"}, not ${conversationRef}`);
+        }
+
+        const started = await launchInto(slot, "relaunched");
+
+        if (started.launchId === undefined) {throw new Error(started.error ?? `slot ${slot.slotId} was not relaunched`);}
+
+        return { launchId: started.launchId };
       }),
     idle: () => serial(async () => {}),
   };

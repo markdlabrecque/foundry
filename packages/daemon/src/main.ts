@@ -46,9 +46,11 @@ import type { SlotScheduler } from "./slots.js";
 import { createFactoryStates, createFactoryStopper } from "./factory-stop.js";
 import type { FactoryStopperOptions } from "./factory-stop.js";
 import { createSlotFreezer, storeSlotControl } from "./freeze.js";
+import type { FreezeChecks, SlotFreezer } from "./freeze.js";
 import { instructionFilesCheck, plannedPrimeRequests } from "./instruction-freeze.js";
 import { createInstanceShutdown } from "./shutdown.js";
 import type { ShutdownHost } from "./shutdown.js";
+import { createToolSetGuard, createToolSetRecheck, expectedToolSet, frozenConversation } from "./tool-set-check.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -325,6 +327,31 @@ const main = async (): Promise<void> => {
   // Each started factory's state for this run (PRD §10.3); a stopped one returns on the next start.
   const factoryStates = createFactoryStates(decision.started);
 
+  // Frozen slots are read back from the store, so a freeze survives a daemon restart (PRD §5.3).
+  // Each freeze cause registers its own unfreeze check with the ticket that raises it; until
+  // then an unfreeze is refused rather than trusted. Whichever ticket wires the primer in here
+  // must pass `gate: freezer` and `freeze: freezer.freeze` to `createPrimer`, with the same
+  // `plannedPrimeRequests` as its `primeRequest`. Checks are read at unfreeze time, so one
+  // registered below, once the scheduler exists, is honoured.
+  const freezeChecks: FreezeChecks = {
+    // PRD §5.5: a missing instruction file clears only once the slot's prime composes again.
+    instruction_missing: instructionFilesCheck(plannedPrimeRequests(factories, plannedSlots)),
+  };
+
+  let freezer: SlotFreezer;
+
+  try {
+    freezer = await createSlotFreezer({ store, checks: freezeChecks });
+  } catch (error) {
+    log.error("frozen slots not read", { detail: { error: messageOf(error) } });
+    await closeStore();
+    log.close();
+    claim.release();
+    fail(`cannot read frozen slots in ${stateRoot}: ${messageOf(error)}`);
+
+    return;
+  }
+
   if (plannedSlots.length > 0) {
     try {
       host = await connectOrStartHost(stateRoot);
@@ -333,9 +360,27 @@ const main = async (): Promise<void> => {
 
       // Served before any launch, so a worker dialling at its session start finds the daemon. A hello
       // is accepted only for the launch the host reports current in that slot (PRD §3.2).
+      // Every accepted hello is also checked against the slot's Tool Set (PRD §3.2, §14): a
+      // mismatch freezes the slot and has the host stop the launch.
+      const connection = host;
+      const foundryExtension = foundryExtensionPath();
+      const expected = new Map(plannedSlots.map((s) => [JSON.stringify([s.factoryId, s.slotId]), expectedToolSet(s.station, foundryExtension)]));
+
+      const guard = createToolSetGuard({
+        claim: createHostSlotClaim({ host }),
+        expected: (slot) => expected.get(JSON.stringify([slot.factoryId, slot.slotId])),
+        freezer,
+        stop: async (launchId) => {
+          await connection.terminate(launchId);
+        },
+        onStopFailed: (launchId, cause) => log.error("mismatched launch not stopped", { launchId, detail: { error: messageOf(cause) } }),
+        onFreezeFailed: (slot, cause) =>
+          log.error("tool set mismatch not frozen", { factoryId: slot.factoryId, slotId: slot.slotId, detail: { error: messageOf(cause) } }),
+      });
+
       channel = await startChannelServer({
         socketPath: channelSocketPath(stateRoot),
-        slotClaim: createHostSlotClaim({ host }),
+        slotClaim: guard,
         ...channelLogEvents(log),
       });
 
@@ -351,6 +396,16 @@ const main = async (): Promise<void> => {
         inScope: (factoryId) => factoryStates.isRunning(factoryId),
       });
       const recorder = scheduler;
+
+      freezeChecks.tool_set_mismatch = createToolSetRecheck({
+        guard,
+        conversationOf: (slot) => frozenConversation(store, slot),
+        relaunch: (slot, conversationRef) => recorder.relaunch(slot, conversationRef),
+        stop: async (launchId) => {
+          await connection.terminate(launchId);
+        },
+        onStopFailed: (launchId, cause) => log.error("recheck launch not stopped", { launchId, detail: { error: messageOf(cause) } }),
+      });
 
       // Only the host's exit report is death evidence; a lost channel never relaunches a slot (PRD §5.3).
       host.onLaunchExited((launch) => {
@@ -460,19 +515,6 @@ const main = async (): Promise<void> => {
   };
 
   try {
-    // Frozen slots are read back from the store, so a freeze survives a daemon restart (PRD §5.3).
-    // Each freeze cause registers its own unfreeze check with the ticket that raises it; until
-    // then an unfreeze is refused rather than trusted. Whichever ticket wires the channel and primer
-    // in here must pass `gate: freezer` and `freeze: freezer.freeze` to `createPrimer`, with the
-    // same `plannedPrimeRequests` as its `primeRequest`.
-    const freezer = await createSlotFreezer({
-      store,
-      checks: {
-        // PRD §5.5: a missing instruction file clears only once the slot's prime composes again.
-        instruction_missing: instructionFilesCheck(plannedPrimeRequests(factories, plannedSlots)),
-      },
-    });
-
     api = await serveManagementApi({
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),

@@ -63,6 +63,12 @@ const INTERRUPT_SUFFIX = "/interrupt";
 /** How long the daemon waits for the worker's interrupt acknowledgement before it refuses. */
 export const SLOT_INTERRUPT_ACK_TIMEOUT_MS = 30_000;
 
+/**
+ * How long unfreezing a Tool Set mismatch waits for the new launch's `hello` before the slot stays
+ * frozen and that launch is stopped (PRD §5.3).
+ */
+export const TOOL_SET_RECHECK_HELLO_TIMEOUT_MS = 30_000;
+
 /** Request path of a slot's interrupt; `slotId` must already be a valid `station/ordinal`. */
 export const slotInterruptPath = (slotId: string, factory?: string): string =>
   withFactory(`${SLOTS_PATH}/${slotId}${INTERRUPT_SUFFIX}`, factory);

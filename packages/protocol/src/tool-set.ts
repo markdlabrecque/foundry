@@ -19,6 +19,17 @@ export const AGENT_TOOLS = [
   "human_request",
 ] as const;
 
+/**
+ * The agent tools the Foundry extension in this build actually registers. The `hello` check
+ * expects only these from the Foundry extension, so a worker is not frozen for agent tools no
+ * build can offer yet. Staged: empty until the agent tools land (FOU-36), which sets it to
+ * `AGENT_TOOLS`. Until then an agent tool reported by a worker is an extra tool.
+ */
+export const REGISTERED_AGENT_TOOLS: ReadonlyArray<string> = [];
+
+/** How the extension reports a Pi built-in's source: `builtin:<name>` (Pi's own attribution). */
+export const builtinToolSource = (name: string): string => `builtin:${name}`;
+
 /** The twelve fixed tools of every worker's Tool Set, in launch order. */
 export const FIXED_TOOLS: ReadonlyArray<string> = [...PI_BUILTIN_TOOLS, ...AGENT_TOOLS];
 
