@@ -7,6 +7,7 @@ export class MessageReceiver {
   private readonly seen = new Set<string>();
   private readonly held = new Map<string, Message>();
   private control: Pick<ExtensionContext, "isIdle"> | undefined;
+  private draining = false;
 
   constructor(private readonly adapter: Pick<ConversationAdapter, "inject">) {}
 
@@ -30,9 +31,12 @@ export class MessageReceiver {
     this.inject(message);
   }
 
+  /** A drained launch must not start more work from its held queue. */
+  drain(): void { this.draining = true; }
+
   /** Only Pi's idle state permits a held batch, never a tool-round or run-end event. */
   settled(): void {
-    if (!this.control?.isIdle()) {return;}
+    if (this.draining || !this.control?.isIdle()) {return;}
 
     // Take the entire FIFO batch before injection starts a new turn. Later arrivals wait
     // for that turn to settle, rather than overtaking any member of this batch.
@@ -52,8 +56,12 @@ export class MessageReceiver {
 /** Feed Pi's actual settled state into the policy receiver, including standalone compaction. */
 export const deliverMessages = (pi: Pick<ExtensionAPI, "on">, receiver: MessageReceiver): void => {
   pi.on("session_start", (_event, ctx) => receiver.bind(ctx));
-  pi.on("agent_settled", () => receiver.settled());
-  // Successful compaction is emitted before Pi clears its busy flag.
-  pi.on("session_compact", () => void setImmediate(() => receiver.settled()));
-  pi.on("session_compact_failed", () => receiver.settled());
+  // Pi defers triggerTurn injections made inside agent_settled and awaits each
+  // resulting run separately. Leave that handler before injecting the FIFO batch.
+  const settled = () => { setImmediate(() => receiver.settled()); };
+
+  pi.on("agent_settled", settled);
+  // Successful compaction is also emitted before Pi clears its busy flag.
+  pi.on("session_compact", settled);
+  pi.on("session_compact_failed", settled);
 };
