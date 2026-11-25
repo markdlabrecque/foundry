@@ -8,9 +8,14 @@
  * the worker marks the prime acknowledged in the same transaction as its
  * history row.
  *
- * Out of scope here: recovery and compaction primes (41b, 38b) and freezing on
- * a missing instruction file (11c). Those situations are reported as outcomes
- * and nothing is sent.
+ * When the worker reports a compaction, the daemon sends one `compaction`
+ * prime on the same connection, ahead of every work frame not yet written; the
+ * launch and conversation are kept. The extension injects it without starting
+ * a turn, so Pi appends it at the next tool-round boundary.
+ *
+ * Out of scope here: recovery primes (41b), freezing on a missing instruction
+ * file (11c) and re-sending repository context after a compaction. Those are
+ * reported as outcomes.
  */
 import { randomUUID } from "node:crypto";
 import { Clock, Data, Effect } from "effect";
@@ -188,6 +193,106 @@ export type PrimingOutcome =
 /** Outcomes after which work frames may follow on the connection. */
 const opensConnection = (outcome: PrimingOutcome): boolean => outcome._tag === "Sent" || outcome._tag === "Reconnect";
 
+export type CompactionPrimingOutcome =
+  /** The compaction prime was recorded and written ahead of every work frame not yet written. */
+  | { readonly _tag: "Sent"; readonly primeId: string }
+  /** No primed connection is known for this launch of the slot. Nothing was sent. */
+  | { readonly _tag: "NotConnected" }
+  /** The connection's own priming did not complete, so nothing may be written on it. */
+  | { readonly _tag: "NotPrimed" }
+  /** No effective station is known for the slot. Nothing was sent. */
+  | { readonly _tag: "UnknownStation" }
+  /** An instruction file could not be read; freezing belongs to 11c. Nothing was recorded or sent. */
+  | { readonly _tag: "SourceUnavailable"; readonly problems: ReadonlyArray<PrimeSourceProblem> }
+  /** Recorded, but the write failed; the record stays unacknowledged. */
+  | { readonly _tag: "SendFailed"; readonly primeId: string; readonly error: unknown };
+
+interface QueuedFrame {
+  readonly frame: DaemonFrame;
+  readonly resolve: () => void;
+  readonly reject: (error: unknown) => void;
+}
+
+/**
+ * Writes one primed connection's frames one at a time, once its priming opens
+ * it. A compaction prime goes ahead of every work frame not yet written, and
+ * work frames wait while a compaction prime is being prepared.
+ */
+class PrimedWriter {
+  private readonly work: QueuedFrame[] = [];
+  private readonly first: QueuedFrame[] = [];
+  private holds = 0;
+  private writing = false;
+  private state: "pending" | "open" | Error = "pending";
+  /** Settles `true` once priming opens the connection, `false` if it never will. */
+  readonly opened: Promise<boolean>;
+
+  constructor(
+    private readonly connection: AcceptedConnection,
+    outcome: Promise<PrimingOutcome>,
+  ) {
+    this.opened = outcome.then(
+      (settled) => {
+        if (!opensConnection(settled)) return this.refuse(new Error(`priming did not complete: ${settled._tag}`));
+        this.state = "open";
+        this.pump();
+        return true;
+      },
+      (error: unknown) => this.refuse(new Error(`priming did not complete: ${String(error)}`)),
+    );
+  }
+
+  /** A work frame: written in call order, behind the prime and any compaction prime. */
+  send(frame: DaemonFrame): Promise<void> {
+    return this.enqueue(this.work, frame);
+  }
+
+  /** A compaction prime: written before every work frame not yet written. */
+  sendFirst(frame: DaemonFrame): Promise<void> {
+    return this.enqueue(this.first, frame);
+  }
+
+  /** Hold work frames until the returned release is called. */
+  hold(): () => void {
+    this.holds += 1;
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.holds -= 1;
+      this.pump();
+    };
+  }
+
+  private enqueue(queue: QueuedFrame[], frame: DaemonFrame): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      if (this.state instanceof Error) return reject(this.state);
+      queue.push({ frame, resolve, reject });
+      this.pump();
+    });
+  }
+
+  private refuse(error: Error): false {
+    this.state = error;
+    for (const queued of [...this.first.splice(0), ...this.work.splice(0)]) queued.reject(error);
+    return false;
+  }
+
+  private pump(): void {
+    if (this.state !== "open" || this.writing) return;
+    const next = this.first.shift() ?? (this.holds === 0 ? this.work.shift() : undefined);
+    if (next === undefined) return;
+    this.writing = true;
+    void this.connection
+      .send(next.frame)
+      .then(next.resolve, next.reject)
+      .then(() => {
+        this.writing = false;
+        this.pump();
+      });
+  }
+}
+
 export interface PrimerOptions {
   readonly store: Store;
   /** The slot's prime inputs (from its effective station), without the situation. */
@@ -213,6 +318,13 @@ export interface Primer {
   prime(slot: ClaimedSlot, hello: Hello, connection: AcceptedConnection): PrimedConnection;
   /** Call for each `receipt` frame from the slot's accepted connection. */
   receipt(slot: ClaimedSlot, id: string): Promise<AcknowledgeOutcome>;
+  /**
+   * Call for each `compacted` frame from the slot's accepted connection. Sends
+   * one `compaction` prime on the launch's latest primed connection, ahead of
+   * every work frame not yet written. Work frames sent from this call on wait
+   * until the prime is written or the attempt ends. No new launch is started.
+   */
+  compacted(slot: ClaimedSlot): Promise<CompactionPrimingOutcome>;
 }
 
 export const createPrimer = (options: PrimerOptions): Primer => {
@@ -222,8 +334,11 @@ export const createPrimer = (options: PrimerOptions): Primer => {
   // Decide-and-send runs one at a time per slot, so two hellos from one launch
   // cannot both read "no prime yet" and both send a fresh prime.
   const slotTurns = new Map<string, Promise<unknown>>();
+  const slotKey = (slot: ClaimedSlot): string => JSON.stringify([slot.factoryId, slot.slotId]);
+  // The latest primed connection per slot, where a compaction prime is written.
+  const live = new Map<string, { readonly launchId: string; readonly conversationRef: string; readonly writer: PrimedWriter }>();
   const serialized = <A>(slot: ClaimedSlot, task: () => Promise<A>): Promise<A> => {
-    const key = JSON.stringify([slot.factoryId, slot.slotId]);
+    const key = slotKey(slot);
     const previous = slotTurns.get(key) ?? Promise.resolve();
     const next = previous.then(task, task);
     const settled = next.then(
@@ -272,26 +387,54 @@ export const createPrimer = (options: PrimerOptions): Primer => {
     return { _tag: "Sent", primeId };
   };
 
+  const sendCompactionPrime = async (
+    slot: ClaimedSlot,
+    conversationRef: string,
+    writer: PrimedWriter,
+  ): Promise<CompactionPrimingOutcome> => {
+    if (!(await writer.opened)) return { _tag: "NotPrimed" };
+    const request = options.primeRequest(slot);
+    if (request === undefined) return { _tag: "UnknownStation" };
+    const composed = await compose({ ...request, situation: "compaction" });
+    if (composed._tag === "SourceUnavailable") return composed;
+
+    const primeId = newPrimeId();
+    await run(
+      recordPrime(options.store, {
+        id: primeId,
+        factoryId: slot.factoryId,
+        slotId: slot.slotId,
+        launchId: slot.launchId,
+        conversationRef,
+        situation: "compaction",
+        parts: composed.prime.parts,
+      }),
+    );
+    try {
+      await writer.sendFirst({ type: "prime", id: primeId, text: composed.prime.text });
+    } catch (error) {
+      return { _tag: "SendFailed", primeId, error };
+    }
+    return { _tag: "Sent", primeId };
+  };
+
   return {
     prime(slot, hello, connection) {
       const outcome = serialized(slot, () => decideAndSend(slot, hello, connection));
-      const gate = outcome.then((settled) => {
-        if (!opensConnection(settled)) throw new Error(`priming did not complete: ${settled._tag}`);
-      });
-      gate.catch(() => {}); // observed by each send below
-      let queue: Promise<unknown> = gate;
-      return {
-        outcome,
-        connection: {
-          send: (frame: DaemonFrame) => {
-            const sent = queue.then(() => connection.send(frame));
-            queue = sent.catch(() => {});
-            return sent;
-          },
-        },
-      };
+      const writer = new PrimedWriter(connection, outcome);
+      live.set(slotKey(slot), { launchId: slot.launchId, conversationRef: hello.conversationRef, writer });
+      return { outcome, connection: { send: (frame: DaemonFrame) => writer.send(frame) } };
     },
     receipt: (slot, id) =>
       run(acknowledgePrime(options.store, { factoryId: slot.factoryId, slotId: slot.slotId, id })),
+    compacted(slot) {
+      const current = live.get(slotKey(slot));
+      if (current === undefined || current.launchId !== slot.launchId) return Promise.resolve({ _tag: "NotConnected" });
+      // Held now, not once composition starts, so no work frame slips out ahead of the prime.
+      const release = current.writer.hold();
+      const outcome = serialized(slot, () => sendCompactionPrime(slot, current.conversationRef, current.writer));
+      void outcome.then(release, release);
+      return outcome;
+    },
   };
 };

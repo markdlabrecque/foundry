@@ -21,6 +21,8 @@ export interface FauxSessionOptions {
   /** Disposable directory; the agent dir, cwd and sessions all live under it. */
   readonly root: string;
   readonly extensionFactories: ReadonlyArray<ExtensionFactory>;
+  /** Tool names to enable (for example, tools the extension factories register). Default: none. */
+  readonly tools?: ReadonlyArray<string>;
 }
 
 export const startFauxSession = async (options: FauxSessionOptions): Promise<AgentSession> => {
@@ -49,6 +51,7 @@ export const startFauxSession = async (options: FauxSessionOptions): Promise<Age
     settingsManager,
     sessionManager: SessionManager.create(cwd, join(options.root, "sessions")),
     noTools: "all",
+    ...(options.tools === undefined ? {} : { tools: [...options.tools] }),
   });
   try {
     await session.bindExtensions({});
