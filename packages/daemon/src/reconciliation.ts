@@ -10,6 +10,7 @@ import { composeResumeNotice, releaseResumeReplacement } from "./resume-notice.j
 import { decideMessageRetry } from "./message-retry.js";
 import type { RetryDecision, RetryEvidence } from "./message-retry.js";
 import { acknowledgePrime } from "./priming.js";
+import { raiseHoldIn } from "./holds.js";
 
 export interface ReconciliationResult {
   /** Work already delivered before this connection began reconciliation, if any. */
@@ -120,7 +121,30 @@ export const createReconciler = (store: Store) => {
 
                 const decided = decideMessageRetry({ status: item.status, launch, lifecycle: response.lifecycle ?? "unknown" });
 
-                if (decided !== "retry" || ended) {return yield* Effect.fail(new RetryUnchanged({ decision: decided }));}
+                if (ended) {return yield* Effect.fail(new RetryUnchanged({ decision: decided }));}
+
+                if (decided === "indeterminate" || (decided === "recheck_when_idle" && whenIdle)) {
+                  const held = yield* change.query<{ id: string }>(
+                    `UPDATE message SET status = 'indeterminate' WHERE id = ? AND factory_id = ? AND bound_slot = ? AND status = 'sent' RETURNING id`,
+                    [item.id, slot.factoryId, slot.slotId],
+                  );
+
+                  if (held.length === 0) {return yield* Effect.fail(new RetryUnchanged({ decision: decided }));}
+
+                  const deliveries = yield* change.query<{ id: string; launch_id: string; connection_id: string; sent_at: number }>(
+                    `SELECT id, launch_id, connection_id, sent_at FROM message_attempt WHERE message_id = ? ORDER BY sent_at, rowid`, [item.id],
+                  );
+
+                  const evidence = { messageId: item.id, slot: slot.slotId, attempts: [...deliveries],
+                    answer: { status: item.status, lifecycle: response.lifecycle ?? "unknown", launchId: slot.launchId } };
+
+                  yield* raiseHoldIn(change, { factoryId: slot.factoryId, kind: "indeterminate_message", subject: item.id, evidence });
+                  yield* change.recordHistory({ factoryId: slot.factoryId, kind: "message.indeterminate", subject: item.id, detail: evidence });
+
+                  return "indeterminate" as const;
+                }
+
+                if (decided !== "retry") {return yield* Effect.fail(new RetryUnchanged({ decision: decided }));}
 
                 // Absence evidence retires copies independently of permission to replay work.
                 // Abandoned messages stay sent/acknowledgeable, but their proven-gone clocks

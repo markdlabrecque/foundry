@@ -91,6 +91,8 @@ export const createMessageDelivery = (options: {
             const updated = yield* change.query<BoundMessage>(
               `UPDATE message SET status = 'sent' WHERE id = ? AND status = 'bound'
                AND ${actionableMessage}
+               AND NOT EXISTS (SELECT 1 FROM message earlier WHERE earlier.factory_id = message.factory_id
+                 AND earlier.bound_slot = message.bound_slot AND earlier.sequence < message.sequence AND earlier.status = 'indeterminate')
                AND NOT EXISTS (SELECT 1 FROM agent_request r WHERE r.notice_id = message.id
                  AND (r.status = 'expired' OR r.deadline <= ?))
                AND NOT EXISTS (SELECT 1 FROM resume_notice n JOIN assignment a ON a.id = n.assignment_id

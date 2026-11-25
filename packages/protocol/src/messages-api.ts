@@ -31,3 +31,24 @@ export const OperatorMessageResult = Schema.Struct({
 export type OperatorMessageResult = typeof OperatorMessageResult.Type;
 
 export const isOperatorMessageResult = Schema.is(OperatorMessageResult);
+
+export const messagePath = (id: string): string => `${MESSAGES_PATH}/${encodeURIComponent(id)}`;
+
+/** Immutable correlation fields accompany a disposition and its durable history event.
+ * Request/delegation failure handling consumes this result; it is not performed here. */
+export const MessageDispositionResult = Schema.Struct({
+  id: Schema.String,
+  factoryId: Schema.String,
+  slot: Schema.NullOr(Schema.String),
+  kind: Schema.Literals(["ordinary", "request_notice", "delegation_notice", "reply", "resume_notice"]),
+  requestId: Schema.NullOr(Schema.String),
+  delegationId: Schema.NullOr(Schema.String),
+  ticket: Schema.NullOr(Schema.Number),
+  status: Schema.Literals(["indeterminate", "bound", "dropped"]),
+});
+
+export type MessageDispositionResult = typeof MessageDispositionResult.Type;
+
+export const isMessageDispositionResult = Schema.is(MessageDispositionResult);
+
+export const MessageDispositionRequest = Schema.Struct({ confirmed: Schema.optionalKey(Schema.Boolean) });

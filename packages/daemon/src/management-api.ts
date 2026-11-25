@@ -46,7 +46,9 @@ import { ShutdownError } from "./shutdown.js";
 import type { InstanceShutdown } from "./shutdown.js";
 import { matchSlotRestartPath, matchSlotInterruptPath, matchSlotPath, matchSlotResetPath, matchSlotUnfreezePath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
-import { MESSAGES_PATH, SendMessageRequest } from "@foundry/protocol/messages-api";
+import { MESSAGES_PATH, SendMessageRequest, MessageDispositionRequest } from "@foundry/protocol/messages-api";
+import { MessageDispositionError } from "./message-disposition.js";
+import type { MessageDisposition } from "./message-disposition.js";
 import { OperatorMessageError } from "./operator-message.js";
 import type { OperatorMessages } from "./operator-message.js";
 import type { SlotRestarter, SlotControl, SlotInterrupter, SlotResetter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
@@ -69,6 +71,7 @@ export interface ManagementApiInputs {
   readonly worktrees?: WorktreeService;
   /** Durable daemon-authored operator acceptance (PRD §11.4). */
   readonly messages?: OperatorMessages;
+  readonly messageDisposition?: MessageDisposition;
   /** The dedicated clone path of a loaded factory (PRD §9.1); `undefined` for an unknown one. */
   readonly clonePath?: (factory: string) => string | undefined;
   /** The loaded factories, read from daemon state. Without it the route answers 503. */
@@ -290,6 +293,7 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
   if (approvalAction !== null) {
     return handleApprovalDecision(inputs, request, response, Number(approvalAction[1]), approvalAction[2] === "approve" ? "approved" : "rejected");
   }
+  if (path.startsWith(`${MESSAGES_PATH}/`)) {return handleMessageDisposition(inputs, request, response, path);}
 
   // Ticket routes first: submit reads a POST body, so it must not be drained.
   if (inputs.tickets !== undefined && (path === TICKETS_PATH || path.startsWith(`${TICKETS_PATH}/`))) {
@@ -394,7 +398,65 @@ const handleApprovalAnswer = (inputs: ManagementApiInputs, request: IncomingMess
   })().catch(() => send(response, 500, failure("internal", "approval answer request failed")));
 };
 
-/** Worker frames cannot choose operator attribution. */
+const handleMessageDisposition = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse, path: string): void => {
+  void (async () => {
+    const match = /^\/api\/v1\/messages\/([^/]+)(?:\/(resend|drop))?$/.exec(path);
+
+    if (match === null) {request.resume();
+
+ return send(response, 404, failure("not_found", "unknown message route"));}
+
+    const action = match[2];
+    const method = action === undefined ? "GET" : "POST";
+
+    if (request.method !== method) {
+      request.resume(); response.setHeader("allow", method);
+
+      return send(response, 405, failure("method_not_allowed", `expected ${method}`));
+    }
+
+    let id: string;
+
+    try {id = decodeURIComponent(match[1] ?? "");}
+    catch {request.resume();
+
+ return send(response, 400, failure("bad_request", "invalid message ID"));}
+
+    const service = inputs.messageDisposition;
+
+    if (service === undefined) {request.resume();
+
+ return send(response, 503, failure("unavailable", "message disposition unavailable"));}
+
+    let confirmed = false;
+
+    if (action !== undefined) {
+      const body = await readSmallBody(request, 4096);
+
+      if (body === undefined) {return send(response, 413, failure("payload_too_large", "disposition body exceeds 4096 bytes"));}
+
+      const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(MessageDispositionRequest))(body);
+
+      if (Option.isNone(decoded)) {return send(response, 400, failure("bad_request", "expected disposition confirmation"));}
+
+      confirmed = decoded.value.confirmed === true;
+    } else {request.resume();}
+
+    const result = await Effect.runPromiseExit(action === "resend" || action === "drop" ? service.act(id, action, confirmed) : service.inspect(id));
+
+    if (Exit.isSuccess(result)) {return send(response, 200, { ok: true, result: result.value });}
+
+    const cause = Cause.squash(result.cause);
+
+    if (cause instanceof MessageDispositionError) {
+      return send(response, cause.code === "not_found" ? 404 : 409, failure(cause.code, cause.message));
+    }
+
+    send(response, 500, failure("internal", "message disposition failed"));
+  })().catch(() => send(response, 500, failure("internal", "message disposition request failed")));
+};
+
+/** Only this endpoint can author an operator message; worker frames cannot choose attribution. */
 const handleOperatorMessage = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse): void => {
   if (request.method !== "POST") {
     request.resume();

@@ -19,6 +19,7 @@ import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
 import { createTicketService, ticketFactoryFrom } from "./tickets.js";
 import type { TicketServiceOptions } from "./tickets.js";
 import { createOperatorMessages } from "./operator-message.js";
+import { createMessageDisposition } from "./message-disposition.js";
 import { assignedSlot, assignmentContextSlot, assignmentTicket, watchAssignments } from "./assignments.js";
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
@@ -792,6 +793,7 @@ const main = async (): Promise<void> => {
       tickets: createTicketService(ticketOptions),
       worktrees,
       messages: createOperatorMessages({ store, factories: () => ticketFactories.map((f) => f.name), slots: plannedSlots }),
+      messageDisposition: createMessageDisposition(store),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,
       sync,
