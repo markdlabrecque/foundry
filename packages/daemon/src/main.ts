@@ -55,6 +55,7 @@ import type { FreezeChecks, SlotFreezer } from "./freeze.js";
 import { instructionFilesCheck, plannedPrimeRequests } from "./instruction-freeze.js";
 import { createPrimer } from "./priming.js";
 import { acknowledgeMessage, createMessageDelivery } from "./message-delivery.js";
+import { createReconciler } from "./reconciliation.js";
 import { createInstanceShutdown } from "./shutdown.js";
 import type { ShutdownHost } from "./shutdown.js";
 import { createToolSetGuard, createToolSetRecheck, expectedToolSet, frozenConversation } from "./tool-set-check.js";
@@ -442,6 +443,7 @@ const main = async (): Promise<void> => {
         inScope: (factoryId) => factoryStates.isRunning(factoryId),
         onError: (cause) => log.error("message delivery failed", { detail: { error: messageOf(cause) } }) });
 
+      const reconciler = createReconciler(store);
       stopDelivery = () => delivery.stop();
       const channelEvents = channelLogEvents(log);
 
@@ -465,15 +467,19 @@ const main = async (): Promise<void> => {
         ...channelEvents,
         onAccepted: (slot, hello, accepted) => {
           channelEvents.onAccepted(slot, hello, accepted);
-          const primed = primer.prime(slot, hello, accepted);
-          void primed.outcome.then((outcome) => {
+          void reconciler.reconcile(slot, hello, accepted).then(async () => {
+            const primed = primer.prime(slot, hello, accepted);
+            const outcome = await primed.outcome;
+
             if (Predicate.isTagged(outcome, "Sent") || Predicate.isTagged(outcome, "Reconnect")) {delivery.attach(slot, primed.connection);}
           }).catch((cause: unknown) => log.error("connection priming failed", { detail: { error: messageOf(cause) } }));
         },
         onFrame: (slot, frame) => {
           channelEvents.onFrame(slot, frame);
 
-          if (frame.type === "receipt") {
+          if (frame.type === "reconciliation_answer") {
+            reconciler.receive(slot, frame);
+          } else if (frame.type === "receipt") {
             void (async () => {
               if (await primer.receipt(slot, frame.id) === "unknown") {
                 await Effect.runPromise(acknowledgeMessage(store, slot, frame.id));
