@@ -131,7 +131,6 @@ export {
 export {
   connectOrStartHost,
   createSlotScheduler,
-  ownershipCheck,
   planSlots,
   recordedCurrentLaunch,
   storedConversation,
