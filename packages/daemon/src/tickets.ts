@@ -116,6 +116,9 @@ export const slugify = (title: string): string => {
 };
 
 export interface TicketService {
+  /** Store-level operator action. Callers must confirm the open work before setting allowAbandon.
+   * A queued resume can be reauthorized if its original slot disappears while waiting. */
+  readonly resume: (factory: string | undefined, number: number, message?: string, allowAbandon?: boolean) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   readonly inspectCancellation: (factory: string | undefined, number: number) => Effect.Effect<TicketCancellation, TicketError | StoreError>;
   readonly cancel: (factory: string | undefined, number: number, confirmation: string) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   readonly pause: (factory: string | undefined, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>;
@@ -567,5 +570,45 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       (rows) => ({ tickets: rows.map(summary) }),
     );
 
-  return { submit, list, show, pause, inspectCancellation, cancel };
+  const resume: TicketService["resume"] = (name, number, message, allowAbandon = false) => Effect.gen(function* () {
+    const factory = (yield* loadedFactory(name)).name;
+    yield* store.change((change) => Effect.gen(function* () {
+      const [row] = yield* change.query<{ id: string; stage: string; status: string }>(
+        `SELECT a.id, t.stage, t.status FROM ticket t JOIN assignment a ON a.factory_id = t.factory_id AND a.ticket_number = t.number
+         WHERE t.factory_id = ? AND t.number = ? AND t.state = 'stage'
+         AND (t.status = 'paused' OR (t.status = 'queued' AND EXISTS (SELECT 1 FROM assignment_resume r WHERE r.assignment_id = a.id)))
+         AND a.status = 'suspended' AND a.stage = t.stage`, [factory, number],
+      );
+
+      if (row === undefined) {return yield* refuse("invalid_state", "Resume requires a paused ticket with a suspended assignment");}
+
+      if (row.status === 'queued' && !allowAbandon) {return yield* refuse("invalid_state", "The ticket is already queued for resume");}
+
+      const limit = yield* change.query(`SELECT id FROM approval WHERE factory_id = ? AND ticket_number = ? AND kind = 'limit_reached' AND state = 'open'`, [factory, number]);
+
+      if (limit.length > 0) {return yield* refuse("invalid_state", "Resuming a limit-reached ticket requires an allowance grant");}
+
+      const now = yield* Clock.currentTimeMillis;
+      yield* change.query(`INSERT INTO assignment_resume (assignment_id, operator_message, allow_abandon) VALUES (?, ?, ?)
+        ON CONFLICT(assignment_id) DO UPDATE SET operator_message = excluded.operator_message, allow_abandon = excluded.allow_abandon`, [row.id, message ?? null, allowAbandon ? 1 : 0]);
+      yield* change.query(`UPDATE ticket SET status = 'queued' WHERE factory_id = ? AND number = ?`, [factory, number]);
+      yield* change.query(`UPDATE approval SET state = 'resolved', closed_at = ? WHERE factory_id = ? AND ticket_number = ? AND state = 'open' AND kind = 'blocked'`, [now, factory, number]);
+
+      if (row.status === 'paused') {
+        yield* change.query(
+          `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
+            from_state, from_stage, from_status, to_state, to_stage, to_status, config_load)
+           VALUES (?, ?, ?, 'operator', 'stage', ?, 'paused', 'stage', ?, 'queued', ?)`,
+          [factory, number, now, row.stage, row.stage, options.configLoad?.(factory) ?? null],
+        );
+      }
+
+      yield* change.recordHistory({ factoryId: factory, kind: "ticket.resumed", subject: String(number),
+        detail: { assignment: row.id, message: message ?? null }, records: [ticketRecord(number)] });
+    }));
+
+    return yield* show(factory, number);
+  });
+
+  return { submit, list, show, pause, resume, inspectCancellation, cancel };
 };
