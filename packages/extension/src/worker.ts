@@ -78,6 +78,8 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   let dialling = false;
 
   pi.on("session_start", async (_event, ctx) => {
+    // One dial per launch for now: a later `session_start` (`/new`, `/resume`, `/reload`) on a live
+    // channel is not re-announced. Conversation-change handling belongs to the reconnect work.
     if (channel !== undefined || dialling) {return;}
 
     dialling = true;
@@ -85,7 +87,12 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
     try {
       const opened = await openChannel({ socketPath: launch.socketPath, hello: helloFor(pi, launch, ctx), onFrame });
 
-      if (!opened.accepted) {return;}
+      if (!opened.accepted) {
+        // The host keeps the launch's stderr, so a worker that never connects can be diagnosed.
+        process.stderr.write(`foundry: channel hello refused (${opened.reason.kind} ${opened.reason.code})\n`);
+
+        return;
+      }
 
       channel = opened.channel;
       receipts.attach(opened.channel);
@@ -93,8 +100,9 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
       void opened.channel.closed.then(() => {
         if (channel === opened.channel) {channel = undefined;}
       });
-    } catch {
+    } catch (cause) {
       // No daemon answered. Pi keeps running; reconnecting is not part of this extension yet.
+      process.stderr.write(`foundry: channel not reached at ${launch.socketPath}: ${String(cause)}\n`);
     } finally {
       dialling = false;
     }

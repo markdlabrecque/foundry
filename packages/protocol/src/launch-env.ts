@@ -19,4 +19,5 @@ export const CHANNEL_SOCKET_ENV = "FOUNDRY_CHANNEL_SOCKET";
 /** File name of the worker channel socket inside the state root, beside the management socket. */
 export const CHANNEL_SOCKET_NAME = "channel.sock";
 
+/** The channel socket of the instance whose state root is `stateRoot`. */
 export const channelSocketPath = (stateRoot: string): string => join(stateRoot, CHANNEL_SOCKET_NAME);

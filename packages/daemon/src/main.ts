@@ -33,6 +33,7 @@ import type { DaemonLogger, LogLevel, LogRefs } from "./log.js";
 import { ManagementSocketError, serveManagementApi } from "./management-api.js";
 import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
+import { channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
 import { resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
@@ -41,7 +42,6 @@ import { startChannelServer } from "./channel/server.js";
 import type { ChannelServer } from "./channel/server.js";
 import { createHostSlotClaim } from "./channel/slot-claim.js";
 import { channelLogEvents } from "./channel/log-events.js";
-import { channelSocketPath } from "@foundry/protocol";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
