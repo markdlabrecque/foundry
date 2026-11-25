@@ -5,7 +5,7 @@ import { dirname } from "node:path";
 import { messageOf } from "@foundry/protocol/errors";
 import { Clock, Effect } from "effect";
 import { ticketRecord } from "./history-records.js";
-import { raiseHoldIn } from "./holds.js";
+import { closeOpenHoldIn, raiseHoldIn } from "./holds.js";
 import { recordOperationResult } from "./operations.js";
 import type { Operation } from "./operations.js";
 import type { QueuedTicket } from "./assignments.js";
@@ -61,6 +61,8 @@ export const runFirstAfterCreate = (options: {
   readonly path: string;
   readonly logPath: string;
   readonly env: NodeJS.ProcessEnv;
+  readonly resume?: boolean;
+  readonly configLoad?: string | undefined;
 }) => Effect.gen(function* () {
   const { store, operation, ticket, stage, argv, path, logPath, env } = options;
   const result = yield* Effect.promise((signal) => execute(argv, path, logPath, env, signal));
@@ -71,12 +73,12 @@ export const runFirstAfterCreate = (options: {
       status: succeeded ? "complete" : "failed", result: { ...result, logPath },
     });
 
-    if (succeeded) {return;}
+    if (succeeded && !options.resume) {return;}
 
-    // Cancellation during the hook is final; never revive it as a paused ticket.
+    // Cancellation during the hook is final; never revive it as a paused or queued ticket.
     const rows = yield* change.query<QueuedTicket>(
-      `SELECT * FROM ticket WHERE factory_id = ? AND number = ? AND (state = 'backlog' OR (state = 'stage' AND status = 'queued'))`,
-      [ticket.factory_id, ticket.number],
+      `SELECT * FROM ticket WHERE factory_id = ? AND number = ? AND ((${options.resume ? "0" : "1"} = 1 AND state = 'backlog') OR (state = 'stage' AND status = ?))`,
+      [ticket.factory_id, ticket.number, options.resume ? 'paused' : 'queued'],
     );
 
     const current = rows[0];
@@ -84,6 +86,22 @@ export const runFirstAfterCreate = (options: {
     if (current === undefined) {return;}
 
     const now = yield* Clock.currentTimeMillis;
+
+    if (options.resume) {
+      yield* closeOpenHoldIn(change, { factoryId: ticket.factory_id, kind: 'hook_failure', subject: String(ticket.number) }, 'resolved');
+
+      if (succeeded) {
+        yield* change.query(`UPDATE ticket SET status = 'queued' WHERE factory_id = ? AND number = ?`, [ticket.factory_id, ticket.number]);
+        yield* change.query(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
+          from_state, from_stage, from_status, to_state, to_stage, to_status, config_load)
+          VALUES (?, ?, ?, 'operator', 'stage', ?, 'paused', 'stage', ?, 'queued', ?)`,
+        [ticket.factory_id, ticket.number, now, stage, stage, options.configLoad ?? null]);
+        yield* change.recordHistory({ factoryId: ticket.factory_id, kind: 'ticket.resumed', subject: String(ticket.number),
+          detail: { operationId: operation.id, reason: 'after_create succeeded' }, records: [ticketRecord(ticket.number)] });
+
+        return;
+      }
+    }
 
     yield* change.query(`UPDATE ticket SET state = 'stage', stage = ?, status = 'paused' WHERE factory_id = ? AND number = ?`,
       [stage, ticket.factory_id, ticket.number]);
