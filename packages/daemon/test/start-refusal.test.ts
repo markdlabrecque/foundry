@@ -176,6 +176,87 @@ test("acknowledged and closed messages do not block; current destinations do not
   expect(result).toEqual({ decision: { started: ["shop"], refused: [] }, refused: [] });
 });
 
+/** Keep notices acknowledged so only the delegation check can account for these references. */
+const seedDelegationRoot = (store: Store, factoryId: string) => Effect.gen(function* () {
+  yield* seedTicket(store, factoryId, 1, "feature", { state: "stage", stage: "develop", status: "assigned" });
+  yield* seedMessage(store, factoryId, `${factoryId}-context`, 1, "eng.dev", "acknowledged", "dev/1");
+  yield* store.change(({ query, recordHistory }) => Effect.gen(function* () {
+    yield* query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition) VALUES (?, 'dev/1', 'eng.dev', 1, 'normal')`, [factoryId]);
+    yield* query(`INSERT INTO assignment (id, factory_id, ticket_number, stage, slot_id, status, recovery_ceiling, created_at, context_message)
+      VALUES (?, ?, 1, 'develop', 'dev/1', 'active', 3, 0, ?)`, [`${factoryId}-root`, factoryId, `${factoryId}-context`]);
+    yield* recordHistory({ factoryId, kind: "fixture", subject: "delegation-root" });
+  }));
+});
+
+const seedDelegation = (store: Store, factoryId: string, id: string, sequence: number, recipient: string,
+  recipientSlot: string | null, delegatingSlot = "dev/1", status = "open") => Effect.gen(function* () {
+  yield* seedMessage(store, factoryId, `${id}-notice`, sequence, recipient, "acknowledged", recipientSlot);
+  yield* store.change(({ query, recordHistory }) => Effect.gen(function* () {
+    yield* query(`INSERT INTO delegation (id, factory_id, root_assignment, delegating_slot, recipient, recipient_slot,
+      depth, notice_id, status, accepted_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
+    [id, factoryId, `${factoryId}-root`, delegatingSlot, recipient, recipientSlot, `${id}-notice`, status, sequence]);
+    yield* recordHistory({ factoryId, kind: "delegation.accepted", subject: id, records: [{ kind: "delegation", id }] });
+  }));
+});
+
+test("open delegations name removed stations and slots in durable refusal evidence independently of their acknowledged notices", async () => {
+  const result = await withStore((store) => Effect.gen(function* () {
+    yield* seedDelegationRoot(store, "shop");
+    yield* seedDelegationRoot(store, "blog");
+    yield* seedDelegation(store, "shop", "waiting", 2, "eng.removed", null);
+    yield* seedDelegation(store, "shop", "selected", 3, "eng.dev", "dev/2");
+    yield* seedDelegation(store, "shop", "returning", 4, "eng.dev", "dev/1", "removed/1");
+    yield* seedDelegation(store, "shop", "both", 5, "old.removed", "old/1", "old/1");
+    yield* seedDelegation(store, "blog", "other", 2, "eng.dev", "dev/1");
+
+    const decision = yield* decideFactoryStarts(store, [
+      factory("shop", { feature: line("develop") }, 11), factory("blog", { feature: line("develop") }, 12),
+    ]);
+
+    return { decision, refused: yield* refusals(store) };
+  }));
+
+  expect(result.decision.started).toEqual(["blog"]);
+  expect(result.decision.refused.map((r) => [r.factoryId, r.blockers.map(describeBlocker)])).toEqual([
+    ["shop", [
+      "delegation waiting names station eng.removed",
+      "delegation selected names slot dev/2",
+      "delegation returning names slot removed/1",
+      "delegation both names station old.removed",
+      "delegation both names slot old/1",
+    ]],
+  ]);
+  expect(result.refused.map((r) => ({ ...r, detail: JSON.parse(r.detail) }))).toEqual([
+    { factory_id: "shop", subject: "shop", detail: { configLoad: "11", blockers: [
+      { kind: "delegation", id: "waiting", missing: { kind: "station", station: "eng.removed" } },
+      { kind: "delegation", id: "selected", missing: { kind: "slot", slot: "dev/2" } },
+      { kind: "delegation", id: "returning", missing: { kind: "slot", slot: "removed/1" } },
+      { kind: "delegation", id: "both", missing: { kind: "station", station: "old.removed" } },
+      { kind: "delegation", id: "both", missing: { kind: "slot", slot: "old/1" } },
+    ] } },
+  ]);
+});
+
+test("resolved delegations and other factories do not block, while valid selected and unselected obligations can start", async () => {
+  const result = await withStore((store) => Effect.gen(function* () {
+    yield* seedDelegationRoot(store, "shop");
+    yield* seedDelegationRoot(store, "elsewhere");
+
+    for (const [index, status] of ["completed", "abandoned", "cancelled"].entries()) {
+      yield* seedDelegation(store, "shop", status, index + 2, "old.removed", "old/2", "old/1", status);
+    }
+
+    yield* seedDelegation(store, "shop", "waiting", 5, "eng.dev", null);
+    yield* seedDelegation(store, "shop", "selected", 6, "eng.dev", "dev/1");
+    yield* seedDelegation(store, "elsewhere", "foreign", 2, "old.removed", "old/2", "old/1");
+    const decision = yield* decideFactoryStarts(store, [factory("shop", { feature: line("develop") })]);
+
+    return { decision, refused: yield* refusals(store) };
+  }));
+
+  expect(result).toEqual({ decision: { started: ["shop"], refused: [] }, refused: [] });
+});
+
 test("with no blockers every factory starts and nothing is written", async () => {
   const result = await withStore((store) =>
     Effect.gen(function* () {
