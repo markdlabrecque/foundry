@@ -53,6 +53,7 @@ const station: EffectiveStation = {
 const matching: ReadonlyArray<ReportedTool> = [
   ...PI_BUILTIN_TOOLS.map((name) => ({ name, source: `builtin:${name}` })),
   { name: "agent_discover", source: FOUNDRY },
+  { name: "agent_message", source: FOUNDRY },
   { name: "web_fetch", source: PROJECT },
 ];
 

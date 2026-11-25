@@ -307,6 +307,28 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       ) STRICT`,
     ],
   },
+  {
+    id: 12,
+    name: "message_acceptance",
+    statements: [
+      `CREATE TABLE message (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        sequence INTEGER NOT NULL CHECK (sequence > 0),
+        sender_slot TEXT NOT NULL,
+        recipient TEXT NOT NULL,
+        body TEXT NOT NULL,
+        delivery TEXT NOT NULL CHECK (delivery IN ('after_turn', 'when_idle')),
+        kind TEXT NOT NULL CHECK (kind IN ('ordinary', 'request_notice', 'delegation_notice', 'reply', 'resume_notice')),
+        ticket_number INTEGER,
+        request_id TEXT,
+        delegation_id TEXT,
+        status TEXT NOT NULL CHECK (status IN ('unbound', 'bound', 'sent', 'acknowledged', 'indeterminate', 'dropped', 'expired')),
+        accepted_at INTEGER NOT NULL,
+        UNIQUE (factory_id, sequence)
+      ) STRICT`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

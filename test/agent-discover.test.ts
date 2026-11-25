@@ -6,11 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import { agentDiscoverHandler, createHostSlotClaim, createSubmissions, openStore, planSlots, startChannelServer } from "@foundry/daemon";
+import { agentDiscoverHandler, agentMessageHandler, createHostSlotClaim, createSubmissions, openStore, planSlots, startChannelServer } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import { connectWorker, openChannel, ToolCallClient } from "@foundry/extension";
-import { AGENT_DISCOVER, FIXED_TOOLS, PROTOCOL_VERSION } from "@foundry/protocol";
+import { AGENT_DISCOVER, AGENT_MESSAGE, FIXED_TOOLS, PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello } from "@foundry/protocol";
 import { startFauxSession } from "@foundry/testkit";
 
@@ -52,7 +52,7 @@ const startDiscovery = async () => {
   const server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: createHostSlotClaim({ host: { inventory: async () => launches } }),
-    toolCalls: createSubmissions({ store, handlers: new Map([[AGENT_DISCOVER, agentDiscoverHandler(slots)]]) }),
+    toolCalls: createSubmissions({ store, handlers: new Map([[AGENT_DISCOVER, agentDiscoverHandler(slots)], [AGENT_MESSAGE, agentMessageHandler(slots)]]) }),
   });
 
   cleanups.push(() => server.close());
@@ -110,7 +110,7 @@ test("agent_discover returns the sender factory's configured stations and slots 
   });
 });
 
-test("Pi can invoke discovery and see only its own factory, even where station names coincide", async () => {
+test("Pi can discover its factory and submit a durable message through the registered tools", async () => {
   const { dir, socketPath } = await startDiscovery();
 
   const session = await startFauxSession({
@@ -120,7 +120,7 @@ test("Pi can invoke discovery and see only its own factory, even where station n
   });
 
   cleanups.push(() => session.dispose());
-  expect(session.getActiveToolNames()).toContain(AGENT_DISCOVER);
+  expect(session.getActiveToolNames()).toEqual(expect.arrayContaining([AGENT_DISCOVER, AGENT_MESSAGE]));
   await session.prompt(`@@ ${AGENT_DISCOVER} {}`);
 
   const value = {
@@ -134,6 +134,17 @@ test("Pi can invoke discovery and see only its own factory, even where station n
   expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
     toolName: AGENT_DISCOVER,
     content: [{ type: "text", text: JSON.stringify(value) }],
+    isError: false,
+  });
+
+  await session.prompt(`@@ ${AGENT_MESSAGE} {"recipient":"ops.deployer","body":"Inspect the build.","delivery":"when_idle"}`);
+
+  expect(session.messages.find((message) => message.role === "toolResult" && message.toolName === AGENT_MESSAGE)).toMatchObject({
+    toolName: AGENT_MESSAGE,
+    details: { status: "committed", value: {
+      factoryId: "beta", senderSlot: "deployer/1", recipient: "ops.deployer",
+      body: "Inspect the build.", delivery: "when_idle", status: "unbound",
+    } },
     isError: false,
   });
 });
