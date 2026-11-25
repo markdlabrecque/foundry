@@ -48,7 +48,7 @@ const snapshot = (store: Store) => Effect.all({
   tickets: store.read(`SELECT * FROM ticket`), assignments: store.read(`SELECT * FROM assignment`),
   transitions: store.read(`SELECT * FROM ticket_transition`), history: store.read(`SELECT * FROM history`),
   submissions: store.read(`SELECT * FROM submission`), messages: store.read(`SELECT * FROM message`),
-  delegations: store.read(`SELECT * FROM delegation`),
+  delegations: store.read(`SELECT * FROM delegation ORDER BY accepted_at, rowid`),
 });
 
 const fixture = async <A, E>(use: (store: Store, assignmentId: string, root: string) => Effect.Effect<A, E>) => {
