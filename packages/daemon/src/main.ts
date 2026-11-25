@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 /**
- * Foreground daemon entry point: select the state root, claim it exclusively, and hold it until
- * SIGINT or SIGTERM. A clean stop releases the lock and exits 0; a held lock exits 1 (PRD §11.6).
- * Factory loading, the database and the management socket arrive in later tickets.
+ * Foreground daemon entry point: select the state root, claim it exclusively, serve the
+ * management API, and hold both until SIGINT or SIGTERM. A clean stop closes the socket,
+ * releases the lock and exits 0; a held lock or a socket in use exits 1 (PRD §11.6).
+ * Factory loading and the database arrive in later tickets.
  */
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
-import { selectStateRoot } from "./state-root.js";
+import { ManagementSocketError, serveManagementApi, type ManagementApi } from "./management-api.js";
+import { selectStateRoot } from "@foundry/protocol/state-root";
 
 const EXIT_USAGE = 2;
 const EXIT_INSTANCE_FAILURE = 1;
@@ -29,7 +31,12 @@ const parseHome = (args: readonly string[]): string | undefined => {
 
 class UsageError extends Error {}
 
-const main = (): void => {
+const fail = (message: string): never => {
+  process.stderr.write(`foundry daemon: ${message}\n`);
+  process.exit(EXIT_INSTANCE_FAILURE);
+};
+
+const main = async (): Promise<void> => {
   let home: string | undefined;
   try {
     home = parseHome(process.argv.slice(2));
@@ -44,21 +51,49 @@ const main = (): void => {
   } catch (error) {
     // A held lock, or a root we cannot create or write (EACCES and the like), is an instance-level
     // failure: one line and exit 1, not a stack trace.
-    const message = error instanceof StateRootLockedError ? error.message : `cannot claim state root ${stateRoot}: ${(error as Error).message}`;
-    process.stderr.write(`foundry daemon: ${message}\n`);
-    process.exit(EXIT_INSTANCE_FAILURE);
+    fail(error instanceof StateRootLockedError ? error.message : `cannot claim state root ${stateRoot}: ${(error as Error).message}`);
+    return;
   }
   process.on("exit", () => claim.release());
-  // Keep the foreground process alive until asked to stop.
-  const keepAlive = setInterval(() => {}, 1 << 30);
+
+  // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
+  // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
+  let api: ManagementApi | undefined;
+  let stopping = false;
   const stop = (): void => {
-    clearInterval(keepAlive);
-    claim.release();
-    process.exit(0);
+    if (stopping) return;
+    stopping = true;
+    // Before the API is up, the code after `serveManagementApi` sees `stopping` and finishes the stop.
+    if (api !== undefined) finish(api);
   };
-  process.once("SIGINT", stop);
-  process.once("SIGTERM", stop);
+  const finish = (served: ManagementApi): void => {
+    void served.close().finally(() => {
+      claim.release();
+      process.exit(0);
+    });
+  };
+  process.on("SIGINT", stop);
+  process.on("SIGTERM", stop);
+
+  const startedAt = new Date().toISOString();
+  try {
+    api = await serveManagementApi({
+      stateRoot,
+      status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
+    });
+  } catch (error) {
+    claim.release();
+    fail(error instanceof ManagementSocketError ? error.message : `cannot serve the management API: ${(error as Error).message}`);
+    return;
+  }
+
+  // The listening socket keeps the foreground process alive until asked to stop.
+  if (stopping) {
+    finish(api);
+    return;
+  }
   process.stdout.write(`foundry daemon: state root ${stateRoot} claimed (pid ${process.pid})\n`);
+  process.stdout.write(`foundry daemon: management API on ${api.socketPath}\n`);
 };
 
-main();
+await main();

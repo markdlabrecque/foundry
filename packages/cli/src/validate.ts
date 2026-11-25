@@ -45,6 +45,6 @@ export const validateFactoryFile = (file: string): ValidateOutcome => {
   return {
     exitCode: 0,
     stdout: [`${file}: factory "${result.config.name}" is valid`, ...renderToolSets(stations.stations)],
-    stderr: [],
+    stderr: result.warnings.map((w) => `${describe(file, w)} (warning)`),
   };
 };

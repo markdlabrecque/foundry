@@ -5,7 +5,7 @@ import type { ToolSetEntry } from "@foundry/daemon/config";
 
 // Unit tier: Tool Sets are a pure function of decoded config; no files are read.
 
-/** A factory whose `defaults` block and the `eng.dev` station's settings vary per case. */
+/** A factory whose `defaults` block and the `eng.dev` station's settings vary per case; `ops.gate` only completes the line's final-stage contract. */
 const factory = (defaults: string, station: string): string => `version: 1
 name: f
 repository:
@@ -18,11 +18,21 @@ ${defaults}rooms:
   eng:
     stations:
       dev:
-${station === "" ? "        isolation: none\n" : station}production_lines:
+${station === "" ? "        isolation: none\n" : station}  ops:
+    stations:
+      gate: { isolation: worktree, model: p/m }
+production_lines:
   l:
     stages:
       - id: a
         station: eng.dev
+      - id: w
+        station: ops.gate
+        writing: true
+      - id: z
+        station: ops.gate
+        approval: true
+        on_rejection: w
 `;
 
 const DEFAULTS = `  extensions:
