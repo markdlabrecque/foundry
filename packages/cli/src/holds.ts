@@ -4,6 +4,7 @@
  * what to print and the exit code (PRD §11.5).
  */
 import { selectStateRoot } from "@foundry/protocol/state-root";
+import { Schema } from "effect";
 import { messageOf } from "@foundry/protocol/errors";
 import { holdPath, HOLDS_PATH, isHoldListResult, isHoldShowResult } from "@foundry/protocol/holds";
 import type { HoldRecord, HoldShowResult } from "@foundry/protocol/holds";
@@ -46,7 +47,7 @@ const renderShow = ({ hold, commands }: HoldShowResult): string => {
   lines.push("evidence");
 
   for (const [key, value] of Object.entries(hold.evidence)) {
-    lines.push(`  ${key}: ${typeof value === "string" ? value : JSON.stringify(value)}`);
+    lines.push(`  ${key}: ${isText(value) ? value : JSON.stringify(value)}`);
   }
 
   if (hold.state === "open") {
@@ -58,10 +59,14 @@ const renderShow = ({ hold, commands }: HoldShowResult): string => {
   return `${lines.join("\n")}\n`;
 };
 
-const fetchAndRender = async (
+const isText = Schema.is(Schema.String);
+
+/** Fetches `path` and renders its result once `is` confirms the shape the daemon answered with. */
+const fetchAndRender = async <A>(
   options: HoldOptions,
   path: string,
-  render: (result: unknown) => string | undefined,
+  is: (value: unknown) => value is A,
+  render: (result: A) => string,
 ): Promise<HoldOutcome> => {
   if (options.home === "") {return usage("--home needs a directory");}
 
@@ -86,22 +91,20 @@ const fetchAndRender = async (
 
   if (!reply.envelope.ok) {return refused(reply.envelope.error.message);}
 
-  const stdout = render(reply.envelope.result);
+  const result = reply.envelope.result;
 
-  if (stdout === undefined) {return refused("the daemon answered with an unexpected shape");}
+  if (!is(result)) {return refused("the daemon answered with an unexpected shape");}
 
-  return { exitCode: EXIT_OK, stdout, stderr: "" };
+  return { exitCode: EXIT_OK, stdout: render(result), stderr: "" };
 };
 
 /** `foundry hold list`: the open holds, oldest first. */
 export const runHoldList = (options: HoldOptions): Promise<HoldOutcome> =>
-  fetchAndRender(options, HOLDS_PATH, (result) => (isHoldListResult(result) ? renderList(result.holds) : undefined));
+  fetchAndRender(options, HOLDS_PATH, isHoldListResult, (result) => renderList(result.holds));
 
 /** `foundry hold show <id>`: one hold's evidence and the commands that act on its subject. */
 export const runHoldShow = async (options: HoldOptions & { readonly id: string }): Promise<HoldOutcome> => {
   if (!/^[1-9][0-9]{0,15}$/.test(options.id)) {return usage(`hold ID must be a positive integer, not ${JSON.stringify(options.id)}`);}
 
-  return fetchAndRender(options, holdPath(Number(options.id)), (result) =>
-    isHoldShowResult(result) ? renderShow(result) : undefined,
-  );
+  return fetchAndRender(options, holdPath(Number(options.id)), isHoldShowResult, renderShow);
 };

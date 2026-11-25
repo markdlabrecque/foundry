@@ -4,15 +4,28 @@
  * After the last one (or with no script lines) the model answers `done`.
  */
 
+import { Schema } from "effect";
+
+/** A tool call's arguments: a JSON object, as Pi's tool calls carry them. */
+export const FauxArguments = Schema.Record(Schema.String, Schema.Json);
+
+export type FauxArguments = typeof FauxArguments.Type;
+
 export interface FauxToolStep {
   readonly tool: string;
-  readonly arguments: { readonly [key: string]: unknown };
+  readonly arguments: FauxArguments;
+}
+
+/** A content block of a Pi message; only text blocks are read. */
+export interface FauxContentBlock {
+  readonly type: string;
+  readonly text?: string;
 }
 
 /** The part of a Pi transcript message the faux model reads. */
 export interface FauxMessage {
   readonly role: string;
-  readonly content?: unknown;
+  readonly content?: string | ReadonlyArray<FauxContentBlock>;
 }
 
 export type FauxReply =
@@ -23,48 +36,45 @@ export const FAUX_FINAL_TEXT = "done";
 
 const SCRIPT_LINE = /^@@\s+(\S+)(?:\s+(.*))?$/;
 
+const isArguments = Schema.is(FauxArguments);
+
+const isText = Schema.is(Schema.String);
+
+const parseArguments = (tool: string, json: string): FauxArguments => {
+  let parsed: unknown;
+
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    throw new Error(`faux script: arguments for ${tool} are not valid JSON: ${json}`);
+  }
+
+  if (!isArguments(parsed)) {throw new Error(`faux script: arguments for ${tool} must be a JSON object: ${json}`);}
+
+  return parsed;
+};
+
 export function parseFauxScript(text: string): Array<FauxToolStep> {
   const steps: Array<FauxToolStep> = [];
 
   for (const raw of text.split(/\r?\n/)) {
-    const match = SCRIPT_LINE.exec(raw.trim());
+    const [, tool, rawArguments] = SCRIPT_LINE.exec(raw.trim()) ?? [];
 
-    if (!match) {continue;}
+    if (tool === undefined) {continue;}
 
-    const tool = match[1] as string;
-    const json = match[2]?.trim() ?? "";
-    let args: unknown = {};
-
-    if (json !== "") {
-      try {
-        args = JSON.parse(json);
-      } catch {
-        throw new Error(`faux script: arguments for ${tool} are not valid JSON: ${json}`);
-      }
-    }
-
-    if (typeof args !== "object" || args === null || Array.isArray(args)) {
-      throw new Error(`faux script: arguments for ${tool} must be a JSON object: ${json}`);
-    }
-
-    steps.push({ tool, arguments: args as FauxToolStep["arguments"] });
+    const json = rawArguments?.trim() ?? "";
+    steps.push({ tool, arguments: json === "" ? {} : parseArguments(tool, json) });
   }
 
   return steps;
 }
 
-function textOf(content: unknown): string {
-  if (typeof content === "string") {return content;}
+function textOf(content: FauxMessage["content"]): string {
+  if (content === undefined) {return "";}
 
-  if (!Array.isArray(content)) {return "";}
+  if (isText(content)) {return content;}
 
-  return content
-    .map((block: unknown) =>
-      typeof block === "object" && block !== null && (block as { type?: unknown }).type === "text"
-        ? String((block as { text?: unknown }).text ?? "")
-        : "",
-    )
-    .join("");
+  return content.map((block) => (block.type === "text" ? (block.text ?? "") : "")).join("");
 }
 
 /**

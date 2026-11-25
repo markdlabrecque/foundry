@@ -8,6 +8,7 @@
  * values, and keys that look like credentials or message bodies are never written.
  */
 import { randomUUID } from "node:crypto";
+import { Schema } from "effect";
 import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { chmodSync, closeSync, fchmodSync, fstatSync, mkdirSync, openSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
@@ -25,7 +26,7 @@ export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
 
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
-export const isLogLevel = (value: string): value is LogLevel => (LOG_LEVELS as ReadonlyArray<string>).includes(value);
+export const isLogLevel: (value: string) => value is LogLevel = Schema.is(Schema.Literals(LOG_LEVELS));
 
 const rank = (level: LogLevel): number => LOG_LEVELS.indexOf(level);
 
@@ -57,15 +58,10 @@ const BODY_KEY = /^(body|text|content|prompt|message|messageBody)$/i;
 export const REDACTED = "[redacted]";
 export const OMITTED = "[omitted]";
 
-const sanitizeDetail = (detail: Readonly<Record<string, LogDetailValue>>): Record<string, LogDetailValue> => {
-  const clean: Record<string, LogDetailValue> = {};
-
-  for (const [key, value] of Object.entries(detail)) {
-    clean[key] = CREDENTIAL_KEY.test(key) ? REDACTED : BODY_KEY.test(key) ? OMITTED : value;
-  }
-
-  return clean;
-};
+const sanitizeDetail = (detail: Readonly<Record<string, LogDetailValue>>): Record<string, LogDetailValue> =>
+  Object.fromEntries(
+    Object.entries(detail).map(([key, value]) => [key, CREDENTIAL_KEY.test(key) ? REDACTED : BODY_KEY.test(key) ? OMITTED : value]),
+  );
 
 export interface DaemonLogger {
   readonly runId: string;
@@ -108,7 +104,7 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
   const toStderr = options.stderr ?? ((line: string) => void process.stderr.write(line));
   const now = options.now ?? (() => new Date());
 
-  const openFile = (): { fd: number; size: number } => {
+  const openFile = () => {
     const dir = join(options.stateRoot, "logs");
     mkdirSync(dir, { recursive: true, mode: 0o700 });
     // The mode above applies only on creation; an older directory is tightened too.
@@ -179,17 +175,17 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
     const emit = (lineLevel: LogLevel, msg: string, entry: LogEntry = {}): void => {
       if (rank(lineLevel) < rank(level)) {return;}
 
-      const line: Record<string, unknown> = { time: now().toISOString(), level: lineLevel, runId, msg };
+      const refs = Object.fromEntries(
+        REF_KEYS.flatMap((key): Array<[string, string]> => {
+          const value = entry[key] ?? bound[key];
 
-      for (const key of REF_KEYS) {
-        const value = entry[key] ?? bound[key];
+          return value === undefined ? [] : [[key, value]];
+        }),
+      );
 
-        if (value !== undefined) {line[key] = value;}
-      }
+      const line = { time: now().toISOString(), level: lineLevel, runId, msg, ...refs };
 
-      if (entry.detail !== undefined) {line["detail"] = sanitizeDetail(entry.detail);}
-
-      write(`${JSON.stringify(line)}\n`);
+      write(`${JSON.stringify(entry.detail === undefined ? line : { ...line, detail: sanitizeDetail(entry.detail) })}\n`);
     };
 
     return {

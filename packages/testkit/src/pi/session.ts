@@ -39,7 +39,7 @@ export const startFauxSession = async (options: FauxSessionOptions): Promise<Age
   await resourceLoader.reload();
   const modelRuntime = await ModelRuntime.create({ authPath: join(agentDir, "auth.json"), modelsPath: null });
 
-  const { session } = await createAgentSession({
+  let sessionOptions: NonNullable<Parameters<typeof createAgentSession>[0]> = {
     cwd,
     agentDir,
     modelRuntime,
@@ -47,8 +47,11 @@ export const startFauxSession = async (options: FauxSessionOptions): Promise<Age
     settingsManager,
     sessionManager: SessionManager.create(cwd, join(options.root, "sessions")),
     noTools: "all",
-    ...(options.tools === undefined ? {} : { tools: [...options.tools] }),
-  });
+  };
+
+  if (options.tools !== undefined) {sessionOptions = { ...sessionOptions, tools: [...options.tools] };}
+
+  const { session } = await createAgentSession(sessionOptions);
 
   try {
     await session.bindExtensions({});

@@ -3,7 +3,7 @@
  * The `foundry` entry point. This is the only Foundry module that imports
  * `effect/cli` (PRD §3.1: unstable Effect modules sit behind one module).
  */
-import { Console, Effect, Option } from "effect";
+import { Console, Effect, Option, Predicate } from "effect";
 import { Argument, CliError, Command, Flag } from "effect/cli";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { EXIT_USAGE, runStatus } from "./status.js";
@@ -261,7 +261,7 @@ Command.run(foundry, { version: "0.0.0" }).pipe(
   // effect/cli has already printed the problem and the help; PRD §11.5 makes a usage error exit 2.
   // A bare help request (ShowHelp with no errors) still exits 0.
   Effect.catchIf(
-    (error) => CliError.isCliError(error) && !(error._tag === "ShowHelp" && error.errors.length === 0),
+    (error) => CliError.isCliError(error) && !(Predicate.isTagged(error, "ShowHelp") && error.errors.length === 0),
     () => Effect.sync(() => void (process.exitCode = EXIT_USAGE)),
   ),
   Effect.provide(NodeServices.layer),

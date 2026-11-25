@@ -30,7 +30,7 @@ export const getFromDaemon = (stateRoot: string, path: string, options: GetOptio
   callDaemon(stateRoot, "GET", path, undefined, options);
 
 /** `POST path` with a JSON body to the daemon serving `stateRoot`. */
-export const postToDaemon = (stateRoot: string, path: string, body: unknown, options: GetOptions = {}): Promise<ApiReply> =>
+export const postToDaemon = <Body extends object>(stateRoot: string, path: string, body: Body, options: GetOptions = {}): Promise<ApiReply> =>
   callDaemon(stateRoot, "POST", path, JSON.stringify(body), options);
 
 const callDaemon = (

@@ -6,6 +6,7 @@
  * credential or network is used.
  */
 import { spawn } from "node:child_process";
+import { Option, Schema } from "effect";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,9 +31,10 @@ export function resolvePiBin(env: NodeJS.ProcessEnv = process.env): string {
     const pkgPath = join(dir, "package.json");
 
     if (existsSync(pkgPath)) {
-      const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { name?: string; bin?: { pi?: string } };
+      // A manifest of another shape is simply not Pi's.
+      const pkg = Option.getOrUndefined(decodeManifest(readFileSync(pkgPath, "utf8")));
 
-      if (pkg.name === PI_PACKAGE && pkg.bin?.pi) {return join(dir, pkg.bin.pi);}
+      if (pkg?.name === PI_PACKAGE && pkg.bin?.pi) {return join(dir, pkg.bin.pi);}
     }
 
     const parent = dirname(dir);
@@ -49,17 +51,30 @@ const here = import.meta.dirname;
 export const FAUX_PROVIDER_EXTENSION = join(here, "faux-provider.js");
 export const FIXTURE_TOOL_EXTENSION = join(here, "fixture-tool.js");
 
-export interface RpcEvent {
-  readonly type: string;
-  readonly [key: string]: unknown;
-}
+/** One JSON line Pi writes on stdout in RPC mode: a `type` and any other JSON fields. */
+export const RpcEvent = Schema.StructWithRest(Schema.Struct({ type: Schema.String }), [
+  Schema.Record(Schema.String, Schema.Json),
+]);
+
+export type RpcEvent = typeof RpcEvent.Type;
+
+const decodeEvent = Schema.decodeUnknownOption(Schema.fromJsonString(RpcEvent));
+
+const decodeManifest = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      name: Schema.optionalKey(Schema.String),
+      bin: Schema.optionalKey(Schema.Struct({ pi: Schema.optionalKey(Schema.String) })),
+    }),
+  ),
+);
 
 export interface FauxPi {
   readonly root: string;
   readonly child: ChildProcessWithoutNullStreams;
   /** Every JSON line Pi has written to stdout so far. */
   readonly events: ReadonlyArray<RpcEvent>;
-  send(command: Record<string, unknown>): void;
+  send(command: Readonly<Record<string, Schema.Json>>): void;
   waitFor(match: (event: RpcEvent) => boolean, timeoutMs?: number): Promise<RpcEvent>;
   /** Kill Pi and remove the temp root. */
   dispose(): Promise<void>;
@@ -136,13 +151,12 @@ export function startFauxPi(options: StartFauxPiOptions = {}): FauxPi {
 
       if (line === "") {continue;}
 
-      let event: RpcEvent;
+      // A line that is not a JSON event is skipped, as an unparseable one always was.
+      const decoded = decodeEvent(line);
 
-      try {
-        event = JSON.parse(line) as RpcEvent;
-      } catch {
-        continue;
-      }
+      if (Option.isNone(decoded)) {continue;}
+
+      const event = decoded.value;
 
       events.push(event);
 

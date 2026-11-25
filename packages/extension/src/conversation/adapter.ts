@@ -27,13 +27,16 @@ export interface ConversationAdapterOptions {
   readonly onReceipt: (id: string) => void;
 }
 
+/** Before `session_start`, no session file is known. */
+const noSessionFile = (): string | undefined => undefined;
+
 /**
  * Register the adapter on a Pi extension. It re-checks after the lifecycle
  * points where Pi persists entries: after each injection, at each turn end
  * (assistant and tool results written), when a run settles and after a compaction.
  */
 export const createConversationAdapter = (pi: ExtensionAPI, options: ConversationAdapterOptions): ConversationAdapter => {
-  let sessionFile: () => string | undefined = () => undefined;
+  let sessionFile: () => string | undefined = noSessionFile;
 
   const issuer = new ReceiptIssuer(
     sessionFileHistory(() => sessionFile()),

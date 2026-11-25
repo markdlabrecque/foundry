@@ -30,7 +30,7 @@ export default function fauxProviderExtension(pi: ExtensionAPI): void {
     if (reply.kind === "text") {return fauxAssistantMessage(fauxText(reply.text));}
 
     calls += 1;
-    const args = reply.step.arguments as ToolCall["arguments"];
+    const args: ToolCall["arguments"] = reply.step.arguments;
 
     return fauxAssistantMessage(fauxToolCall(reply.step.tool, args, { id: `faux-${calls}` }), { stopReason: "toolUse" });
   };

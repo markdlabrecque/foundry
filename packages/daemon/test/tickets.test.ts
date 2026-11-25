@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import { DATABASE_FILE_NAME, makeTicketService, openStore, readEvents, serveManagementApi, slugify, StoreError, ticketDirectory } from "@foundry/daemon";
+import { DATABASE_FILE_NAME, createTicketService, openStore, readEvents, serveManagementApi, slugify, StoreError, ticketDirectory } from "@foundry/daemon";
 import type { Store, TicketFactory } from "@foundry/daemon";
 import { TICKETS_PATH, ticketPath } from "@foundry/protocol/tickets-api";
 
@@ -52,7 +52,7 @@ const start = async (root: string, factories: ReadonlyArray<TicketFactory>) => {
   const api = await serveManagementApi({
     stateRoot: root,
     status,
-    tickets: makeTicketService({ stateRoot: root, store, factories: () => factories }),
+    tickets: createTicketService({ stateRoot: root, store, factories: () => factories }),
   });
 
   cleanups.push(() => api.close());
@@ -243,14 +243,14 @@ test("a submission whose change fails after its directory is written leaves no d
       )),
   };
 
-  const failing = makeTicketService({ stateRoot: root, store: failingCommit, factories: () => [shop] });
+  const failing = createTicketService({ stateRoot: root, store: failingCommit, factories: () => [shop] });
 
   const exit = await Effect.runPromiseExit(failing.submit({ title: "T", spec: SPEC }));
   expect(exit).toMatchObject(Exit.fail({ reason: "Sql" }));
   expect(existsSync(ticketDirectory(root, "shop", 1))).toBe(false);
   expect(await Effect.runPromise(store.read(`SELECT count(*) AS n FROM ticket`))).toEqual([{ n: 0 }]);
 
-  const working = makeTicketService({ stateRoot: root, store, factories: () => [shop] });
+  const working = createTicketService({ stateRoot: root, store, factories: () => [shop] });
   const submitted = await Effect.runPromise(working.submit({ title: "T", spec: SPEC }));
   expect(submitted.ticket.number).toBe(1);
   expect(readFileSync(submitted.ticket.specPath, "utf8")).toBe(SPEC);

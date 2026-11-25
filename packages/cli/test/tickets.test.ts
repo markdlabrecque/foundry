@@ -8,7 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import { DATABASE_FILE_NAME, makeTicketService, openStore, serveManagementApi } from "@foundry/daemon";
+import { DATABASE_FILE_NAME, createTicketService, openStore, serveManagementApi } from "@foundry/daemon";
 import {
   defaultTitle,
   EXIT_OK,
@@ -47,7 +47,7 @@ const serve = async (home: string): Promise<void> => {
   const api = await serveManagementApi({
     stateRoot: home,
     status: () => ({ instance: { stateRoot: home, daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } }),
-    tickets: makeTicketService({ stateRoot: home, store, factories: () => factories }),
+    tickets: createTicketService({ stateRoot: home, store, factories: () => factories }),
   });
 
   cleanups.push(() => api.close());

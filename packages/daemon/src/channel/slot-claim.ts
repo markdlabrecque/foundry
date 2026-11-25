@@ -36,10 +36,11 @@ export interface SlotConversations {
   bind(factoryId: string, slotId: string, conversationRef: string): void;
 }
 
+const key = (factoryId: string, slotId: string): string => JSON.stringify([factoryId, slotId]);
+
 /** Process-local bindings; the first accepted hello for a slot binds its conversation. */
 export const inMemorySlotConversations = (): SlotConversations => {
   const refs = new Map<string, string>();
-  const key = (factoryId: string, slotId: string): string => JSON.stringify([factoryId, slotId]);
 
   return {
     get: (factoryId, slotId) => refs.get(key(factoryId, slotId)),

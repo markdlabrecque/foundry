@@ -16,7 +16,7 @@ import { expectDefined, messageOf } from "@foundry/protocol/errors";
 import { join } from "node:path";
 import { createKnowledgeLayout, LoadFactoriesResult, loadFactoryFiles, recordRun } from "./factory-loads.js";
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
-import { makeTicketService, ticketFactoryFrom } from "./tickets.js";
+import { createTicketService, ticketFactoryFrom } from "./tickets.js";
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
@@ -332,7 +332,7 @@ const main = async (): Promise<void> => {
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
-      tickets: makeTicketService({
+      tickets: createTicketService({
         stateRoot,
         store,
         factories: () => ticketFactories,

@@ -216,7 +216,7 @@ const materialize = (directory: string, spec: string) =>
       new TicketError({ code: "internal", message: `cannot write ticket directory ${directory}: ${String(cause)}` }),
   });
 
-export const makeTicketService = (options: TicketServiceOptions): TicketService => {
+export const createTicketService = (options: TicketServiceOptions): TicketService => {
   const { store, stateRoot } = options;
 
   /** The named factory, or the only one loaded when none is named (PRD §11.1). */
