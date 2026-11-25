@@ -5,10 +5,18 @@ export {
   HOST_CONTROL_VERSION,
   HOST_SOCKET_NAME,
   hostSocketPath,
+  type HostEvent,
   type HostIdentity,
   type HostRequest,
   type HostResponse,
+  type LaunchExitedEvent,
 } from "./control.js";
+export {
+  LAUNCH_ENV,
+  type LaunchExit,
+  type LaunchRecord,
+  type LaunchSpec,
+} from "./launches.js";
 export { serveHost, type RunningHost } from "./server.js";
 export {
   HOST_LOG_NAME,

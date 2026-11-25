@@ -4,6 +4,7 @@
  */
 import { join } from "node:path";
 import type { Socket } from "node:net";
+import type { LaunchRecord, LaunchSpec } from "./launches.js";
 
 /** Bumped on any incompatible change; a mismatch is rejected, not negotiated. */
 export const HOST_CONTROL_VERSION = 1 as const;
@@ -22,6 +23,8 @@ export interface HostIdentity {
   readonly startedAt: string;
   readonly stateRoot: string;
   readonly controlVersion: number;
+  /** The machine boot this host runs in; recorded with every launch (PRD §10.2). */
+  readonly bootId: string;
 }
 
 export interface IdentifyRequest {
@@ -29,11 +32,35 @@ export interface IdentifyRequest {
   readonly op: "identify";
 }
 
-export type HostRequest = IdentifyRequest;
+export interface LaunchRequest {
+  readonly id: number;
+  readonly op: "launch";
+  readonly spec: LaunchSpec;
+}
+
+export interface InventoryRequest {
+  readonly id: number;
+  readonly op: "inventory";
+}
+
+export type HostRequest = IdentifyRequest | LaunchRequest | InventoryRequest;
 
 export type HostResponse =
   | { readonly id: number; readonly ok: true; readonly identity: HostIdentity }
+  | { readonly id: number; readonly ok: true; readonly launch: LaunchRecord }
+  | { readonly id: number; readonly ok: true; readonly launches: readonly LaunchRecord[] }
   | { readonly id: number | null; readonly ok: false; readonly error: string };
+
+/**
+ * Unsolicited report pushed to every connected control client. A client that
+ * was not connected asks for the inventory instead; nothing is queued for it.
+ */
+export interface LaunchExitedEvent {
+  readonly event: "launch-exited";
+  readonly launch: LaunchRecord;
+}
+
+export type HostEvent = LaunchExitedEvent;
 
 /** Calls `onLine` for every complete newline-terminated line read from `socket`. */
 export function readLines(socket: Socket, onLine: (line: string) => void): void {
