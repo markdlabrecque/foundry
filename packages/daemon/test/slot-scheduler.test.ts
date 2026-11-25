@@ -431,6 +431,49 @@ const assignRecoveryTicket = async (store: Store, stateRoot: string) => {
     factories: [{ factoryId: "alpha", config: recoveryConfig }] }).schedule());
 };
 
+test.each([false, true])("operator restart refuses unconfirmed death and preserves accounting (assigned=%s)", async (assigned) => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const fake = fakeHost(inventory);
+  let confirm = false;
+
+  const s = await scheduler(store, stateRoot, fake.host, "host-1", [station("lead", 1)], "boot-1", undefined, 3, {
+    terminate: async (id) => {
+      const launch = inventory.find((l) => l.launchId === id)!;
+
+      if (!confirm) {return { outcome: "unconfirmed", escalated: true, launch };}
+
+      const ended: LaunchRecord = { ...launch, liveness: "gone", exit: { requested: true, code: null, signal: "SIGKILL", endedAt: "2026-01-01T01:00:00.000Z" } };
+      inventory[inventory.indexOf(launch)] = ended;
+
+      return { outcome: "gone", escalated: true, launch: ended };
+    },
+  });
+
+  await s.schedule();
+
+  if (assigned) {await assignRecoveryTicket(store, stateRoot);}
+
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE ${assigned ? "assignment" : "slot"} SET recovery_count = 1`);
+    yield* change.recordHistory({ factoryId: "alpha", kind: "fixture.counter", subject: "lead/1" });
+  })));
+  const before = await recoveryState(store);
+  await expect(s.restart({ factoryId: "alpha", slotId: "lead/1" })).rejects.toMatchObject({ code: "restart_refused" });
+  expect(await recoveryState(store)).toEqual(before);
+  expect(fake.asked).toHaveLength(1);
+  confirm = true;
+  await s.restart({ factoryId: "alpha", slotId: "lead/1" });
+  await s.schedule();
+  const after = await recoveryState(store);
+  expect(after.assignments).toEqual(before.assignments);
+  expect(after.slots).toEqual(before.slots);
+  expect(after.tickets).toEqual(before.tickets);
+  expect(after.holds).toEqual(before.holds);
+  expect(sessionIdsOf(fake.asked)[1]).toBe(sessionIdsOf(fake.asked)[0]);
+  expect(fake.asked).toHaveLength(2);
+});
+
 const recoveryState = (store: Store) => Effect.runPromise(Effect.all({
   slots: store.read(`SELECT condition, recovery_count FROM slot`),
   assignments: store.read(`SELECT status, recovery_count, recovery_ceiling, context_message FROM assignment`),
