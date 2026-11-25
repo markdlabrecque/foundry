@@ -20,7 +20,7 @@ import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import type { Stats } from "node:fs";
 import { basename, dirname, join } from "node:path";
-import { Effect } from "effect";
+import { Effect, Option, Schema } from "effect";
 import { isUrlSource, resolveConfiguredPath } from "./config/index.js";
 import type { LoadedFactory } from "./factory-loads.js";
 import { pathSegment } from "./tickets.js";
@@ -125,14 +125,21 @@ const entryAt = (path: string): Stats | undefined => {
   }
 };
 
-const readMarker = (clone: string): CloneMarker | undefined => {
-  try {
-    const parsed = JSON.parse(readFileSync(markerPath(clone), "utf8")) as Partial<CloneMarker>;
+/** The marker fields that decide ownership; `createdAt` is informational and not required. */
+const MarkerIdentity = Schema.Struct({ factory: Schema.String, source: Schema.String });
 
-    return typeof parsed.factory === "string" && typeof parsed.source === "string" ? (parsed as CloneMarker) : undefined;
+const decodeMarker = Schema.decodeUnknownOption(Schema.fromJsonString(MarkerIdentity));
+
+const readMarker = (clone: string): typeof MarkerIdentity.Type | undefined => {
+  let text: string;
+
+  try {
+    text = readFileSync(markerPath(clone), "utf8");
   } catch {
     return undefined;
   }
+
+  return Option.getOrUndefined(decodeMarker(text));
 };
 
 const runGit = (args: ReadonlyArray<string>, env: NodeJS.ProcessEnv): Promise<void> =>

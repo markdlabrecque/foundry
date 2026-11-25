@@ -21,7 +21,7 @@ import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefus
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
-import { Effect, Exit, Scope } from "effect";
+import { Effect, Exit, Schema, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
 import { storeFactoriesReader } from "./factories.js";
@@ -81,8 +81,9 @@ const parseFlags = (args: ReadonlyArray<string>): Flags => {
 };
 
 /** This build's version, from the daemon package's manifest beside `dist/`. */
-const foundryVersion = (): string =>
-  (JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as { version: string }).version;
+const decodeManifest = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Struct({ version: Schema.String })));
+
+const foundryVersion = (): string => decodeManifest(readFileSync(new URL("../package.json", import.meta.url), "utf8")).version;
 
 const fail = (message: string): never => {
   process.stderr.write(`foundry daemon: ${message}\n`);

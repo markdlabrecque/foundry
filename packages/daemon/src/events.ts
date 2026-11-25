@@ -3,10 +3,13 @@
  * with optional filters. Events are only ever read from history; nothing here writes or rebuilds
  * state (ADR 0001).
  */
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import type { EventRecordRef, FactoryEvent } from "@foundry/protocol/management-api";
 import { TICKET_RECORD_KIND } from "./history-records.js";
 import type { SqlValue, Store } from "./store.js";
+
+/** A history row's `detail` column: JSON text of any shape, passed through unchecked. */
+const decodeDetail = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Unknown));
 
 export interface EventPageQuery {
   /** Only events with an ID greater than this. */
@@ -93,7 +96,7 @@ export const readEvents = (store: Store, query: EventPageQuery): Effect.Effect<R
         kind: row.kind,
         subject: row.subject,
         records: records.get(row.sequence) ?? [],
-        detail: JSON.parse(row.detail) as unknown,
+        detail: decodeDetail(row.detail),
       }),
     );
   });

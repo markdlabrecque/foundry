@@ -18,7 +18,7 @@
  * reported as outcomes.
  */
 import { randomUUID } from "node:crypto";
-import { Clock, Data, Effect } from "effect";
+import { Clock, Data, Effect, Schema } from "effect";
 import type { DaemonFrame, Hello } from "@foundry/protocol";
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
 import { composePrime } from "./prime.js";
@@ -26,10 +26,14 @@ import type { ComposePrimeResult, PrimeRequest, PrimeSourceProblem, Situation } 
 import type { Store, StoreError } from "./store.js";
 
 /** What the daemon records about each composed part: never its content. */
-export interface PrimePartRecord {
-  readonly source: string;
-  readonly hash: string;
-}
+export const PrimePartRecord = Schema.Struct({
+  source: Schema.String,
+  hash: Schema.String,
+});
+
+export type PrimePartRecord = typeof PrimePartRecord.Type;
+
+const decodeParts = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(PrimePartRecord)));
 
 export interface PrimeRecord {
   readonly id: string;
@@ -66,7 +70,7 @@ const fromRow = (row: PrimeRow): PrimeRecord => ({
   launchId: row.launch_id,
   conversationRef: row.conversation_ref,
   situation: row.situation,
-  parts: JSON.parse(row.parts) as Array<PrimePartRecord>,
+  parts: decodeParts(row.parts),
   recordedAt: row.recorded_at,
   acknowledgedAt: row.acknowledged_at,
 });

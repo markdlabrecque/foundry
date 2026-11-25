@@ -9,7 +9,7 @@
  */
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { Clock, Data, Effect } from "effect";
+import { Clock, Data, Effect, Schema } from "effect";
 import type {
   SubmitTicketRequest,
   Ticket,
@@ -185,6 +185,8 @@ const ticket = (row: TicketRow): Ticket => ({
       : null,
 });
 
+const decodeEvidence = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.String)));
+
 const transition = (row: TransitionRow): TicketTransition => ({
   at: iso(row.recorded_at),
   actor: row.actor,
@@ -193,7 +195,7 @@ const transition = (row: TransitionRow): TicketTransition => ({
   outcome: row.outcome,
   reason: row.reason,
   commit: row.git_commit,
-  evidence: JSON.parse(row.evidence) as Array<string>,
+  evidence: decodeEvidence(row.evidence),
   configLoad: row.config_load,
 });
 
