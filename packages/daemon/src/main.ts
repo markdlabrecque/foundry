@@ -3,13 +3,19 @@
  * Foreground daemon entry point: select the state root, claim it exclusively, serve the
  * management API, and hold both until SIGINT or SIGTERM. A clean stop closes the socket,
  * releases the lock and exits 0; a held lock or a socket in use exits 1 (PRD §11.6).
- * Factory loading and the database arrive in later tickets.
+ * The database (`foundry.db` in the state root) is opened once the root is claimed; it serves
+ * operator holds. Factory loading arrives in later tickets.
  */
+import { join } from "node:path";
+import { Effect, Exit, Scope } from "effect";
+import { storeHoldsReader } from "./holds.js";
+import { openStore } from "./store.js";
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
 import { ManagementSocketError, serveManagementApi, type ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
 
 const EXIT_USAGE = 2;
+const DATABASE_FILE_NAME = "foundry.db";
 const EXIT_INSTANCE_FAILURE = 1;
 
 const parseHome = (args: readonly string[]): string | undefined => {
@@ -56,6 +62,18 @@ const main = async (): Promise<void> => {
   }
   process.on("exit", () => claim.release());
 
+  const storeScope = Effect.runSync(Scope.make());
+  const closeStore = (): Promise<void> => Effect.runPromise(Scope.close(storeScope, Exit.void));
+  let store;
+  try {
+    store = await Effect.runPromise(Scope.provide(storeScope)(openStore({ filename: join(stateRoot, DATABASE_FILE_NAME) })));
+  } catch (error) {
+    await closeStore();
+    claim.release();
+    fail(`cannot open the database: ${(error as Error).message}`);
+    return;
+  }
+
   // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
   // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
   let api: ManagementApi | undefined;
@@ -67,7 +85,7 @@ const main = async (): Promise<void> => {
     if (api !== undefined) finish(api);
   };
   const finish = (served: ManagementApi): void => {
-    void served.close().finally(() => {
+    void served.close().finally(closeStore).finally(() => {
       claim.release();
       process.exit(0);
     });
@@ -80,8 +98,10 @@ const main = async (): Promise<void> => {
     api = await serveManagementApi({
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
+      holds: storeHoldsReader(store),
     });
   } catch (error) {
+    await closeStore();
     claim.release();
     fail(error instanceof ManagementSocketError ? error.message : `cannot serve the management API: ${(error as Error).message}`);
     return;

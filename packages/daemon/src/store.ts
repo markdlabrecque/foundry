@@ -50,6 +50,28 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
        BEGIN SELECT RAISE(ABORT, 'history is append-only'); END`,
     ],
   },
+  {
+    id: 2,
+    name: "operator_hold",
+    statements: [
+      // Operator holds (PRD §10.2): a record type of their own, separate from approvals. A closed
+      // hold is kept; the partial index allows at most one open per factory, kind and subject.
+      `CREATE TABLE operator_hold (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('open', 'resolved', 'cleared')),
+        evidence TEXT NOT NULL,
+        raised_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        CHECK ((state = 'open') = (closed_at IS NULL))
+      ) STRICT`,
+      `CREATE UNIQUE INDEX operator_hold_one_open ON operator_hold (factory_id, kind, subject)
+       WHERE state = 'open'`,
+    ],
+  },
 ];
 
 /** Values that can be bound to a statement parameter. */
