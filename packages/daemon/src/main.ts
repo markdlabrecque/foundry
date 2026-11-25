@@ -717,7 +717,11 @@ const main = async (): Promise<void> => {
       holds: storeHoldsReader(store),
       approvals: storeApprovalsReader(store),
       approvalAnswers: createApprovalAnswers(store, plannedSlots),
-      approvalDecisions: createApprovalDecisions({ store, factories, configLoad: (factory) => loadIds.get(factory) }),
+      approvalDecisions: createApprovalDecisions({ store, factories, configLoad: (factory) => loadIds.get(factory),
+        onIntegrationQueued: () => {
+          for (const factory of decision.started) {void sync.resumeQueued(factory);}
+        },
+      }),
       tickets: createTicketService(ticketOptions),
       worktrees: createWorktreeService({ store, stateRoot, factories: () => factories.map((f) => f.factoryId),
         target: (factoryId) => {
