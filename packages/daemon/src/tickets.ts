@@ -30,6 +30,7 @@ import { interruptTicketSlot, retryTicket } from "./ticket-retry.js";
 import type { SlotInterrupter } from "./slots-error.js";
 import type { Query, Store, StoreError } from "./store.js";
 import { closeOpenHoldIn } from "./holds.js";
+import { retryIntegration } from "./integration-retry.js";
 import { reserveAssignmentSlot } from "./assignment-reservation.js";
 import { resumeFirstAfterCreate } from "./after-create-resume.js";
 import { restoreRejectionAllowance } from "./rejection-allowance.js";
@@ -121,6 +122,7 @@ export const slugify = (title: string): string => {
 };
 
 export interface TicketService {
+  readonly retryIntegration: (factory: string | undefined, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   readonly retry: (factory: string | undefined, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   /** Store-level operator action. Callers must confirm the open work before setting allowAbandon.
    * A queued resume can be reauthorized if its original slot disappears while waiting. */
@@ -135,6 +137,7 @@ export interface TicketService {
 }
 
 export interface TicketServiceOptions {
+  readonly onIntegrationQueued?: (factory: string) => void;
   readonly interrupter?: SlotInterrupter;
   readonly stateRoot: string;
   readonly store: Store;
@@ -619,5 +622,13 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
     return yield* show(factory, number);
   });
 
-  return { submit, list, show, pause, resume, retry, inspectCancellation, cancel };
+  const integrationRetry: TicketService["retryIntegration"] = (name, number) => Effect.gen(function* () {
+    const factory = (yield* loadedFactory(name)).name;
+    yield* retryIntegration(store, factory, number, options.configLoad?.(factory));
+    yield* Effect.sync(() => options.onIntegrationQueued?.(factory));
+
+    return yield* show(factory, number);
+  });
+
+  return { submit, list, show, pause, resume, retry, retryIntegration: integrationRetry, inspectCancellation, cancel };
 };

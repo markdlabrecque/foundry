@@ -192,7 +192,7 @@ export const handleTickets = async (tickets: TicketService, request: IncomingMes
   }
 
   request.resume();
-  const action = /^\/([1-9][0-9]{0,8})\/(pause|resume|retry)$/.exec(rest);
+  const action = /^\/([1-9][0-9]{0,8})\/(pause|resume|retry|integration-retry)$/.exec(rest);
 
   if (action !== null) {
     if (request.method !== "POST") {
@@ -201,6 +201,7 @@ export const handleTickets = async (tickets: TicketService, request: IncomingMes
 
     const perform = Match.value(action[2]).pipe(
       Match.when("retry", () => tickets.retry),
+      Match.when("integration-retry", () => tickets.retryIntegration),
       Match.when("resume", () => tickets.resume),
       Match.orElse(() => tickets.pause),
     );

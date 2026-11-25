@@ -15,6 +15,8 @@ import { runCloneGit } from "./factory-clone.js";
 import type { SyncTarget } from "./factory-sync.js";
 import { ticketRecord } from "./history-records.js";
 import { outcomeRoute } from "./outcome-route.js";
+import { runIntegrationSetup } from "./integration-setup.js";
+import { closeOpenHoldIn, raiseHoldIn } from "./holds.js";
 import { extendOperationIntent, recordOperationResult } from "./operations.js";
 import type { Operation, OperationDetail, OperationOutcome } from "./operations.js";
 import type { Store, StoreError } from "./store.js";
@@ -179,6 +181,15 @@ export const integrateApprovedCommit = (
 
         yield* scratchGit(["checkout", "--detach", preparedHead]);
 
+        const setup = target.config?.worktrees?.after_create;
+
+        if (setup !== undefined) {
+          const result = yield* runIntegrationSetup(store, operation, setup, path, clonePath, env);
+          recorded = { ...recorded, setup: result };
+
+          if (result.status === "failed") {return yield* new IntegrationRefused({ reason: "integration after_create failed before verification" });}
+        }
+
         if (beforeVerify !== undefined && !(yield* beforeVerify({ store, operation, path, env }))) {
           return yield* new IntegrationRefused({ reason: "integration setup failed before verification" });
         }
@@ -272,6 +283,14 @@ export const integrateApprovedCommit = (
     if (ticket === undefined || current?.stage !== ticket.stage || current.approved_commit !== ticket.approved_commit) {return false;}
 
     const complete = outcome.status === "complete";
+    const setupFailure = Schema.is(Schema.Struct({ status: Schema.Literals(["failed"]) }))(outcome.result["setup"]);
+
+    if (setupFailure) {
+      yield* closeOpenHoldIn(change, { factoryId: operation.factoryId, kind: "hook_failure", subject: String(operation.ticket) }, "resolved");
+      yield* raiseHoldIn(change, { factoryId: operation.factoryId, kind: "hook_failure", subject: String(operation.ticket),
+        evidence: Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))(outcome.result["setup"]) });
+    }
+
     const conflict = Array.isArray(outcome.result["conflictingFiles"]);
     const rejected = conflict || Schema.is(Schema.Struct({ status: Schema.Literals(["failed"]) }))(outcome.result["verification"]);
     const stages = target.config?.production_lines[ticket.production_line]?.stages ?? [];

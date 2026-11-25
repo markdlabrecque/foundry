@@ -18,7 +18,7 @@ interface HookResult {
 }
 
 /** Stream both outputs to disk, not an unbounded in-memory buffer. No shell is involved. */
-const execute = (argv: ReadonlyArray<string>, cwd: string, logPath: string, env: NodeJS.ProcessEnv, signal: AbortSignal): Promise<HookResult> =>
+export const executeAfterCreate = (argv: ReadonlyArray<string>, cwd: string, logPath: string, env: NodeJS.ProcessEnv, signal: AbortSignal): Promise<HookResult> =>
   new Promise((resolve) => {
     let fd: number | undefined;
 
@@ -65,7 +65,7 @@ export const runFirstAfterCreate = (options: {
   readonly configLoad?: string | undefined;
 }) => Effect.gen(function* () {
   const { store, operation, ticket, stage, argv, path, logPath, env } = options;
-  const result = yield* Effect.promise((signal) => execute(argv, path, logPath, env, signal));
+  const result = yield* Effect.promise((signal) => executeAfterCreate(argv, path, logPath, env, signal));
   const succeeded = result.exitStatus === 0 && result.reason === null;
 
   yield* store.change((change) => Effect.gen(function* () {
