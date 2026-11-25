@@ -1,4 +1,4 @@
-/** The Worker Host control server: serves identity, launches and inventory on the host socket. */
+/** The Worker Host control server: serves identity, launches, inventory and termination on the host socket. */
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { connect, createServer, type Socket } from "node:net";
@@ -11,15 +11,28 @@ import {
   type HostIdentity,
   type HostResponse,
 } from "./control.js";
-import { LaunchRefused, createLaunchRegistry, type LaunchRecord, type LaunchRegistry, type LaunchSpec } from "./launches.js";
+import {
+  LaunchRefused,
+  TerminateRefused,
+  createLaunchRegistry,
+  type LaunchRecord,
+  type LaunchRegistry,
+  type LaunchSpec,
+  type TerminateOptions,
+} from "./launches.js";
 import { createHostLog, createLaunchStderrStore } from "./log.js";
 
+/** Upper bound on a terminate's grace and kill wait, each; keeps client timers in range. */
+const MAX_TERMINATE_WAIT_MS = 10 * 60_000;
+
 /**
- * A launch ends unexpectedly unless it exits on its own with code 0. P0's host
- * stops nothing itself yet, so any signal or non-zero code is unexpected.
+ * A launch ends unexpectedly unless it exits on its own with code 0 or the
+ * host ended it on request (`exit.requested`). Any other signal or non-zero
+ * code is unexpected.
  */
 export function endedUnexpectedly(launch: LaunchRecord): boolean {
-  return launch.exit !== undefined && (launch.exit.signal !== null || launch.exit.code !== 0);
+  if (launch.exit === undefined || launch.exit.requested === true) return false;
+  return launch.exit.signal !== null || launch.exit.code !== 0;
 }
 
 export interface RunningHost {
@@ -64,6 +77,12 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
       const report = (): void => {
         for (const client of clients) send(client, { event: "launch-exited", launch });
       };
+      if (launch.exit?.requested === true) {
+        // A host termination is an intended stop: no stderr file, no warning.
+        log("info", "launch ended as requested", refs, exit);
+        report();
+        return;
+      }
       if (!endedUnexpectedly(launch)) {
         log("info", "launch ended", refs, exit);
         report();
@@ -162,6 +181,30 @@ async function answer(
           log("warn", "launch refused", { factoryId, slotId }, { reason: error.code });
           return { id, ok: false, error: error.message };
         }
+        throw error;
+      }
+    }
+    case "terminate": {
+      const { launchId, graceMs, killWaitMs } = request as Record<string, unknown>;
+      if (typeof launchId !== "string" || launchId === "") {
+        return { id, ok: false, error: "malformed terminate: launchId must be a non-empty string" };
+      }
+      for (const [name, value] of [["graceMs", graceMs], ["killWaitMs", killWaitMs]] as const) {
+        if (value !== undefined && !(typeof value === "number" && value >= 0 && value <= MAX_TERMINATE_WAIT_MS)) {
+          return {
+            id,
+            ok: false,
+            error: `malformed terminate: ${name} must be a number from 0 to ${MAX_TERMINATE_WAIT_MS}`,
+          };
+        }
+      }
+      const options: { -readonly [K in keyof TerminateOptions]: TerminateOptions[K] } = {};
+      if (graceMs !== undefined) options.graceMs = graceMs as number;
+      if (killWaitMs !== undefined) options.killWaitMs = killWaitMs as number;
+      try {
+        return { id, ok: true, termination: await registry.terminate(launchId, options) };
+      } catch (error) {
+        if (error instanceof TerminateRefused) return { id, ok: false, error: error.message };
         throw error;
       }
     }

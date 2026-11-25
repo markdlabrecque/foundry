@@ -4,8 +4,15 @@
  * management API, and hold both until SIGINT or SIGTERM. A clean stop closes the socket,
  * releases the lock and exits 0; a held lock or a socket in use exits 1 (PRD §11.6).
  * Once the root is claimed, diagnostics go to `logs/daemon.log` as well as stderr (PRD §15.2).
- * Factory loading and the database arrive in later tickets.
+ * The database (`foundry.db` in the state root) is opened after the log and before serving; it
+ * serves operator holds. Stop order: API close, store close, log close, lock release.
+ * Factory loading arrives in later tickets.
  */
+import { join } from "node:path";
+import { Effect, Exit, Scope } from "effect";
+import { storeHoldsReader } from "./holds.js";
+import { importStoreQuietly } from "./quiet-store.js";
+import type { Store } from "./store.js";
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
 import { isLogLevel, LOG_LEVELS, openDaemonLog, type DaemonLogger, type LogLevel } from "./log.js";
 import { ManagementSocketError, serveManagementApi, type ManagementApi } from "./management-api.js";
@@ -13,6 +20,7 @@ import { selectStateRoot } from "@foundry/protocol/state-root";
 
 const EXIT_USAGE = 2;
 const EXIT_INSTANCE_FAILURE = 1;
+const DATABASE_FILE_NAME = "foundry.db";
 
 class UsageError extends Error {}
 
@@ -79,6 +87,23 @@ const main = async (): Promise<void> => {
     return;
   }
 
+  // One store for the daemon's lifetime, closed with its scope.
+  const storeScope = Effect.runSync(Scope.make());
+  const closeStore = (): Promise<void> => Effect.runPromise(Scope.close(storeScope, Exit.void));
+  const databaseFile = join(stateRoot, DATABASE_FILE_NAME);
+  let store: Store;
+  try {
+    const { openStore } = await importStoreQuietly();
+    store = await Effect.runPromise(Scope.provide(storeScope)(openStore({ filename: databaseFile })));
+  } catch (error) {
+    log.error("database open failed", { detail: { file: databaseFile, error: (error as Error).message } });
+    await closeStore();
+    log.close();
+    claim.release();
+    fail(`cannot open the database: ${(error as Error).message}`);
+    return;
+  }
+
   // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
   // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
   let api: ManagementApi | undefined;
@@ -91,11 +116,14 @@ const main = async (): Promise<void> => {
     if (api !== undefined) finish(api);
   };
   const finish = (served: ManagementApi): void => {
-    void served.close().finally(() => {
-      log.close();
-      claim.release();
-      process.exit(0);
-    });
+    void served
+      .close()
+      .finally(closeStore)
+      .finally(() => {
+        log.close();
+        claim.release();
+        process.exit(0);
+      });
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
@@ -105,6 +133,7 @@ const main = async (): Promise<void> => {
     api = await serveManagementApi({
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
+      holds: storeHoldsReader(store),
     });
   } catch (error) {
     if (error instanceof ManagementSocketError) {
@@ -112,6 +141,7 @@ const main = async (): Promise<void> => {
     } else {
       log.error("management API failed", { detail: { error: (error as Error).message } });
     }
+    await closeStore();
     log.close();
     claim.release();
     fail(error instanceof ManagementSocketError ? error.message : `cannot serve the management API: ${(error as Error).message}`);
