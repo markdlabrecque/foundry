@@ -25,6 +25,7 @@ import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
 import { interruptRunningOperations } from "./operations.js";
 import { recoverInterruptedSyncs } from "./sync-recovery.js";
+import { startAfterCreateRecovery } from "./after-create-recovery.js";
 import { createTicketWorktrees } from "./worktrees.js";
 import { createWorktreeService } from "./worktree-cleanup.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
@@ -642,6 +643,17 @@ const main = async (): Promise<void> => {
   const stopApprovalHeads = watchApprovalHeads(approvalHeadOptions,
     (cause) => log.error("approval heads not checked", { detail: { error: messageOf(cause) } }));
 
+  // PRD §10.2 step 3: an interrupted first after_create reruns in its worktree. Its ticket stays
+  // unassignable until the rerun's own hook result is complete.
+  const stopAfterCreateRecovery = startAfterCreateRecovery({
+    store, factories: factories.filter((f) => decision.started.includes(f.factoryId)),
+    onRerun: (operation) => {
+      const refs: LogRefs = { factoryId: operation.factoryId, operationId: String(operation.id) };
+      log.info("after_create rerun", operation.ticket === null ? refs : { ...refs, ticketId: String(operation.ticket) });
+    },
+    onError: (error) => log.error("after_create recovery failed", { detail: { error: messageOf(error) } }),
+  });
+
   const stopAssignments = watchAssignments({
     store, factories, slots: plannedSlots,
     clonePath: (factoryId) => {
@@ -681,6 +693,7 @@ const main = async (): Promise<void> => {
         try {
           // Closing the connections leaves the host and its launches running (PRD §3.2).
           await stopApprovalHeads();
+          await stopAfterCreateRecovery();
           await stopAssignments?.();
           await channel?.close().catch(() => {});
           host?.close();
@@ -821,6 +834,7 @@ const main = async (): Promise<void> => {
     });
   } catch (error) {
     await stopApprovalHeads();
+    await stopAfterCreateRecovery();
     await stopAssignments();
     await channel?.close().catch(() => {});
     host?.close();

@@ -145,6 +145,8 @@ export * from "./start-refusal.js";
 
 export * from "./operations.js";
 
+export { recoverInterruptedAfterCreate, startAfterCreateRecovery, type AfterCreateRecoveryOptions } from "./after-create-recovery.js";
+
 export * from "./factory-sync.js";
 
 export * from "./sync-recovery.js";
