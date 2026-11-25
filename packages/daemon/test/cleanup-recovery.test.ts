@@ -1,5 +1,5 @@
 // Integration tier: real disposable Git, hook process and SQLite prove interrupted cleanup recovery (PRD §10.2).
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Effect } from "effect";
@@ -21,8 +21,17 @@ const BRANCH = "ticket/1-build-widget";
  * A completed ticket with a worktree, a cleanup and before_remove run recorded as running (as a
  * crashed daemon leaves them), then `interruptRunningOperations` as at startup.
  */
+type Running = (store: Store, paths: { clone: string; path: string }) => Effect.Effect<unknown, unknown>;
+
+/** The crashed daemon's records, exactly as `clean` writes them before its Git actions. */
+const cleanupWithHook: Running = (store, { clone, path }) => Effect.gen(function* () {
+  yield* beginOperation(store, { factoryId: "shop", kind: "cleanup", ticket: 1, intent: { path, branch: BRANCH, clonePath: clone, force: false } });
+  yield* beginOperation(store, { factoryId: "shop", kind: "hook", ticket: 1, intent: { hook: "before_remove", argv: [], path } });
+});
+
 const interruptedCleanup = async <A>(partial: (paths: { root: string; clone: string; path: string }) => void,
-  use: (f: { store: Store; root: string; clone: string; path: string; recover: () => ReturnType<typeof reconcileInterruptedCleanups> }) => Effect.Effect<A, unknown>) => {
+  use: (f: { store: Store; root: string; clone: string; path: string; recover: () => ReturnType<typeof reconcileInterruptedCleanups> }) => Effect.Effect<A, unknown>,
+  running: Running = cleanupWithHook) => {
   const root = mkdtempSync(join(tmpdir(), "foundry-cleanup-recovery-"));
   roots.push(root);
   makeGitSource(join(root, "source"));
@@ -72,9 +81,7 @@ production_lines:
     }));
     expect(existsSync(path)).toBe(true);
 
-    // The crashed daemon's records, exactly as `clean` writes them before its Git actions.
-    yield* beginOperation(store, { factoryId: "shop", kind: "cleanup", ticket: 1, intent: { path, branch: BRANCH, clonePath: clone.path, force: false } });
-    yield* beginOperation(store, { factoryId: "shop", kind: "hook", ticket: 1, intent: { hook: "before_remove", argv: [], path } });
+    yield* running(store, { clone: clone.path, path });
     partial({ root, clone: clone.path, path });
     expect(yield* interruptRunningOperations(store)).toHaveLength(2);
 
@@ -141,5 +148,53 @@ test("a directory-gone cleanup preserves a branch with unmerged commits and reco
     expect(yield* store.read(`SELECT worktree_path, branch FROM ticket`)).toEqual([{ worktree_path: expect.any(String), branch: BRANCH }]);
     expect(yield* listOperationsAwaitingRecovery(store, "shop")).toEqual([]);
     expect((yield* listOperations(store, "shop")).filter((o) => o.kind === "cleanup")).toMatchObject([{ status: "failed" }]);
+  }));
+});
+
+test("interrupted cleanup that died inside git worktree remove deletes the half-removed directory and completes", async () => {
+  await interruptedCleanup(({ path }) => {
+    unlinkSync(join(path, "README.md"));
+    unlinkSync(join(path, ".git"));
+  }, ({ store, root, clone, path, recover }) => Effect.gen(function* () {
+    expect(yield* recover()).toMatchObject([{ ticket: 1, outcome: "finished" }]);
+
+    expect(existsSync(path)).toBe(false);
+    expect(git(clone, ["worktree", "list", "--porcelain"])).not.toContain(path);
+    expect(git(clone, ["branch", "--list", BRANCH])).toBe("");
+    expect(hookRuns(root)).toBe(0);
+    expect(yield* store.read(`SELECT state, worktree_path, branch FROM ticket`)).toEqual([{ state: "completed", worktree_path: null, branch: null }]);
+    expect(yield* listOperationsAwaitingRecovery(store, "shop")).toEqual([]);
+    expect((yield* listOperations(store, "shop")).filter((o) => o.kind === "cleanup")).toMatchObject([{ status: "complete", result: { recovered: true } }]);
+  }));
+});
+
+test("a directory-gone cleanup whose ticket no longer records its worktree changes no Git state", async () => {
+  await interruptedCleanup(({ path }) => {rmSync(path, { recursive: true, force: true });}, ({ store, clone, path, recover }) => Effect.gen(function* () {
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET worktree_path = NULL, branch = NULL`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "forget" });
+    }));
+
+    expect(yield* recover()).toMatchObject([{ ticket: 1, outcome: "failed", reason: expect.stringContaining("no longer records") }]);
+
+    expect(git(clone, ["worktree", "list", "--porcelain"])).toContain(path);
+    expect(git(clone, ["branch", "--list", BRANCH])).not.toBe("");
+    expect((yield* listOperations(store, "shop")).filter((o) => o.kind === "cleanup")).toMatchObject([{ status: "failed" }]);
+  }));
+});
+
+test("an orphan before_remove run is closed while an interrupted after_create still awaits its own recovery", async () => {
+  await interruptedCleanup(() => {}, ({ store, recover }) => Effect.gen(function* () {
+    expect(yield* recover()).toEqual([]);
+
+    expect(yield* listOperationsAwaitingRecovery(store, "shop")).toMatchObject([
+      { kind: "hook", intent: { hook: "after_create", operation: "worktree_create" } },
+    ]);
+    expect((yield* listOperations(store, "shop")).filter((o) => o.intent["hook"] === "before_remove")).toMatchObject([
+      { status: "interrupted", result: { reason: "no interrupted cleanup to rerun it" } },
+    ]);
+  }), (store, { path }) => Effect.gen(function* () {
+    yield* beginOperation(store, { factoryId: "shop", kind: "hook", ticket: 1, intent: { hook: "after_create", operation: "worktree_create", argv: ["true"], path } });
+    yield* beginOperation(store, { factoryId: "shop", kind: "hook", ticket: 1, intent: { hook: "before_remove", argv: [], path } });
   }));
 });

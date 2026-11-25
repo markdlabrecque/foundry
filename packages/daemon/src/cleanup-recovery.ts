@@ -4,6 +4,9 @@
  *
  * - Worktree directory still present: the cleanup reruns from the start through the cleanup
  *   service, so before_remove runs again and every safety check applies again.
+ * - Worktree directory half-deleted (still present and registered, but its `.git` file is gone,
+ *   which only `git worktree remove` deletes): the removal was underway, so the daemon deletes
+ *   exactly the recorded path and finishes as below.
  * - Worktree directory already gone: the removal happened, so the daemon finishes only what the
  *   recorded intent names. It drops that worktree's stale registration, then deletes the recorded
  *   branch unless it holds commits outside the default branch and the cleanup was not forced. An
@@ -11,7 +14,8 @@
  *
  * Each interrupted operation gets a recovery result, so the factory's queue reopens.
  */
-import { lstat } from "node:fs/promises";
+import { lstat, rm } from "node:fs/promises";
+import { join } from "node:path";
 import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { Effect, Option, Result, Schema } from "effect";
 import { runCloneGit } from "./factory-clone.js";
@@ -68,19 +72,33 @@ const absent = (path: string) => Effect.tryPromise({
   catch: (cause) => new Error(`cannot inspect ${JSON.stringify(path)}: ${messageOf(cause)}`),
 });
 
+const cloneGit = (options: CleanupRecoveryOptions, intent: CleanupIntent) => (args: ReadonlyArray<string>) => Effect.tryPromise({
+  try: () => runCloneGit(["-c", "core.hooksPath=/dev/null", ...args], options.env ?? process.env, intent.clonePath),
+  catch: (cause) => new Error(messageOf(cause)),
+});
+
+/** Whether the clone still registers `path` as a linked worktree (never the clone's own checkout, listed first). */
+const registered = (options: CleanupRecoveryOptions, intent: CleanupIntent, path: string) =>
+  Effect.map(cloneGit(options, intent)(["worktree", "list", "--porcelain"]), (registrations) =>
+    registrations.split("\n\n").slice(1).some((entry) => entry.split("\n").includes(`worktree ${path}`)));
+
+/**
+ * `true` when `git worktree remove` died partway: the directory is still registered but its
+ * `.git` file, which only that removal deletes, is gone.
+ */
+const halfRemoved = (options: CleanupRecoveryOptions, intent: CleanupIntent) => Effect.gen(function* () {
+  if (!(yield* absent(join(intent.path, ".git")))) {return false;}
+
+  return yield* registered(options, intent, intent.path);
+});
+
 /** Completes a removal whose worktree directory is already gone. Fails, changing nothing further, on doubt. */
 const finishRemoval = (options: CleanupRecoveryOptions, intent: CleanupIntent, defaultBranch: string) => Effect.gen(function* () {
-  const env = options.env ?? process.env;
   const { path, branch } = intent;
-
-  const git = (args: ReadonlyArray<string>) => Effect.tryPromise({
-    try: () => runCloneGit(["-c", "core.hooksPath=/dev/null", ...args], env, intent.clonePath),
-    catch: (cause) => new Error(messageOf(cause)),
-  });
+  const git = cloneGit(options, intent);
 
   // Only the recorded worktree's registration, and only while its directory is gone.
-  const registrations = yield* git(["worktree", "list", "--porcelain"]);
-  const listed = registrations.split("\n\n").some((entry) => entry.split("\n").includes(`worktree ${path}`));
+  const listed = yield* registered(options, intent, path);
 
   if (listed) {yield* git(["worktree", "remove", "--force", "--", path]);}
 
@@ -127,7 +145,11 @@ const recoverOne = (options: CleanupRecoveryOptions, cleanup: Operation, hooks: 
 
   if (Result.isFailure(gone)) {return yield* failed(gone.failure.message);}
 
-  if (!gone.success) {
+  const half = gone.success ? Result.succeed(false) : yield* Effect.result(halfRemoved(options, intent));
+
+  if (Result.isFailure(half)) {return yield* failed(half.failure.message);}
+
+  if (!gone.success && !half.success) {
     // Present: rerun from the start. The rerun closes the interrupted records when it claims.
     const rerun = yield* Effect.result(options.worktrees.rerun(cleanup, hooks));
 
@@ -141,7 +163,28 @@ const recoverOne = (options: CleanupRecoveryOptions, cleanup: Operation, hooks: 
     return { operationId: cleanup.id, ticket: cleanup.ticket, outcome: "failed", reason: rerun.failure.message } satisfies CleanupRecovery;
   }
 
-  const finished = yield* Effect.result(finishRemoval(options, intent, target.factory.config.repository.default_branch));
+  // Before any Git or filesystem step: the ticket must still record exactly this worktree.
+  const defaultBranch = target.factory.config.repository.default_branch;
+
+  if (intent.branch === defaultBranch) {return yield* failed("recorded branch is the default branch; refusing removal");}
+
+  const [row] = cleanup.ticket === null ? [] : yield* options.store.read<{ worktree_path: string | null; branch: string | null }>(
+    `SELECT worktree_path, branch FROM ticket WHERE factory_id = ? AND number = ?`, [cleanup.factoryId, cleanup.ticket]);
+
+  if (row?.worktree_path !== intent.path || row.branch !== intent.branch) {
+    return yield* failed("ticket no longer records the interrupted cleanup's worktree");
+  }
+
+  if (half.success) {
+    const removed = yield* Effect.result(Effect.tryPromise({
+      try: () => rm(intent.path, { recursive: true, force: true }),
+      catch: (cause) => new Error(`cannot remove ${JSON.stringify(intent.path)}: ${messageOf(cause)}`),
+    }));
+
+    if (Result.isFailure(removed)) {return yield* failed(removed.failure.message);}
+  }
+
+  const finished = yield* Effect.result(finishRemoval(options, intent, defaultBranch));
 
   if (Result.isFailure(finished)) {return yield* failed(finished.failure.message);}
 
