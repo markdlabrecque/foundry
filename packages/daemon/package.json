@@ -4,12 +4,17 @@
   "private": true,
   "description": "The Foundry daemon: an Effect 4 program and the only process that opens the database.",
   "type": "module",
+  "bin": { "foundry-daemon": "./dist/main.js" },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./config": {
+      "types": "./dist/config/index.d.ts",
+      "default": "./dist/config/index.js"
     }
   },
   "files": ["dist"],
-  "dependencies": { "@effect/platform-node": "4.1.5", "@effect/sql-sqlite-node": "4.1.5", "@foundry/protocol": "0.0.0", "effect": "4.1.5" }
+  "dependencies": { "@effect/platform-node": "4.1.5", "@effect/sql-sqlite-node": "4.1.5", "@foundry/protocol": "0.0.0", "effect": "4.1.5", "ignore": "7.0.8", "yaml": "2.9.0" }
 }

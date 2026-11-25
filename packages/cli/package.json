@@ -8,8 +8,13 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
+    },
+    "./validate": {
+      "types": "./dist/validate.d.ts",
+      "default": "./dist/validate.js"
     }
   },
+  "bin": { "foundry": "./dist/main.js" },
   "files": ["dist"],
-  "dependencies": { "@effect/platform-node": "4.1.5", "effect": "4.1.5" }
+  "dependencies": { "@effect/platform-node": "4.1.5", "@foundry/daemon": "0.0.0", "effect": "4.1.5" }
 }
