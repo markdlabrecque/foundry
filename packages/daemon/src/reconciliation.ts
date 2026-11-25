@@ -6,18 +6,22 @@ import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
 import type { Store } from "./store.js";
 import { acknowledgeMessage } from "./message-delivery.js";
 import { actionableMessage } from "./message-obligations.js";
-import { releaseResumeReplacement } from "./resume-notice.js";
+import { composeResumeNotice, releaseResumeReplacement } from "./resume-notice.js";
 import { decideMessageRetry } from "./message-retry.js";
 import type { RetryDecision, RetryEvidence } from "./message-retry.js";
 import { acknowledgePrime } from "./priming.js";
 
 export interface ReconciliationResult {
+  /** Work already delivered before this connection began reconciliation, if any. */
+  readonly interruptedAssignmentId?: string;
   readonly history: ReadonlyArray<string>;
   readonly pending: ReadonlyArray<string>;
   readonly absent: ReadonlyArray<string>;
 }
 
 class RetryUnchanged extends Data.TaggedError("RetryUnchanged")<{ readonly decision: RetryDecision }> {}
+
+class RecoveryNoticeUnchanged extends Data.TaggedError("RecoveryNoticeUnchanged") {}
 
 interface MutableResult {
   history: Array<string>;
@@ -42,6 +46,15 @@ export const createReconciler = (store: Store) => {
         ended = true;
         rejectClosed?.(new Error("channel ended during reconciliation"));
       });
+
+      // Pin the work being recovered before any asynchronous history/priming exchange.
+      // Undelivered assignment context is ordinary new work, not an interruption.
+      const [interrupted] = await Effect.runPromise(store.read<{ id: string }>(
+        `SELECT a.id FROM assignment a JOIN message m ON m.id = a.context_message
+         WHERE a.factory_id = ? AND a.slot_id = ? AND a.status = 'active'
+           AND (m.status = 'acknowledged' OR EXISTS (SELECT 1 FROM message_attempt ma WHERE ma.message_id = m.id))`,
+        [slot.factoryId, slot.slotId],
+      ));
 
       const rows = await Effect.runPromise(store.read<{ id: string }>(
         `SELECT m.id FROM message m WHERE m.factory_id = ? AND m.bound_slot = ? AND m.status = 'sent'
@@ -158,7 +171,59 @@ export const createReconciler = (store: Store) => {
 
       for (const [id, status] of statuses) {result[status].push(id);}
 
-      return result;
+      return interrupted === undefined ? result : { ...result, interruptedAssignmentId: interrupted.id };
+    },
+    /** After successful priming, take a fresh lifecycle snapshot. A prime never starts a
+     * turn; only an idle worker still holding active work needs a continuation notice.
+     * Do not wait for a working worker to settle: its accepted outcome must stand. */
+    async resumeAssignment(slot: ClaimedSlot, connection: AcceptedConnection, assignmentId: string | undefined): Promise<string | null> {
+      if (assignmentId === undefined) {return null;}
+
+      const requestId = randomUUID();
+      let ended = false;
+      let rejectClosed: ((cause: Error) => void) | undefined;
+      void connection.closed?.then(() => {
+        ended = true;
+        rejectClosed?.(new Error("channel ended during recovery notice comparison"));
+      });
+
+      const answer = new Promise<ReconciliationAnswer>((resolve, reject) => {
+        rejectClosed = reject;
+        waiting.set(requestId, { slot, ids: new Set(), resolve });
+      });
+
+      void answer.catch(() => {});
+
+      try {
+        await connection.send({ type: "reconcile", requestId, ids: [] });
+        const response = await answer;
+
+        if (ended || response.lifecycle !== "idle") {return null;}
+
+        return await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+          // Read and compose in one transaction, not from a pre-reconciliation assignment
+          // snapshot. In particular, a committed task_transition must never be revived.
+          const [assignment] = yield* change.query<{
+            id: string; ticket_number: number; stage: string; station: string;
+          }>(`SELECT a.id, a.ticket_number, a.stage, s.station FROM assignment a
+            JOIN slot s ON s.factory_id = a.factory_id AND s.slot_id = a.slot_id
+            JOIN ticket t ON t.factory_id = a.factory_id AND t.number = a.ticket_number
+            WHERE a.factory_id = ? AND a.slot_id = ? AND a.id = ? AND a.status = 'active'
+              AND s.current_launch = ? AND s.condition = 'normal'
+              AND t.state = 'stage' AND t.status = 'assigned' AND t.stage = a.stage`,
+          [slot.factoryId, slot.slotId, assignmentId, slot.launchId]);
+
+          if (ended || assignment === undefined) {return yield* new RecoveryNoticeUnchanged();}
+
+          return yield* composeResumeNotice(change, {
+            assignmentId: assignment.id, factoryId: slot.factoryId, ticket: assignment.ticket_number,
+            stage: assignment.stage, slotId: slot.slotId, recipient: assignment.station,
+          });
+        })).pipe(Effect.catchTag("RecoveryNoticeUnchanged", () => Effect.succeed(null))));
+      } finally {
+        waiting.delete(requestId);
+        rejectClosed = undefined;
+      }
     },
     /** Ignore unsolicited, stale, cross-slot, partial and duplicate-ID answers. */
     receive(slot: ClaimedSlot, answer: ReconciliationAnswer): void {
