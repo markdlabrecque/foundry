@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Schema } from "effect";
 import {
-  acceptMessage, assignedSlot, assignmentContextSlot, assignmentTicket, bindStationMessages, createAssignmentScheduler, createTicketService,
+  acceptMessage, agentMessageHandler, agentRequestHandler, assignedSlot, assignmentContextSlot, assignmentTicket, bindStationMessages, createAssignmentScheduler, createTicketService,
   openStore, planSlots, StoreError, ticketFactoryFrom, watchAssignments,
 } from "@foundry/daemon";
 import type { Change, Store } from "@foundry/daemon";
@@ -170,6 +170,26 @@ test("routing uses current assignment preference but pins each context to its or
     expect(yield* store.read(`SELECT ticket_number, bound_slot FROM message ORDER BY sequence`)).toEqual([
       { ticket_number: 1, bound_slot: "worker/1" }, { ticket_number: 2, bound_slot: "worker/2" },
       { ticket_number: 3, bound_slot: "worker/2" }, { ticket_number: 3, bound_slot: "worker/2" },
+    ]);
+  }));
+});
+
+test("ordinary messages and request notices inherit the real active assignment, not caller ticket fields", async () => {
+  await fixture((store) => Effect.gen(function* () {
+    yield* createAssignmentScheduler(options(store)).schedule();
+
+    const call = {
+      factoryId: "shop", slotId: "worker/2", launchId: "launch", callId: "call", tool: "agent_message",
+      args: { recipient: "floor.worker", body: "question", timeoutMs: 1000, ticket: 999 },
+    };
+
+    yield* store.change((change) => agentMessageHandler(slots, { assignmentTicket })(change, call));
+    yield* store.change((change) => agentRequestHandler(slots, { assignmentTicket })(change, { ...call, tool: "agent_request" }));
+    expect(yield* store.read(`SELECT ticket_number, kind FROM message WHERE sender_slot = 'worker/2' ORDER BY sequence`)).toEqual([
+      { ticket_number: 2, kind: "ordinary" }, { ticket_number: 2, kind: "request_notice" },
+    ]);
+    expect(yield* store.read(`SELECT ticket_number, requester_slot FROM agent_request`)).toEqual([
+      { ticket_number: 2, requester_slot: "worker/2" },
     ]);
   }));
 });

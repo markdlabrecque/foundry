@@ -10,13 +10,14 @@ export const PI_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
 export const AGENT_DISCOVER = "agent_discover";
 export const AGENT_STATUS = "agent_status";
 export const AGENT_MESSAGE = "agent_message";
+export const AGENT_REQUEST = "agent_request";
 
 /** The eight P0 agent tools reserved for the Foundry extension (PRD §6.1). */
 export const AGENT_TOOLS = [
   AGENT_DISCOVER,
   AGENT_STATUS,
   AGENT_MESSAGE,
-  "agent_request",
+  AGENT_REQUEST,
   "agent_reply",
   "agent_delegate",
   "task_transition",
@@ -28,7 +29,7 @@ export const AGENT_TOOLS = [
  * expects only these from the Foundry extension, so a worker is not frozen for agent tools no
  * build can offer yet. Add each tool here when the extension and daemon can serve it.
  */
-export const REGISTERED_AGENT_TOOLS: ReadonlyArray<string> = [AGENT_DISCOVER, AGENT_STATUS, AGENT_MESSAGE];
+export const REGISTERED_AGENT_TOOLS: ReadonlyArray<string> = [AGENT_DISCOVER, AGENT_STATUS, AGENT_MESSAGE, AGENT_REQUEST];
 
 /** How the extension reports a Pi built-in's source: `builtin:<name>` (Pi's own attribution). */
 export const builtinToolSource = (name: string): string => `builtin:${name}`;
