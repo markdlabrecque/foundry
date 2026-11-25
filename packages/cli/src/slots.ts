@@ -1,13 +1,22 @@
 /**
- * `foundry slot list | show <station/ordinal>` (PRD §11.1–§11.2): one `GET` each over the
- * management socket. Parsing the command line belongs to `main.ts`; this module takes parsed
+ * `foundry slot list | show | interrupt <station/ordinal>` (PRD §11.1–§11.3): one call each over
+ * the management socket. Parsing the command line belongs to `main.ts`; this module takes parsed
  * options and returns what to print and the exit code (PRD §11.5).
  */
 import { selectStateRoot } from "@foundry/protocol/state-root";
 import { messageOf } from "@foundry/protocol/errors";
-import { isSlotListResult, isSlotShowResult, parseSlotId, slotPath, slotsPath } from "@foundry/protocol/slots-api";
-import type { SlotLaunch, SlotListResult, SlotShowResult, SlotSummary } from "@foundry/protocol/slots-api";
-import { DaemonUnreachableError, getFromDaemon } from "./management-client.js";
+import {
+  isSlotInterruptResult,
+  isSlotListResult,
+  isSlotShowResult,
+  parseSlotId,
+  slotInterruptPath,
+  slotPath,
+  slotsPath,
+} from "@foundry/protocol/slots-api";
+import type { SlotInterruptResult, SlotLaunch, SlotListResult, SlotShowResult, SlotSummary } from "@foundry/protocol/slots-api";
+import { DaemonUnreachableError, getFromDaemon, postToDaemon } from "./management-client.js";
+import type { ApiReply } from "./management-client.js";
 import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, EXIT_USAGE } from "./status.js";
 import type { StatusOutcome } from "./status.js";
 
@@ -69,12 +78,21 @@ const renderShow = ({ slot, launches }: SlotShowResult): string => {
   return `${lines.join("\n")}\n`;
 };
 
-/** Fetches `path` and renders its result once `is` confirms the shape the daemon answered with. */
+const renderInterrupt = ({ launchId, outcome, slot }: SlotInterruptResult): string =>
+  outcome === "aborted"
+    ? `slot ${slot.slotId}: run aborted; launch ${launchId} and its conversation kept\n`
+    : `slot ${slot.slotId}: no run was active; launch ${launchId} and its conversation kept\n`;
+
+/** The daemon waits up to 30 s for the worker's acknowledgement; allow for that plus the call. */
+const INTERRUPT_TIMEOUT_MS = 35_000;
+
+/** Calls the daemon and renders its result once `is` confirms the shape the daemon answered with. */
 const fetchAndRender = async <A>(
   options: SlotOptions,
   path: string,
   is: (value: unknown) => value is A,
   render: (result: A) => string,
+  call: (stateRoot: string, path: string) => Promise<ApiReply> = getFromDaemon,
 ): Promise<SlotOutcome> => {
   if (options.home === "") {return usage("--home needs a directory");}
 
@@ -84,7 +102,7 @@ const fetchAndRender = async <A>(
   let reply;
 
   try {
-    reply = await getFromDaemon(stateRoot, path);
+    reply = await call(stateRoot, path);
   } catch (error) {
     if (error instanceof DaemonUnreachableError) {
       return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
@@ -119,4 +137,19 @@ export const runSlotShow = async (options: SlotOptions & { readonly slot: string
   }
 
   return fetchAndRender(options, slotPath(options.slot, options.factory), isSlotShowResult, renderShow);
+};
+
+/** `foundry slot interrupt <station/ordinal>`: abort the worker's current run, keeping its launch. */
+export const runSlotInterrupt = async (options: SlotOptions & { readonly slot: string }): Promise<SlotOutcome> => {
+  if (parseSlotId(options.slot) === undefined) {
+    return usage(`a slot is addressed as station/ordinal, not ${JSON.stringify(options.slot)}`);
+  }
+
+  return fetchAndRender(
+    options,
+    slotInterruptPath(options.slot, options.factory),
+    isSlotInterruptResult,
+    renderInterrupt,
+    (stateRoot, path) => postToDaemon(stateRoot, path, {}, { timeoutMs: INTERRUPT_TIMEOUT_MS }),
+  );
 };
