@@ -1,5 +1,5 @@
 // Integration tier: real disposable SQLite proves capacity constraints and atomic durable context.
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
@@ -204,6 +204,42 @@ test("routing uses current assignment preference but pins each context to its or
   }));
 });
 
+test("non-isolated assignments use factory context and repository messages stay pinned after the assignment ends", async () => {
+  await fixture((store, root) => Effect.gen(function* () {
+    const clone = join(root, "clone");
+    const branch = join(root, "branch");
+    mkdirSync(clone);
+    mkdirSync(branch);
+    writeFileSync(join(clone, "AGENTS.md"), "Factory default context");
+    writeFileSync(join(branch, "AGENTS.md"), "Wrong branch context");
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET worktree_path = ?`, [branch]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "worktree" });
+    }));
+    yield* createAssignmentScheduler({ ...options(store), clonePath: () => clone }).schedule();
+
+    const contexts = yield* store.read<{ message_id: string; slot_id: string; body: string }>(
+      `SELECT r.message_id, r.slot_id, m.body FROM repository_context r JOIN message m ON m.id = r.message_id ORDER BY m.sequence`,
+    );
+
+    expect(contexts).toHaveLength(2);
+
+    for (const context of contexts) {
+      expect(context.body).toContain("Factory default context");
+      expect(context.body).not.toContain("Wrong branch context");
+    }
+
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1`);
+      yield* change.query(`UPDATE slot SET condition = 'frozen' WHERE ordinal = 2`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "end and freeze" });
+    }));
+    const bindings = yield* bindStationMessages({ store, slots, contextSlot: assignmentContextSlot });
+    expect(bindings).toEqual(expect.arrayContaining([expect.objectContaining({ id: contexts[0]?.message_id, slotId: "worker/1" })]));
+    expect(bindings).not.toEqual(expect.arrayContaining([expect.objectContaining({ id: contexts[1]?.message_id })]));
+  }));
+});
+
 test("ordinary messages and request notices inherit the real active assignment, not caller ticket fields", async () => {
   await fixture((store) => Effect.gen(function* () {
     yield* createAssignmentScheduler(options(store)).schedule();
@@ -225,16 +261,18 @@ test("ordinary messages and request notices inherit the real active assignment, 
 });
 
 test("failure after all assignment effects rolls back ticket, transition, assignment, context and history", async () => {
-  await fixture((store) => Effect.gen(function* () {
+  await fixture((store, root) => Effect.gen(function* () {
+    writeFileSync(join(root, "AGENTS.md"), "Atomic context");
     const before = yield* snapshot(store);
 
     const failing: Store = { ...store, change: (body) => store.change((change) =>
       Effect.flatMap(body(change), () => Effect.fail(new StoreError({ reason: "Sql", message: "commit failure" })))),
     };
 
-    const exit = yield* Effect.exit(createAssignmentScheduler(options(failing)).schedule());
+    const exit = yield* Effect.exit(createAssignmentScheduler({ ...options(failing), clonePath: () => root }).schedule());
     expect(exit).toMatchObject(Exit.fail({ reason: "Sql" }));
     expect(yield* snapshot(store)).toEqual(before);
+    expect(yield* store.read(`SELECT * FROM repository_context`)).toEqual([]);
     expect(yield* createAssignmentScheduler(options(store)).schedule()).toHaveLength(2);
   }));
 });
