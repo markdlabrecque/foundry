@@ -224,3 +224,5 @@ export {
   type ToolSetGuardOptions,
   type ToolSetRecheckOptions,
 } from "./tool-set-check.js";
+
+export * from "./reconciliation.js";

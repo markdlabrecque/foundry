@@ -12,13 +12,13 @@ const unchanged = Symbol("unchanged");
 
 /** A receipt can acknowledge only an attempt made to this authenticated launch and slot.
  * Duplicates, unsent IDs and cross-slot receipts are inert. */
-export const acknowledgeMessage = (store: Store, slot: ClaimedSlot, id: string): Effect.Effect<boolean, StoreError> =>
+export const acknowledgeMessage = (store: Store, slot: ClaimedSlot, id: string, reconciledHistory = false): Effect.Effect<boolean, StoreError> =>
   store.change((change) => Effect.gen(function* () {
     const rows = yield* change.query<{ id: string }>(
       `SELECT a.id FROM message_attempt a JOIN message m ON m.id = a.message_id
        WHERE m.id = ? AND m.factory_id = ? AND m.bound_slot = ? AND m.status = 'sent'
-         AND a.launch_id = ? AND a.slot_id = ? ORDER BY a.sent_at DESC LIMIT 1`,
-      [id, slot.factoryId, slot.slotId, slot.launchId, slot.slotId],
+         AND (a.launch_id = ? OR ? = 1) AND a.slot_id = ? ORDER BY a.sent_at DESC LIMIT 1`,
+      [id, slot.factoryId, slot.slotId, slot.launchId, reconciledHistory ? 1 : 0, slot.slotId],
     );
 
     const attempt = rows[0];
