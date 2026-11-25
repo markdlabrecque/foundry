@@ -1,6 +1,6 @@
 // Integration tier: disposable SQLite proves ownership, atomic submissions and a durable queue.
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
@@ -1510,7 +1510,7 @@ exit "$status"
   })));
 });
 
-test.each(["retry", "unchecked", "cancel", "spawn-error"] as const)("integration after_create failure and %s preserve the approval", async (mode) => {
+test.each(["retry", "unchecked", "cancel", "spawn-error", "log-error", "atomic-failure"] as const)("integration after_create failure and %s preserve the approval", async (mode) => {
   await gateFixture(true, true, (store, id, root, _head, gatedConfig) => Effect.gen(function* () {
     const repository = join(root, "repository");
     const ticketPath = join(root, "worktree");
@@ -1560,19 +1560,52 @@ test.each(["retry", "unchecked", "cancel", "spawn-error"] as const)("integration
 
     let queueError: unknown;
 
-    const queue = createFactorySyncer({ store, env: isolatedGitEnv(),
+    // Fail the transaction that would commit integration failure, after its writes.
+    const faulting: Store = { ...store, change: (body) => store.change((change) => Effect.gen(function* () {
+      const result = yield* body(change);
+      const failed = yield* change.query(`SELECT id FROM operation WHERE kind = 'integration' AND status = 'failed'`);
+
+      if (failed.length > 0) {return yield* Effect.fail(new StoreError({ reason: "Sql", message: "injected integration result failure" }));}
+
+      return result;
+    })) };
+
+    const queue = createFactorySyncer({ store: mode === "atomic-failure" ? faulting : store, env: isolatedGitEnv(),
       target: () => ({ clonePath: repository, defaultBranch: "main", config: integrationConfig }),
       onError: (_factory, cause) => { queueError = cause; } });
 
-    yield* Effect.promise(() => queue.resumeQueued("shop"));
+    if (mode === "log-error") {chmodSync(root, 0o555);}
+
+    try {yield* Effect.promise(() => queue.resumeQueued("shop"));}
+    finally {chmodSync(root, 0o755);}
+
     const operations = yield* listOperations(store, "shop");
+
+    if (mode === "atomic-failure") {
+      expect(queueError).toBeDefined();
+      expect(operations).toMatchObject([{ kind: "integration", status: "running", result: null }, { kind: "hook", status: "running", result: null }]);
+      expect(yield* store.read(`SELECT status FROM ticket`)).toEqual([{ status: "awaiting_approval" }]);
+      expect(yield* store.read(`SELECT * FROM operator_hold`)).toEqual([]);
+      expect(yield* store.read(`SELECT * FROM approval`)).toEqual(approvals);
+      expect(git(repository, "rev-parse", "main")).toBe(previous);
+
+      return;
+    }
+
     expect(operations).toMatchObject([{ kind: "integration", status: "failed", result: { setup: { status: "failed" } } },
       { kind: "hook", status: "failed", intent: { hook: "after_create", operation: "integration", integrationOperationId: operations[0]?.id } }]);
     const hook = expectDefined(operations[1], "hook");
     const evidence = Schema.decodeUnknownSync(Schema.Struct({ logPath: Schema.String, path: Schema.String }))(hook.intent);
     expect(existsSync(evidence.path)).toBe(false);
-    expect(existsSync(evidence.logPath)).toBe(true);
-    expect(readFileSync(evidence.logPath, "utf8")).toContain(mode === "spawn-error" ? "ENOENT" : "integration setup log");
+
+    if (mode === "log-error") {
+      expect(existsSync(evidence.logPath)).toBe(false);
+      expect(hook.result).toMatchObject({ reason: expect.stringContaining("EACCES"), logPath: evidence.logPath });
+    } else {
+      expect(existsSync(evidence.logPath)).toBe(true);
+      expect(readFileSync(evidence.logPath, "utf8")).toContain(mode === "spawn-error" ? "ENOENT" : "integration setup log");
+    }
+
     expect(existsSync(verified)).toBe(false);
     expect(yield* store.read(`SELECT state, status, rejections FROM ticket`)).toEqual([{ state: "stage", status: "paused", rejections: 0 }]);
     expect(yield* store.read(`SELECT * FROM approval`)).toEqual(approvals);
@@ -1589,7 +1622,7 @@ test.each(["retry", "unchecked", "cancel", "spawn-error"] as const)("integration
     yield* store.change((change) => recordOperationResult(change, queued.id, { status: "complete", result: {} }));
     const service = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(gatedConfig)] });
 
-    if (mode === "cancel" || mode === "spawn-error") {
+    if (mode === "cancel" || mode === "spawn-error" || mode === "log-error") {
       const inspection = yield* service.inspectCancellation("shop", 1);
       yield* service.cancel("shop", 1, inspection.confirmation);
       expect(yield* store.read(`SELECT state FROM ticket`)).toEqual([{ state: "cancelled" }]);

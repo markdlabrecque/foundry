@@ -9,7 +9,7 @@ import { closeSync, existsSync, mkdirSync, mkdtempSync, openSync, rmSync, unlink
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { ticketApprovalLock } from "./approval-coordination.js";
-import { Clock, Data, Effect, Schema } from "effect";
+import { Clock, Data, Effect, Option, Schema } from "effect";
 import { expectDefined, messageOf } from "@foundry/protocol/errors";
 import { runCloneGit } from "./factory-clone.js";
 import type { SyncTarget } from "./factory-sync.js";
@@ -274,6 +274,12 @@ export const integrateApprovedCommit = (
   // deliberately left pending with worktree/branch metadata intact for the cleanup service.
   return yield* store.change((change) => Effect.gen(function* () {
     yield* recordOperationResult(change, operation.id, outcome);
+    const failedSetup = Schema.decodeUnknownOption(Schema.Struct({ status: Schema.Literals(["failed"]), operationId: Schema.Number }))(outcome.result["setup"]);
+
+    if (Option.isSome(failedSetup)) {
+      yield* recordOperationResult(change, failedSetup.value.operationId, { status: "failed",
+        result: Schema.decodeUnknownSync(Schema.Record(Schema.String, Schema.Json))(outcome.result["setup"]) });
+    }
 
     const [current] = yield* change.query<{ stage: string; approved_commit: string }>(`SELECT t.stage, i.approved_commit FROM ticket t
       JOIN integration_intent i ON i.factory_id = t.factory_id AND i.ticket_number = t.number
