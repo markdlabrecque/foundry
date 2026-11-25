@@ -323,6 +323,7 @@ export interface Primer {
    * one `compaction` prime on the launch's latest primed connection, ahead of
    * every work frame not yet written. Work frames sent from this call on wait
    * until the prime is written or the attempt ends. No new launch is started.
+   * Rejects, like `prime().outcome`, if composing or recording fails.
    */
   compacted(slot: ClaimedSlot): Promise<CompactionPrimingOutcome>;
 }

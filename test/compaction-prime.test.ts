@@ -97,8 +97,12 @@ const signal = <A = void>() => {
   return { promise, resolve };
 };
 
-/** Bounded, so a missing step fails on the assertions below rather than a vitest timeout. */
-const within = (promise: Promise<unknown>) => Promise.race([promise, new Promise<void>((r) => setTimeout(r, 2_000).unref())]);
+/** Bounded, so a missing step fails naming the step rather than as a vitest timeout. */
+const within = <A>(step: string, promise: Promise<A>): Promise<A> =>
+  Promise.race([
+    promise,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error(`timed out waiting for ${step}`)), 2_000).unref()),
+  ]);
 
 const conversationPrimes = () => Effect.runPromise(primesForConversation(store, "f1", "builder-1", "conv-1"));
 
@@ -180,25 +184,25 @@ test("a compaction prime reaches the same launch's conversation at the next tool
   const reporter = new CompactionReporter();
   reporter.attach(opened.channel);
 
-  await within(deliveredCount(1)); // the fresh prime
+  await within("the fresh prime", deliveredCount(1));
   const [primed] = accepted;
   expect(await primed!.outcome).toEqual({ _tag: "Sent", primeId: "prime-1" });
 
+  const sessionId = session.sessionManager.getSessionId();
   // A run is mid-tool-round when Pi compacts.
   const run = session.prompt(`@@ ${GATE_TOOL} {}`);
-  await within(toolRunning.promise);
+  await within("the tool round", toolRunning.promise);
   reporter.record();
-  await within(compaction.promise);
-  const { outcome: compacted } = await compaction.promise;
-  await within(composing.promise);
+  const { outcome: compacted } = await within("the compacted report", compaction.promise);
+  await within("compaction prime composition", composing.promise);
 
   // Work sent while the compaction prime is being prepared is held behind it.
   // (A prime frame stands in for a message, which arrives in later tickets.)
   const work = primed!.connection.send({ type: "prime", id: "work-1", text: "Held work." });
   releaseCompose.resolve();
-  expect(await compacted).toEqual({ _tag: "Sent", primeId: "prime-2" });
-  await work;
-  await within(deliveredCount(3));
+  expect(await within("the compaction prime outcome", compacted)).toEqual({ _tag: "Sent", primeId: "prime-2" });
+  await within("the held work write", work);
+  await within("delivery of both frames", deliveredCount(3));
 
   // Both arrived while Pi was still inside the tool round; nothing is in the conversation yet.
   expect(session.isStreaming).toBe(true);
@@ -218,6 +222,7 @@ test("a compaction prime reaches the same launch's conversation at the next tool
   expect(entries).toEqual(["foundry:prime-1", "user", "assistant", "toolResult", "foundry:prime-2", "foundry:work-1", "assistant"]);
 
   // The launch identity is unchanged: one connection, never lost, and both primes on the same launch and conversation.
+  expect(session.sessionManager.getSessionId()).toBe(sessionId);
   expect(accepted).toHaveLength(1);
   expect(lost).toEqual([]);
   expect((await conversationPrimes()).map((p) => [p.id, p.situation, p.launchId, p.conversationRef])).toEqual([
