@@ -20,6 +20,7 @@ import { CompactionReporter } from "./compaction.js";
 import { createConversationAdapter } from "./conversation/adapter.js";
 import { interruptRuns, RunInterrupter } from "./interrupt.js";
 import { deliverMessages, MessageReceiver } from "./messages.js";
+import { InjectionReporter } from "./injections.js";
 import { ReceiptReporter, receiveDaemonFrames } from "./priming.js";
 import { ToolCallClient } from "./tool-calls.js";
 import { registeredToolSet } from "./tool-set.js";
@@ -72,8 +73,14 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   const interrupter = new RunInterrupter();
   interruptRuns(pi, interrupter);
   const receipts = new ReceiptReporter();
-  const adapter = createConversationAdapter(pi, { onReceipt: receipts.record });
-  const messages = new MessageReceiver(adapter);
+  const injections = new InjectionReporter();
+
+  const adapter = createConversationAdapter(pi, { onReceipt: (id) => {
+    injections.forget(id);
+    receipts.record(id);
+  } });
+
+  const messages = new MessageReceiver(adapter, injections.record);
   deliverMessages(pi, messages);
   const compactions = new CompactionReporter();
   pi.on("session_compact", () => compactions.record());
@@ -265,6 +272,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
       }
 
       channel = opened.channel;
+      injections.attach(opened.channel);
       receipts.attach(opened.channel);
       compactions.attach(opened.channel);
       toolCalls.attach(opened.channel);
