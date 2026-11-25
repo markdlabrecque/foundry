@@ -23,6 +23,7 @@ export {
 export * from "./store.js";
 export * from "./tickets.js";
 export * from "./prime.js";
+export * from "./priming.js";
 export {
   DAEMON_LOG_KEEP_FILES,
   DAEMON_LOG_MAX_BYTES,
