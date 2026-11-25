@@ -20,6 +20,7 @@ import {
   encodeFrame,
   FrameLineSplitter,
   PROTOCOL_VERSION,
+  type DaemonFrame,
   type Hello,
   type HelloRejectReason,
   type InterruptOutcome,
@@ -56,13 +57,19 @@ const realTimer: LapseTimer = (ms, onLapse) => {
 /** Why an accepted channel ended. Neither cause says anything about the worker process. */
 export type ChannelLostCause = "heartbeat_lapse" | "peer_closed" | "protocol_error" | "server_closed";
 
+/** Writes daemon frames to one accepted connection, in call order. */
+export interface AcceptedConnection {
+  /** Resolves once written to the socket; rejects if the connection has ended. */
+  send(frame: DaemonFrame): Promise<void>;
+}
+
 export interface ChannelEvents {
   /**
    * An authenticated frame from an accepted connection, attributed to its claimed
    * slot. Includes `interrupt_ack`, after it has settled the matching `interrupt()` call.
    */
   onFrame?(slot: ClaimedSlot, frame: WorkerFrame): void;
-  onAccepted?(slot: ClaimedSlot, hello: Hello): void;
+  onAccepted?(slot: ClaimedSlot, hello: Hello, connection: AcceptedConnection): void;
   onRejected?(reason: HelloRejectReason): void;
   onChannelLost?(slot: ClaimedSlot, cause: ChannelLostCause): void;
 }
@@ -107,7 +114,8 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
 
   /** Accepted channels by launch, with interrupts awaiting their ack. */
   interface Accepted {
-    readonly socket: Socket;
+    /** The one writer for this connection; `interrupt()` and the primer both write through it. */
+    readonly connection: AcceptedConnection;
     readonly pending: Map<string, { resolve: (o: InterruptOutcome) => void; reject: (e: Error) => void }>;
   }
   const byLaunch = new Map<string, Accepted>();
@@ -170,11 +178,20 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
       if (!result.accepted) return reject(result.reason);
       slot = result.slot;
       state = "accepted";
-      accepted = { socket, pending: new Map() };
+      const connection: AcceptedConnection = {
+        send: (frame) =>
+          new Promise<void>((done, failed) => {
+            if (state !== "accepted" || socket.destroyed || !socket.writable) {
+              return failed(new Error("channel connection has ended"));
+            }
+            socket.write(encodeFrame(frame), (error) => (error ? failed(error) : done()));
+          }),
+      };
+      accepted = { connection, pending: new Map() };
       byLaunch.set(slot.launchId, accepted);
       socket.write(encodeFrame({ type: "hello_accepted", protocolVersion: PROTOCOL_VERSION }));
       armLapse();
-      options.onAccepted?.(slot, decoded.value);
+      options.onAccepted?.(slot, decoded.value, connection);
     };
 
     // Lines are handled strictly in order; nothing after the hello is read until the claim settles.
@@ -228,7 +245,12 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         if (!channel) return reject(new ChannelUnavailableError(launchId, "is not connected"));
         const requestId = randomUUID();
         channel.pending.set(requestId, { resolve, reject });
-        channel.socket.write(encodeFrame({ type: "interrupt", requestId }));
+        // Written straight to the connection, not through the primer's queue: an
+        // interrupt is a control frame, outside §5.5's prime-before-messages ordering.
+        channel.connection.send({ type: "interrupt", requestId }).catch((error: unknown) => {
+          channel.pending.delete(requestId);
+          reject(new ChannelUnavailableError(launchId, `could not be written to (${String(error)})`));
+        });
       }),
     close: async () => {
       closing = true;
