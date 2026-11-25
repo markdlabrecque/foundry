@@ -10,9 +10,8 @@
  * beside them. Every change runs through `Store.change`, which commits the
  * state writes and their history rows in one transaction, or neither.
  */
-import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
+import { SqliteClient, SqliteMigrator } from "@effect/sql-sqlite-node";
 import { expectDefined } from "@foundry/protocol/errors";
-import * as SqliteMigrator from "@effect/sql-sqlite-node/SqliteMigrator";
 import { Clock, Data, Effect } from "effect";
 import type { Scope } from "effect";
 import { Reactivity } from "effect/reactivity";
@@ -236,7 +235,7 @@ export interface HistoryEntry {
 export * from "./history-records.js";
 
 /** Runs one statement and returns its rows (empty for writes without `RETURNING`). */
-export type Query = <Row extends object = Record<string, unknown>>(
+export type Query = <Row extends object = object>(
   statement: string,
   params?: ReadonlyArray<SqlValue>,
 ) => Effect.Effect<ReadonlyArray<Row>, StoreError>;
@@ -288,8 +287,8 @@ const describe = (cause: unknown): string =>
 
 const makeQuery =
   (sql: SqlClient.SqlClient): Query =>
-  (statement, params = []) =>
-    sql.unsafe(statement, params).pipe(Effect.mapError(sqlFailure("Sql", "Statement failed"))) as never;
+  <Row extends object = object>(statement: string, params: ReadonlyArray<SqlValue> = []) =>
+    sql.unsafe<Row>(statement, params).pipe(Effect.mapError(sqlFailure("Sql", "Statement failed")));
 
 /**
  * Opens the store for the lifetime of the enclosing scope: opens the file in
@@ -336,7 +335,7 @@ export const openStore = (
 
     const commitListeners = new Set<() => void>();
 
-    const change: Store["change"] = (body) =>
+    const change = <A, E, R>(body: (change: Change) => Effect.Effect<A, E, R>): Effect.Effect<A, E | StoreError, R> =>
       Effect.gen(function* () {
         let historyRows = 0;
 
@@ -390,7 +389,7 @@ export const openStore = (
             }
           }),
         ),
-      ) as never;
+      );
 
     return {
       filename: options.filename,

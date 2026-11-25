@@ -1,6 +1,5 @@
-import { Data, Predicate, Schema, SchemaIssue } from "effect";
-import * as Result from "effect/Result";
-import { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } from "yaml";
+import { Data, Predicate, Result, Schema, SchemaIssue } from "effect";
+import { isAlias, isMap, isNode, isScalar, isSeq, LineCounter, parseDocument } from "yaml";
 import type { Document, Node as YamlNode } from "yaml";
 import { checkProductionLines } from "./lines.js";
 import type { LineIssue } from "./lines.js";
@@ -45,7 +44,7 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
   const lineCounter = new LineCounter();
   const doc = parseDocument(text, { uniqueKeys: true, prettyErrors: false, lineCounter });
 
-  const at = (offset: number): { line: number; column: number } => {
+  const at = (offset: number) => {
     const { line, col } = lineCounter.linePos(offset);
 
     return { line, column: col };
@@ -99,7 +98,7 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
 
   const problems = formatIssue(decoded.failure.issue).issues.map((issue) => {
     const path = (issue.path ?? []).map((segment) =>
-      typeof segment === "object" ? segment.key : segment,
+      Predicate.hasProperty(segment, "key") ? segment.key : segment,
     );
 
     // An empty document has no node; its problems belong at the document start.
@@ -151,7 +150,7 @@ const locate = (
   pointAtKey: boolean,
 ): number | undefined => {
   let node: unknown = doc.contents;
-  let offset = rangeStart(node);
+  let offset = rangeStart(isNode(node) ? node : undefined);
 
   for (const [index, segment] of path.entries()) {
     if (isAlias(node)) {node = node.resolve(doc);}
@@ -171,17 +170,17 @@ const locate = (
     }
 
     if (pointAtKey && index === path.length - 1 && keyNode !== undefined) {
-      return rangeStart(keyNode) ?? offset;
+      return rangeStart(isNode(keyNode) ? keyNode : undefined) ?? offset;
     }
 
-    if (next === undefined || next === null) {return keyNode === undefined ? offset : rangeStart(keyNode) ?? offset;}
+    if (next === undefined || next === null) {return keyNode === undefined ? offset : rangeStart(isNode(keyNode) ? keyNode : undefined) ?? offset;}
 
     node = next;
-    offset = rangeStart(node) ?? offset;
+    offset = rangeStart(isNode(node) ? node : undefined) ?? offset;
   }
 
   return offset;
 };
 
-const rangeStart = (node: unknown): number | undefined =>
-  (node as YamlNode | null | undefined)?.range?.[0];
+/** Where a YAML node starts; anything that is not a node (a missing value) has no position. */
+const rangeStart = (node: YamlNode | null | undefined): number | undefined => node?.range?.[0];
