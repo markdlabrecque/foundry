@@ -11,50 +11,61 @@ import { ToolRefusal } from "./submissions.js";
 
 const refusal = () => new ToolRefusal({ code: "invalid_code_outcome", detail: "ticket worktree changed or could not be inspected; restore it and retry" });
 
-export const inspectCode = (path: string, branch: string) => Effect.gen(function* () {
-  const git = (args: ReadonlyArray<string>) => Effect.tryPromise({
-    try: () => runCloneGit(["--no-optional-locks", ...args], process.env, path), catch: refusal,
-  });
+const fingerprint = (files: ReadonlyArray<string>) => {
+  const hash = createHash("sha256");
 
-  const gitDir = yield* git(["rev-parse", "--absolute-git-dir"]);
-  const commonDir = resolve(path, yield* git(["rev-parse", "--git-common-dir"]));
-  const tracked = (yield* git(["ls-files", "-z"])).split("\0").filter(Boolean);
-  const metadata = [join(gitDir, "HEAD"), join(gitDir, "index"), join(commonDir, "packed-refs"), join(commonDir, "refs/heads", branch)];
+  for (const file of files) {
+    hash.update(file).update("\0");
 
-  const fingerprint = () => {
-    const hash = createHash("sha256");
+    try {
+      const stat = lstatSync(file);
+      hash.update(JSON.stringify([stat.mode, stat.ino, stat.size, stat.mtimeMs, stat.ctimeMs])).update("\0");
 
-    for (const file of [...metadata, ...tracked.map((file) => join(path, file))]) {
-      hash.update(file).update("\0");
-
-      try {
-        const stat = lstatSync(file);
-        hash.update(String(stat.mode)).update("\0");
-
-        if (stat.isSymbolicLink()) {hash.update(readlinkSync(file));}
-        else if (stat.isFile()) {hash.update(readFileSync(file));}
-        // Submodule working trees need their own recursive inspection; fail closed for now.
-        else {throw new Error("unsupported tracked entry");}
-      } catch (cause) {
-        if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {hash.update("missing");}
-        else {throw cause;}
-      }
-
-      hash.update("\0");
+      if (stat.isSymbolicLink()) {hash.update(readlinkSync(file));}
+      else if (stat.isFile()) {hash.update(readFileSync(file));}
+      // Submodule working trees need their own recursive inspection; fail closed for now.
+      else {throw new Error("unsupported tracked entry");}
+    } catch (cause) {
+      if (cause instanceof Error && "code" in cause && cause.code === "ENOENT") {hash.update("missing");}
+      else {throw cause;}
     }
 
-    return hash.digest("hex");
-  };
+    hash.update("\0");
+  }
 
-  const before = yield* Effect.try({ try: fingerprint, catch: refusal });
+  return hash.digest("hex");
+};
+
+
+export const inspectCode = (path: string, branch: string) => Effect.gen(function* () {
+  const git = (args: ReadonlyArray<string>, raw = false) => Effect.tryPromise({
+    try: () => runCloneGit(["--no-optional-locks", ...args], process.env, path, raw), catch: refusal,
+  });
+
+  // Remove Git's terminating newline only: whitespace can be part of a path or filename.
+  const gitDir = (yield* git(["rev-parse", "--absolute-git-dir"], true)).slice(0, -1);
+  const commonDir = resolve(path, (yield* git(["rev-parse", "--git-common-dir"], true)).slice(0, -1));
+  const metadata = [join(gitDir, "HEAD"), join(gitDir, "index"), join(commonDir, "packed-refs"), join(commonDir, "refs/heads", branch)];
+
+
+  const discoveryStart = yield* Effect.try({ try: () => fingerprint(metadata), catch: refusal });
+  const tracked = (yield* git(["ls-files", "-z"], true)).split("\0").filter(Boolean);
+  const files = [...metadata, ...tracked.map((file) => join(path, file))];
+
+  const before = yield* Effect.try({ try: () => {
+    if (fingerprint(metadata) !== discoveryStart) {throw new Error("index changed during tracked-file discovery");}
+
+    return fingerprint(files);
+  }, catch: refusal });
+
   const head = yield* git(["rev-parse", "--verify", "HEAD^{commit}"]);
   const actualBranch = yield* git(["symbolic-ref", "HEAD"]);
   const dirty = (yield* git(["status", "--porcelain=v1", "--untracked-files=no"])) !== "";
-  const after = yield* Effect.try({ try: fingerprint, catch: refusal });
+  const after = yield* Effect.try({ try: () => fingerprint(files), catch: refusal });
 
   if (before !== after) {return yield* refusal();}
 
   return { head, branch: actualBranch, dirty, validate: () => Effect.try({
-    try: () => { if (fingerprint() !== after) {throw new Error("stale observation");} }, catch: refusal,
+    try: () => { if (fingerprint(files) !== after) {throw new Error("stale observation");} }, catch: refusal,
   }) };
 });

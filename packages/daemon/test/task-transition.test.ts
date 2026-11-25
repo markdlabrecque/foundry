@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
 import { Effect, Schema } from "effect";
 import {
   agentDelegateHandler, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
@@ -269,6 +269,8 @@ test.each([
   { mode: "mixed clean", writing: false, code: null },
   { mode: "planning baseline", writing: false, code: null },
   { mode: "race before transaction", writing: false, code: "invalid_code_outcome" },
+  { mode: "race leading filename", writing: false, code: "invalid_code_outcome" },
+  { mode: "race discovery", writing: false, code: "invalid_code_outcome" },
   { mode: "race during writes", writing: false, code: "invalid_code_outcome" },
   { mode: "dirty", writing: false, code: "non_writing_changes" },
   { mode: "staged", writing: false, code: "non_writing_changes" },
@@ -289,6 +291,7 @@ test.each([
     const path = join(root, "worktree");
     git(root, "init", "--quiet", "--initial-branch=main", repository);
     writeFileSync(join(repository, "tracked.txt"), "original\n");
+    writeFileSync(join(repository, " leading.txt"), "original\n");
     git(repository, "add", ".");
     git(repository, "commit", "--quiet", "-m", "base");
     const base = git(repository, "rev-parse", "HEAD");
@@ -332,6 +335,8 @@ test.each([
     const submissionStore: Store = mode.startsWith("race") ? { ...store, change: (body) => store.change((change) => Effect.gen(function* () {
       if (mode === "race before transaction") {writeFileSync(join(path, "tracked.txt"), "raced\n");}
 
+      if (mode === "race leading filename") {writeFileSync(join(path, " leading.txt"), "raced\n");}
+
       return yield* body({ ...change, query: (sql, params) => {
         if (mode === "race during writes" && sql.startsWith("UPDATE assignment")) {writeFileSync(join(path, "tracked.txt"), "raced\n");}
 
@@ -340,7 +345,22 @@ test.each([
     })) } : store;
 
     const submissions = createSubmissions({ store: submissionStore, handlers: codeHandlers });
-    const result = yield* Effect.promise(() => submissions.submit(owner, outcome));
+    const cloneGit = yield* Effect.promise(() => import("../dist/factory-clone.js"));
+    const originalGit = cloneGit.runCloneGit;
+
+    const discoveryRace = mode === "race discovery" ? vi.spyOn(cloneGit, "runCloneGit").mockImplementation(async (args, env, cwd, raw) => {
+      if (!args.includes("ls-files")) {return originalGit(args, env, cwd, raw);}
+
+      // Restore identical index contents after discovery omits a tracked file. The acceptance
+      // fence must detect index replacement, not merely compare the restored content hash.
+      git(path, "rm", "--cached", "--", "tracked.txt");
+      const output = await originalGit(args, env, cwd, raw);
+      git(path, "reset", "--quiet", "HEAD", "--", "tracked.txt");
+
+      return output;
+    }) : undefined;
+
+    const result = yield* Effect.promise(() => submissions.submit(owner, outcome).finally(() => discoveryRace?.mockRestore()));
 
     if (code !== null) {
       expect(result).toMatchObject({ status: "refused", code });
