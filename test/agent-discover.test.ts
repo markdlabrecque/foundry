@@ -1,16 +1,15 @@
-// Tier: integration. A disposable two-factory fixture exercises discovery over the real channel
-// and store with a fake host inventory. One call tests scoping despite caller-supplied args; the
-// other goes through Pi's real tool registry and worker extension using the local faux provider.
+// Tier: integration. Disposable two-factory state proves authenticated discovery/status and
+// durable snapshot replay at the channel/store boundary, plus real Pi tool-registration wiring.
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import { agentDiscoverHandler, createHostSlotClaim, createSubmissions, openStore, planSlots, startChannelServer } from "@foundry/daemon";
+import { agentDiscoverHandler, agentStatusHandler, createHostSlotClaim, createSubmissions, openStore, planSlots, startChannelServer } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import { connectWorker, openChannel, ToolCallClient } from "@foundry/extension";
-import { AGENT_DISCOVER, FIXED_TOOLS, PROTOCOL_VERSION } from "@foundry/protocol";
+import { AGENT_DISCOVER, AGENT_STATUS, FIXED_TOOLS, PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello } from "@foundry/protocol";
 import { startFauxSession } from "@foundry/testkit";
 
@@ -52,12 +51,15 @@ const startDiscovery = async () => {
   const server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: createHostSlotClaim({ host: { inventory: async () => launches } }),
-    toolCalls: createSubmissions({ store, handlers: new Map([[AGENT_DISCOVER, agentDiscoverHandler(slots)]]) }),
+    toolCalls: createSubmissions({ store, handlers: new Map([
+      [AGENT_DISCOVER, agentDiscoverHandler(slots)],
+      [AGENT_STATUS, agentStatusHandler(slots)],
+    ]) }),
   });
 
   cleanups.push(() => server.close());
 
-  return { dir, socketPath: server.socketPath };
+  return { dir, socketPath: server.socketPath, store };
 };
 
 const connectAlpha = async (socketPath: string) => {
@@ -110,7 +112,63 @@ test("agent_discover returns the sender factory's configured stations and slots 
   });
 });
 
-test("Pi can invoke discovery and see only its own factory, even where station names coincide", async () => {
+test("agent_status reports capacity and non-eligible slots, scopes observations, and replays its committed snapshot", async () => {
+  const { socketPath, store } = await startDiscovery();
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    for (const slot of slots) {
+      yield* change.query(
+        `INSERT INTO slot (factory_id, slot_id, station, ordinal, condition, freeze_cause)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+        [slot.factoryId, slot.slotId, slot.station.address, slot.ordinal,
+          slot.slotId === "builder/2" ? "frozen" : "normal",
+          slot.slotId === "builder/2" ? "host_lost" : null],
+      );
+    }
+
+    yield* change.query(
+      `INSERT INTO launch (launch_id, factory_id, slot_id, boot_id, pid, started_at, origin)
+       VALUES ('alpha-launch', 'alpha', 'builder/1', 'test-boot', 123, 1, 'started')`,
+    );
+    yield* change.query(`UPDATE slot SET current_launch = 'alpha-launch' WHERE factory_id = 'alpha' AND slot_id = 'builder/1'`);
+    yield* change.recordHistory({ factoryId: "alpha", kind: "test.setup", subject: "slots" });
+  })));
+  const alpha = await connectAlpha(socketPath);
+  // Both arguments and same-named slots in beta must not redirect the authenticated scope.
+  const outcome = await alpha.call("status-1", AGENT_STATUS, { factory: "beta", slot: "deployer/1" });
+
+  expect(outcome).toEqual({
+    status: "committed",
+    value: {
+      factory: "alpha",
+      stations: [
+        { address: "eng.builder", capacity: 2, slots: [
+          { slotId: "builder/1", condition: "normal", freezeCause: null, recordedLaunch: "unended" },
+          { slotId: "builder/2", condition: "frozen", freezeCause: "host_lost", recordedLaunch: "none" },
+        ] },
+        { address: "qa.reviewer", capacity: 1, slots: [
+          { slotId: "reviewer/1", condition: "normal", freezeCause: null, recordedLaunch: "none" },
+        ] },
+      ],
+    },
+  });
+
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(
+    `UPDATE slot SET condition = 'normal', freeze_cause = NULL WHERE factory_id = 'alpha' AND slot_id = 'builder/2'`,
+    );
+    yield* change.recordHistory({ factoryId: "alpha", kind: "test.unfreeze", subject: "builder/2" });
+  })));
+  expect(await alpha.call("status-1", AGENT_STATUS, {})).toEqual(outcome);
+  expect(await alpha.call("status-2", AGENT_STATUS, {})).not.toEqual(outcome);
+
+  const records = await Effect.runPromise(store.read<{ call_id: string }>(
+    `SELECT call_id FROM submission WHERE tool = ? ORDER BY call_id`, [AGENT_STATUS],
+  ));
+
+  expect(records).toEqual([{ call_id: "status-1" }, { call_id: "status-2" }]);
+});
+
+test("Pi can invoke discovery and status and see only its own factory, even where station names coincide", async () => {
   const { dir, socketPath } = await startDiscovery();
 
   const session = await startFauxSession({
@@ -134,6 +192,20 @@ test("Pi can invoke discovery and see only its own factory, even where station n
   expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({
     toolName: AGENT_DISCOVER,
     content: [{ type: "text", text: JSON.stringify(value) }],
+    isError: false,
+  });
+
+  expect(session.getActiveToolNames()).toContain(AGENT_STATUS);
+  await session.prompt(`@@ ${AGENT_STATUS} {}`);
+  expect(session.messages.filter((message) => message.role === "toolResult").at(-1)).toMatchObject({
+    toolName: AGENT_STATUS,
+    content: [{ type: "text", text: JSON.stringify({
+      factory: "beta",
+      stations: [
+        { address: "ops.deployer", capacity: 1, slots: [{ slotId: "deployer/1", condition: "unknown", freezeCause: null, recordedLaunch: "none" }] },
+        { address: "eng.builder", capacity: 3, slots: [1, 2, 3].map((ordinal) => ({ slotId: `builder/${ordinal}`, condition: "unknown", freezeCause: null, recordedLaunch: "none" })) },
+      ],
+    }) }],
     isError: false,
   });
 });
