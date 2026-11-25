@@ -1,4 +1,4 @@
-import { Schema, SchemaIssue } from "effect";
+import { Data, Predicate, Schema, SchemaIssue } from "effect";
 import * as Result from "effect/Result";
 import { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } from "yaml";
 import type { Document, Node as YamlNode } from "yaml";
@@ -18,18 +18,20 @@ export interface ConfigProblem {
   readonly column?: number;
 }
 
-export type DecodeResult =
-  | {
-      readonly _tag: "Valid";
-      readonly config: FactoryConfig;
-      /** Findings that do not reject the configuration, such as a line with no `verify`. */
-      readonly warnings: ReadonlyArray<ConfigProblem>;
-    }
-  | { readonly _tag: "Invalid"; readonly problems: ReadonlyArray<ConfigProblem> };
+export type DecodeResult = Data.TaggedEnum<{
+  Valid: {
+    readonly config: FactoryConfig;
+    /** Findings that do not reject the configuration, such as a line with no `verify`. */
+    readonly warnings: ReadonlyArray<ConfigProblem>;
+  };
+  Invalid: { readonly problems: ReadonlyArray<ConfigProblem> };
+}>;
+
+export const DecodeResult = Data.taggedEnum<DecodeResult>();
 
 const formatIssue = SchemaIssue.makeFormatterStandardSchemaV1({
   leafHook: (issue) =>
-    issue._tag === "UnexpectedKey" ? "Unknown key" : SchemaIssue.defaultLeafHook(issue),
+    Predicate.isTagged(issue, "UnexpectedKey") ? "Unknown key" : SchemaIssue.defaultLeafHook(issue),
 });
 
 /**
@@ -53,14 +55,13 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
   const yamlErrors = [...doc.errors, ...doc.warnings];
 
   if (yamlErrors.length > 0) {
-    return {
-      _tag: "Invalid",
+    return DecodeResult.Invalid({
       problems: yamlErrors.map((error) => ({
         path: "",
         message: `${error.message} (${error.code})`,
         ...at(error.pos[0]),
       })),
-    };
+    });
   }
 
   const decoded = Schema.decodeUnknownResult(FactoryConfig)(doc.toJS(), {
@@ -79,7 +80,7 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
       ...at(locate(doc, problem.path, true) ?? 0),
     }));
 
-    if (nameProblems.length > 0) {return { _tag: "Invalid", problems: nameProblems };}
+    if (nameProblems.length > 0) {return DecodeResult.Invalid({ problems: nameProblems });}
 
     const located = (issue: LineIssue): ConfigProblem => ({
       path: issue.path.map(String).join("."),
@@ -90,10 +91,10 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
     const lines = checkProductionLines(config);
 
     if (lines.errors.length > 0) {
-      return { _tag: "Invalid", problems: byLocation(lines.errors.map(located)) };
+      return DecodeResult.Invalid({ problems: byLocation(lines.errors.map(located)) });
     }
 
-    return { _tag: "Valid", config, warnings: byLocation(lines.warnings.map(located)) };
+    return DecodeResult.Valid({ config, warnings: byLocation(lines.warnings.map(located)) });
   }
 
   const problems = formatIssue(decoded.failure.issue).issues.map((issue) => {
@@ -111,7 +112,7 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
     };
   });
 
-  return { _tag: "Invalid", problems: byLocation(problems) };
+  return DecodeResult.Invalid({ problems: byLocation(problems) });
 };
 
 const byLocation = (problems: Array<ConfigProblem>): Array<ConfigProblem> =>

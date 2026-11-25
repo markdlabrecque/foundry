@@ -14,7 +14,7 @@
 import { readFileSync } from "node:fs";
 import { messageOf } from "@foundry/protocol/errors";
 import { join } from "node:path";
-import { createKnowledgeLayout, loadFactoryFiles, recordRun } from "./factory-loads.js";
+import { createKnowledgeLayout, LoadFactoriesResult, loadFactoryFiles, recordRun } from "./factory-loads.js";
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
 import { makeTicketService, ticketFactoryFrom } from "./tickets.js";
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
@@ -103,7 +103,7 @@ const main = async (): Promise<void> => {
   // Read-only and before the claim, so an invalid factory changes nothing in the state root.
   const loaded = loadFactoryFiles(flags.factoryFiles, { env: process.env });
 
-  if (loaded._tag === "Refused") {
+  if (LoadFactoriesResult.$is("Refused")(loaded)) {
     fail(loaded.message);
 
     return;

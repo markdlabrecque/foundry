@@ -14,8 +14,8 @@ import { createHash } from "node:crypto";
 import { messageOf } from "@foundry/protocol/errors";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { Effect } from "effect";
-import { locateProblems, resolveConfiguredPath, resolveStations, validateFactoryYaml } from "./config/index.js";
+import { Data, Effect } from "effect";
+import { DecodeResult, locateProblems, resolveConfiguredPath, ResolveResult, resolveStations, validateFactoryYaml } from "./config/index.js";
 import type { ConfigProblem, EffectiveStation, FactoryConfig } from "./config/index.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Store, StoreError } from "./store.js";
@@ -48,10 +48,17 @@ export interface LoadedFactory {
   readonly knowledge: { readonly root: string; readonly directories: ReadonlyArray<string> };
 }
 
-export type LoadFactoriesResult =
-  | { readonly _tag: "Loaded"; readonly factories: ReadonlyArray<LoadedFactory> }
+export type LoadFactoriesResult = Data.TaggedEnum<{
+  Loaded: { readonly factories: ReadonlyArray<LoadedFactory> };
   /** `message` is one line naming the first problem. */
-  | { readonly _tag: "Refused"; readonly message: string };
+  Refused: { readonly message: string };
+}>;
+
+export const LoadFactoriesResult = Data.taggedEnum<LoadFactoriesResult>();
+
+const isInvalidConfig = DecodeResult.$is("Invalid");
+
+const isUnresolved = ResolveResult.$is("Invalid");
 
 export interface LoadFactoriesOptions {
   /** The daemon's environment, read for model placeholders only. */
@@ -70,7 +77,7 @@ const describe = (file: string, problem: ConfigProblem): string => {
 const refuseProblems = (file: string, problems: ReadonlyArray<ConfigProblem>): LoadFactoriesResult => {
   const more = problems.length > 1 ? ` (${problems.length - 1} more; run foundry validate ${file})` : "";
 
-  return { _tag: "Refused", message: `${describe(file, problems[0]!)}${more}` };
+  return LoadFactoriesResult.Refused({ message: `${describe(file, problems[0]!)}${more}` });
 };
 
 /** The flat layout of §5.4.3: the root, `<root>/<room>/` and `<root>/<station>/`. */
@@ -98,14 +105,14 @@ export const loadFactoryFiles = (
     try {
       text = readFileSync(file, "utf8");
     } catch (error) {
-      return { _tag: "Refused", message: `${file}: cannot read factory YAML: ${messageOf(error)}` };
+      return LoadFactoriesResult.Refused({ message: `${file}: cannot read factory YAML: ${messageOf(error)}` });
     }
 
     const yamlFile = resolve(file);
     const baseDir = dirname(yamlFile);
     const validated = validateFactoryYaml(text, { yamlFile, ...(options.home === undefined ? {} : { home: options.home }) });
 
-    if (validated._tag === "Invalid") {return refuseProblems(file, validated.problems);}
+    if (isInvalidConfig(validated)) {return refuseProblems(file, validated.problems);}
 
     const resolved = resolveStations(validated.config, {
       env: options.env,
@@ -113,13 +120,13 @@ export const loadFactoryFiles = (
       ...(options.home === undefined ? {} : { home: options.home }),
     });
 
-    if (resolved._tag === "Invalid") {return refuseProblems(file, locateProblems(text, resolved.problems));}
+    if (isUnresolved(resolved)) {return refuseProblems(file, locateProblems(text, resolved.problems));}
 
     const factoryId = validated.config.name;
     const clash = factories.find((f) => f.factoryId === factoryId);
 
     if (clash !== undefined) {
-      return { _tag: "Refused", message: `${file}: factory "${factoryId}" is already loaded from ${clash.yamlFile}` };
+      return LoadFactoriesResult.Refused({ message: `${file}: factory "${factoryId}" is already loaded from ${clash.yamlFile}` });
     }
 
     const configJson = JSON.stringify({ config: validated.config, stations: resolved.stations });
@@ -135,7 +142,7 @@ export const loadFactoryFiles = (
     });
   }
 
-  return { _tag: "Loaded", factories };
+  return LoadFactoriesResult.Loaded({ factories });
 };
 
 /** Creates the reserved knowledge directories, leaving any that exist (and their contents) alone. */

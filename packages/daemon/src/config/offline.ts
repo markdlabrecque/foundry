@@ -1,8 +1,8 @@
 import { accessSync, constants, statSync } from "node:fs";
 import type { Stats } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { decodeFactoryYaml, locateProblems } from "./decode.js";
-import type { ConfigProblem, DecodeResult } from "./decode.js";
+import { decodeFactoryYaml, DecodeResult, locateProblems } from "./decode.js";
+import type { ConfigProblem } from "./decode.js";
 import { resolveConfiguredPath as resolveFrom } from "./paths.js";
 import type { FactoryConfig } from "./schema.js";
 
@@ -281,6 +281,8 @@ export const checkOffline = (
   return problems.map((problem) => ({ path: problem.path.map(String).join("."), message: problem.message }));
 };
 
+const isInvalid = DecodeResult.$is("Invalid");
+
 /**
  * Decodes factory YAML and runs the offline checks against the files beside it.
  * This is the shared read-only validation for `foundry validate` and daemon start.
@@ -288,10 +290,10 @@ export const checkOffline = (
 export const validateFactoryYaml = (text: string, options: OfflineCheckOptions): DecodeResult => {
   const decoded = decodeFactoryYaml(text);
 
-  if (decoded._tag === "Invalid") {return decoded;}
+  if (isInvalid(decoded)) {return decoded;}
 
   const problems = [...locateProblems(text, checkOffline(decoded.config, options))];
   problems.sort((a, b) => (a.line ?? 0) - (b.line ?? 0) || (a.column ?? 0) - (b.column ?? 0));
 
-  return problems.length === 0 ? decoded : { _tag: "Invalid", problems };
+  return problems.length === 0 ? decoded : DecodeResult.Invalid({ problems });
 };

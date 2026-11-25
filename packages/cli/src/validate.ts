@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { locateProblems, resolveStations, validateFactoryYaml } from "@foundry/daemon/config";
+import { DecodeResult, locateProblems, ResolveResult, resolveStations, validateFactoryYaml } from "@foundry/daemon/config";
 import type { ConfigProblem } from "@foundry/daemon/config";
 import { renderToolSets } from "./tool-set-listing.js";
 
@@ -39,7 +39,7 @@ export const validateFactoryFile = (file: string): ValidateOutcome => {
   // Decode, then the offline file and setting checks, then station resolution.
   const result = validateFactoryYaml(text, { yamlFile: file });
 
-  if (result._tag === "Invalid") {
+  if (DecodeResult.$is("Invalid")(result)) {
     return { exitCode: 1, stdout: [], stderr: result.problems.map((p) => describe(file, p)) };
   }
 
@@ -48,7 +48,7 @@ export const validateFactoryFile = (file: string): ValidateOutcome => {
     baseDir: dirname(resolve(file)),
   });
 
-  if (stations._tag === "Invalid") {
+  if (ResolveResult.$is("Invalid")(stations)) {
     const problems = locateProblems(text, stations.problems);
 
     return { exitCode: 1, stdout: [], stderr: problems.map((p) => describe(file, p)) };

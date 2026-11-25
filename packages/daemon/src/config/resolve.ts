@@ -1,3 +1,4 @@
+import { Data } from "effect";
 import type { ConfigProblem } from "./decode.js";
 import { resolveConfiguredPath } from "./paths.js";
 import type { FactoryConfig } from "./schema.js";
@@ -47,9 +48,12 @@ export interface ResolveOptions {
   readonly home?: string;
 }
 
-export type ResolveResult =
-  | { readonly _tag: "Resolved"; readonly stations: ReadonlyArray<EffectiveStation> }
-  | { readonly _tag: "Invalid"; readonly problems: ReadonlyArray<ConfigProblem> };
+export type ResolveResult = Data.TaggedEnum<{
+  Resolved: { readonly stations: ReadonlyArray<EffectiveStation> };
+  Invalid: { readonly problems: ReadonlyArray<ConfigProblem> };
+}>;
+
+export const ResolveResult = Data.taggedEnum<ResolveResult>();
 
 /** A whole-field placeholder. Anything else in a model field is taken literally. */
 const PLACEHOLDER = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
@@ -153,5 +157,5 @@ export const resolveStations = (config: FactoryConfig, options: ResolveOptions):
     }
   }
 
-  return problems.length > 0 ? { _tag: "Invalid", problems } : { _tag: "Resolved", stations };
+  return problems.length > 0 ? ResolveResult.Invalid({ problems }) : ResolveResult.Resolved({ stations });
 };
