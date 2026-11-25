@@ -456,6 +456,26 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `PRAGMA defer_foreign_keys = OFF`,
     ],
   },
+  {
+    id: 18,
+    name: "delegation_acceptance",
+    statements: [
+      `CREATE TABLE delegation (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        root_assignment TEXT NOT NULL REFERENCES assignment(id),
+        parent_id TEXT REFERENCES delegation(id),
+        delegating_slot TEXT NOT NULL,
+        recipient TEXT NOT NULL,
+        recipient_slot TEXT,
+        depth INTEGER NOT NULL CHECK (depth > 0),
+        notice_id TEXT NOT NULL UNIQUE REFERENCES message(id),
+        status TEXT NOT NULL CHECK (status IN ('open', 'completed', 'abandoned', 'cancelled')),
+        accepted_at INTEGER NOT NULL
+      ) STRICT`,
+      `CREATE INDEX delegation_by_root ON delegation (factory_id, root_assignment, status)`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

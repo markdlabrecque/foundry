@@ -109,6 +109,11 @@ export const bindStationMessages = (options: MessageRoutingOptions): Effect.Effe
         [slotId, message.factory_id, message.id],
       );
 
+      yield* change.query(
+        `UPDATE delegation SET recipient_slot = ? WHERE factory_id = ? AND notice_id = ? AND recipient_slot IS NULL`,
+        [slotId, message.factory_id, message.id],
+      );
+
       yield* change.recordHistory({ factoryId: message.factory_id, kind: "message.bound", subject: message.id,
         detail: { sequence: message.sequence, slotId },
         records: [slotRecord(slotId), ...(message.ticket_number === null ? [] : [ticketRecord(message.ticket_number)])],
