@@ -21,7 +21,10 @@ import type { FactoryState, FactoryStopResult, StoppedLaunch } from "@foundry/pr
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Store, StoreError } from "./store.js";
 
-/** Default grace period: how long drain acknowledgements are awaited, and SIGTERM before SIGKILL. */
+/**
+ * Default grace period. A graceful stop spends it twice at most: once awaiting drain
+ * acknowledgements, then again between SIGTERM and SIGKILL.
+ */
 export const DEFAULT_STOP_GRACE_MS = 5000;
 
 /** Default wait for a group to vanish after SIGKILL. */
@@ -237,6 +240,10 @@ export const createFactoryStopper = (options: FactoryStopperOptions): FactorySto
         problems.push(`${launch.slotId}: the process group of launch ${launch.launchId} could not be confirmed gone`);
         continue;
       }
+
+      // A launch that ended before this stop still had its group confirmed empty above, but it is
+      // not reported as one the stop ended.
+      if (launch.liveness !== "live") {continue;}
 
       stopped.push({
         launchId: launch.launchId,

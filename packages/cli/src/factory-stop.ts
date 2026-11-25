@@ -12,8 +12,9 @@ import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, EXIT_USAGE } from "./status.js
 import type { StatusOutcome } from "./status.js";
 
 /**
- * How long the CLI waits for the daemon's answer. A graceful stop may take the drain wait, the
- * SIGTERM grace period and the post-SIGKILL wait, so this is well above their defaults.
+ * How long the CLI waits for the daemon's answer. A graceful stop may take the drain wait and the
+ * SIGTERM grace period (the grace period twice) plus the post-SIGKILL wait, so this is well above
+ * their defaults.
  */
 const STOP_TIMEOUT_MS = 60_000;
 

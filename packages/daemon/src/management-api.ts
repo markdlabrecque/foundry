@@ -337,17 +337,21 @@ const decodeStopRequest = Schema.decodeUnknownOption(Schema.fromJsonString(Facto
 const readSmallBody = (request: IncomingMessage, limit: number): Promise<string | undefined> =>
   new Promise((resolve, reject) => {
     let body = "";
+    let tooLarge = false;
     request.setEncoding("utf8");
     request.on("data", (chunk: string) => {
       body += chunk;
 
       if (Buffer.byteLength(body) > limit) {
+        tooLarge = true;
         request.removeAllListeners("data");
         request.resume();
         resolve(undefined);
       }
     });
-    request.on("end", () => resolve(body));
+    request.on("end", () => {
+      if (!tooLarge) {resolve(body);}
+    });
     request.on("error", reject);
   });
 
@@ -370,7 +374,7 @@ const handleFactoryStop = (
 
     if (factory === null) {return [400, failure("bad_request", "malformed factory name")];}
 
-    if (text === undefined) {return [413, failure("bad_request", `request body exceeds ${STOP_BODY_LIMIT} bytes`)];}
+    if (text === undefined) {return [413, failure("payload_too_large", `request body exceeds ${STOP_BODY_LIMIT} bytes`)];}
 
     const decoded = decodeStopRequest(text.trim() === "" ? "{}" : text);
 
