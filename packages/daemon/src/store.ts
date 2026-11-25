@@ -229,7 +229,12 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
         ordinal INTEGER NOT NULL CHECK (ordinal > 0),
         condition TEXT NOT NULL CHECK (condition IN ('normal', 'frozen', 'parked')),
         current_launch TEXT,
-        PRIMARY KEY (factory_id, slot_id)
+        -- A launch requested of the host but not yet recorded: which host process and boot it was
+        -- asked of, so a daemon that died mid-request never launches into the slot twice.
+        pending_host TEXT,
+        pending_boot TEXT,
+        PRIMARY KEY (factory_id, slot_id),
+        CHECK ((pending_host IS NULL) = (pending_boot IS NULL))
       ) STRICT`,
       // Launch history: the daemon's copy of what the Worker Host reported. The host wins on
       // liveness, the database on everything else.

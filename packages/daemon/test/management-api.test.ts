@@ -6,8 +6,8 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { ManagementSocketError, serveManagementApi } from "@foundry/daemon";
-import type { ManagementApi } from "@foundry/daemon";
+import { ManagementSocketError, serveManagementApi, SlotsError } from "@foundry/daemon";
+import type { ManagementApi, SlotsReader } from "@foundry/daemon";
 import { managementSocketPath, STATUS_PATH } from "@foundry/protocol/management-api";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -107,4 +107,32 @@ test("a factory path request with a malformed name answers 400; an unknown facto
   cleanups.push(() => api.close());
   expect(await get(api.socketPath, "/api/v1/factories/%E0%A4/path")).toMatchObject({ status: 400, body: { ok: false, error: { code: "bad_request" } } });
   expect(await get(api.socketPath, "/api/v1/factories/nope/path")).toMatchObject({ status: 404, body: { ok: false, error: { code: "not_found" } } });
+});
+
+test.each([
+  ["a malformed slot address", "/api/v1/slots/Dev/0", 400, "bad_request"],
+  ["an empty factory", "/api/v1/slots?factory=", 400, "bad_request"],
+  ["an unknown factory", "/api/v1/slots?factory=nope", 404, "unknown_factory"],
+  ["no factory with several loaded", "/api/v1/slots/dev/1", 400, "factory_required"],
+  ["a slot the factory does not have", "/api/v1/slots/dev/9?factory=alpha", 404, "slot_not_found"],
+])("the slot routes refuse %s with its code", async (_name, path, statusCode, code) => {
+  const slots: SlotsReader = {
+    list: async (factory) => {
+      if (factory === "nope") {throw new SlotsError("unknown_factory", "no factory");}
+
+      return { slots: [] };
+    },
+    show: async (_slotId, factory) => {
+      throw factory === undefined ? new SlotsError("factory_required", "name one") : new SlotsError("slot_not_found", "no slot");
+    },
+  };
+
+  const api = await serveManagementApi({ stateRoot: tempRoot(), status: () => status, slots });
+  cleanups.push(() => api.close());
+  expect(await get(api.socketPath, path)).toMatchObject({ status: statusCode, body: { ok: false, error: { code } } });
+});
+
+test("the slot routes answer 503 when the daemon serves no slots", async () => {
+  const api = await serve(tempRoot());
+  expect(await get(api.socketPath, "/api/v1/slots")).toMatchObject({ status: 503, body: { ok: false, error: { code: "unavailable" } } });
 });

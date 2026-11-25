@@ -317,6 +317,7 @@ const main = async (): Promise<void> => {
         store,
         stateRoot,
         host,
+        hostId: identity.hostId,
         bootId: identity.bootId,
         pi: resolvePiExecutable(process.env),
         foundryExtension: foundryExtensionPath(),

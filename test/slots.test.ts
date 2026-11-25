@@ -36,6 +36,7 @@ interface Fixture {
   readonly stateRoot: string;
   readonly store: Store;
   readonly host: HostConnection;
+  readonly hostId: string;
   readonly bootId: string;
   readonly slots: ReadonlyArray<PlannedSlot>;
   readonly scheduler: () => SlotScheduler;
@@ -54,7 +55,7 @@ const fixture = async (): Promise<Fixture> => {
   cleanups.push(() => stopHost(stateRoot));
   const host = await connectHost(stateRoot);
   cleanups.push(() => host.close());
-  const { bootId } = await host.identify();
+  const { hostId, bootId } = await host.identify();
 
   const scope = Effect.runSync(Scope.make());
   cleanups.push(() => Effect.runPromise(Scope.close(scope, Exit.void)));
@@ -64,9 +65,9 @@ const fixture = async (): Promise<Fixture> => {
   const slots = planSlots("alpha", [station("lead", 1), station("dev", 3)]);
 
   const scheduler = () =>
-    createSlotScheduler({ store, stateRoot, host, bootId, pi, foundryExtension: "/opt/foundry/extension.js", slots });
+    createSlotScheduler({ store, stateRoot, host, hostId, bootId, pi, foundryExtension: "/opt/foundry/extension.js", slots });
 
-  return { stateRoot, store, host, bootId, slots, scheduler };
+  return { stateRoot, store, host, hostId, bootId, slots, scheduler };
 };
 
 /** What the stub Pi recorded about its own launch. */
