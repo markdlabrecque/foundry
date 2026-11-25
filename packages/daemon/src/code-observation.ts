@@ -50,6 +50,11 @@ export const inspectCode = (path: string, branch: string) => Effect.gen(function
 
   const discoveryStart = yield* Effect.try({ try: () => fingerprint(metadata), catch: refusal });
   const entries = (yield* git(["ls-files", "-v", "-z"], true)).split("\0").filter(Boolean);
+
+  // The shared Git runner decodes stdout as UTF-8. A replacement character might represent
+  // undecodable filename bytes, so never certify paths that may have been decoded lossily.
+  if (entries.some((entry) => entry.includes("\uFFFD"))) {return yield* refusal();}
+
   // Lowercase tags mean assume-unchanged; S/s means skip-worktree. Neither permits Git
   // status to certify a non-writing checkout, even when its reported status is clean.
   const hiddenChanges = entries.some((entry) => /^[a-zS]/.test(entry));

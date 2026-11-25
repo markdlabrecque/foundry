@@ -31,6 +31,7 @@ const slots = planSlots("shop", [{
 }]);
 
 const roots: Array<string> = [];
+const byteFilename = (directory: string) => Buffer.concat([Buffer.from(`${directory}/`), Buffer.from([0xff]), Buffer.from(".txt")]);
 
 const git = (cwd: string, ...args: Array<string>) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", ...args], {
   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1",
@@ -272,6 +273,7 @@ test.each([
   { mode: "planning baseline", writing: false, code: null },
   { mode: "race before transaction", writing: false, code: "invalid_code_outcome" },
   { mode: "race leading filename", writing: false, code: "invalid_code_outcome" },
+  { mode: "race invalid UTF8", writing: false, code: "invalid_code_outcome" },
   { mode: "race discovery", writing: false, code: "invalid_code_outcome" },
   { mode: "race during writes", writing: false, code: "invalid_code_outcome" },
   { mode: "dirty", writing: false, code: "non_writing_changes" },
@@ -298,6 +300,9 @@ test.each([
     git(root, "init", "--quiet", "--initial-branch=main", repository);
     writeFileSync(join(repository, "tracked.txt"), "original\n");
     writeFileSync(join(repository, " leading.txt"), "original\n");
+
+    if (mode === "race invalid UTF8") {writeFileSync(byteFilename(repository), "original\n");}
+
     git(repository, "add", ".");
     git(repository, "commit", "--quiet", "-m", "base");
     const base = git(repository, "rev-parse", "HEAD");
@@ -355,6 +360,8 @@ test.each([
       if (mode === "race before transaction") {writeFileSync(join(path, "tracked.txt"), "raced\n");}
 
       if (mode === "race leading filename") {writeFileSync(join(path, " leading.txt"), "raced\n");}
+
+      if (mode === "race invalid UTF8") {writeFileSync(byteFilename(path), "raced\n");}
 
       return yield* body({ ...change, query: (sql, params) => {
         if (mode === "race during writes" && sql.startsWith("UPDATE assignment")) {writeFileSync(join(path, "tracked.txt"), "raced\n");}
