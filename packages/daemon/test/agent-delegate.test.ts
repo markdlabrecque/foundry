@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Schema } from "effect";
 import {
-  acknowledgeMessage, agentDelegateHandler, agentReplyHandler, bindStationMessages, createAssignmentScheduler, createSubmissions,
-  createTicketService, openStore, planSlots, ticketFactoryFrom, ToolRefusal,
+  acknowledgeMessage, agentDelegateHandler, agentReplyHandler, bindStationMessages, createAssignmentScheduler, createMessageDisposition, createSubmissions,
+  createTicketService, openStore, planSlots, raiseHoldIn, ticketFactoryFrom, ToolRefusal,
 } from "@foundry/daemon";
 import type { Store, ToolHandler } from "@foundry/daemon";
 import { AGENT_DELEGATE, AGENT_REPLY } from "@foundry/protocol";
@@ -249,6 +249,75 @@ test("unselected and closed delegations cannot resolve; competing resolutions co
     expect(outcomes.filter((outcome) => outcome.status === "refused")).toMatchObject([{ code: "delegation_closed" }]);
     expect(yield* store.read(`SELECT id FROM message WHERE kind = 'reply'`)).toHaveLength(1);
     expect(yield* store.read(`SELECT sequence FROM history WHERE kind = 'delegation.completed'`)).toHaveLength(1);
+  }));
+});
+
+const holdNotice = (store: Store, noticeId: string) => store.change((change) => Effect.gen(function* () {
+  yield* change.query(`UPDATE message SET status = 'indeterminate' WHERE id = ?`, [noticeId]);
+  yield* raiseHoldIn(change, { factoryId: "shop", kind: "indeterminate_message", subject: noticeId, evidence: {} });
+}));
+
+const holdStates = (store: Store) => store.read(`SELECT state FROM operator_hold`);
+
+test("dropping an indeterminate delegation notice abandons the delegation and durably tells the delegating slot once", async () => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    const delegation = yield* selectedDelegation(store);
+    yield* holdNotice(store, delegation.notice_id);
+    const disposition = createMessageDisposition(store);
+    yield* disposition.act(delegation.notice_id, "drop", true);
+    const dropped = yield* snapshot(store);
+
+    expect(yield* store.read(`SELECT status FROM delegation`)).toEqual([{ status: "abandoned" }]);
+    expect(yield* store.read(`SELECT status FROM message WHERE id = ?`, [delegation.notice_id])).toEqual([{ status: "dropped" }]);
+    expect(yield* store.read(`SELECT sender_kind, kind, ticket_number, bound_slot, status FROM message
+      WHERE delegation_id = ? AND id != ?`, [delegation.id, delegation.notice_id])).toEqual([{ sender_kind: "daemon",
+      kind: "ordinary", ticket_number: 1, bound_slot: sender.slotId, status: "bound" }]);
+    expect(dropped.history.filter((row) => row.kind === "delegation.abandoned")).toHaveLength(1);
+
+    // A repeated drop is refused and leaves the single notification as the only one.
+    const again = yield* Effect.flip(disposition.act(delegation.notice_id, "drop", true));
+    expect(again).toMatchObject({ code: "not_indeterminate" });
+    expect(yield* snapshot(store)).toEqual(dropped);
+  }));
+});
+
+test("a drop that fails while abandoning leaves the notice, hold, delegation and history unwritten", async () => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    const delegation = yield* selectedDelegation(store);
+    yield* holdNotice(store, delegation.notice_id);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`CREATE TRIGGER refuse_abandon BEFORE INSERT ON history WHEN NEW.kind = 'delegation.abandoned'
+        BEGIN SELECT RAISE(ABORT, 'fixture failure'); END`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture.trigger", subject: delegation.id });
+    }));
+    const armed = yield* snapshot(store);
+
+    yield* Effect.promise(() => expect(Effect.runPromise(createMessageDisposition(store).act(delegation.notice_id, "drop", true)))
+      .rejects.toThrow(/fixture failure/));
+
+    expect(yield* snapshot(store)).toEqual(armed);
+    expect(yield* store.read(`SELECT status FROM message WHERE id = ?`, [delegation.notice_id])).toEqual([{ status: "indeterminate" }]);
+    expect(yield* holdStates(store)).toEqual([{ state: "open" }]);
+    expect(yield* store.read(`SELECT status FROM delegation`)).toEqual([{ status: "open" }]);
+    expect(yield* store.read(`SELECT id FROM message WHERE sender_kind = 'daemon' AND delegation_id = ?`, [delegation.id])).toEqual([]);
+  }));
+});
+
+test("dropping the notice of an already completed delegation keeps its result and notifies nobody", async () => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    const delegation = yield* selectedDelegation(store);
+    expect(yield* Effect.promise(() => replies(store).submit(responder, { type: "tool_call", callId: "resolve", tool: AGENT_REPLY,
+      args: { delegationId: delegation.id, ...resolution } }))).toMatchObject({ status: "committed" });
+    yield* holdNotice(store, delegation.notice_id);
+
+    yield* createMessageDisposition(store).act(delegation.notice_id, "drop", true);
+
+    expect(yield* store.read(`SELECT status FROM delegation`)).toEqual([{ status: "completed" }]);
+    expect(yield* store.read(`SELECT id FROM message WHERE sender_kind = 'daemon' AND delegation_id = ?`, [delegation.id])).toEqual([]);
+    const history = (yield* snapshot(store)).history;
+    expect(history.filter((row) => row.kind === "message.dropped")).toHaveLength(1);
+    expect(history.filter((row) => row.kind === "delegation.abandoned")).toEqual([]);
+    expect(yield* holdStates(store)).toEqual([{ state: "resolved" }]);
   }));
 });
 
