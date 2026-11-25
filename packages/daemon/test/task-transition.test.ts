@@ -6,10 +6,11 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Schema } from "effect";
 import {
   agentDelegateHandler, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
-  StoreError, taskTransitionHandler, ticketFactoryFrom,
+  StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
 import { TASK_TRANSITION } from "@foundry/protocol";
+import { runApprovalList, runApprovalShow } from "@foundry/cli";
 import { FactoryConfig } from "../src/config/schema.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
@@ -48,6 +49,7 @@ const snapshot = (store: Store) => Effect.all({
   tickets: store.read(`SELECT * FROM ticket`), assignments: store.read(`SELECT * FROM assignment`),
   transitions: store.read(`SELECT * FROM ticket_transition`), history: store.read(`SELECT * FROM history`),
   submissions: store.read(`SELECT * FROM submission`), messages: store.read(`SELECT * FROM message`),
+  approvals: store.read(`SELECT * FROM approval`),
   delegations: store.read(`SELECT * FROM delegation ORDER BY accepted_at, rowid`),
 });
 
@@ -122,7 +124,7 @@ test("different slots/factories, suspended assignments, missing IDs and worker d
 
     for (const args of [
       { ...frame(id).args, destination: "review" }, { ...frame(id).args, stage: "review" },
-      { ...frame(id).args, ticket: 99 }, { ...frame(id).args, outcome: "rejected" },
+      { ...frame(id).args, ticket: 99 }, { ...frame(id).args, outcome: "unknown" },
       { ...frame(id).args, reason: "" }, { ...frame(id).args, evidence: [""] },
     ]) {
       expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args })))
@@ -253,6 +255,141 @@ test.each([
     expect(yield* Effect.promise(() => createSubmissions({ store, handlers: guardedHandlers }).submit(owner, frame(id))))
       .toMatchObject({ status: "refused", code: "unsupported_transition" });
     expect(yield* snapshot(store)).toEqual(before);
+  }));
+});
+
+test.each(["blocked", "rejected"] as const)("%s pauses atomically, frees capacity and survives replay/restart with its true outcome", async (outcome) => {
+  const saved = await fixture((store, id, root) => Effect.gen(function* () {
+    // Pausing preserves open delegated work and assignment-local recovery allowances.
+    yield* store.change((change) => agentDelegateHandler(slots)(change, {
+      ...owner, callId: "delegate", tool: "agent_delegate", args: { recipient: "floor.worker", body: "Help" },
+    }));
+    const delegations = yield* store.read(`SELECT * FROM delegation`);
+    const before = yield* snapshot(store);
+    const submissions = createSubmissions({ store, handlers });
+    const call = { ...frame(id), args: { ...frame(id).args, outcome, reason: "Need operator input" } };
+
+    const failing: Store = { ...store, change: (body) => store.change((change) =>
+      Effect.flatMap(body(change), () => Effect.fail(new StoreError({ reason: "Sql", message: "commit failure" })))),
+    };
+
+    expect(yield* Effect.promise(() => createSubmissions({ store: failing, handlers }).submit(owner, call)))
+      .toMatchObject({ status: "refused", code: "not_committed" });
+    expect(yield* snapshot(store)).toEqual(before);
+
+    for (const identity of [{ ...owner, slotId: "worker/2" }, { ...owner, factoryId: "other" }]) {
+      expect(yield* Effect.promise(() => submissions.submit(identity, call)))
+        .toMatchObject({ status: "refused", code: "not_assignment_owner" });
+    }
+
+    const result = yield* Effect.promise(() => submissions.submit(owner, call));
+    expect(result).toMatchObject({ status: "committed", value: { status: "paused", stage: "plan", approvalId: expect.any(Number) } });
+    const after = yield* snapshot(store);
+    expect(after.tickets).toMatchObject([{ stage: "plan", status: "paused", rejections: 0 }]);
+    expect(after.assignments).toEqual(before.assignments.map((a) => ({ ...a, status: "suspended" })));
+    expect(yield* store.read(`SELECT * FROM delegation`)).toEqual(delegations);
+    expect(after.messages).toEqual(before.messages);
+    expect(after.transitions).toHaveLength(before.transitions.length + 1);
+    expect(after.transitions.at(-1)).toMatchObject({ from_stage: "plan", to_stage: "plan", to_status: "paused", outcome,
+      actor: "worker/1", reason: "Need operator input", git_commit: "evaluated-commit",
+      evidence: '["evidence/plan.md"]', config_load: "load-1" });
+    expect(after.approvals).toMatchObject([{ kind: "blocked", state: "open", assignment_id: id }]);
+    expect(after.history.slice(before.history.length)).toMatchObject([
+      { kind: "ticket.transitioned" }, { kind: "approval.requested" }, { kind: "submission.recorded" },
+    ]);
+    expect(yield* Effect.promise(() => submissions.submit(owner, call))).toEqual(result);
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...call, callId: "stale" })))
+      .toMatchObject({ status: "refused", code: "not_assignment_owner" });
+    expect(yield* snapshot(store)).toEqual(after);
+
+    // Exercise the single real SQLite -> socket boundary through the operator CLI cores.
+    yield* Effect.promise(async () => {
+      const api = await serveManagementApi({ stateRoot: root, status: () => ({ instance: {
+        stateRoot: root, daemonPid: 1, startedAt: new Date(0).toISOString(),
+      } }), approvals: storeApprovalsReader(store) });
+
+      try {
+        const options = { home: root, env: {}, json: false };
+        const list = await runApprovalList(options);
+        expect(list.exitCode).toBe(0);
+        expect(list.stdout).toContain("blocked  shop  ticket 1  plan  Need operator input");
+        const shown = await runApprovalShow({ ...options, id: "1" });
+        expect(shown.exitCode).toBe(0);
+        expect(shown.stdout).toContain(`outcome     ${outcome}`);
+        expect(shown.stdout).toContain("evidence/plan.md");
+
+        for (const verb of ["resume", "retry", "cancel"]) {
+          expect(shown.stdout).toContain(`foundry ticket ${verb} 1 --factory 'shop'`);
+        }
+
+        const json = await runApprovalShow({ ...options, id: "1", json: true });
+        expect(JSON.parse(json.stdout)).toMatchObject({ ok: true, result: { approval: {
+          kind: "blocked", outcome, reason: "Need operator input", assignmentId: id, configLoad: "load-1",
+        } } });
+        expect((await runApprovalShow({ ...options, id: "999" })).exitCode).toBe(1);
+        expect((await runApprovalShow({ ...options, id: "0" })).exitCode).toBe(2);
+      } finally {await api.close();}
+    });
+
+    // The scheduler can use the freed slot, but must not reschedule the paused ticket.
+    yield* createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(config)] })
+      .submit({ title: "Next plan", spec: "Next disposable spec" }).pipe(Effect.orDie);
+    const next = yield* createAssignmentScheduler(schedulerOptions(store)).schedule();
+    expect(next).toMatchObject([{ ticket: 2, slotId: "worker/1" }]);
+
+    return { root, after: yield* snapshot(store) };
+  }));
+
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    expect(yield* snapshot(store)).toEqual(saved.after);
+    expect((yield* Effect.promise(() => storeApprovalsReader(store).list())).approvals).toMatchObject([{ outcome, state: "open" }]);
+  })));
+});
+
+test("blocked works at final and code stages without requiring a destination; routed rejection stays out of scope", async () => {
+  for (const stage of ["implement", "review"]) {
+    await fixture((store, id) => Effect.gen(function* () {
+      yield* store.change((change) => Effect.gen(function* () {
+        yield* change.query(`UPDATE ticket SET stage = ?`, [stage]);
+        yield* change.query(`UPDATE assignment SET stage = ?`, [stage]);
+        yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: stage });
+      }));
+      const submissions = createSubmissions({ store, handlers });
+
+      if (stage === "review") {
+        const before = yield* snapshot(store);
+        expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, outcome: "rejected" } })))
+          .toMatchObject({ status: "refused", code: "unsupported_transition" });
+        expect(yield* snapshot(store)).toEqual(before);
+      }
+
+      expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, outcome: "blocked" } })))
+        .toMatchObject({ status: "committed", value: { stage, status: "paused" } });
+    }));
+  }
+});
+
+test("unroutable rejection at the final stage pauses rather than requiring a next stage", async () => {
+  await fixture((store, id) => Effect.gen(function* () {
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET stage = 'final'`);
+      yield* change.query(`UPDATE assignment SET stage = 'final'`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "final" });
+    }));
+
+    const finalConfig = { ...config, production_lines: { standard: {
+      ...config.production_lines.standard,
+      stages: [{ id: "final", station: "floor.worker", approval: true, writing: false }],
+    } } };
+
+    const finalHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({ factories: [{ factoryId: "shop", config: finalConfig }] })]]);
+    expect(yield* Effect.promise(() => createSubmissions({ store, handlers: finalHandlers }).submit(owner,
+      { ...frame(id), args: { ...frame(id).args, outcome: "rejected" } })))
+      .toMatchObject({ status: "committed", value: { stage: "final", status: "paused" } });
+    expect(yield* store.read(`SELECT rejections FROM ticket`)).toEqual([{ rejections: 0 }]);
+    expect((yield* Effect.promise(() => storeApprovalsReader(store).list())).approvals)
+      .toMatchObject([{ kind: "blocked", stage: "final", outcome: "rejected" }]);
   }));
 });
 

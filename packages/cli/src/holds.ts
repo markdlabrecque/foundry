@@ -3,13 +3,11 @@
  * Parsing the command line belongs to `main.ts`; this module takes parsed options and returns
  * what to print and the exit code (PRD §11.5).
  */
-import { selectStateRoot } from "@foundry/protocol/state-root";
 import { Schema } from "effect";
-import { messageOf } from "@foundry/protocol/errors";
 import { holdPath, HOLDS_PATH, isHoldListResult, isHoldShowResult } from "@foundry/protocol/holds";
 import type { HoldRecord, HoldShowResult } from "@foundry/protocol/holds";
-import { DaemonUnreachableError, getFromDaemon } from "./management-client.js";
-import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, EXIT_USAGE } from "./status.js";
+import { fetchAndRender } from "./read-output.js";
+import { EXIT_USAGE } from "./status.js";
 import type { StatusOutcome } from "./status.js";
 
 export interface HoldOptions {
@@ -23,7 +21,6 @@ export interface HoldOptions {
 
 export type HoldOutcome = StatusOutcome;
 
-const refused = (message: string): HoldOutcome => ({ exitCode: EXIT_REFUSED, stdout: "", stderr: `foundry: ${message}\n` });
 const usage = (message: string): HoldOutcome => ({ exitCode: EXIT_USAGE, stdout: "", stderr: `foundry: ${message}\n` });
 
 const listLine = (hold: HoldRecord): string => `${hold.id}  ${hold.kind}  ${hold.subject}  raised ${hold.raisedAt}`;
@@ -60,43 +57,6 @@ const renderShow = ({ hold, commands }: HoldShowResult): string => {
 };
 
 const isText = Schema.is(Schema.String);
-
-/** Fetches `path` and renders its result once `is` confirms the shape the daemon answered with. */
-const fetchAndRender = async <A>(
-  options: HoldOptions,
-  path: string,
-  is: (value: unknown) => value is A,
-  render: (result: A) => string,
-): Promise<HoldOutcome> => {
-  if (options.home === "") {return usage("--home needs a directory");}
-
-  const stateRoot = selectStateRoot({ home: options.home, env: options.env });
-  let reply;
-
-  try {
-    reply = await getFromDaemon(stateRoot, path);
-  } catch (error) {
-    if (error instanceof DaemonUnreachableError) {
-      return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
-    }
-
-    return refused(messageOf(error));
-  }
-
-  if (options.json) {
-    const stdout = reply.body.endsWith("\n") ? reply.body : `${reply.body}\n`;
-
-    return { exitCode: reply.envelope.ok ? EXIT_OK : EXIT_REFUSED, stdout, stderr: "" };
-  }
-
-  if (!reply.envelope.ok) {return refused(reply.envelope.error.message);}
-
-  const result = reply.envelope.result;
-
-  if (!is(result)) {return refused("the daemon answered with an unexpected shape");}
-
-  return { exitCode: EXIT_OK, stdout: render(result), stderr: "" };
-};
 
 /** `foundry hold list`: the open holds, oldest first. */
 export const runHoldList = (options: HoldOptions): Promise<HoldOutcome> =>
