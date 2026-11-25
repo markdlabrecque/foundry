@@ -1,5 +1,6 @@
 /** Commit-bound review/QA/gate validity (PRD §8.2). Git never runs under the store lock. */
-import { Clock, Data, Effect, Predicate } from "effect";
+import { Clock, Data, Effect, Option, Predicate } from "effect";
+import { ticketApprovalLock } from "./approval-coordination.js";
 import { reserveAssignmentSlot } from "./assignment-reservation.js";
 import { ToolRefusal } from "./submissions.js";
 import { expectDefined } from "@foundry/protocol/errors";
@@ -58,11 +59,18 @@ export const voidStaleApprovals = (options: ApprovalVoidingOptions, only?: { fac
 
   let count = 0;
 
-  for (const ticket of tickets) {
-    const changed = yield* Effect.suspend(() => {
+  for (const listed of tickets) {
+    const changed = yield* ticketApprovalLock(options.store, listed.factory_id, listed.number).withPermitsIfAvailable(1)(Effect.suspend(() => {
       let release: (() => void) | undefined;
 
       return Effect.gen(function* () {
+        // An integration may have completed or refused while this sweep waited for its permit.
+        const [ticket] = yield* options.store.read<TicketHead>(`SELECT factory_id, number, production_line, stage, status, worktree_path, branch
+          FROM ticket WHERE factory_id = ? AND number = ? AND state = 'stage' AND worktree_path IS NOT NULL AND branch IS NOT NULL`,
+          [listed.factory_id, listed.number]);
+
+        if (ticket === undefined) {return false;}
+
         if (options.inScope?.(ticket.factory_id) === false) {return false;}
 
         const stages = options.factories.find((f) => f.factoryId === ticket.factory_id)?.config.production_lines[ticket.production_line]?.stages;
@@ -169,14 +177,16 @@ export const voidStaleApprovals = (options: ApprovalVoidingOptions, only?: { fac
           return true;
         }));
       }).pipe(Effect.ensuring(Effect.sync(() => { release?.(); })));
-    }).pipe(
+    })).pipe(
+      Effect.flatMap((result) => Option.isSome(result) ? Effect.succeed(result.value) :
+        Effect.fail(new ToolRefusal({ code: "invalid_code_outcome", detail: "Ticket approval is being consumed by another lifecycle action; retry" }))),
       Effect.catchIf((error) => Predicate.isTagged(error, "ApprovalHeadUnchanged"), () => Effect.succeed(false)),
       Effect.catch((cause) => {
         const report = options.onUnverified;
 
         if (report === undefined) {return Effect.fail(cause);}
 
-        report(ticket.factory_id, ticket.number, cause);
+        report(listed.factory_id, listed.number, cause);
 
         return Effect.succeed(false);
       }),
