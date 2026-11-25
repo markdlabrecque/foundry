@@ -28,6 +28,7 @@ import { recoverInterruptedSyncs } from "./sync-recovery.js";
 import { startAfterCreateRecovery } from "./after-create-recovery.js";
 import { createTicketWorktrees } from "./worktrees.js";
 import { createWorktreeService } from "./worktree-cleanup.js";
+import { reconcileInterruptedCleanups } from "./cleanup-recovery.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Predicate, Schema, Scope } from "effect";
@@ -714,13 +715,15 @@ const main = async (): Promise<void> => {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
-  const worktrees = createWorktreeService({ store, stateRoot, factories: () => factories.map((f) => f.factoryId),
-    target: (factoryId) => {
-      const factory = factories.find((f) => f.factoryId === factoryId);
-      const clone = clones.get(factoryId);
+  const cleanupTarget = (factoryId: string) => {
+    const factory = factories.find((f) => f.factoryId === factoryId);
+    const clone = clones.get(factoryId);
 
-      return factory === undefined || clone === undefined ? undefined : { factory, clonePath: clone.path };
-    },
+    return factory === undefined || clone === undefined ? undefined : { factory, clonePath: clone.path };
+  };
+
+  const worktrees = createWorktreeService({ store, stateRoot, factories: () => factories.map((f) => f.factoryId),
+    target: cleanupTarget,
   });
 
   const sync = createFactorySyncer({
@@ -864,7 +867,9 @@ const main = async (): Promise<void> => {
 
   // Resume only accepted, not-yet-started work (PRD §9.4). An empty queue does not fetch, and a
   // factory with an operation interrupted at startup admits nothing until its recovery runs.
-  // PRD §10.2 step 3: interrupted syncs are reconciled from the clone alone, never rerun or fetched.
+  // PRD §10.2 step 3: interrupted syncs are reconciled from the clone alone, never rerun or fetched;
+  // interrupted cleanups and before_remove runs are rerun or finished. Every recovery result lands
+  // before the queue resumes.
   const recoverAndResume = async (factory: string): Promise<void> => {
     const clone = clones.get(factory);
     const loaded = factories.find((f) => f.factoryId === factory);
@@ -884,6 +889,16 @@ const main = async (): Promise<void> => {
         factoryId: factory,
         detail: { error: clone === undefined ? "no clone for the factory" : "factory not loaded" },
       });
+    }
+
+    try {
+      for (const recovery of await Effect.runPromise(reconcileInterruptedCleanups({ store, worktrees, target: cleanupTarget }, factory))) {
+        const refs: LogRefs = { factoryId: factory, operationId: String(recovery.operationId) };
+        const withTicket: LogRefs = recovery.ticket === null ? refs : { ...refs, ticketId: String(recovery.ticket) };
+        log.info("cleanup recovered", { ...withTicket, detail: { outcome: recovery.outcome, reason: recovery.reason ?? "" } });
+      }
+    } catch (error) {
+      log.error("cleanup recovery failed", { factoryId: factory, detail: { error: messageOf(error) } });
     }
 
     await sync.resumeQueued(factory);

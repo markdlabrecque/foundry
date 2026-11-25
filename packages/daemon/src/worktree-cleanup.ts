@@ -8,7 +8,8 @@ import type { WorktreeInspection, WorktreeSummary } from "@foundry/protocol/work
 import { Effect } from "effect";
 import { runCloneGit } from "./factory-clone.js";
 import type { TicketWorktreesOptions } from "./worktrees.js";
-import { beginOperationIn, recordOperationResult } from "./operations.js";
+import { beginOperationIn, recordOperationResult, recordRecoveryResultIn } from "./operations.js";
+import type { Operation } from "./operations.js";
 import { ticketRecord } from "./history-records.js";
 import { runBeforeRemove } from "./before-remove.js";
 import type { HookLogIo } from "./before-remove.js";
@@ -179,8 +180,14 @@ export const createWorktreeService = (options: TicketWorktreesOptions & { readon
     return { worktrees: rows.map(summary) };
   });
 
-  const clean = (factory: string | undefined, number: number, force = false, confirmation?: string) => Effect.gen(function* () {
-    const row = yield* select(factory, number);
+  /**
+   * `recovering`: an interrupted cleanup (and its interrupted before_remove runs) that this run
+   * replaces. They are closed in the same change that claims the rerun (PRD §10.2), so a second
+   * crash leaves exactly one cleanup awaiting recovery.
+   */
+  const cleanRow = (row: WorktreeRow, force: boolean, confirmation: string | undefined,
+    recovering?: { readonly cleanup: Operation; readonly hooks: ReadonlyArray<Operation> }) => Effect.gen(function* () {
+    const number = row.number;
     const target = options.target(row.factory_id);
 
     if (target === undefined) {return yield* refuse("factory clone unavailable");}
@@ -191,13 +198,20 @@ export const createWorktreeService = (options: TicketWorktreesOptions & { readon
         AND state IN ('completed', 'cancelled') AND worktree_path = ? AND branch = ?
         AND NOT EXISTS (SELECT 1 FROM assignment a WHERE a.factory_id = t.factory_id AND a.ticket_number = t.number AND a.status <> 'ended')
         AND NOT EXISTS (SELECT 1 FROM operation o WHERE o.factory_id = t.factory_id AND o.ticket_number = t.number
-          AND o.kind = 'cleanup' AND o.status IN ('running', 'interrupted', 'indeterminate'))`,
-      [row.factory_id, row.number, row.worktree_path, row.branch]);
+          AND o.kind = 'cleanup' AND o.id <> ?
+          AND (o.status IN ('running', 'indeterminate') OR (o.status = 'interrupted' AND o.result IS NULL)))`,
+      [row.factory_id, row.number, row.worktree_path, row.branch, recovering?.cleanup.id ?? -1]);
 
       if (eligible.length === 0) {return yield* refuse("only inactive completed or cancelled worktrees can be cleaned; cleanup may already be pending");}
 
-      return yield* beginOperationIn(change, { factoryId: row.factory_id, kind: "cleanup", ticket: number,
+      const begun = yield* beginOperationIn(change, { factoryId: row.factory_id, kind: "cleanup", ticket: number,
         intent: { path: row.worktree_path, branch: row.branch, clonePath: target.clonePath, force } });
+
+      for (const replaced of recovering === undefined ? [] : [recovering.cleanup, ...recovering.hooks]) {
+        yield* recordRecoveryResultIn(change, replaced.id, { status: "interrupted", result: { rerunAs: begun.id } });
+      }
+
+      return begun;
     }));
 
     let removed = false;
@@ -243,7 +257,27 @@ export const createWorktreeService = (options: TicketWorktreesOptions & { readon
     })));
   });
 
-  return { list, inspect, clean };
+  const clean = (factory: string | undefined, number: number, force = false, confirmation?: string) =>
+    Effect.flatMap(select(factory, number), (row) => cleanRow(row, force, confirmation));
+
+  /**
+   * Reruns an interrupted cleanup whose worktree still exists, with its recorded `force`, rerunning
+   * before_remove when it applies. A forced rerun has no fresh confirmation, so it refuses until
+   * the operator inspects and confirms again.
+   */
+  const rerun = (cleanup: Operation, hooks: ReadonlyArray<Operation>) => Effect.gen(function* () {
+    if (cleanup.ticket === null) {return yield* refuse(`cleanup operation ${cleanup.id} names no ticket`);}
+
+    const row = yield* select(cleanup.factoryId, cleanup.ticket);
+
+    if (row.worktree_path !== cleanup.intent["path"] || row.branch !== cleanup.intent["branch"]) {
+      return yield* refuse("ticket no longer records the interrupted cleanup's worktree");
+    }
+
+    return yield* cleanRow(row, cleanup.intent["force"] === true, undefined, { cleanup, hooks });
+  });
+
+  return { list, inspect, clean, rerun };
 };
 
 export type WorktreeService = ReturnType<typeof createWorktreeService>;
