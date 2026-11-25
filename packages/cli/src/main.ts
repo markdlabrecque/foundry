@@ -10,7 +10,7 @@ import { EXIT_USAGE, runStatus } from "./status.js";
 import { runLogs } from "./logs.js";
 import { runMessageSend } from "./messages.js";
 import { validateFactoryFile } from "./validate.js";
-import { runTicketList, runTicketPause, runTicketRetry, runTicketShow, runTicketSubmit } from "./tickets.js";
+import { runTicketCancel, runTicketList, runTicketPause, runTicketRetry, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow } from "./holds.js";
 import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow } from "./approvals.js";
@@ -286,9 +286,15 @@ const ticketRetry = Command.make("retry", { ...ticketFlags, number: Argument.Int
   report(() => runTicketRetry({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), number, env: process.env })),
 ).pipe(Command.withDescription("Abandon the assignment and queue a fresh attempt"));
 
+const ticketCancel = Command.make("cancel", { ...ticketFlags, number: Argument.Int("n"),
+  yes: Flag.Boolean("yes").pipe(Flag.withDefault(false), Flag.withDescription("Confirm cancellation without a prompt")),
+}, ({ json, home, factory, number, yes }) =>
+  report(() => runTicketCancel({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), number, yes, env: process.env })),
+).pipe(Command.withDescription("Cancel a ticket and its open obligations, keeping all artifacts"));
+
 const ticket = Command.make("ticket").pipe(
   Command.withDescription("Submit and inspect tickets"),
-  Command.withSubcommands([ticketSubmit, ticketList, ticketShow, ticketPause, ticketRetry]),
+  Command.withSubcommands([ticketSubmit, ticketList, ticketShow, ticketPause, ticketRetry, ticketCancel]),
 );
 
 const factoryList = Command.make("list", commonFlags, ({ json, home }) =>

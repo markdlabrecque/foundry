@@ -7,6 +7,7 @@
  * not commit; the database holds only its paths. No worker is needed. Moving tickets out of the
  * backlog belongs to scheduling (21b).
  */
+import { createHash } from "node:crypto";
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { expectDefined } from "@foundry/protocol/errors";
 import { join } from "node:path";
@@ -15,6 +16,7 @@ import type {
   SubmitTicketRequest,
   Ticket,
   TicketDetail,
+  TicketCancellation,
   TicketListResult,
   TicketPosition,
   TicketState,
@@ -26,7 +28,9 @@ import type { FactoryConfig } from "./config/schema.js";
 import { ticketRecord, slotRecord } from "./history-records.js";
 import { interruptTicketSlot, retryTicket } from "./ticket-retry.js";
 import type { SlotInterrupter } from "./slots-error.js";
-import type { Store, StoreError } from "./store.js";
+import type { Query, Store, StoreError } from "./store.js";
+import { closeOpenHoldIn } from "./holds.js";
+import { reserveAssignmentSlot } from "./assignment-reservation.js";
 
 /** What submission needs to know about a loaded factory's production line. */
 export interface TicketLine {
@@ -113,6 +117,8 @@ export const slugify = (title: string): string => {
 
 export interface TicketService {
   readonly retry: (factory: string | undefined, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>;
+  readonly inspectCancellation: (factory: string | undefined, number: number) => Effect.Effect<TicketCancellation, TicketError | StoreError>;
+  readonly cancel: (factory: string | undefined, number: number, confirmation: string) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   readonly pause: (factory: string | undefined, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   readonly submit: (request: SubmitTicketRequest) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   /** Without a factory, lists every factory's tickets. Oldest first within each factory. */
@@ -225,6 +231,33 @@ const materialize = (directory: string, spec: string) =>
     catch: (cause) =>
       new TicketError({ code: "internal", message: `cannot write ticket directory ${directory}: ${String(cause)}` }),
   });
+
+// The same snapshot is used for disclosure and the transaction's final state check. In
+// particular, a newly accepted obligation must never be silently cancelled after confirmation.
+const cancellationSnapshot = (query: Query, factory: string, number: number) => Effect.gen(function* () {
+  const [row] = yield* query<TicketRow>(`SELECT * FROM ticket WHERE factory_id = ? AND number = ?`, [factory, number]);
+
+  if (row === undefined) {return yield* refuse("ticket_not_found", `No ticket ${number} in factory "${factory}"`);}
+
+  if (row.state === "completed" || row.state === "cancelled") {
+    return yield* refuse("invalid_state", "Only an unfinished ticket can be cancelled");
+  }
+
+  const assignments = yield* query<{ id: string; slot_id: string; status: string }>(
+    `SELECT id, slot_id, status FROM assignment WHERE factory_id = ? AND ticket_number = ? AND status != 'ended'`, [factory, number]);
+
+  const requests = yield* query<{ id: string }>(
+    `SELECT id FROM agent_request WHERE factory_id = ? AND ticket_number = ? AND status = 'open' ORDER BY id`, [factory, number]);
+
+  const delegations = yield* query<{ id: string }>(
+    `SELECT d.id FROM delegation d JOIN assignment a ON a.id = d.root_assignment
+     WHERE d.factory_id = ? AND a.ticket_number = ? AND a.factory_id = ? AND d.status = 'open' ORDER BY d.id`, [factory, number, factory]);
+
+  const confirmation = createHash("sha256").update(JSON.stringify({ row, assignments, requests, delegations })).digest("hex");
+
+  return { row, assignments, disclosure: { factory, number, requests: requests.map((r) => r.id),
+    delegations: delegations.map((d) => d.id), worktree: row.worktree_path, confirmation } };
+});
 
 export const createTicketService = (options: TicketServiceOptions): TicketService => {
   const { store, stateRoot } = options;
@@ -340,6 +373,92 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
     show(factory, ticketNumber).pipe(Effect.flatMap(() => retryTicket(options, factory, ticketNumber)),
       Effect.flatMap(() => show(factory, ticketNumber))));
 
+  const inspectCancellation: TicketService["inspectCancellation"] = (name, number) => Effect.gen(function* () {
+    const factory = (yield* loadedFactory(name)).name;
+
+    return (yield* cancellationSnapshot(store.read, factory, number)).disclosure;
+  });
+
+  const cancel: TicketService["cancel"] = (name, number, confirmation) => Effect.gen(function* () {
+    const factory = (yield* loadedFactory(name)).name;
+    const key = JSON.stringify([factory, number]);
+
+    return yield* Effect.suspend(() => {
+      if (acting.has(key)) {return refuse("invalid_state", "An operator action is already in progress for this ticket");}
+
+      acting.add(key);
+
+      return cancelTicket(factory, number, confirmation).pipe(Effect.ensuring(Effect.sync(() => { acting.delete(key); })));
+    }).pipe(Effect.uninterruptible);
+  });
+
+  const cancelTicket = (factory: string, number: number, confirmation: string) => Effect.suspend(() => {
+    let release: (() => void) | undefined;
+
+    return Effect.gen(function* () {
+    const before = yield* cancellationSnapshot(store.read, factory, number);
+
+    if (before.disclosure.confirmation !== confirmation) {return yield* refuse("invalid_state", "Ticket changed; inspect and confirm cancellation again");}
+
+    const active = before.assignments.find((a) => a.status === "active");
+
+    if (active !== undefined) {
+      // Serialize acquisition with the scheduler's writer transaction. This read-only change
+      // deliberately rolls back: the only reservation is process-local, not a durable action.
+      const reserved = Symbol("slot reserved");
+      yield* store.change((change) => Effect.gen(function* () {
+        const current = yield* cancellationSnapshot(change.query, factory, number);
+
+        if (current.disclosure.confirmation !== confirmation) {return yield* refuse("invalid_state", "Assignment changed before interruption; confirm again");}
+
+        release = reserveAssignmentSlot(store, factory, active.slot_id);
+
+        if (release === undefined) {return yield* refuse("invalid_state", "The assignment's slot is already reserved");}
+
+        return yield* Effect.fail(reserved);
+      })).pipe(Effect.catchIf((error) => error === reserved, () => Effect.void));
+      yield* interruptTicketSlot(options.interrupter, factory, active.slot_id);
+    }
+
+    yield* store.change((change) => Effect.gen(function* () {
+      const current = yield* cancellationSnapshot(change.query, factory, number);
+
+      if (current.disclosure.confirmation !== confirmation) {return yield* refuse("invalid_state", "Ticket changed while the worker was interrupted; confirm again");}
+
+      const now = yield* Clock.currentTimeMillis;
+      yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = ?, end_reason = 'cancelled'
+        WHERE factory_id = ? AND ticket_number = ? AND status != 'ended'`, [now, factory, number]);
+      yield* change.query(`UPDATE delegation SET status = 'cancelled' WHERE factory_id = ? AND status = 'open'
+        AND root_assignment IN (SELECT id FROM assignment WHERE factory_id = ? AND ticket_number = ?)`, [factory, factory, number]);
+      yield* change.query(`UPDATE agent_request SET status = 'cancelled' WHERE factory_id = ? AND ticket_number = ? AND status = 'open'`, [factory, number]);
+      // Never retract an attempted copy or alter its receipts. Unattempted ticket context and
+      // obligation notices must not start stale work after the assignment releases capacity.
+      yield* change.query(`UPDATE message SET status = 'dropped' WHERE factory_id = ? AND ticket_number = ?
+        AND status IN ('unbound', 'bound') AND NOT EXISTS (SELECT 1 FROM message_attempt WHERE message_id = message.id)`, [factory, number]);
+      yield* closeOpenHoldIn(change, { factoryId: factory, kind: "hook_failure", subject: String(number) }, "resolved");
+      yield* change.query(`UPDATE ticket SET state = 'cancelled', stage = NULL, status = NULL WHERE factory_id = ? AND number = ?`, [factory, number]);
+
+      const transitions = yield* change.query<{ sequence: number }>(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
+        from_state, from_stage, from_status, to_state, config_load)
+        VALUES (?, ?, ?, 'operator', ?, ?, ?, 'cancelled', ?) RETURNING sequence`,
+      [factory, number, now, current.row.state, current.row.stage, current.row.status, options.configLoad?.(factory) ?? null]);
+
+      const transition = expectDefined(transitions[0], "the cancellation transition").sequence;
+      yield* change.query(`UPDATE approval SET state = 'resolved', closed_at = ?,
+        resolution_transition = CASE WHEN kind = 'stage_gate' THEN ? ELSE resolution_transition END
+        WHERE factory_id = ? AND ticket_number = ? AND state = 'open'`, [now, transition, factory, number]);
+      yield* change.recordHistory({ factoryId: factory, kind: "ticket.transitioned", subject: String(number),
+        detail: { from: { state: current.row.state, stage: current.row.stage, status: current.row.status },
+          to: { state: "cancelled", stage: null, status: null }, outcome: null, actor: "operator", reason: null,
+          assignments: current.assignments.map((a) => a.id), requests: current.disclosure.requests,
+          delegations: current.disclosure.delegations, worktreeKept: current.row.worktree_path },
+        records: [ticketRecord(number), ...current.assignments.map((a) => slotRecord(a.slot_id))] });
+    }));
+
+    return yield* show(factory, number);
+    }).pipe(Effect.ensuring(Effect.sync(() => { release?.(); })));
+  });
+
   const submit: TicketService["submit"] = (request) =>
     Effect.gen(function* () {
       const factory = yield* loadedFactory(request.factory);
@@ -430,5 +549,5 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       (rows) => ({ tickets: rows.map(summary) }),
     );
 
-  return { submit, list, show, pause, retry };
+  return { submit, list, show, pause, retry, inspectCancellation, cancel };
 };

@@ -243,8 +243,13 @@ test("attempted old work and restored context cannot rearm after retry; fresh co
   }));
 });
 
-test("assigned retry waits for interrupt, serializes against pause, and refuses stale identity", async () => {
+test("assigned retry reserves capacity, serializes operator actions, and refuses stale identity", async () => {
   await fixture((store, id, root) => Effect.gen(function* () {
+    yield* service(store, root).submit({ title: "Next plan", spec: "Disposable" });
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE slot SET condition = 'frozen' WHERE slot_id != 'worker/1'`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "capacity" });
+    }));
     const before = yield* snapshot(store);
     let acknowledge!: () => void;
     let started!: () => void;
@@ -265,13 +270,19 @@ test("assigned retry waits for interrupt, serializes against pause, and refuses 
     yield* Effect.promise(() => called);
     expect(yield* snapshot(store)).toEqual(before);
     expect(yield* tickets.pause("shop", 1).pipe(Effect.flip)).toMatchObject({ code: "invalid_state" });
+    const cancellation = yield* tickets.inspectCancellation("shop", 1);
+    expect(yield* tickets.cancel("shop", 1, cancellation.confirmation).pipe(Effect.flip)).toMatchObject({ code: "invalid_state" });
     // A worker outcome racing with interrupt invalidates the retry's retained identity/state.
     yield* block(store, id);
     const blocked = yield* snapshot(store);
+    // The outcome released durable capacity, but the interrupt reservation still prevents
+    // a successor from starting before the old worker acknowledges settlement.
+    expect(yield* scheduler(store).schedule()).toEqual([]);
     acknowledge();
     const result = yield* Effect.promise(() => retrying);
     expect(result).toMatchObject({ code: "invalid_state" });
     expect(yield* snapshot(store)).toEqual(blocked);
+    expect(yield* scheduler(store).schedule()).toMatchObject([{ ticket: 2, slotId: "worker/1" }]);
   }));
 });
 

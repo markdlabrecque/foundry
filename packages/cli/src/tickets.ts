@@ -5,10 +5,12 @@
  * writes the ticket directory.
  */
 import { readFileSync } from "node:fs";
+import { createInterface } from "node:readline/promises";
+import { Data, Predicate } from "effect";
 import { messageOf } from "@foundry/protocol/errors";
 import { basename, extname } from "node:path";
 import { selectStateRoot } from "@foundry/protocol/state-root";
-import { FACTORY_PARAM, isTicketDetail, isTicketListResult, ticketPath, TICKETS_PATH } from "@foundry/protocol/tickets-api";
+import { FACTORY_PARAM, isTicketCancellation, isTicketDetail, isTicketListResult, ticketPath, TICKETS_PATH } from "@foundry/protocol/tickets-api";
 import type { SubmitTicketRequest, TicketDetail, TicketListResult, TicketPosition } from "@foundry/protocol/tickets-api";
 import { DaemonUnreachableError, getFromDaemon, postToDaemon } from "./management-client.js";
 import type { ApiReply } from "./management-client.js";
@@ -108,7 +110,7 @@ const call = async <T>(
       return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
     }
 
-    return refused(messageOf(error));
+    return Predicate.isTagged(error, "UnconfirmedCancellation") ? usage(messageOf(error)) : refused(messageOf(error));
   }
 
   if (options.json) {
@@ -148,6 +150,47 @@ export const runTicketSubmit = async (options: SubmitOptions): Promise<TicketOut
 
 export const runTicketList = (options: Common): Promise<TicketOutcome> =>
   call(options, (root) => getFromDaemon(root, `${TICKETS_PATH}${query(options.factory)}`), isTicketListResult, renderList);
+
+interface CancelOptions extends ShowOptions {
+  readonly yes: boolean;
+  readonly terminal?: boolean;
+  readonly confirm?: (losses: string) => Promise<boolean>;
+  readonly notice?: (losses: string) => void;
+}
+
+const confirmCancellation = async (): Promise<boolean> => {
+  const input = createInterface({ input: process.stdin, output: process.stderr });
+
+  try {return (await input.question("Cancel this ticket? [y/N] ")).trim().toLowerCase() === "y";}
+  finally {input.close();}
+};
+
+export const runTicketCancel = async (options: CancelOptions): Promise<TicketOutcome> => {
+  if (!Number.isSafeInteger(options.number) || options.number < 1) {return usage("a ticket number is a positive integer");}
+
+  return call(options, async (root) => {
+    const path = `${ticketPath(options.number)}/cancel${query(options.factory)}`;
+    const inspection = await getFromDaemon(root, path);
+
+    if (!inspection.envelope.ok) {return inspection;}
+
+    if (!isTicketCancellation(inspection.envelope.result)) {throw new Error("the daemon answered with an unexpected cancellation inspection");}
+
+    const result = inspection.envelope.result;
+    const losses = `Cancel ${result.factory} ticket ${result.number}\nOpen requests to cancel:\n${result.requests.join("\n") || "(none)"}\nOpen delegations to cancel:\n${result.delegations.join("\n") || "(none)"}\nWorktree kept: ${result.worktree ?? "none"}; branch and ticket artifacts are kept.\n`;
+    (options.notice ?? ((text: string) => { process.stderr.write(text); }))(losses);
+
+    if (!options.yes) {
+      if (!(options.terminal ?? process.stdin.isTTY === true)) {throw new UnconfirmedCancellation({ message: "cancellation requires a terminal or --yes; nothing cancelled" });}
+
+      if (!await (options.confirm ?? confirmCancellation)(losses)) {throw new UnconfirmedCancellation({ message: "cancellation not confirmed; nothing cancelled" });}
+    }
+
+    return postToDaemon(root, path, { confirmation: result.confirmation });
+  }, isTicketDetail, (detail) => `${renderDetail(detail)}worktree, branch and ticket artifacts kept for later cleanup\n`);
+};
+
+class UnconfirmedCancellation extends Data.TaggedError("UnconfirmedCancellation")<{ readonly message: string }> {}
 
 const runTicketAction = (options: ShowOptions, action: "pause" | "retry"): Promise<TicketOutcome> => {
   if (!Number.isSafeInteger(options.number) || options.number < 1) {

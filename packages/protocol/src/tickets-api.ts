@@ -7,6 +7,8 @@
  * - `GET /api/v1/tickets/<n>[?factory=<name>]`: a `TicketDetail`.
  * - `POST /api/v1/tickets/<n>/pause[?factory=<name>]`: a `TicketDetail`, after worker settlement.
  * - `POST /api/v1/tickets/<n>/retry[?factory=<name>]`: a queued `TicketDetail`; scheduling creates the fresh assignment.
+ * - `GET /api/v1/tickets/<n>/cancel[?factory=<name>]`: a `TicketCancellation` disclosure.
+ * - `POST /api/v1/tickets/<n>/cancel[?factory=<name>]` with `{ confirmation }`: a `TicketDetail`.
  *
  * `factory` may be left out only when exactly one factory is loaded (PRD §11.1); listing without
  * it lists every factory's tickets.
@@ -125,3 +127,17 @@ export type TicketListResult = typeof TicketListResult.Type;
 export const isTicketListResult = Schema.is(TicketListResult);
 
 export const isTicketDetail = Schema.is(TicketDetail);
+
+/** Exact open obligations disclosed before operator cancellation; artifacts are never removed. */
+export const TicketCancellation = Schema.Struct({
+  factory: Schema.String,
+  number: Schema.Number,
+  requests: Schema.Array(Schema.String),
+  delegations: Schema.Array(Schema.String),
+  worktree: Schema.NullOr(Schema.String),
+  confirmation: Schema.String,
+});
+
+export type TicketCancellation = typeof TicketCancellation.Type;
+
+export const isTicketCancellation = Schema.is(TicketCancellation);

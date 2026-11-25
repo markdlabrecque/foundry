@@ -1,6 +1,7 @@
 /** Retry abandons durable obligations atomically; the ordinary scheduler creates full context later. */
 import { Clock, Effect } from "effect";
 import { acceptMessage } from "./agent-message.js";
+import { reserveAssignmentSlot } from "./assignment-reservation.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import { SlotsError } from "./slots-error.js";
 import type { SlotInterrupter } from "./slots-error.js";
@@ -42,7 +43,10 @@ const notify = (change: Change, factory: string, ticket: number, slot: string, b
     detail: { sequence: message.sequence, slotId: slot }, records: [ticketRecord(ticket), slotRecord(slot)] });
 });
 
-export const retryTicket = (options: TicketServiceOptions, factory: string, number: number) => Effect.gen(function* () {
+export const retryTicket = (options: TicketServiceOptions, factory: string, number: number) => Effect.suspend(() => {
+  let release: (() => void) | undefined;
+
+  return Effect.gen(function* () {
   const { store } = options;
 
   const [assignment] = yield* store.read<RetryAssignment>(
@@ -56,7 +60,27 @@ export const retryTicket = (options: TicketServiceOptions, factory: string, numb
     return yield* new TicketError({ code: "invalid_state", message: "Retry requires a paused or assigned ticket with an assignment to abandon" });
   }
 
-  if (assignment.status === "assigned") {yield* interruptTicketSlot(options.interrupter, factory, assignment.slot_id);}
+  if (assignment.status === "assigned") {
+    const reserved = Symbol("slot reserved");
+    yield* store.change((change) => Effect.gen(function* () {
+      const [current] = yield* change.query(`SELECT 1 FROM assignment a JOIN ticket t
+        ON t.factory_id = a.factory_id AND t.number = a.ticket_number
+        WHERE a.id = ? AND a.status = 'active' AND t.status = 'assigned' AND t.stage = ?`, [assignment.id, assignment.stage]);
+
+      if (current === undefined) {
+        return yield* new TicketError({ code: "invalid_state", message: "Assignment changed before interruption" });
+      }
+
+      release = reserveAssignmentSlot(store, factory, assignment.slot_id);
+
+      if (release === undefined) {
+        return yield* new TicketError({ code: "invalid_state", message: "The assignment slot is already reserved" });
+      }
+
+      return yield* Effect.fail(reserved);
+    })).pipe(Effect.catchIf((error) => error === reserved, () => Effect.void));
+    yield* interruptTicketSlot(options.interrupter, factory, assignment.slot_id);
+  }
 
   yield* store.change((change) => Effect.gen(function* () {
     const [current] = yield* change.query(
@@ -126,4 +150,5 @@ export const retryTicket = (options: TicketServiceOptions, factory: string, numb
     yield* change.recordHistory({ factoryId: factory, kind: "ticket.retried", subject: String(number),
       detail: { assignment: assignment.id, slotId: assignment.slot_id }, records });
   }));
+  }).pipe(Effect.ensuring(Effect.sync(() => { release?.(); })));
 });
