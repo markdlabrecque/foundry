@@ -104,7 +104,8 @@ test("compactions while the channel is down are reported exactly once after reco
   const reported = new Promise<void>((r) => compactedSeen.push(r));
   const second = await open();
   reporter.attach(second);
-  await reported;
+  // Bounded, so a missing report fails on the frame diff below rather than a vitest timeout.
+  await Promise.race([reported, new Promise<void>((r) => setTimeout(r, 2_000).unref())]);
 
   // Closing flushes the stream in order, so every frame sent before it has arrived.
   const secondEnded = nextEnd();

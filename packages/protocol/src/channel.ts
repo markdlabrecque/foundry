@@ -51,6 +51,8 @@ export type Heartbeat = typeof Heartbeat.Type;
  * evidence of a completed compaction; a report held while the channel was down
  * is sent once after reconnect. Several compactions while disconnected coalesce
  * into one report, because the daemon answers with a single compaction prime.
+ * Delivery has no ack: a report written to the kernel is lost if the daemon
+ * dies before reading it (a daemon restart leads to a recovery prime anyway).
  */
 export const Compacted = Schema.Struct({
   type: Schema.Literal("compacted"),

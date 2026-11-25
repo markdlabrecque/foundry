@@ -41,10 +41,12 @@ export class CompactionReporter {
         this.flush(); // a compaction recorded while this report was in flight
       },
       () => {
-        // The channel died under the write: keep the report for the next channel.
+        // The channel died under the write: drop it and keep the report for the
+        // next attach(). Retrying here would spin on a channel whose `closed`
+        // has not settled yet, starving the event loop.
+        if (this.channel === channel) this.channel = undefined;
         this.pending = true;
         this.sending = false;
-        this.flush();
       },
     );
   }
