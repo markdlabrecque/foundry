@@ -17,6 +17,11 @@ const withSlots: ReadonlyArray<Migration> = [
   },
 ];
 
+// Unit: parallel branches each add a migration; a merge must renumber, never repeat or skip an ID.
+test("the migrations this build ships are numbered 1..n with no gaps or repeats", () => {
+  expect(foundryMigrations.map((m) => m.id)).toEqual(foundryMigrations.map((_, i) => i + 1));
+});
+
 let dir: string;
 let filename: string;
 beforeEach(() => {
