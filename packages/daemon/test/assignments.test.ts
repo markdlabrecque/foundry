@@ -389,6 +389,22 @@ test("message threshold commits with suspension and readable approval; exempt se
     expect(Exit.isFailure(yield* Effect.exit(send("reply")))).toBe(true);
     expect(yield* snapshot(store)).toEqual(after);
     expect(after.transitions).toHaveLength(before.transitions.length + 1);
+
+    const call = { factoryId: "shop", slotId: "worker/1", launchId: "fixture", callId: "post-limit", tool: "agent_message",
+      args: { recipient: "floor.worker", body: "must not become ticketless" } };
+
+    for (const handler of [agentMessageHandler(slots, guards), agentRequestHandler(slots, guards)]) {
+      const exit = yield* Effect.exit(store.change((change) => handler(change, { ...call, args: { ...call.args, timeoutMs: 60_000 } })));
+      expect(Exit.isFailure(exit)).toBe(true);
+      expect(yield* snapshot(store)).toEqual(after);
+    }
+
+    expect(yield* store.read(`SELECT id FROM agent_request`)).toEqual([]);
+    // Freed capacity may take another ticket; its active assignment wins attribution.
+    expect(yield* createAssignmentScheduler(options(store)).schedule()).toMatchObject([{ ticket: 3, slotId: "worker/1" }]);
+    yield* store.change((change) => agentMessageHandler(slots, guards)(change, call));
+    expect(yield* store.read(`SELECT messages_spent FROM ticket WHERE number = 3`)).toEqual([{ messages_spent: 1 }]);
+    expect(yield* store.read(`SELECT ticket_number FROM message WHERE body = ?`, [call.args.body])).toEqual([{ ticket_number: 3 }]);
   }));
 });
 

@@ -35,9 +35,12 @@ export const assignmentContextSlot = (change: Change, factoryId: string, message
     [factoryId, messageId, factoryId, messageId],
   ).pipe(Effect.map((rows) => rows[0]?.slot_id ?? null));
 
+/** Capacity is active-only, but a suspended worker's messages still belong to its ticket.
+ * A new active assignment supersedes suspended work; never revive an ended assignment. */
 export const assignmentTicket = (change: Change, factoryId: string, slotId: string) =>
   change.query<{ ticket_number: number }>(
-    `SELECT ticket_number FROM assignment WHERE factory_id = ? AND slot_id = ? AND status = 'active'`,
+    `SELECT ticket_number FROM assignment WHERE factory_id = ? AND slot_id = ? AND status IN ('active', 'suspended')
+     ORDER BY CASE status WHEN 'active' THEN 0 ELSE 1 END, created_at DESC, rowid DESC LIMIT 1`,
     [factoryId, slotId],
   ).pipe(Effect.map((rows) => rows[0]?.ticket_number ?? null));
 
