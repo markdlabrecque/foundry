@@ -12,6 +12,10 @@ const require = createRequire(import.meta.url);
 const main = join(dirname(require.resolve("@foundry/cli")), "main.js");
 const dir = mkdtempSync(join(tmpdir(), "foundry-validate-"));
 mkdirSync(join(dir, "repo"));
+// Configured files must exist offline (FOU-25); the Tool Set case names these.
+mkdirSync(join(dir, "ext"));
+writeFileSync(join(dir, "ext/hooks.ts"), "");
+writeFileSync(join(dir, "ext/tools.ts"), "");
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const run = (yaml: string): { status: number; stdout: string; stderr: string } => {
