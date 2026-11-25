@@ -192,11 +192,25 @@ export const handleTickets = async (tickets: TicketService, request: IncomingMes
   }
 
   request.resume();
-  const action = /^\/([1-9][0-9]{0,8})\/(pause|resume|retry|integration-retry)$/.exec(rest);
+  const action = /^\/([1-9][0-9]{0,8})\/(pause|resume|retry|integration-retry|integration-landed|integration-not-landed)$/.exec(rest);
 
   if (action !== null) {
     if (request.method !== "POST") {
       return { ...fail(405, "method_not_allowed", `${url.pathname} only accepts POST`), allow: "POST" };
+    }
+
+    const declaration = Match.value(action[2]).pipe(
+      Match.when("integration-landed", () => "landed" as const),
+      Match.when("integration-not-landed", () => "not-landed" as const),
+      Match.orElse(() => undefined),
+    );
+
+    if (declaration !== undefined) {
+      const declare = tickets.declareIntegration;
+
+      if (declare === undefined) {return fail(503, "unavailable", "integration declarations are not available");}
+
+      return run(declare(factory, Number(action[1]), declaration), 200);
     }
 
     const perform = Match.value(action[2]).pipe(

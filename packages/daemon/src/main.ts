@@ -796,6 +796,7 @@ const main = async (): Promise<void> => {
   let ticketOptions: TicketServiceOptions = {
     stateRoot, store, factories: () => ticketFactories, configLoad: (factory) => loadIds.get(factory),
     onIntegrationQueued: (factory) => { void sync.resumeQueued(factory); },
+    integrationTarget: syncTarget, worktrees,
   };
 
   if (channel !== undefined) {

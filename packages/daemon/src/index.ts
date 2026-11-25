@@ -267,3 +267,5 @@ export * from "./reconciliation.js";
 export * from "./message-retry.js";
 
 export * from "./integration-recovery.js";
+
+export * from "./integration-declaration.js";

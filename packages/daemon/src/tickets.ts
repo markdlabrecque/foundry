@@ -31,6 +31,10 @@ import type { SlotInterrupter } from "./slots-error.js";
 import type { Query, Store, StoreError } from "./store.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { retryIntegration } from "./integration-retry.js";
+import { declareIntegration } from "./integration-declaration.js";
+import type { IntegrationDeclaration } from "./integration-declaration.js";
+import type { SyncTarget } from "./factory-sync.js";
+import type { WorktreeService } from "./worktree-cleanup.js";
 import { reserveAssignmentSlot } from "./assignment-reservation.js";
 import { resumeFirstAfterCreate } from "./after-create-resume.js";
 import { restoreRejectionAllowance } from "./rejection-allowance.js";
@@ -122,6 +126,8 @@ export const slugify = (title: string): string => {
 };
 
 export interface TicketService {
+  /** The operator's declaration on an indeterminate integration (PRD §10.2): landed or not landed. */
+  readonly declareIntegration?: (factory: string | undefined, number: number, declaration: IntegrationDeclaration) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   readonly retryIntegration: (factory: string | undefined, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   readonly retry: (factory: string | undefined, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   /** Store-level operator action. Callers must confirm the open work before setting allowAbandon.
@@ -138,6 +144,12 @@ export interface TicketService {
 
 export interface TicketServiceOptions {
   readonly onIntegrationQueued?: (factory: string) => void;
+  /** A started factory's clone, for declaring an indeterminate integration; `undefined` refuses. */
+  readonly integrationTarget?: (factory: string) => SyncTarget | undefined;
+  /** Cleanup after an integration declared landed. */
+  readonly worktrees?: Pick<WorktreeService, "clean">;
+  /** Git's environment for a declaration. Default: the process's. */
+  readonly env?: NodeJS.ProcessEnv;
   readonly interrupter?: SlotInterrupter;
   readonly stateRoot: string;
   readonly store: Store;
@@ -630,5 +642,15 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
     return yield* show(factory, number);
   });
 
-  return { submit, list, show, pause, resume, retry, retryIntegration: integrationRetry, inspectCancellation, cancel };
+  const integrationDeclaration: NonNullable<TicketService["declareIntegration"]> = (name, number, declaration) => Effect.gen(function* () {
+    const factory = (yield* loadedFactory(name)).name;
+    yield* declareIntegration({ store, target: options.integrationTarget?.(factory), env: options.env, worktrees: options.worktrees,
+      configLoad: options.configLoad?.(factory) }, factory, number, declaration);
+    // The hold closed with the declaration, so the factory's queue is open again.
+    yield* Effect.sync(() => options.onIntegrationQueued?.(factory));
+
+    return yield* show(factory, number);
+  });
+
+  return { submit, list, show, pause, resume, retry, retryIntegration: integrationRetry, declareIntegration: integrationDeclaration, inspectCancellation, cancel };
 };
