@@ -331,13 +331,76 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
   },
   {
     id: 13,
+    name: "message_binding",
+    statements: [
+      `ALTER TABLE message ADD COLUMN bound_slot TEXT`,
+      `ALTER TABLE message ADD COLUMN bound_at INTEGER`,
+      // Binding belongs to the logical slot, never a launch. Delivery/recovery cannot reroute it.
+      `CREATE TRIGGER message_binding_immutable BEFORE UPDATE OF bound_slot, bound_at ON message
+       WHEN OLD.bound_slot IS NOT NULL AND
+         (NEW.bound_slot IS NOT OLD.bound_slot OR NEW.bound_at IS NOT OLD.bound_at)
+       BEGIN SELECT RAISE(ABORT, 'message binding is immutable'); END`,
+      `CREATE INDEX message_unbound ON message (factory_id, sequence) WHERE status = 'unbound'`,
+    ],
+  },
+  {
+    id: 14,
+    name: "request_acceptance",
+    statements: [
+      `CREATE TABLE agent_request (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        requester_slot TEXT NOT NULL,
+        recipient TEXT NOT NULL,
+        recipient_slot TEXT,
+        ticket_number INTEGER,
+        notice_id TEXT NOT NULL UNIQUE REFERENCES message(id),
+        status TEXT NOT NULL CHECK (status IN ('open', 'completed', 'expired', 'failed')),
+        accepted_at INTEGER NOT NULL,
+        deadline INTEGER NOT NULL CHECK (deadline > accepted_at)
+      ) STRICT`,
+      `CREATE INDEX agent_request_deadline ON agent_request (deadline) WHERE status = 'open'`,
+    ],
+  },
+  {
+    id: 15,
+    name: "assignments",
+    statements: [
+      `CREATE TABLE assignment (
+        id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        stage TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('active', 'suspended', 'ended')),
+        recovery_count INTEGER NOT NULL DEFAULT 0,
+        recovery_ceiling INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        ended_at INTEGER,
+        end_reason TEXT,
+        context_message TEXT NOT NULL REFERENCES message (id),
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket (factory_id, number),
+        FOREIGN KEY (factory_id, slot_id) REFERENCES slot (factory_id, slot_id),
+        CHECK ((status = 'ended') = (ended_at IS NOT NULL))
+      ) STRICT`,
+      `CREATE UNIQUE INDEX assignment_one_unended_ticket ON assignment (factory_id, ticket_number)
+       WHERE status != 'ended'`,
+      `CREATE UNIQUE INDEX assignment_one_active_slot ON assignment (factory_id, slot_id)
+       WHERE status = 'active'`,
+    ],
+  },
+  {
+    id: 16,
     name: "operator_message_attribution",
     statements: [
+      // Keep references in agent_request/assignment pointing at the final `message` name.
+      // Defer the transient missing parent while rebuilding; validate final integrity below.
+      `PRAGMA defer_foreign_keys = ON`,
       `CREATE TABLE message_with_sender (
         id TEXT PRIMARY KEY,
         factory_id TEXT NOT NULL,
         sequence INTEGER NOT NULL CHECK (sequence > 0),
-        sender_kind TEXT NOT NULL DEFAULT 'agent' CHECK (sender_kind IN ('agent', 'operator')),
+        sender_kind TEXT NOT NULL DEFAULT 'agent' CHECK (sender_kind IN ('agent', 'operator', 'daemon')),
         sender_slot TEXT,
         recipient TEXT NOT NULL,
         body TEXT NOT NULL,
@@ -348,15 +411,30 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
         delegation_id TEXT,
         status TEXT NOT NULL CHECK (status IN ('unbound', 'bound', 'sent', 'acknowledged', 'indeterminate', 'dropped', 'expired')),
         accepted_at INTEGER NOT NULL,
-        CHECK ((sender_kind = 'agent' AND sender_slot IS NOT NULL) OR (sender_kind = 'operator' AND sender_slot IS NULL)),
+        bound_slot TEXT,
+        bound_at INTEGER,
+        CHECK ((sender_kind = 'agent' AND sender_slot IS NOT NULL) OR (sender_kind IN ('operator', 'daemon') AND sender_slot IS NULL)),
         UNIQUE (factory_id, sequence)
       ) STRICT`,
-      `INSERT INTO message_with_sender (id, factory_id, sequence, sender_slot, recipient, body, delivery,
-        kind, ticket_number, request_id, delegation_id, status, accepted_at)
-       SELECT id, factory_id, sequence, sender_slot, recipient, body, delivery,
-        kind, ticket_number, request_id, delegation_id, status, accepted_at FROM message`,
+      // Before attribution existed, assignment context used the empty sender slot as daemon.
+      `INSERT INTO message_with_sender (id, factory_id, sequence, sender_kind, sender_slot, recipient, body, delivery,
+        kind, ticket_number, request_id, delegation_id, status, accepted_at, bound_slot, bound_at)
+       SELECT id, factory_id, sequence, CASE WHEN sender_slot = '' THEN 'daemon' ELSE 'agent' END,
+        NULLIF(sender_slot, ''), recipient, body, delivery,
+        kind, ticket_number, request_id, delegation_id, status, accepted_at, bound_slot, bound_at FROM message`,
       `DROP TABLE message`,
       `ALTER TABLE message_with_sender RENAME TO message`,
+      `CREATE TRIGGER message_binding_immutable BEFORE UPDATE OF bound_slot, bound_at ON message
+       WHEN OLD.bound_slot IS NOT NULL AND
+         (NEW.bound_slot IS NOT OLD.bound_slot OR NEW.bound_at IS NOT OLD.bound_at)
+       BEGIN SELECT RAISE(ABORT, 'message binding is immutable'); END`,
+      `CREATE INDEX message_unbound ON message (factory_id, sequence) WHERE status = 'unbound'`,
+      // SQLite retains deferred DROP violations even when the parent is restored. Check actual
+      // final foreign keys before clearing that transient violation counter, never disable FKs.
+      `CREATE TEMP TABLE message_fk_valid (valid INTEGER NOT NULL CHECK (valid = 1))`,
+      `INSERT INTO message_fk_valid SELECT 0 FROM pragma_foreign_key_check`,
+      `DROP TABLE message_fk_valid`,
+      `PRAGMA defer_foreign_keys = OFF`,
     ],
   },
 ];

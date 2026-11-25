@@ -98,19 +98,65 @@ test("operator sends commit in the shared log with operator attribution, no assi
     }) })));
 });
 
-test("migration preserves agent messages and classifies existing rows as agent", async () => {
+test("migration preserves request and assignment references, message bindings, and daemon context attribution", async () => {
   const home = tempRoot();
   const filename = join(home, "foundry.db");
   await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
-    const store = yield* openStore({ filename, migrations: foundryMigrations.filter((m) => m.id <= 12) });
+    const store = yield* openStore({ filename, migrations: foundryMigrations.filter((m) => m.id <= 15) });
     yield* store.change((change) => Effect.gen(function* () {
-      yield* change.query(`INSERT INTO message (id, factory_id, sequence, sender_slot, recipient, body, delivery, kind, status, accepted_at)
-        VALUES ('old', 'shop', 1, 'builder/1', 'eng.builder', 'retained', 'after_turn', 'ordinary', 'unbound', 1)`);
-      yield* change.recordHistory({ factoryId: "shop", kind: "message.accepted", subject: "old" });
+      yield* change.query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition)
+        VALUES ('shop', 'builder/1', 'builder', 1, 'normal')`);
+      yield* change.query(`INSERT INTO ticket (factory_id, number, title, slug, production_line, directory, state,
+        rejection_ceiling, message_ceiling, submitted_at)
+        VALUES ('shop', 1, 'Ticket', 'ticket', 'standard', '/disposable', 'backlog', 3, 10, 1)`);
+      yield* change.query(`INSERT INTO message (id, factory_id, sequence, sender_slot, recipient, body, delivery, kind,
+        ticket_number, request_id, status, accepted_at, bound_slot, bound_at)
+        VALUES ('old', 'shop', 1, 'builder/1', 'eng.builder', 'retained', 'after_turn', 'request_notice',
+          1, 'request', 'bound', 1, 'builder/1', 2),
+        ('context', 'shop', 2, '', 'eng.builder', 'context body', 'after_turn', 'ordinary',
+          1, NULL, 'bound', 1, 'builder/1', 2),
+        ('queued', 'shop', 3, 'builder/1', 'eng.builder', 'queued body', 'when_idle', 'ordinary',
+          NULL, NULL, 'unbound', 1, NULL, NULL)`);
+      yield* change.query(`INSERT INTO agent_request (id, factory_id, requester_slot, recipient, ticket_number,
+        notice_id, status, accepted_at, deadline)
+        VALUES ('request', 'shop', 'builder/1', 'eng.builder', 1, 'old', 'open', 1, 1000)`);
+      yield* change.query(`INSERT INTO assignment (id, factory_id, ticket_number, stage, slot_id, status,
+        recovery_ceiling, created_at, context_message)
+        VALUES ('assignment', 'shop', 1, 'plan', 'builder/1', 'active', 3, 1, 'context')`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "upgrade" });
     }));
   })));
   const { store } = await open(home);
-  expect(await rows(store)).toMatchObject([{ id: "old", sender_kind: "agent", sender_slot: "builder/1", body: "retained", sequence: 1 }]);
+  expect(await rows(store)).toMatchObject([
+    { id: "old", sender_kind: "agent", sender_slot: "builder/1", body: "retained", request_id: "request",
+      ticket_number: 1, status: "bound", bound_slot: "builder/1", bound_at: 2 },
+    { id: "context", sender_kind: "daemon", sender_slot: null, body: "context body", ticket_number: 1,
+      status: "bound", bound_slot: "builder/1", bound_at: 2 },
+    { id: "queued", sender_kind: "agent", status: "unbound", bound_slot: null, delivery: "when_idle" },
+  ]);
+  expect(await Effect.runPromise(store.read(`SELECT notice_id FROM agent_request`))).toEqual([{ notice_id: "old" }]);
+  expect(await Effect.runPromise(store.read(`SELECT context_message FROM assignment`))).toEqual([{ context_message: "context" }]);
+  expect(await Effect.runPromise(store.read(`PRAGMA foreign_key_check`))).toEqual([]);
+  expect(await Effect.runPromise(store.read(`PRAGMA foreign_key_list(agent_request)`)))
+    .toEqual(expect.arrayContaining([expect.objectContaining({ table: "message", from: "notice_id", to: "id" })]));
+  expect(await Effect.runPromise(store.read(`PRAGMA foreign_key_list(assignment)`)))
+    .toEqual(expect.arrayContaining([expect.objectContaining({ table: "message", from: "context_message", to: "id" })]));
+  expect(await Effect.runPromise(store.read(`SELECT name, sql FROM sqlite_master WHERE name = 'message_unbound'`)))
+    .toEqual([{ name: "message_unbound", sql: "CREATE INDEX message_unbound ON message (factory_id, sequence) WHERE status = 'unbound'" }]);
+
+  // Both the immutable binding trigger and parent FKs still actively reject invalid mutations.
+  for (const sql of [
+    `UPDATE message SET bound_slot = 'builder/2' WHERE id = 'old'`,
+    `DELETE FROM message WHERE id = 'old'`,
+    `DELETE FROM message WHERE id = 'context'`,
+  ]) {
+    await expect(Effect.runPromise(store.change((change) => Effect.gen(function* () {
+      yield* change.query(sql);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "must-rollback" });
+    })))).rejects.toMatchObject({ reason: "Sql" });
+  }
+
+  expect(await rows(store)).toHaveLength(3);
 });
 
 test("message CLI rejects bad usage and uses the selected disposable home when the daemon is down", async () => {

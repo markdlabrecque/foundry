@@ -18,6 +18,7 @@ import { createKnowledgeLayout, LoadFactoriesResult, loadFactoryFiles, recordRun
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
 import { createTicketService, ticketFactoryFrom } from "./tickets.js";
 import { createOperatorMessages } from "./operator-message.js";
+import { assignedSlot, assignmentContextSlot, assignmentTicket, watchAssignments } from "./assignments.js";
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
@@ -35,7 +36,7 @@ import type { DaemonLogger, LogLevel, LogRefs } from "./log.js";
 import { ManagementSocketError, serveManagementApi } from "./management-api.js";
 import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
-import { AGENT_DISCOVER, AGENT_MESSAGE, AGENT_STATUS, channelSocketPath } from "@foundry/protocol";
+import { AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REQUEST, AGENT_STATUS, channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
 import { connectHost, resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
@@ -57,6 +58,8 @@ import { createSubmissions } from "./submissions.js";
 import { agentDiscoverHandler } from "./agent-discover.js";
 import { agentStatusHandler } from "./agent-status.js";
 import { agentMessageHandler } from "./agent-message.js";
+import { agentRequestHandler } from "./agent-request.js";
+import { startMessageRouting } from "./message-routing.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -169,7 +172,13 @@ const main = async (): Promise<void> => {
 
   // One store for the daemon's lifetime, closed with its scope.
   const storeScope = Effect.runSync(Scope.make());
-  const closeStore = (): Promise<void> => Effect.runPromise(Scope.close(storeScope, Exit.void));
+  let stopRouting: (() => Promise<void>) | undefined;
+
+  const closeStore = async (): Promise<void> => {
+    await stopRouting?.();
+    await Effect.runPromise(Scope.close(storeScope, Exit.void));
+  };
+
   const databaseFile = join(stateRoot, DATABASE_FILE_NAME);
   let store: Store;
 
@@ -423,7 +432,8 @@ const main = async (): Promise<void> => {
           handlers: new Map([
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
             [AGENT_STATUS, agentStatusHandler(plannedSlots)],
-            [AGENT_MESSAGE, agentMessageHandler(plannedSlots)],
+            [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket })],
+            [AGENT_REQUEST, agentRequestHandler(plannedSlots, { assignmentTicket })],
           ]),
           gate: freezer,
         }),
@@ -444,6 +454,13 @@ const main = async (): Promise<void> => {
       });
       const recorder = scheduler;
       markSchedulerReady(scheduler);
+      stopRouting = startMessageRouting({
+        store, slots: plannedSlots,
+        assignedSlot: (change, factoryId, ticket) => assignedSlot(change.query, factoryId, ticket),
+        contextSlot: assignmentContextSlot,
+        inScope: (factoryId) => factoryStates.isRunning(factoryId),
+        onError: (cause) => log.error("message routing failed", { detail: { error: messageOf(cause) } }),
+      });
 
       // PRD §10.2: prove ownership and recover any vacancy before clearing the hold.
       freezeChecks.host_lost = recorder.recheckOwnership;
@@ -502,6 +519,12 @@ const main = async (): Promise<void> => {
   let api: ManagementApi | undefined;
   let stopping = false;
 
+  const stopAssignments = watchAssignments({
+    store, factories, slots: plannedSlots,
+    configLoad: (factoryId) => loadIds.get(factoryId),
+    inScope: (factoryId) => !stopping && factoryStates.isRunning(factoryId),
+  }, (error) => log.error("tickets not assigned", { detail: { error: messageOf(error) } }));
+
   const stop = (signal: NodeJS.Signals): void => {
     if (stopping) {return;}
 
@@ -518,6 +541,7 @@ const main = async (): Promise<void> => {
       try {
         try {
           // Closing the connections leaves the host and its launches running (PRD §3.2).
+          await stopAssignments?.();
           await channel?.close().catch(() => {});
           host?.close();
           await served.close();
@@ -611,6 +635,7 @@ const main = async (): Promise<void> => {
       slotControl: storeSlotControl(slotsReader, freezer),
     });
   } catch (error) {
+    await stopAssignments();
     await channel?.close().catch(() => {});
     host?.close();
 

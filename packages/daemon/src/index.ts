@@ -13,6 +13,10 @@ export * from "./agent-message.js";
 
 export * from "./operator-message.js";
 
+export * from "./agent-request.js";
+
+export * from "./message-routing.js";
+
 export * from "./agent-discover.js";
 
 export * from "./agent-status.js";
@@ -39,6 +43,8 @@ export {
 export * from "./store.js";
 
 export * from "./tickets.js";
+
+export * from "./assignments.js";
 
 export * from "./prime.js";
 

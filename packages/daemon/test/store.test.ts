@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit } from "effect";
-import { foundryMigrations, openStore } from "@foundry/daemon";
-import type { Migration, Store } from "@foundry/daemon";
+import { acceptMessage, bindStationMessages, foundryMigrations, openStore, startMessageRouting, StoreError } from "@foundry/daemon";
+import type { Change, Migration, PlannedSlot, Store } from "@foundry/daemon";
 
 // Stands in for a later ticket's current-state table, one past the migrations this build knows.
 const nextId = foundryMigrations.length + 1;
@@ -183,4 +183,150 @@ test("history rows cannot be updated or deleted", async () => {
   expect(outcomes.update).toMatchObject(Exit.fail({ reason: "Sql" }));
   expect(outcomes.remove).toMatchObject(Exit.fail({ reason: "Sql" }));
   expect(outcomes.state.history).toMatchObject([{ kind: "slot.frozen" }]);
+});
+
+const routingSlots: ReadonlyArray<PlannedSlot> = [1, 2].map((ordinal) => ({
+  factoryId: "alpha", slotId: `builder/${ordinal}`, ordinal,
+  station: { address: "eng.builder", room: "eng", station: "builder", instructions: [], model: "faux/scripted",
+    skills: [], extensions: [], instances: 2, isolation: "none" },
+}));
+
+const acceptRoutingMessage = (store: Store, ticket: number | null = null, recipient = "eng.builder") =>
+  store.change((change) => acceptMessage(change, {
+    factoryId: "alpha", senderSlot: "sender/1", recipient, body: "route me", kind: "ordinary", delivery: "after_turn",
+    correlation: { ticket },
+  }));
+
+test("message acceptance schema upgrades without losing queued work", async () => {
+  // A historical schema fixture uses historical columns, not today's acceptance implementation.
+  await withStore(foundryMigrations.filter((m) => m.id <= 12), (store) => store.change((change) => Effect.gen(function* () {
+    yield* change.query(`INSERT INTO message (id, factory_id, sequence, sender_slot, recipient, body, delivery, kind, status, accepted_at)
+      VALUES ('queued-before-binding', 'alpha', 1, 'sender/1', 'eng.builder', 'route me', 'after_turn', 'ordinary', 'unbound', 1)`);
+    yield* change.recordHistory({ factoryId: "alpha", kind: "message.accepted", subject: "queued-before-binding" });
+  })));
+  await withStore(foundryMigrations, (store) => Effect.gen(function* () {
+    expect(yield* store.read(`SELECT id, status, bound_slot, bound_at FROM message`)).toEqual([
+      { id: "queued-before-binding", status: "unbound", bound_slot: null, bound_at: null },
+    ]);
+  }));
+});
+
+test("commit-driven routing wakes on eligibility changes and stops cleanly", async () => {
+  await withStore(foundryMigrations, (store) => Effect.promise(async () => {
+    const message = await Effect.runPromise(acceptRoutingMessage(store));
+    const errors: Array<unknown> = [];
+    let observed: (() => void) | undefined;
+    const committed = new Promise<void>((resolve) => { observed = resolve; });
+
+    const unsubscribe = store.onCommit(() => {
+      void Effect.runPromise(store.read<{ status: string }>(`SELECT status FROM message WHERE id = ?`, [message.id]))
+        .then((rows) => { if (rows[0]?.status === "bound") {observed?.();} });
+    });
+
+    const stop = startMessageRouting({ store, slots: routingSlots, onError: (cause) => { errors.push(cause); } });
+
+    try {
+      await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+        yield* change.query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition) VALUES ('alpha', 'builder/1', 'eng.builder', 1, 'normal')`);
+        yield* change.recordHistory({ factoryId: "alpha", kind: "test.eligible", subject: "builder/1" });
+      })));
+      await committed;
+      await stop();
+      expect(errors).toEqual([]);
+      expect(await Effect.runPromise(store.read(`SELECT status, bound_slot FROM message`))).toEqual([{ status: "bound", bound_slot: "builder/1" }]);
+      await Effect.runPromise(acceptRoutingMessage(store));
+      expect(await Effect.runPromise(store.read(`SELECT status FROM message ORDER BY sequence`))).toEqual([{ status: "bound" }, { status: "unbound" }]);
+    } finally {
+      unsubscribe();
+      await stop();
+    }
+  }));
+});
+
+const routingState = (store: Store) => Effect.all({
+  messages: store.read(`SELECT id, sequence, status, bound_slot, bound_at FROM message ORDER BY sequence`),
+  history: store.read<{ subject: string; detail: string }>(`SELECT subject, detail FROM history WHERE kind = 'message.bound' ORDER BY sequence`),
+});
+
+test("routing commits in acceptance order, leaves ineligible work unbound and never rebinds across reopen/replacement", async () => {
+  const accepted = await withStore(foundryMigrations, (store) => Effect.gen(function* () {
+    const first = yield* acceptRoutingMessage(store, 42);
+    const second = yield* acceptRoutingMessage(store);
+    const waiting = yield* acceptRoutingMessage(store, null, "ops.deployer");
+    // No persisted eligible slots yet: no made-up binding or history row.
+    expect(yield* bindStationMessages({ store, slots: routingSlots })).toEqual([]);
+    yield* store.change((change) => Effect.gen(function* () {
+      for (const slot of routingSlots) {
+        yield* change.query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition, current_launch)
+          VALUES ('alpha', ?, 'eng.builder', ?, 'normal', 'old-launch')`, [slot.slotId, slot.ordinal]);
+      }
+
+      yield* change.recordHistory({ factoryId: "alpha", kind: "test.slots", subject: "slots" });
+    }));
+
+    const options = { store, slots: routingSlots, assignedSlot: (_change: Change, factory: string, ticket: number) => {
+      expect([factory, ticket]).toEqual(["alpha", 42]);
+
+      return Effect.succeed("builder/2");
+    } };
+
+    const passes = yield* Effect.all([bindStationMessages(options), bindStationMessages(options)], { concurrency: 2 });
+    expect(passes.flat()).toEqual([
+      { id: first.id, factoryId: "alpha", sequence: 1, slotId: "builder/2" },
+      { id: second.id, factoryId: "alpha", sequence: 2, slotId: "builder/1" },
+    ]);
+    const state = yield* routingState(store);
+    expect(state.messages).toMatchObject([
+      { id: first.id, status: "bound", bound_slot: "builder/2", bound_at: expect.any(Number) },
+      { id: second.id, status: "bound", bound_slot: "builder/1", bound_at: expect.any(Number) },
+      { id: waiting.id, status: "unbound", bound_slot: null, bound_at: null },
+    ]);
+    expect(state.history.map((row) => row.subject)).toEqual([first.id, second.id]);
+
+    return state;
+  }));
+
+  await withStore(foundryMigrations, (store) => Effect.gen(function* () {
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE slot SET current_launch = 'replacement', condition = 'frozen'`);
+      yield* change.recordHistory({ factoryId: "alpha", kind: "test.replacement", subject: "slots" });
+    }));
+    expect(yield* bindStationMessages({ store, slots: routingSlots, assignedSlot: () => Effect.succeed("builder/1") })).toEqual([]);
+    expect(yield* routingState(store)).toEqual(accepted);
+
+    const mutation = yield* Effect.exit(store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE message SET bound_slot = 'builder/1' WHERE sequence = 1`);
+      yield* change.recordHistory({ factoryId: "alpha", kind: "test.rebind", subject: "message" });
+    })));
+
+    expect(mutation).toMatchObject(Exit.fail({ reason: "Sql" }));
+    expect(yield* routingState(store)).toEqual(accepted);
+  }));
+});
+
+test("binding rolls back the whole pass on lookup failure and respects factory scope and slot condition", async () => {
+  await withStore(foundryMigrations, (store) => Effect.gen(function* () {
+    yield* acceptRoutingMessage(store);
+    yield* acceptRoutingMessage(store, 42);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition) VALUES ('alpha', 'builder/1', 'eng.builder', 1, 'parked')`);
+      yield* change.recordHistory({ factoryId: "alpha", kind: "test.slot", subject: "builder/1" });
+    }));
+    const options = { store, slots: routingSlots };
+    expect(yield* bindStationMessages(options)).toEqual([]);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE slot SET condition = 'normal'`);
+      yield* change.recordHistory({ factoryId: "alpha", kind: "test.unpark", subject: "builder/1" });
+    }));
+    expect(yield* bindStationMessages({ ...options, inScope: () => false })).toEqual([]);
+    const before = yield* routingState(store);
+
+    const failed = yield* Effect.exit(bindStationMessages({ ...options,
+      assignedSlot: () => Effect.fail(new StoreError({ reason: "Sql", message: "lookup failed" })),
+    }));
+
+    expect(failed).toMatchObject(Exit.fail({ reason: "Sql" }));
+    expect(yield* routingState(store)).toEqual(before);
+    expect(yield* bindStationMessages(options)).toHaveLength(2);
+  }));
 });

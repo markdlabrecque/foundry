@@ -26,14 +26,14 @@ export type MessageAcceptance = {
   };
 } & (
   | { readonly senderKind?: "agent"; readonly senderSlot: string }
-  | { readonly senderKind: "operator"; readonly senderSlot: null }
+  | { readonly senderKind: "operator" | "daemon"; readonly senderSlot: null }
 );
 
 export type AcceptedMessage = {
   readonly id: string;
   readonly sequence: number;
   readonly factoryId: string;
-  readonly senderKind: "agent" | "operator";
+  readonly senderKind: "agent" | "operator" | "daemon";
   readonly senderSlot: string | null;
   readonly recipient: string;
   readonly body: string;
@@ -63,9 +63,9 @@ export const acceptMessage = (change: Change, input: MessageAcceptance, guards: 
   Effect.gen(function* () {
     const senderKind = input.senderKind ?? "agent";
 
-    const ticket = input.senderKind === "operator" ? null : input.correlation !== undefined
+    const ticket = input.correlation !== undefined
       ? input.correlation.ticket
-      : guards.assignmentTicket === undefined ? null : yield* guards.assignmentTicket(change, input.factoryId, input.senderSlot);
+      : input.senderSlot === null || guards.assignmentTicket === undefined ? null : yield* guards.assignmentTicket(change, input.factoryId, input.senderSlot);
 
     const id = randomUUID();
     const now = yield* Clock.currentTimeMillis;
