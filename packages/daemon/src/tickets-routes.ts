@@ -3,7 +3,8 @@
  * Kept apart from `management-api.ts` so it stays the socket's lifecycle and the status route.
  */
 import type { IncomingMessage } from "node:http";
-import { Cause, Effect, Exit } from "effect";
+import { Cause, Effect, Exit, Schema } from "effect";
+import { messageOf } from "@foundry/protocol/errors";
 import type { ApiResponse } from "@foundry/protocol/management-api";
 import { FACTORY_PARAM, TICKETS_PATH } from "@foundry/protocol/tickets-api";
 import type { SubmitTicketRequest } from "@foundry/protocol/tickets-api";
@@ -57,16 +58,21 @@ const readBody = (request: IncomingMessage): Promise<string> =>
     request.on("error", reject);
   });
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/** A submit body's fields before they are checked, so each problem can be named. */
+const isSubmitFields = Schema.is(
+  Schema.Struct({
+    title: Schema.optionalKey(Schema.Unknown),
+    spec: Schema.optionalKey(Schema.Unknown),
+    factory: Schema.optionalKey(Schema.Unknown),
+    line: Schema.optionalKey(Schema.Unknown),
+  }),
+);
 
-const optionalString = (record: Record<string, unknown>, key: string): string | undefined | false => {
-  const value = record[key];
+const isText = Schema.is(Schema.String);
 
-  if (value === undefined) {return undefined;}
+const isNonEmptyText = Schema.is(Schema.NonEmptyString);
 
-  return typeof value === "string" && value !== "" ? value : false;
-};
+const isRefusal = Schema.is(Schema.String);
 
 /** Checks a submit body's shape; returns a message on failure. */
 const parseSubmit = (text: string): SubmitTicketRequest | string => {
@@ -78,25 +84,29 @@ const parseSubmit = (text: string): SubmitTicketRequest | string => {
     return "the request body is not JSON";
   }
 
-  if (!isRecord(parsed)) {return "the request body must be a JSON object";}
+  if (!isSubmitFields(parsed)) {return "the request body must be a JSON object";}
 
-  if (typeof parsed["title"] !== "string") {return "title must be a string";}
+  const { title, spec } = parsed;
 
-  if (typeof parsed["spec"] !== "string") {return "spec must be a string";}
+  if (!isText(title)) {return "title must be a string";}
 
-  const factory = optionalString(parsed, "factory");
-  const line = optionalString(parsed, "line");
+  if (!isText(spec)) {return "spec must be a string";}
+
+  // Optional fields: absent, a non-empty string, or `false` when they are anything else.
+  const factory = parsed.factory === undefined ? undefined : isNonEmptyText(parsed.factory) ? parsed.factory : false;
+  const line = parsed.line === undefined ? undefined : isNonEmptyText(parsed.line) ? parsed.line : false;
 
   if (factory === false) {return "factory must be a non-empty string";}
 
   if (line === false) {return "line must be a non-empty string";}
 
-  return {
-    title: parsed["title"],
-    spec: parsed["spec"],
-    ...(factory === undefined ? {} : { factory }),
-    ...(line === undefined ? {} : { line }),
-  };
+  let request: SubmitTicketRequest = { title, spec };
+
+  if (factory !== undefined) {request = { ...request, factory };}
+
+  if (line !== undefined) {request = { ...request, line };}
+
+  return request;
 };
 
 const run = async <A>(effect: Effect.Effect<A, unknown>, okStatus: number): Promise<RouteReply> => {
@@ -108,7 +118,7 @@ const run = async <A>(effect: Effect.Effect<A, unknown>, okStatus: number): Prom
 
   if (error instanceof TicketError) {return fail(STATUS_OF[error.code], error.code, error.message);}
 
-  return fail(500, "internal", error instanceof Error ? error.message : String(error));
+  return fail(500, "internal", messageOf(error));
 };
 
 /** Answers one request under `/api/v1/tickets`. */
@@ -137,7 +147,7 @@ export const handleTickets = async (tickets: TicketService, request: IncomingMes
 
       const submit = parseSubmit(text);
 
-      if (typeof submit === "string") {return fail(400, "invalid_request", submit);}
+      if (isRefusal(submit)) {return fail(400, "invalid_request", submit);}
 
       return run(tickets.submit(submit), 201);
     }

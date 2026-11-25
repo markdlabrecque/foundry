@@ -28,6 +28,7 @@ import { readdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import ignore from "ignore";
 import { parse as parseYaml } from "yaml";
+import { Schema } from "effect";
 
 /** A file reproduced verbatim, with its path relative to the worktree root. */
 export interface RepositoryContextFile {
@@ -164,8 +165,7 @@ async function indexSkills(scope: RootScope): Promise<Array<SkillHeader>> {
   }
 
   return [...byName.values()]
-    .filter((skill) => !skill.hidden)
-    .map((skill) => skill.header)
+    .flatMap((skill) => (skill.hidden ? [] : [skill.header]))
     .sort((a, b) => compare(a.name, b.name) || compare(a.path, b.path));
 }
 
@@ -298,7 +298,7 @@ async function readSkillHeader(
 
   if (raw === null) {return null;}
 
-  let frontmatter: Record<string, unknown>;
+  let frontmatter: Frontmatter;
 
   try {
     frontmatter = parseFrontmatter(raw);
@@ -306,19 +306,35 @@ async function readSkillHeader(
     return null;
   }
 
-  const description = frontmatter["description"];
+  const description = frontmatter.description;
 
-  if (typeof description !== "string" || description.trim() === "") {return null;}
+  if (!isText(description) || description.trim() === "") {return null;}
 
   const hidden = frontmatter["disable-model-invocation"] === true;
-  const declaredName = frontmatter["name"];
-  const name = typeof declaredName === "string" && declaredName !== "" ? declaredName : basename(dirname(file));
+  const declaredName = frontmatter.name;
+  const name = isText(declaredName) && declaredName !== "" ? declaredName : basename(dirname(file));
 
   return { header: { name, description, path: scope.relativePath(file) }, hidden };
 }
 
+/** The frontmatter keys a skill header reads; any other keys are ignored. */
+const Frontmatter = Schema.Struct({
+  name: Schema.optionalKey(Schema.Unknown),
+  description: Schema.optionalKey(Schema.Unknown),
+  "disable-model-invocation": Schema.optionalKey(Schema.Unknown),
+});
+
+type Frontmatter = typeof Frontmatter.Type;
+
+const isFrontmatter = Schema.is(Frontmatter);
+
+const isText = Schema.is(Schema.String);
+
+/** A YAML mapping, as opposed to a scalar or a list. */
+const isMapping = Schema.is(Schema.Record(Schema.String, Schema.Unknown));
+
 /** Pi's frontmatter extraction: a leading `---` block, closed by the next line starting `---`. */
-function parseFrontmatter(content: string): Record<string, unknown> {
+function parseFrontmatter(content: string): Frontmatter {
   const normalized = content.replaceAll('\r\n', "\n").replaceAll('\r', "\n");
 
   if (!normalized.startsWith("---")) {return {};}
@@ -329,9 +345,7 @@ function parseFrontmatter(content: string): Record<string, unknown> {
 
   const parsed: unknown = parseYaml(normalized.slice(4, end));
 
-  return typeof parsed === "object" && parsed !== null && !Array.isArray(parsed)
-    ? (parsed as Record<string, unknown>)
-    : {};
+  return isMapping(parsed) && isFrontmatter(parsed) ? parsed : {};
 }
 
 async function readText(path: string): Promise<string | null> {

@@ -6,6 +6,7 @@
  */
 import { readFileSync } from "node:fs";
 import { codeOf } from "@foundry/protocol/errors";
+import { Schema } from "effect";
 
 /** The `customType` every Foundry injection carries in Pi's session. */
 export const FOUNDRY_MESSAGE_TYPE = "foundry" as const;
@@ -68,8 +69,16 @@ export class ReceiptIssuer {
   }
 }
 
-const isRecord = (value: unknown): value is Record<string, unknown> =>
-  typeof value === "object" && value !== null && !Array.isArray(value);
+/** A Foundry custom message entry in a Pi session file; its details are checked separately. */
+const isFoundryEntry = Schema.is(
+  Schema.Struct({
+    type: Schema.Literal("custom_message"),
+    customType: Schema.Literal(FOUNDRY_MESSAGE_TYPE),
+    details: Schema.optionalKey(Schema.Unknown),
+  }),
+);
+
+const isFoundryDetails = Schema.is(Schema.Struct({ foundryId: Schema.String }));
 
 /**
  * Foundry IDs in a Pi session file on disk. Pi rebuilds a relaunched worker's
@@ -103,11 +112,9 @@ export const readRecoverableIds = (sessionFile: string | undefined): Set<string>
       continue; // Pi skips malformed lines when it restores, so they are not recoverable.
     }
 
-    if (!isRecord(entry) || entry["type"] !== "custom_message" || entry["customType"] !== FOUNDRY_MESSAGE_TYPE) {continue;}
+    if (!isFoundryEntry(entry)) {continue;}
 
-    const details = entry["details"];
-
-    if (isRecord(details) && typeof details["foundryId"] === "string") {ids.add(details["foundryId"]);}
+    if (isFoundryDetails(entry.details)) {ids.add(entry.details.foundryId);}
   }
 
   return ids;

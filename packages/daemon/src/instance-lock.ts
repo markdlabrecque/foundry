@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { codeOf } from "@foundry/protocol/errors";
 import { linkSync, mkdirSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { Option, Schema } from "effect";
 
 /** The lock file's name inside the state root. */
 export const LOCK_FILE_NAME = "daemon.lock";
@@ -71,6 +72,10 @@ interface OwnerFile {
   readonly owner: OwnerContent | undefined;
 }
 
+const decodeOwner = Schema.decodeUnknownOption(
+  Schema.fromJsonString(Schema.Struct({ pid: Schema.Number, startedAt: Schema.String })),
+);
+
 const isErrno = (cause: unknown, code: string): boolean => codeOf(cause) === code;
 
 const unlinkIfPresent = (path: string): void => {
@@ -92,21 +97,10 @@ const readOwnerFile = (path: string): OwnerFile | undefined => {
     throw error;
   }
 
-  try {
-    const parsed: unknown = JSON.parse(raw);
+  // Unreadable content, or content without a positive integer pid, names no owner.
+  const owner = Option.getOrUndefined(decodeOwner(raw));
 
-    if (typeof parsed === "object" && parsed !== null) {
-      const { pid, startedAt } = parsed as Record<string, unknown>;
-
-      if (typeof pid === "number" && Number.isInteger(pid) && pid > 0 && typeof startedAt === "string") {
-        return { raw, owner: { pid, startedAt } };
-      }
-    }
-  } catch {
-    // Fall through: unreadable content names no owner.
-  }
-
-  return { raw, owner: undefined };
+  return { raw, owner: owner !== undefined && Number.isInteger(owner.pid) && owner.pid > 0 ? owner : undefined };
 };
 
 const isProcessAlive = (pid: number): boolean => {
