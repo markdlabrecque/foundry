@@ -106,6 +106,25 @@ const byLocation = (problems: ConfigProblem[]): ConfigProblem[] =>
   problems.sort((a, b) => (a.line ?? 0) - (b.line ?? 0) || (a.column ?? 0) - (b.column ?? 0));
 
 /**
+ * Adds YAML locations to problems found on an already decoded configuration
+ * (such as effective-station resolution), whose paths are dotted setting paths.
+ * Problems that already carry a line are returned unchanged.
+ */
+export const locateProblems = (
+  text: string,
+  problems: ReadonlyArray<ConfigProblem>,
+): ReadonlyArray<ConfigProblem> => {
+  const lineCounter = new LineCounter();
+  const doc = parseDocument(text, { uniqueKeys: true, prettyErrors: false, lineCounter });
+  return problems.map((problem) => {
+    if (problem.line !== undefined) return problem;
+    const path = problem.path === "" ? [] : problem.path.split(".");
+    const { line, col } = lineCounter.linePos(locate(doc, path, false) ?? 0);
+    return { ...problem, line, column: col };
+  });
+};
+
+/**
  * Finds the start offset of the node at `path`, or of its deepest existing
  * ancestor when the path does not exist (a missing key). For an unknown key the
  * key itself is located rather than its value.
