@@ -157,8 +157,11 @@ test('rearmed attempted notice refresh replaces its ID and retains the original 
   expect(errors).toEqual([]);
 });
 
-test.each(['pause', 'blocked', 'done'])('%s before first delivery invalidates the old continuation', async (action) => {
-  if (action === 'pause') {
+test.each(['pause', 'blocked', 'done', 'cancel'])('%s before first delivery invalidates the old continuation', async (action) => {
+  if (action === 'cancel') {
+    const disclosure = await Effect.runPromise(tickets.inspectCancellation('shop', 1));
+    await Effect.runPromise(tickets.cancel('shop', 1, disclosure.confirmation));
+  } else if (action === 'pause') {
     await Effect.runPromise(tickets.pause('shop', 1));
   } else {
     await Effect.runPromise(store.change((change) => taskTransitionHandler({ factories: [{ factoryId: 'shop', config }] })(change, {

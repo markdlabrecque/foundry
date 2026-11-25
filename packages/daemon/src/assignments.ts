@@ -5,6 +5,7 @@ import { Cause, Clock, Data, Effect, Exit } from "effect";
 import { acceptMessage } from "./agent-message.js";
 import { abandonAssignment } from "./assignment-abandon.js";
 import { composeResumeNotice } from "./resume-notice.js";
+import { isAssignmentSlotReserved, onAssignmentSlotReleased } from "./assignment-reservation.js";
 import { eligibleAssignmentSlots } from "./assignment-slots.js";
 import { composeAssignmentRepositoryContext, recordAssignmentRepositoryContext } from "./assignment-repository-context.js";
 import type { AssignmentSlot } from "./assignment-slots.js";
@@ -146,7 +147,8 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
         for (const candidate of candidates) {
           const slot = stationSlots.find((planned) => planned.slotId === candidate.slot_id);
 
-          if (slot === undefined || options.ready?.(ticket, slot) === false) {continue;}
+          if (slot === undefined || isAssignmentSlotReserved(options.store, slot.factoryId, slot.slotId)
+            || options.ready?.(ticket, slot) === false) {continue;}
 
           const slotKey = JSON.stringify([slot.factoryId, slot.slotId]);
 
@@ -345,11 +347,13 @@ export const watchAssignments = (
   };
 
   const unsubscribe = options.store.onCommit(wake);
+  const unreserve = onAssignmentSlotReleased(options.store, wake);
   wake();
 
   return async () => {
     stopped = true;
     unsubscribe();
+    unreserve();
     await running;
     const pending = [...preparations.values()];
 

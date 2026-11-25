@@ -1,17 +1,18 @@
 // Integration tier: disposable SQLite proves ownership, atomic submissions and a durable queue.
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { Effect, Exit, Match, Schema } from "effect";
 import {
-  acceptMessage, agentDelegateHandler, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
-  createApprovalAnswers, humanRequestHandler, createApprovalDecisions, createOperatorMessages, foundryMigrations, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
+  acceptMessage, agentDelegateHandler, agentRequestHandler, assignmentTicket, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
+  createApprovalAnswers, humanRequestHandler, createApprovalDecisions, createOperatorMessages, foundryMigrations, messageBudget, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
 } from "@foundry/daemon";
 import type { Migration, Store } from "@foundry/daemon";
 import { HUMAN_REQUEST, TASK_TRANSITION } from "@foundry/protocol";
-import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow } from "@foundry/cli";
+import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow, runTicketCancel } from "@foundry/cli";
+import { git as fixtureGit, makeGitSource } from "@foundry/testkit";
 import { FactoryConfig } from "../src/config/schema.js";
 import { getFromDaemon, postToDaemon } from "../../cli/src/management-client.js";
 import { approvalAnswerPath } from "@foundry/protocol/approvals";
@@ -59,6 +60,8 @@ const snapshot = (store: Store) => Effect.all({
   transitions: store.read(`SELECT * FROM ticket_transition`), history: store.read(`SELECT * FROM history`),
   submissions: store.read(`SELECT * FROM submission`), messages: store.read(`SELECT * FROM message`),
   approvals: store.read(`SELECT * FROM approval`),
+  requests: store.read(`SELECT * FROM agent_request`),
+  operations: store.read(`SELECT * FROM operation`),
   delegations: store.read(`SELECT * FROM delegation ORDER BY accepted_at, rowid`),
 });
 
@@ -104,6 +107,207 @@ const fixture = async <A, E>(use: (store: Store, assignmentId: string, root: str
     return yield* use(store, id, root);
   })));
 };
+
+test("cancel atomically ends a blocked assignment, its whole obligation tree and approval, retaining Git and artifacts", async () => {
+  const saved = await fixture((store, id, root) => Effect.gen(function* () {
+    const clone = join(root, "clone");
+    const start = makeGitSource(clone);
+    const worktree = join(root, "ticket-worktree");
+    fixtureGit(clone, ["worktree", "add", "-b", "ticket-1", worktree]);
+    writeFileSync(join(worktree, "untracked.txt"), "keep untracked work");
+    const service = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(config)], configLoad: () => "cancel-load" });
+    const detail = yield* service.show("shop", 1);
+    const evidence = join(detail.ticket.evidencePath, "result.txt");
+    writeFileSync(evidence, "keep evidence");
+    const delegate = agentDelegateHandler(slots);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET worktree_path = ?, branch = 'ticket-1', start_commit = ? WHERE number = 1`, [worktree, start]);
+      yield* delegate(change, { ...owner, callId: "parent", tool: "agent_delegate", args: { recipient: "floor.worker", body: "Parent work" } });
+      const [parent] = yield* change.query<{ id: string }>(`SELECT id FROM delegation`);
+
+      if (parent === undefined) {throw new Error("missing parent");}
+
+      yield* change.query(`UPDATE delegation SET recipient_slot = 'worker/2' WHERE id = ?`, [parent.id]);
+      yield* delegate(change, { ...owner, slotId: "worker/2", callId: "child", tool: "agent_delegate",
+        args: { recipient: "floor.worker", body: "Nested work", parentDelegationId: parent.id } });
+      yield* agentRequestHandler(slots, { assignmentTicket })(change, { ...owner, callId: "request", tool: "agent_request",
+        args: { recipient: "floor.worker", body: "Open question", timeoutMs: 60_000 } });
+    }));
+    const submissions = createSubmissions({ store, handlers });
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, outcome: "blocked", gitCommit: start } })))
+      .toMatchObject({ status: "committed" });
+    const before = yield* snapshot(store);
+    const inspection = yield* service.inspectCancellation("shop", 1);
+    expect(inspection.requests).toHaveLength(1);
+    expect(inspection.delegations).toHaveLength(2);
+    const result = yield* service.cancel("shop", 1, inspection.confirmation);
+    const after = yield* snapshot(store);
+    expect(result.ticket).toMatchObject({ state: "cancelled", stage: null, status: null,
+      worktree: { path: worktree, branch: "ticket-1", startCommit: start } });
+    expect(after.assignments).toMatchObject([{ id, status: "ended", end_reason: "cancelled", ended_at: expect.any(Number) }]);
+    expect(after.delegations).toMatchObject([{ status: "cancelled" }, { status: "cancelled" }]);
+    expect(after.requests).toMatchObject([{ status: "cancelled" }]);
+    expect(after.approvals).toMatchObject([{ state: "resolved", closed_at: expect.any(Number) }]);
+    expect(after.operations).toEqual(before.operations); // No worktree cleanup was even queued.
+    expect(result.transitions).toHaveLength(before.transitions.length + 1);
+    expect(result.transitions.at(-1)).toMatchObject({ actor: "operator", from: { state: "stage", stage: "plan", status: "paused" },
+      to: { state: "cancelled", stage: null, status: null }, configLoad: "cancel-load" });
+    expect(fixtureGit(clone, ["rev-parse", "ticket-1"])).toBe(start);
+    expect(fixtureGit(clone, ["worktree", "list", "--porcelain"])).toContain(worktree);
+    expect(readFileSync(join(worktree, "untracked.txt"), "utf8")).toBe("keep untracked work");
+    expect(readFileSync(evidence, "utf8")).toBe("keep evidence");
+    expect(readFileSync(detail.ticket.specPath, "utf8")).toBe("Disposable spec");
+    expect(yield* createAssignmentScheduler(schedulerOptions(store)).schedule()).toEqual([]);
+    expect(Exit.isFailure(yield* Effect.exit(service.cancel("shop", 1, inspection.confirmation)))).toBe(true);
+    expect(yield* snapshot(store)).toEqual(after);
+
+    return { root, after };
+  }));
+
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    expect(yield* snapshot(store)).toEqual(saved.after);
+  })));
+});
+
+test("cancel resolves worker and message-limit approvals without granting another allowance", async () => {
+  await fixture((store, id, root) => Effect.gen(function* () {
+    const submissions = createSubmissions({ store, handlers: new Map([[HUMAN_REQUEST, humanRequestHandler]]) });
+    yield* Effect.promise(() => submissions.submit(owner, { type: "tool_call", tool: HUMAN_REQUEST, callId: "decision-before-cancel",
+      args: { assignmentId: id, body: "Keep waiting for an operator" } }));
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET message_ceiling = 1 WHERE factory_id = 'shop' AND number = 1`);
+      yield* agentRequestHandler(slots, { assignmentTicket, budget: messageBudget() })(change,
+        { ...owner, callId: "last-message", tool: "agent_request", args: { recipient: "floor.worker", body: "Budget boundary", timeoutMs: 60_000 } });
+    }));
+    expect(yield* store.read(`SELECT kind, state FROM approval ORDER BY id`))
+      .toEqual([{ kind: "worker_request", state: "open" }, { kind: "limit_reached", state: "open" }]);
+    const service = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(config)] });
+    const inspection = yield* service.inspectCancellation("shop", 1);
+    const result = yield* service.cancel("shop", 1, inspection.confirmation);
+    expect(result.ticket).toMatchObject({ state: "cancelled", messages: { spent: 1, ceiling: 1 } });
+    expect(yield* store.read(`SELECT kind, state FROM approval ORDER BY id`))
+      .toEqual([{ kind: "worker_request", state: "resolved" }, { kind: "limit_reached", state: "resolved" }]);
+    expect(yield* store.read(`SELECT status FROM agent_request`)).toEqual([{ status: "cancelled" }]);
+    expect(yield* Effect.promise(() => storeApprovalsReader(store).list())).toEqual({ approvals: [] });
+  }));
+});
+
+test("cancel waits for active worker settlement; failed commit rolls back every cancellation write", async () => {
+  await fixture((store, id, root) => Effect.gen(function* () {
+    const base = { store, stateRoot: root, factories: () => [ticketFactoryFrom(config)] };
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* agentDelegateHandler(slots)(change, { ...owner, tool: "agent_delegate", callId: "open-delegation",
+        args: { recipient: "floor.worker", body: "Keep open on rollback" } });
+      yield* agentRequestHandler(slots, { assignmentTicket })(change, { ...owner, tool: "agent_request", callId: "open-request",
+        args: { recipient: "floor.worker", body: "Keep request on rollback", timeoutMs: 60_000 } });
+    }));
+    const before = yield* snapshot(store);
+    let interrupts = 0;
+
+    const interrupter = { interrupt: async () => {
+      interrupts += 1;
+      expect(await Effect.runPromise(snapshot(store))).toEqual(before);
+
+      return { launchId: "launch-1", outcome: "aborted" as const,
+        slot: { factoryId: "shop", slotId: "worker/1", station: "floor.worker", ordinal: 1,
+          condition: "normal" as const, freezeCause: null, launch: null } };
+    } };
+
+    const failing: Store = { ...store, change: (body) => store.change((change) => Effect.flatMap(body(change),
+      () => Effect.fail(new StoreError({ reason: "Sql", message: "injected commit failure" })))) };
+
+    const broken = createTicketService({ ...base, store: failing, interrupter });
+    const inspected = yield* broken.inspectCancellation("shop", 1);
+    expect(Exit.isFailure(yield* Effect.exit(broken.cancel("shop", 1, inspected.confirmation)))).toBe(true);
+    expect(interrupts).toBe(1);
+    expect(yield* snapshot(store)).toEqual(before);
+    const service = createTicketService({ ...base, interrupter });
+    yield* service.cancel("shop", 1, inspected.confirmation);
+    expect(interrupts).toBe(2);
+    expect(yield* store.read(`SELECT status, end_reason FROM assignment WHERE id = ?`, [id]))
+      .toEqual([{ status: "ended", end_reason: "cancelled" }]);
+  }));
+});
+
+test("cancel reserves slot capacity across settlement and refuses to interrupt a successor from a stale snapshot", async () => {
+  await fixture((store, id, root) => Effect.gen(function* () {
+    const options = { store, stateRoot: root, factories: () => [ticketFactoryFrom(config)] };
+    const tickets = createTicketService(options);
+    yield* tickets.submit({ title: "Second", spec: "occupy worker/2" });
+    yield* createAssignmentScheduler(schedulerOptions(store)).schedule();
+    yield* tickets.submit({ title: "Successor", spec: "wait for worker/1" });
+    const inspection = yield* tickets.inspectCancellation("shop", 1);
+    const submissions = createSubmissions({ store, handlers });
+    let interrupts = 0;
+
+    const service = createTicketService({ ...options, interrupter: { interrupt: async () => {
+      interrupts += 1;
+      expect(await submissions.submit(owner, frame(id))).toMatchObject({ status: "committed" });
+      // The old outcome ended the root, but cancellation still owns capacity until it settles.
+      expect(await Effect.runPromise(createAssignmentScheduler(schedulerOptions(store)).schedule())).toEqual([]);
+
+      return { launchId: "launch-1", outcome: "idle" as const,
+        slot: { factoryId: "shop", slotId: "worker/1", station: "floor.worker", ordinal: 1,
+          condition: "normal" as const, freezeCause: null, launch: null } };
+    } } });
+
+    expect(Exit.isFailure(yield* Effect.exit(service.cancel("shop", 1, inspection.confirmation)))).toBe(true);
+    expect(interrupts).toBe(1);
+    const assigned = yield* createAssignmentScheduler(schedulerOptions(store)).schedule();
+    expect(assigned).toMatchObject([{ ticket: 3, slotId: "worker/1" }]);
+
+    // The same launch/slot now belongs to a different ticket; an old confirmation never aborts it.
+    expect(Exit.isFailure(yield* Effect.exit(service.cancel("shop", 1, inspection.confirmation)))).toBe(true);
+    expect(interrupts).toBe(1);
+    expect((yield* tickets.show("shop", 3)).ticket.status).toBe("assigned");
+  }));
+});
+
+test("cancel refuses failed interrupts and stale disclosures without ending work", async () => {
+  await fixture((store, id, root) => Effect.gen(function* () {
+    const service = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(config)],
+      interrupter: { interrupt: async () => { throw new Error("worker unavailable"); } } });
+
+    const before = yield* snapshot(store);
+    const inspection = yield* service.inspectCancellation("shop", 1);
+    expect(Exit.isFailure(yield* Effect.exit(service.cancel("shop", 1, inspection.confirmation)))).toBe(true);
+    expect(yield* snapshot(store)).toEqual(before);
+    yield* store.change((change) => agentDelegateHandler(slots)(change, { ...owner, tool: "agent_delegate", callId: "new-work",
+      args: { recipient: "floor.worker", body: "New work after disclosure" } }));
+    const changed = yield* snapshot(store);
+    expect(Exit.isFailure(yield* Effect.exit(service.cancel("shop", 1, inspection.confirmation)))).toBe(true);
+    expect(yield* snapshot(store)).toEqual(changed);
+    expect(changed.assignments).toMatchObject([{ id, status: "active" }]);
+  }));
+});
+
+test("ticket cancel CLI discloses, refuses nonterminal use without --yes, and cancels backlog through the API", async () => {
+  await fixture((store, _id, root) => Effect.gen(function* () {
+    const tickets = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(config)] });
+    yield* tickets.submit({ title: "Backlog", spec: "Keep this" });
+
+    const api = yield* Effect.promise(() => serveManagementApi({ stateRoot: root, tickets,
+      status: () => ({ instance: { stateRoot: root, daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } }) }));
+
+    try {
+      const notices: Array<string> = [];
+
+      const options = { number: 2, home: root, factory: "shop", env: {}, json: true, yes: false, terminal: false,
+        notice: (text: string) => { notices.push(text); } };
+
+      const before = yield* snapshot(store);
+      expect(yield* Effect.promise(() => runTicketCancel(options))).toMatchObject({ exitCode: 2 });
+      expect(yield* snapshot(store)).toEqual(before);
+      expect(yield* Effect.promise(() => runTicketCancel({ ...options, terminal: true, confirm: async () => false }))).toMatchObject({ exitCode: 2 });
+      const result = yield* Effect.promise(() => runTicketCancel({ ...options, yes: true }));
+      expect(result.exitCode).toBe(0);
+      expect(JSON.parse(result.stdout)).toMatchObject({ ok: true, result: { ticket: { state: "cancelled" } } });
+      expect(notices.join("\n")).toContain("Worktree kept: none");
+      expect((yield* tickets.show("shop", 1)).ticket.status).toBe("assigned");
+    } finally {yield* Effect.promise(() => api.close());}
+  }));
+});
 
 test("rejection limit migration preserves blocked and worker request approvals and their constraints", async () => {
   const previousMigrations = foundryMigrations.slice(0, foundryMigrations.findIndex((migration) => migration.name === "message_limit_approvals"));
@@ -891,7 +1095,8 @@ test("stage-gate migration preserves populated blocked and worker-request approv
 
 // One real SQLite/socket boundary proves operator-only resolution and exact commit provenance.
 const gateFixture = <A, E>(final: boolean, routed: boolean,
-  use: (store: Store, id: string, root: string, head: string, gatedConfig: typeof config) => Effect.Effect<A, E>) =>
+  use: (store: Store, id: string, root: string, head: string, gatedConfig: typeof config) => Effect.Effect<A, E>,
+  migrations?: ReadonlyArray<Migration>) =>
   fixture((store, id, root) => Effect.gen(function* () {
     const repository = join(root, "repository");
     git(root, "init", "--quiet", "--initial-branch=main", repository);
@@ -915,7 +1120,46 @@ const gateFixture = <A, E>(final: boolean, routed: boolean,
     ] } } };
 
     return yield* use(store, id, root, head, gatedConfig);
+  }), migrations);
+
+test("cancel resolves a stage gate to its cancellation transition without approving or rejecting the commit", async () => {
+  await gateFixture(false, true, (store, id, root, head, gatedConfig) => Effect.gen(function* () {
+    const factories = [{ factoryId: "shop", config: gatedConfig }];
+    const submissions = createSubmissions({ store, handlers: new Map([[TASK_TRANSITION, taskTransitionHandler({ factories })]]) });
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, gitCommit: head } })))
+      .toMatchObject({ status: "committed" });
+    const service = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(gatedConfig)] });
+    const inspection = yield* service.inspectCancellation("shop", 1);
+    const result = yield* service.cancel("shop", 1, inspection.confirmation);
+    expect(result.ticket).toMatchObject({ state: "cancelled", worktree: { startCommit: head } });
+    const resolved = yield* Effect.promise(() => storeApprovalsReader(store).show(1));
+    expect(resolved).toMatchObject({ approval: { kind: "stage_gate", state: "resolved", decision: null,
+      resolutionTransition: expect.any(Number) }, commands: [] });
+    expect(yield* store.read(`SELECT t.to_state FROM approval a JOIN ticket_transition t ON t.sequence = a.resolution_transition WHERE a.id = 1`))
+      .toEqual([{ to_state: "cancelled" }]);
+    expect(yield* store.read(`SELECT * FROM integration_intent`)).toEqual([]);
+    expect(yield* store.read(`PRAGMA foreign_key_check`)).toEqual([]);
+    expect(yield* createAssignmentScheduler({ store, slots, factories }).schedule()).toEqual([]);
   }));
+});
+
+test("cancellation migration preserves resolved stage gates and integration-intent foreign keys", async () => {
+  const saved = await gateFixture(true, true, (store, id, root, head, gatedConfig) => Effect.gen(function* () {
+    const factories = [{ factoryId: "shop", config: gatedConfig }];
+    const submissions = createSubmissions({ store, handlers: new Map([[TASK_TRANSITION, taskTransitionHandler({ factories })]]) });
+    yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, gitCommit: head } }));
+    yield* createApprovalDecisions({ store, factories }).resolve(1, "approved");
+
+    return { root, approvals: yield* store.read(`SELECT * FROM approval`), intents: yield* store.read(`SELECT * FROM integration_intent`) };
+  }), foundryMigrations.filter((migration) => migration.id < 26));
+
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    expect(yield* store.read(`SELECT * FROM approval`)).toEqual(saved.approvals);
+    expect(yield* store.read(`SELECT * FROM integration_intent`)).toEqual(saved.intents);
+    expect(yield* store.read(`PRAGMA foreign_key_check`)).toEqual([]);
+  })));
+});
 
 test.each([
   { final: false, decision: "approve", routed: true },
