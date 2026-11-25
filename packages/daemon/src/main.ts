@@ -46,6 +46,7 @@ import type { SlotScheduler } from "./slots.js";
 import { createFactoryStates, createFactoryStopper } from "./factory-stop.js";
 import type { FactoryStopperOptions } from "./factory-stop.js";
 import { createSlotFreezer, storeSlotControl } from "./freeze.js";
+import { instructionFilesCheck, plannedPrimeRequests } from "./instruction-freeze.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -434,8 +435,15 @@ const main = async (): Promise<void> => {
     // Frozen slots are read back from the store, so a freeze survives a daemon restart (PRD §5.3).
     // Each freeze cause registers its own unfreeze check with the ticket that raises it; until
     // then an unfreeze is refused rather than trusted. Whichever ticket wires the channel and primer
-    // in here must pass `gate: freezer` to `createPrimer`.
-    const freezer = await createSlotFreezer({ store, checks: {} });
+    // in here must pass `gate: freezer` and `freeze: freezer.freeze` to `createPrimer`, with the
+    // same `plannedPrimeRequests` as its `primeRequest`.
+    const freezer = await createSlotFreezer({
+      store,
+      checks: {
+        // PRD §5.5: a missing instruction file clears only once the slot's prime composes again.
+        instruction_missing: instructionFilesCheck(plannedPrimeRequests(factories, plannedSlots)),
+      },
+    });
 
     api = await serveManagementApi({
       stateRoot,
