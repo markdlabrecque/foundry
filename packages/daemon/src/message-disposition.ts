@@ -1,6 +1,7 @@
 /** Explicit operator disposition of an ambiguous copy. No retry or receipt may resolve this hold. */
 import { Data, Effect, Option, Schema } from "effect";
 import { MessageDispositionResult } from "@foundry/protocol/messages-api";
+import { abandonDroppedDelegation } from "./delegation-drop.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { failDroppedRequest } from "./request-failure.js";
 import type { Change, Query, Store, StoreError } from "./store.js";
@@ -10,6 +11,7 @@ type DropHandler = (change: Change, message: MessageDispositionResult) => Effect
 
 const dropHandlers: Partial<Record<MessageDispositionResult["kind"], DropHandler>> = {
   request_notice: failDroppedRequest,
+  delegation_notice: abandonDroppedDelegation,
 };
 
 export class MessageDispositionError extends Data.TaggedError("MessageDispositionError")<{

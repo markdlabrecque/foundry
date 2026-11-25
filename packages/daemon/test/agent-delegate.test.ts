@@ -5,8 +5,8 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Schema } from "effect";
 import {
-  acknowledgeMessage, agentDelegateHandler, agentReplyHandler, bindStationMessages, createAssignmentScheduler, createSubmissions,
-  createTicketService, openStore, planSlots, ticketFactoryFrom, ToolRefusal,
+  acknowledgeMessage, agentDelegateHandler, agentReplyHandler, bindStationMessages, createAssignmentScheduler, createMessageDisposition, createSubmissions,
+  createTicketService, openStore, planSlots, raiseHoldIn, ticketFactoryFrom, ToolRefusal,
 } from "@foundry/daemon";
 import type { Store, ToolHandler } from "@foundry/daemon";
 import { AGENT_DELEGATE, AGENT_REPLY } from "@foundry/protocol";
@@ -249,6 +249,31 @@ test("unselected and closed delegations cannot resolve; competing resolutions co
     expect(outcomes.filter((outcome) => outcome.status === "refused")).toMatchObject([{ code: "delegation_closed" }]);
     expect(yield* store.read(`SELECT id FROM message WHERE kind = 'reply'`)).toHaveLength(1);
     expect(yield* store.read(`SELECT sequence FROM history WHERE kind = 'delegation.completed'`)).toHaveLength(1);
+  }));
+});
+
+test("dropping an indeterminate delegation notice abandons the delegation and durably tells the delegating slot once", async () => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    const delegation = yield* selectedDelegation(store);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE message SET status = 'indeterminate' WHERE id = ?`, [delegation.notice_id]);
+      yield* raiseHoldIn(change, { factoryId: "shop", kind: "indeterminate_message", subject: delegation.notice_id, evidence: {} });
+    }));
+    const disposition = createMessageDisposition(store);
+    yield* disposition.act(delegation.notice_id, "drop", true);
+    const dropped = yield* snapshot(store);
+
+    expect(yield* store.read(`SELECT status FROM delegation`)).toEqual([{ status: "abandoned" }]);
+    expect(yield* store.read(`SELECT status FROM message WHERE id = ?`, [delegation.notice_id])).toEqual([{ status: "dropped" }]);
+    expect(yield* store.read(`SELECT sender_kind, kind, ticket_number, bound_slot, status FROM message
+      WHERE delegation_id = ? AND id != ?`, [delegation.id, delegation.notice_id])).toEqual([{ sender_kind: "daemon",
+      kind: "ordinary", ticket_number: 1, bound_slot: sender.slotId, status: "bound" }]);
+    expect(dropped.history.filter((row) => row.kind === "delegation.abandoned")).toHaveLength(1);
+
+    // A repeated drop is refused and leaves the single notification as the only one.
+    const again = yield* Effect.flip(disposition.act(delegation.notice_id, "drop", true));
+    expect(again).toMatchObject({ code: "not_indeterminate" });
+    expect(yield* snapshot(store)).toEqual(dropped);
   }));
 });
 
