@@ -17,6 +17,7 @@ import { join } from "node:path";
 import { createKnowledgeLayout, LoadFactoriesResult, loadFactoryFiles, recordRun } from "./factory-loads.js";
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
 import { createTicketService, ticketFactoryFrom } from "./tickets.js";
+import type { TicketServiceOptions } from "./tickets.js";
 import { assignedSlot, assignmentContextSlot, assignmentTicket, watchAssignments } from "./assignments.js";
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
@@ -39,7 +40,7 @@ import { AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS
 import { fileURLToPath } from "node:url";
 import { connectHost, resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
-import { connectOrStartHost, createSlotScheduler, planSlots, recordedCurrentLaunch, storedConversation, storeSlotsReader } from "./slots.js";
+import { connectOrStartHost, createSlotScheduler, planSlots, recordedCurrentLaunch, storedConversation, storeSlotInterrupter, storeSlotsReader } from "./slots.js";
 import { startChannelServer } from "./channel/server.js";
 import type { ChannelServer } from "./channel/server.js";
 import { createHostSlotClaim } from "./channel/slot-claim.js";
@@ -636,17 +637,22 @@ const main = async (): Promise<void> => {
     }
   };
 
+  let ticketOptions: TicketServiceOptions = {
+    stateRoot, store, factories: () => ticketFactories, configLoad: (factory) => loadIds.get(factory),
+  };
+
+  if (channel !== undefined) {
+    ticketOptions = { ...ticketOptions, interrupter: storeSlotInterrupter({
+      store, factories: decision.started, slots: plannedSlots, channel,
+    }) };
+  }
+
   try {
     api = await serveManagementApi({
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
-      tickets: createTicketService({
-        stateRoot,
-        store,
-        factories: () => ticketFactories,
-        configLoad: (factory) => loadIds.get(factory),
-      }),
+      tickets: createTicketService(ticketOptions),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,
       sync,

@@ -7,9 +7,15 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
+import { Cause, Effect, Exit, Schema, Scope } from "effect";
 import {
   ChannelUnavailableError,
+  createAssignmentScheduler,
+  createTicketService,
+  ticketFactoryFrom,
+  agentRequestHandler,
+  assignmentTicket,
+  StoreError,
   createHostSlotClaim,
   createSlotFreezer,
   createSlotScheduler,
@@ -22,12 +28,14 @@ import {
   storeSlotsReader,
 } from "@foundry/daemon";
 import type { SlotChannel, SlotHost } from "@foundry/daemon";
+import { FactoryConfig } from "../packages/daemon/src/config/schema.js";
+import type { Store } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import type { LaunchRecord } from "@foundry/host";
 import { openChannel, RunInterrupter } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello } from "@foundry/protocol";
-import { EXIT_OK, EXIT_REFUSED, runSlotInterrupt, runSlotShow } from "@foundry/cli";
+import { EXIT_OK, EXIT_REFUSED, runSlotInterrupt, runSlotShow, runTicketPause } from "@foundry/cli";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -65,7 +73,7 @@ const launchRecord = (launchId: string, slotId: string): LaunchRecord => ({
  * A daemon serving alpha's slots lead/1 (launched, its worker connected over the channel) and
  * dev/1 (never launched), with a worker whose Pi run is active until it is aborted.
  */
-const daemonWithWorker = async () => {
+const daemonWithWorker = async (holdSettlement = false) => {
   const home = mkdtempSync(join(tmpdir(), "foundry-slot-interrupt-"));
   cleanups.push(() => rmSync(home, { recursive: true, force: true }));
   const scope = Effect.runSync(Scope.make());
@@ -114,12 +122,17 @@ const daemonWithWorker = async () => {
   const interrupter = new RunInterrupter();
   let running = true;
   let aborts = 0;
+  let signalAbort!: () => void;
+  const aborted = new Promise<void>((resolve) => { signalAbort = resolve; });
+  const settle = () => interrupter.settled(true);
   interrupter.bind({
     isIdle: () => !running,
     abort: () => {
       aborts += 1;
       running = false;
-      setImmediate(() => interrupter.settled(true));
+      signalAbort();
+
+      if (!holdSettlement) {setImmediate(settle);}
     },
   });
 
@@ -150,9 +163,23 @@ const daemonWithWorker = async () => {
 
   const status = () => ({ instance: { stateRoot: home, daemonPid: 1, startedAt: "2026-02-01T00:00:00.000Z" } });
 
+  const config = Schema.decodeUnknownSync(FactoryConfig)({
+    version: 1, name: "alpha", repository: { source: "/disposable", default_branch: "main" },
+    default_production_line: "standard", rooms: { eng: { stations: { lead: {}, dev: {} } } },
+    production_lines: { standard: { stages: [{ id: "plan", station: "eng.lead" }] } },
+  });
+
+  const ticketOptions = { stateRoot: home, store, factories: () => [ticketFactoryFrom(config)],
+    configLoad: () => "load-1", interrupter: storeSlotInterrupter({ store, factories: ["alpha"], slots, channel }),
+  };
+
+  const tickets = createTicketService(ticketOptions);
+  const assignments = createAssignmentScheduler({ store, slots, factories: [{ factoryId: "alpha", config }] });
+
   const api = await serveManagementApi({
     stateRoot: home,
     status,
+    tickets,
     slots: storeSlotsReader(store, home, ["alpha"], slots),
     slotInterrupter: storeSlotInterrupter({ store, factories: ["alpha"], slots, channel }),
   });
@@ -164,12 +191,104 @@ const daemonWithWorker = async () => {
     store,
     slots,
     launched,
+    tickets,
+    ticketOptions,
+    assignments,
+    aborted,
+    settle,
     aborts: () => aborts,
     hellos: () => hellos,
     boundConversation: () => conversations.get("alpha", "lead/1"),
     send: opened.channel.send.bind(opened.channel),
   };
 };
+
+test("pausing an assigned ticket waits for settlement, suspends without abandoning records and frees capacity", async () => {
+  const d = await daemonWithWorker(true);
+  await Effect.runPromise(d.tickets.submit({ title: "First", spec: "Spec" }));
+  await Effect.runPromise(d.tickets.submit({ title: "Next", spec: "Spec" }));
+  await Effect.runPromise(d.assignments.schedule());
+  await Effect.runPromise(d.store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE assignment SET recovery_count = 2, recovery_ceiling = 6 WHERE ticket_number = 1`);
+    yield* agentRequestHandler(d.slots, { assignmentTicket })(change, {
+      factoryId: "alpha", slotId: "lead/1", launchId: "launch-1", callId: "request-1", tool: "agent_request",
+      args: { recipient: "eng.dev", body: "Still need this", timeoutMs: 60_000 },
+    });
+  })));
+  const before = await Effect.runPromise(pauseSnapshot(d.store));
+  const slotBefore = await runSlotShow({ json: true, home: d.home, factory: undefined, slot: "lead/1", env });
+  const pending = runTicketPause({ json: true, home: d.home, factory: undefined, number: 1, env });
+  await d.aborted;
+  // An abort request alone is not enough: the worker must acknowledge a settled run.
+  expect(await Effect.runPromise(pauseSnapshot(d.store))).toEqual(before);
+  expect(await Effect.runPromise(d.assignments.schedule())).toEqual([]);
+  d.settle();
+  const paused = await pending;
+  expect(paused.exitCode).toBe(EXIT_OK);
+  const result = JSON.parse(paused.stdout).result;
+  expect(result.ticket).toMatchObject({ state: "stage", stage: "plan", status: "paused" });
+  expect(result.transitions).toHaveLength(3);
+  expect(result.transitions[2]).toMatchObject({ actor: "operator", from: { state: "stage", stage: "plan", status: "assigned" },
+    to: { state: "stage", stage: "plan", status: "paused" }, configLoad: "load-1" });
+  const after = await Effect.runPromise(pauseSnapshot(d.store));
+  expect(after.assignments).toEqual(before.assignments.map((a) => ({ ...a, status: "suspended" })));
+  expect(after.requests).toEqual(before.requests);
+  expect(after.messages).toEqual(before.messages);
+  expect(after.transitions.slice(0, -1)).toEqual(before.transitions);
+  expect(after.history.slice(0, -1)).toEqual(before.history);
+  expect(after.history.at(-1)).toMatchObject({ kind: "ticket.paused", subject: "1" });
+  expect(await Effect.runPromise(d.assignments.schedule())).toMatchObject([{ ticket: 2, slotId: "lead/1" }]);
+  expect(await runSlotShow({ json: true, home: d.home, factory: undefined, slot: "lead/1", env })).toEqual(slotBefore);
+  expect(d.launched.map((launch) => launch.launchId)).toEqual(["launch-1"]);
+  expect(d.boundConversation()).toBe("conv-1");
+  expect(d.hellos()).toBe(1);
+  expect(d.aborts()).toBe(1);
+  const again = await runTicketPause({ json: true, home: d.home, factory: "alpha", number: 1, env });
+  expect(JSON.parse(again.stdout)).toMatchObject({ ok: false, error: { code: "invalid_state" } });
+  expect(d.aborts()).toBe(1); // Must not interrupt the next ticket now using the slot.
+});
+
+const pauseSnapshot = (store: Store) => Effect.all({
+  assignments: store.read(`SELECT * FROM assignment ORDER BY id`),
+  requests: store.read(`SELECT * FROM agent_request ORDER BY id`),
+  messages: store.read(`SELECT * FROM message ORDER BY sequence`),
+  transitions: store.read(`SELECT * FROM ticket_transition ORDER BY sequence`),
+  history: store.read(`SELECT * FROM history ORDER BY sequence`),
+  tickets: store.read(`SELECT * FROM ticket ORDER BY number`),
+});
+
+test("pause refusals and a failed commit preserve all durable state", async () => {
+  const d = await daemonWithWorker();
+  await Effect.runPromise(d.tickets.submit({ title: "First", spec: "Spec" }));
+  const common = { json: true, home: d.home, factory: undefined, env };
+
+  for (const [number, code] of [[1, "invalid_state"], [99, "ticket_not_found"]] as const) {
+    expect(JSON.parse((await runTicketPause({ ...common, number })).stdout)).toMatchObject({ error: { code } });
+  }
+
+  expect(d.aborts()).toBe(0);
+  await Effect.runPromise(d.assignments.schedule());
+  const before = await Effect.runPromise(pauseSnapshot(d.store));
+
+  // Use the same production interrupter's error translation, not a fabricated ticket refusal.
+  const disconnected = createTicketService({ ...d.ticketOptions, interrupter: storeSlotInterrupter({
+    store: d.store, factories: ["alpha"], slots: d.slots,
+    channel: { interrupt: async () => { throw new ChannelUnavailableError("launch-1", "lost"); } },
+  }) });
+
+  const refused = await Effect.runPromise(Effect.exit(disconnected.pause(undefined, 1)));
+  expect(Exit.isFailure(refused) && Cause.squash(refused.cause)).toMatchObject({ code: "channel_unavailable" });
+  expect(await Effect.runPromise(pauseSnapshot(d.store))).toEqual(before);
+
+  const failing: Store = { ...d.store, change: (body) => d.store.change((change) =>
+    Effect.flatMap(body(change), () => Effect.fail(new StoreError({ reason: "Sql", message: "commit failed" })))),
+  };
+
+  const service = createTicketService({ ...d.ticketOptions, store: failing });
+  expect(Exit.isFailure(await Effect.runPromise(Effect.exit(service.pause(undefined, 1))))).toBe(true);
+  expect(await Effect.runPromise(pauseSnapshot(d.store))).toEqual(before);
+  expect(d.aborts()).toBe(1);
+});
 
 test("interrupting a slot aborts its run and keeps the same slot, launch and conversation", async () => {
   const d = await daemonWithWorker();
