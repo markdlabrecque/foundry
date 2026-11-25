@@ -1,6 +1,7 @@
 /** Request replies (PRD §6.5, §10.1). Delegation resolution is a separate arm. */
 import { Clock, Effect, Schema } from "effect";
 import { acceptMessage } from "./agent-message.js";
+import type { MessageAcceptanceGuards } from "./agent-message.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import { ToolRefusal } from "./submissions.js";
 import type { ToolHandler } from "./submissions.js";
@@ -17,7 +18,7 @@ interface RequestRow {
 
 /** Identity comes from the claimed channel, not the tool arguments. No launch is persisted as
  * the reply destination: the logical requester slot survives replacement launches. */
-export const agentReplyHandler = (): ToolHandler => (change, call) => Effect.gen(function* () {
+export const agentReplyHandler = (guards: MessageAcceptanceGuards = {}): ToolHandler => (change, call) => Effect.gen(function* () {
   const args = yield* Schema.decodeUnknownEffect(ReplyArgs)(call.args).pipe(
     Effect.mapError(() => new ToolRefusal({ code: "invalid_arguments", detail: "agent_reply needs requestId and body" })),
   );
@@ -59,7 +60,7 @@ export const agentReplyHandler = (): ToolHandler => (change, call) => Effect.gen
     factoryId: call.factoryId, senderSlot: call.slotId, recipient: request.requester_slot,
     body: args.body, delivery: "after_turn", kind: "reply",
     correlation: { requestId: args.requestId, ticket: request.ticket_number },
-  });
+  }, guards);
 
   // Replies target one exact logical slot, never station selection (or a new assignment).
   yield* change.query(`UPDATE message SET status = 'bound', bound_slot = ?, bound_at = ? WHERE id = ?`,

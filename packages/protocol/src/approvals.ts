@@ -5,7 +5,7 @@ import { MANAGEMENT_API_PREFIX } from "./management-api.js";
 export const APPROVALS_PATH = `${MANAGEMENT_API_PREFIX}/approvals`;
 export const approvalPath = (id: number): string => `${APPROVALS_PATH}/${id}`;
 
-/** Only blocked approvals are currently implemented. Other kinds have their own workflows. */
+/** Blocked and limit-reached decisions. Other kinds have their own workflows. */
 export const ApprovalRecord = Schema.Struct({
   id: Schema.Number,
   factoryId: Schema.String,
@@ -13,9 +13,9 @@ export const ApprovalRecord = Schema.Struct({
   assignmentId: Schema.String,
   transition: Schema.Number,
   stage: Schema.String,
-  kind: Schema.Literal("blocked"),
+  kind: Schema.Literals(["blocked", "limit_reached"]),
   state: Schema.Literals(["open", "resolved"]),
-  outcome: Schema.Literals(["blocked", "rejected"]),
+  outcome: Schema.NullOr(Schema.Literals(["blocked", "rejected"])),
   reason: Schema.String,
   evidence: Schema.Array(Schema.String),
   commit: Schema.NullOr(Schema.String),

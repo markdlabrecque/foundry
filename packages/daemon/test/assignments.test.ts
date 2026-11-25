@@ -6,9 +6,9 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Schema } from "effect";
 import {
   acceptMessage, agentMessageHandler, agentRequestHandler, assignedSlot, assignmentContextSlot, assignmentTicket, bindStationMessages, createAssignmentScheduler, createTicketService,
-  openStore, planSlots, StoreError, ticketFactoryFrom, watchAssignments,
+  messageBudget, openStore, planSlots, StoreError, storeApprovalsReader, ticketFactoryFrom, watchAssignments,
 } from "@foundry/daemon";
-import type { Change, Store } from "@foundry/daemon";
+import type { Change, MessageAcceptance, Store } from "@foundry/daemon";
 import { FactoryConfig } from "../src/config/schema.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
@@ -326,5 +326,68 @@ test("database rejects a second unended assignment per ticket and a second activ
     }
 
     expect(yield* snapshot(store)).toEqual(before);
+  }));
+});
+
+// Store integration: exercise shared acceptance rather than duplicate each tool's validation.
+test("message threshold commits with suspension and readable approval; exempt sends spend nothing", async () => {
+  await fixture((store) => Effect.gen(function* () {
+    yield* createAssignmentScheduler(options(store)).schedule();
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE ticket SET message_ceiling = 4 WHERE number = 1`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "allowance" });
+    }));
+    const guards = { assignmentTicket, budget: messageBudget(() => "load-1") };
+
+    const send = (kind: "ordinary" | "request_notice" | "reply" | "delegation_notice") => {
+      const input: MessageAcceptance = {
+        factoryId: "shop", senderSlot: "worker/1", recipient: "floor.worker", body: kind,
+        kind, delivery: "after_turn",
+      };
+
+      const attributed = kind === "ordinary" ? input : { ...input, correlation: { ticket: 1 } };
+
+      return store.change((change) => acceptMessage(change, attributed, guards));
+    };
+
+    for (const senderKind of ["daemon", "operator"] as const) {
+      yield* store.change((change) => acceptMessage(change, {
+        factoryId: "shop", senderKind, senderSlot: null, recipient: "floor.worker", body: "context",
+        kind: "ordinary", delivery: "after_turn", correlation: { ticket: 1 },
+      }, guards));
+    }
+
+    yield* store.change((change) => acceptMessage(change, {
+      factoryId: "shop", senderSlot: "unassigned/1", recipient: "floor.worker", body: "no ticket",
+      kind: "ordinary", delivery: "after_turn",
+    }, guards));
+    expect(yield* store.read(`SELECT messages_spent FROM ticket WHERE number = 1`)).toEqual([{ messages_spent: 0 }]);
+    yield* send("ordinary");
+    yield* send("request_notice");
+    yield* send("reply");
+    expect(yield* store.read(`SELECT status, messages_spent FROM ticket WHERE number = 1`)).toEqual([{ status: "assigned", messages_spent: 3 }]);
+    const before = yield* snapshot(store);
+
+    const failed = yield* Effect.exit(store.change((change) => Effect.gen(function* () {
+      yield* acceptMessage(change, { factoryId: "shop", senderSlot: "worker/1", recipient: "floor.worker",
+        body: "rolled back", kind: "delegation_notice", delivery: "after_turn" }, guards);
+      yield* change.query(`INSERT INTO nonexistent_table VALUES (1)`);
+    })));
+
+    expect(Exit.isFailure(failed)).toBe(true);
+    expect(yield* snapshot(store)).toEqual(before);
+    expect(yield* store.read(`SELECT * FROM approval`)).toEqual([]);
+    const threshold = yield* send("delegation_notice");
+    expect(yield* store.read(`SELECT id FROM message WHERE id = ?`, [threshold.id])).toEqual([{ id: threshold.id }]);
+    expect(yield* store.read(`SELECT status, messages_spent, message_ceiling FROM ticket WHERE number = 1`))
+      .toEqual([{ status: "paused", messages_spent: 4, message_ceiling: 4 }]);
+    expect(yield* assignedSlot(store.read, "shop", 1)).toBeNull();
+    expect(yield* store.read(`SELECT status FROM assignment WHERE ticket_number = 1`)).toEqual([{ status: "suspended" }]);
+    const approvals = yield* Effect.promise(() => storeApprovalsReader(store).list());
+    expect(approvals.approvals).toMatchObject([{ kind: "limit_reached", ticket: 1, outcome: null, configLoad: "load-1" }]);
+    const after = yield* snapshot(store);
+    expect(Exit.isFailure(yield* Effect.exit(send("reply")))).toBe(true);
+    expect(yield* snapshot(store)).toEqual(after);
+    expect(after.transitions).toHaveLength(before.transitions.length + 1);
   }));
 });

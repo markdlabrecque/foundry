@@ -521,6 +521,32 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
        WHERE state = 'open' AND kind = 'blocked'`,
     ],
   },
+  {
+    id: 22,
+    name: "message_limit_approvals",
+    statements: [
+      `CREATE TABLE approval_with_limits (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        assignment_id TEXT NOT NULL REFERENCES assignment(id),
+        transition_sequence INTEGER NOT NULL UNIQUE REFERENCES ticket_transition(sequence),
+        kind TEXT NOT NULL CHECK (kind IN ('blocked', 'limit_reached')),
+        state TEXT NOT NULL CHECK (state IN ('open', 'resolved')),
+        raised_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket(factory_id, number),
+        CHECK ((state = 'open') = (closed_at IS NULL))
+      ) STRICT`,
+      `INSERT INTO approval_with_limits SELECT * FROM approval`,
+      `DROP TABLE approval`,
+      `ALTER TABLE approval_with_limits RENAME TO approval`,
+      `CREATE UNIQUE INDEX approval_one_open_blocked ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'blocked'`,
+      `CREATE UNIQUE INDEX approval_one_open_limit ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'limit_reached'`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

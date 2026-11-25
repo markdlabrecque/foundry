@@ -41,6 +41,10 @@ export const assignmentTicket = (change: Change, factoryId: string, slotId: stri
     [factoryId, slotId],
   ).pipe(Effect.map((rows) => rows[0]?.ticket_number ?? null));
 
+/** Transaction-local suspension: releases capacity without ending tracked work or channel I/O. */
+export const suspendAssignment = (change: Change, assignmentId: string) =>
+  change.query(`UPDATE assignment SET status = 'suspended' WHERE id = ? AND status = 'active'`, [assignmentId]).pipe(Effect.asVoid);
+
 export interface AssignmentFactory {
   readonly factoryId: string;
   readonly config: FactoryConfig;
