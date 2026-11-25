@@ -19,3 +19,4 @@ export {
   type SkillHeader,
 } from "./repository-context.js";
 export * from "./store.js";
+export * from "./prime.js";
