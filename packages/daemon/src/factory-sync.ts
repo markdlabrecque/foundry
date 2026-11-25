@@ -16,6 +16,7 @@ import { Data, Effect } from "effect";
 import { messageOf } from "@foundry/protocol/errors";
 import { runCloneGit } from "./factory-clone.js";
 import { integrateApprovedCommit } from "./integration.js";
+import type { WorktreeService } from "./worktree-cleanup.js";
 import { closeOpenHoldIn, raiseHoldIn } from "./holds.js";
 import { enqueueOperation, extendOperationIntent, getOperation, recordOperationResult, startNextOperation } from "./operations.js";
 import type { Operation, OperationDetail, OperationOutcome } from "./operations.js";
@@ -155,6 +156,8 @@ export interface FactorySyncerOptions {
   readonly target: (factory: string) => SyncTarget | undefined;
   /** Git's environment. Default: the process's. */
   readonly env?: NodeJS.ProcessEnv;
+  /** Shared cleanup service, invoked only after integration completion commits and locks release. */
+  readonly worktrees?: Pick<WorktreeService, "clean">;
   /** Told about a queue run that failed outside any operation's result (a store error). */
   readonly onError?: (factory: string, cause: unknown) => void;
 }
@@ -162,7 +165,8 @@ export interface FactorySyncerOptions {
 /**
  * Runs the durable shared queue one operation at a time, including exact-SHA integrations.
  */
-const drainQueue = (store: Store, factory: string, target: SyncTarget, env: NodeJS.ProcessEnv): Effect.Effect<void, StoreError> =>
+const drainQueue = (store: Store, factory: string, target: SyncTarget, env: NodeJS.ProcessEnv,
+  worktrees?: Pick<WorktreeService, "clean">): Effect.Effect<void, StoreError> =>
   Effect.gen(function* () {
     for (;;) {
       const next = yield* startNextOperation(store, factory);
@@ -170,7 +174,14 @@ const drainQueue = (store: Store, factory: string, target: SyncTarget, env: Node
       if (next === undefined) {return;}
 
       if (next.kind === "integration") {
-        yield* integrateApprovedCommit(store, next, target, env);
+        const completed = yield* integrateApprovedCommit(store, next, target, env);
+
+        if (completed && next.ticket !== null && worktrees !== undefined) {
+          // The cleanup service owns its own intent/result and preserves completed state on
+          // refusal (including before_remove failure). Never force or fail the integration.
+          yield* worktrees.clean(factory, next.ticket).pipe(Effect.catchTag("TicketError", () => Effect.void));
+        }
+
         continue;
       }
 
@@ -205,7 +216,7 @@ export const createFactorySyncer = (options: FactorySyncerOptions): FactorySynce
 
   const scheduleDrain = (factory: string, target: SyncTarget): Promise<void> => {
     const run = (runs.get(factory) ?? Promise.resolve()).then(() =>
-      Effect.runPromise(drainQueue(options.store, factory, target, env)).catch((cause: unknown) => options.onError?.(factory, cause)),
+      Effect.runPromise(drainQueue(options.store, factory, target, env, options.worktrees)).catch((cause: unknown) => options.onError?.(factory, cause)),
     );
 
     runs.set(factory, run);

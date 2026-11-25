@@ -676,8 +676,17 @@ const main = async (): Promise<void> => {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
+  const worktrees = createWorktreeService({ store, stateRoot, factories: () => factories.map((f) => f.factoryId),
+    target: (factoryId) => {
+      const factory = factories.find((f) => f.factoryId === factoryId);
+      const clone = clones.get(factoryId);
+
+      return factory === undefined || clone === undefined ? undefined : { factory, clonePath: clone.path };
+    },
+  });
+
   const sync = createFactorySyncer({
-    store,
+    store, worktrees,
     target: (factory) => {
       const clone = clones.get(factory);
       const loaded = factories.find((f) => f.factoryId === factory);
@@ -742,14 +751,7 @@ const main = async (): Promise<void> => {
         },
       }),
       tickets: createTicketService(ticketOptions),
-      worktrees: createWorktreeService({ store, stateRoot, factories: () => factories.map((f) => f.factoryId),
-        target: (factoryId) => {
-          const factory = factories.find((f) => f.factoryId === factoryId);
-          const clone = clones.get(factoryId);
-
-          return factory === undefined || clone === undefined ? undefined : { factory, clonePath: clone.path };
-        },
-      }),
+      worktrees,
       messages: createOperatorMessages({ store, factories: () => ticketFactories.map((f) => f.name), slots: plannedSlots }),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,

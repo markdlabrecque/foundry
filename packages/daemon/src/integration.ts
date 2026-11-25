@@ -1,5 +1,6 @@
 /** Exact-SHA integration for the unchanged-default path (PRD §9.3–4).
  * Moved-default verification/conflict handling and worktree cleanup have separate owners.
+ * Returns whether completion committed; the queue can then clean up after releasing Git locks.
  * No fetch, push, ticket-branch rewrite, or cleanup runs here.
  */
 import { closeSync, mkdirSync, openSync, unlinkSync } from "node:fs";
@@ -35,7 +36,7 @@ const integrationGit = (clonePath: string, env: NodeJS.ProcessEnv, args: Readonl
 /** Already admitted by the shared integration/sync queue. Git always runs outside transactions. */
 export const integrateApprovedCommit = (
   store: Store, operation: Operation, target: SyncTarget, env: NodeJS.ProcessEnv,
-): Effect.Effect<void, StoreError> => ticketApprovalLock(store, operation.factoryId, operation.ticket ?? 0).withPermit(Effect.scoped(Effect.gen(function* () {
+): Effect.Effect<boolean, StoreError> => ticketApprovalLock(store, operation.factoryId, operation.ticket ?? 0).withPermit(Effect.scoped(Effect.gen(function* () {
   const intent = decodeIntent(operation.intent);
   const clonePath = target.clonePath;
   const git = (args: ReadonlyArray<string>) => integrationGit(clonePath, env, args);
@@ -139,7 +140,7 @@ export const integrateApprovedCommit = (
 
   // Result and ticket completion commit together. Cleanup cannot change completion, and is
   // deliberately left pending with worktree/branch metadata intact for the cleanup service.
-  yield* store.change((change) => Effect.gen(function* () {
+  return yield* store.change((change) => Effect.gen(function* () {
     yield* recordOperationResult(change, operation.id, outcome);
 
     const [current] = yield* change.query<{ stage: string; approved_commit: string }>(`SELECT t.stage, i.approved_commit FROM ticket t
@@ -147,7 +148,7 @@ export const integrateApprovedCommit = (
       WHERE t.factory_id = ? AND t.number = ? AND t.state = 'stage' AND t.status = 'awaiting_approval' AND i.approval_id = ?`,
       [operation.factoryId, operation.ticket, intent.approvalId]);
 
-    if (ticket === undefined || current?.stage !== ticket.stage || current.approved_commit !== ticket.approved_commit) {return;}
+    if (ticket === undefined || current?.stage !== ticket.stage || current.approved_commit !== ticket.approved_commit) {return false;}
 
     const complete = outcome.status === "complete";
     const now = yield* Clock.currentTimeMillis;
@@ -161,5 +162,7 @@ export const integrateApprovedCommit = (
     yield* change.recordHistory({ factoryId: operation.factoryId, kind: "ticket.transitioned", subject: String(operation.ticket),
       detail: { state: complete ? "completed" : "stage", status: complete ? null : "paused", operationId: operation.id,
         approvedCommit: ticket.approved_commit, cleanup: complete ? "pending" : null }, records: [ticketRecord(operation.ticket ?? 0)] });
+
+    return complete;
   }));
 })));
