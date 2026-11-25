@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterAll, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, describe, expect, test } from "vitest";
 import { branchNameProblem, isUrlSource, validateFactoryYaml } from "@foundry/daemon/config";
 import type { ConfigProblem } from "@foundry/daemon/config";
 
@@ -9,18 +9,27 @@ import type { ConfigProblem } from "@foundry/daemon/config";
 // directory shared by every case. The checks only stat files, so each case is
 // milliseconds; pure rules (branch names, URL form) are plain unit tables.
 
-const root = mkdtempSync(join(tmpdir(), "foundry-offline-"));
-afterAll(() => rmSync(root, { recursive: true, force: true }));
-
-const factoryDir = join(root, "factory");
-const home = join(root, "home");
-for (const dir of ["repo", "factory/roles", "factory/skills/project", "factory/extensions", "factory/a-dir", "home"]) {
-  mkdirSync(join(root, dir), { recursive: true });
-}
-for (const file of ["factory.md", "roles/developer.md", "skills/project/SKILL.md", "extensions/audit.ts", "extensions/project.ts", "a-file"]) {
-  writeFileSync(join(factoryDir, file), "x");
-}
-const yamlFile = join(factoryDir, "factory.yaml");
+// Created in beforeAll, not at import, so a directory exists only in a run
+// that also reaches afterAll and removes it.
+let root = "";
+let factoryDir = "";
+let home = "";
+let yamlFile = "";
+beforeAll(() => {
+  root = mkdtempSync(join(tmpdir(), "foundry-offline-"));
+  factoryDir = join(root, "factory");
+  home = join(root, "home");
+  yamlFile = join(factoryDir, "factory.yaml");
+  for (const dir of ["repo", "factory/roles", "factory/skills/project", "factory/extensions", "factory/a-dir", "home"]) {
+    mkdirSync(join(root, dir), { recursive: true });
+  }
+  for (const file of ["factory.md", "roles/developer.md", "skills/project/SKILL.md", "extensions/audit.ts", "extensions/project.ts", "a-file"]) {
+    writeFileSync(join(factoryDir, file), "x");
+  }
+});
+afterAll(() => {
+  if (root !== "") rmSync(root, { recursive: true, force: true });
+});
 
 /** Every configured file exists; relative paths resolve from the factory directory. */
 const valid = `version: 1
@@ -70,16 +79,16 @@ const tree = (dir: string): string[] =>
 
 describe("accepted", () => {
   test.each([
-    ["the base factory", valid],
-    ["an absolute source", valid.replace("../repo", join(root, "repo"))],
-    ["an https source, not contacted", valid.replace("../repo", "https://git.invalid/o/r.git")],
-    ["an ssh URL source", valid.replace("../repo", "ssh://git@git.invalid/o/r.git")],
-    ["an scp-like source", valid.replace("../repo", "git@git.invalid:o/r.git")],
-    ["a nested default branch", valid.replace("default_branch: main", "default_branch: release/2.x")],
-    ["a pattern with only {ticket-id}", valid.replace("  root: ~/worktrees\n", "  root: ~/worktrees\n  branch_pattern: 'work/{ticket-id}'\n")],
-    ["a command argument naming a missing file", valid.replace("[npm, test]", "[./missing-script, ../nope]")],
+    ["the base factory", () => valid],
+    ["an absolute source", () => valid.replace("../repo", join(root, "repo"))],
+    ["an https source, not contacted", () => valid.replace("../repo", "https://git.invalid/o/r.git")],
+    ["an ssh URL source", () => valid.replace("../repo", "ssh://git@git.invalid/o/r.git")],
+    ["an scp-like source", () => valid.replace("../repo", "git@git.invalid:o/r.git")],
+    ["a nested default branch", () => valid.replace("default_branch: main", "default_branch: release/2.x")],
+    ["a pattern with only {ticket-id}", () => valid.replace("  root: ~/worktrees\n", "  root: ~/worktrees\n  branch_pattern: 'work/{ticket-id}'\n")],
+    ["a command argument naming a missing file", () => valid.replace("[npm, test]", "[./missing-script, ../nope]")],
   ])("%s", (_name, text) => {
-    const result = validate(text);
+    const result = validate(text());
     expect(result._tag, JSON.stringify(result)).toBe("Valid");
   });
 });
