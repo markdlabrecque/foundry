@@ -11,7 +11,8 @@
  *
  * The causes themselves (host lost, unknown ownership, a changed conversation, a prime without
  * history, a missing instruction file, a Tool Set mismatch) are raised by their own tickets,
- * which also register their checks.
+ * which also register their checks. The agent tool-call transport (FOU-36) refuses calls from a
+ * still-connected worker whose slot `isFrozen` (PRD §5.3).
  */
 import { Effect } from "effect";
 import type { HoldEvidence } from "@foundry/protocol/holds";
@@ -89,11 +90,15 @@ const holdOf = (slot: SlotRef) => ({ factoryId: slot.factoryId, kind: "frozen_sl
 
 const run = <A>(effect: Effect.Effect<A, StoreError>): Promise<A> => Effect.runPromise(effect);
 
-/** Resolves once `slot` is not frozen; at once if it is not frozen now. */
-export const whenSendable = (gate: SlotGate, slot: SlotRef): Promise<void> =>
+/**
+ * Resolves `true` once `slot` is not frozen (at once if it is not frozen now), or `false` if
+ * `until` settles first, such as the connection waiting on it closing. Either way its unfreeze
+ * listener is removed.
+ */
+export const whenSendable = (gate: SlotGate, slot: SlotRef, until?: Promise<unknown>): Promise<boolean> =>
   new Promise((resolve) => {
     if (!gate.isFrozen(slot)) {
-      resolve();
+      resolve(true);
 
       return;
     }
@@ -102,8 +107,15 @@ export const whenSendable = (gate: SlotGate, slot: SlotRef): Promise<void> =>
       if (keyOf(unfrozen) !== keyOf(slot) || gate.isFrozen(slot)) {return;}
 
       off();
-      resolve();
+      resolve(true);
     });
+
+    const give = () => {
+      off();
+      resolve(false);
+    };
+
+    void until?.then(give, give);
   });
 
 /** A gate that never holds anything back, for callers without freezing. */
@@ -198,9 +210,10 @@ export const createSlotFreezer = async (options: SlotFreezerOptions): Promise<Sl
             const { hold } = yield* raiseHoldIn(change, { ...holdOf(slot), evidence });
             yield* change.recordHistory({
               factoryId: slot.factoryId,
-              kind: "slot.unfreeze_refused",
+              // PRD §5.3: an unfreeze whose check still fails freezes the slot again.
+              kind: "slot.frozen",
               subject: slot.slotId,
-              detail: { cause, holdId: hold.id },
+              detail: { cause, holdId: hold.id, refrozen: true },
               records: [slotRecord(slot.slotId)],
             });
 

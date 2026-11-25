@@ -53,6 +53,8 @@ export type ChannelLostCause = "heartbeat_lapse" | "peer_closed" | "protocol_err
 export interface AcceptedConnection {
   /** Resolves once written to the socket; rejects if the connection has ended. */
   send(frame: DaemonFrame): Promise<void>;
+  /** Resolves once the connection has ended, whatever the cause. */
+  readonly closed?: Promise<void>;
 }
 
 export interface ChannelEvents {
@@ -128,12 +130,18 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
     let slot: ClaimedSlot | undefined;
     let cancelLapse: (() => void) | undefined;
     let accepted: Accepted | undefined;
+    let markClosed!: () => void;
+
+    const closed = new Promise<void>((resolve) => {
+      markClosed = resolve;
+    });
 
     const end = (cause: ChannelLostCause): void => {
       if (state === "ended") {return;}
 
       const wasAccepted = state === "accepted";
       state = "ended";
+      markClosed();
       cancelLapse?.();
       socket.destroy();
 
@@ -207,6 +215,7 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
 
             socket.write(encodeFrame(frame), (error) => (error ? failed(error) : done()));
           }),
+        closed,
       };
 
       accepted = { connection, pending: new Map(), drains: new Map() };

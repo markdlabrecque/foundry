@@ -198,6 +198,8 @@ export type PrimingOutcome = Data.TaggedEnum<{
   SourceUnavailable: { readonly problems: ReadonlyArray<PrimeSourceProblem> };
   /** Recorded, but the write failed; the record stays unacknowledged. */
   SendFailed: { readonly primeId: string; readonly error: unknown };
+  /** The connection ended while its slot was frozen. Nothing was recorded or sent. */
+  Closed: Record<never, never>;
 }>;
 
 export const PrimingOutcome = Data.taggedEnum<PrimingOutcome>();
@@ -260,8 +262,14 @@ class PrimedWriter {
     this.stopWatching = gate.onUnfrozen((unfrozen) => {
       if (unfrozen.factoryId === slot.factoryId && unfrozen.slotId === slot.slotId) {this.pump();}
     });
+
+    const ended = () => this.refuse(new Error("channel connection has ended"));
+    void connection.closed?.then(ended, ended);
     this.opened = outcome.then(
       (settled) => {
+        // The connection ended while priming was decided: it stays refused.
+        if (this.state instanceof Error) {return false;}
+
         if (!opensConnection(settled)) {return this.refuse(new Error(`priming did not complete: ${settled._tag}`));}
 
         this.state = "open";
@@ -388,8 +396,12 @@ export const createPrimer = (options: PrimerOptions): Primer => {
   // Decide-and-send runs one at a time per slot, so two hellos from one launch
   // cannot both read "no prime yet" and both send a fresh prime.
   const slotTurns = new Map<string, Promise<unknown>>();
+
   // The latest primed connection per slot, where a compaction prime is written.
-  const live = new Map<string, { readonly launchId: string; readonly conversationRef: string; readonly writer: PrimedWriter }>();
+  const live = new Map<
+    string,
+    { readonly launchId: string; readonly conversationRef: string; readonly writer: PrimedWriter; readonly closed: Promise<void> | undefined }
+  >();
 
   const serialized = <A>(slot: ClaimedSlot, task: () => Promise<A>): Promise<A> => {
     const key = slotKey(slot);
@@ -493,10 +505,14 @@ export const createPrimer = (options: PrimerOptions): Primer => {
 
   return {
     prime(slot, hello, connection) {
-      // A frozen slot's prime waits for its unfreeze; it is decided afresh then.
-      const outcome = serialized(slot, () => whenSendable(gate, slot).then(() => decideAndSend(slot, hello, connection)));
+      // A frozen slot's prime waits for its unfreeze and is decided afresh then; a connection
+      // that ends first gets none, so it never holds up a later hello for the slot.
+      const outcome = serialized(slot, async () =>
+        (await whenSendable(gate, slot, connection.closed)) ? decideAndSend(slot, hello, connection) : PrimingOutcome.Closed(),
+      );
+
       const writer = new PrimedWriter(connection, outcome, gate, slot);
-      live.set(slotKey(slot), { launchId: slot.launchId, conversationRef: hello.conversationRef, writer });
+      live.set(slotKey(slot), { launchId: slot.launchId, conversationRef: hello.conversationRef, writer, closed: connection.closed });
 
       return { outcome, connection: { send: (frame: DaemonFrame) => writer.send(frame) } };
     },
@@ -510,8 +526,10 @@ export const createPrimer = (options: PrimerOptions): Primer => {
       // Held now, not once composition starts, so no work frame slips out ahead of the prime.
       const release = current.writer.hold();
 
-      const outcome = serialized(slot, () =>
-        whenSendable(gate, slot).then(() => sendCompactionPrime(slot, current.conversationRef, current.writer)),
+      const outcome = serialized(slot, async () =>
+        (await whenSendable(gate, slot, current.closed))
+          ? sendCompactionPrime(slot, current.conversationRef, current.writer)
+          : CompactionPrimingOutcome.NotConnected(),
       );
 
       void outcome.then(release, release);

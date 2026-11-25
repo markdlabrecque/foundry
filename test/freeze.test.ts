@@ -17,6 +17,7 @@ import {
   openStore,
   planSlots,
   primesForConversation,
+  PrimingOutcome,
   serveManagementApi,
   startChannelServer,
   storeSlotControl,
@@ -169,11 +170,16 @@ test("a frozen slot is sent nothing while the other slot carries on, and stays f
   });
 
   const accepted = new Map<string, PrimedConnection>();
+  const bothAccepted = signal();
 
   const server = await startChannelServer({
     socketPath: join(dir, "channel.sock"),
     slotClaim: acceptAll,
-    onAccepted: (slot, h, connection) => void accepted.set(slot.slotId, primer.prime(slot, h, connection)),
+    onAccepted: (slot, h, connection) => {
+      accepted.set(slot.slotId, primer.prime(slot, h, connection));
+
+      if (accepted.size === 2) {bothAccepted.resolve();}
+    },
   });
 
   cleanups.push(() => server.close());
@@ -214,13 +220,7 @@ test("a frozen slot is sent nothing while the other slot carries on, and stays f
 
   await connect("builder/1", "launch-1", twoOnFirst.resolve);
   await connect("builder/2", "launch-2", twoOnSecond.resolve);
-  await within("both connections accepted", (async () => {
-    while (accepted.size < 2) {
-      await new Promise((r) => {
-        setTimeout(r, 5);
-      });
-    }
-  })());
+  await within("both connections accepted", bothAccepted.promise);
 
   // Work bound to each slot: the frozen slot's stays queued, the other slot's goes out.
   const frozenWork = accepted.get("builder/1")!.connection.send({ type: "prime", id: "work-1", text: "held work" });
@@ -291,4 +291,93 @@ test("a freeze survives a restarted freezer, and a cause with no check is never 
   expect(await restarted.unfreeze({ factoryId: "f1", slotId: "builder/2" })).toEqual({ outcome: "no_check", cause: "host_lost" });
   expect(await run(listOpenHolds(store))).toMatchObject([{ subject: "builder/2", evidence: { cause: "host_lost", again: true } }]);
   expect(await restarted.freeze({ factoryId: "f1", slotId: "nope/1", cause: "host_lost", evidence: {} })).toBe("unknown_slot");
+});
+
+test("a connection that ends while its slot is frozen is never primed; the live launch is, once unfrozen", async () => {
+  const { dir, store, scheduler } = await fixture();
+  await scheduler.schedule();
+  const freezer = await createSlotFreezer({ store, checks: { host_lost: async () => ({ fixed: true }) } });
+  await freezer.freeze({ factoryId: "f1", slotId: "builder/1", cause: "host_lost", evidence: { launchId: "launch-1" } });
+
+  let n = 0;
+
+  const primer = createPrimer({
+    store,
+    gate: freezer,
+    newPrimeId: () => `prime-${++n}`,
+    primeRequest: (slot) => ({
+      address: "eng.builder",
+      slotId: slot.slotId,
+      isolation: "none",
+      instructions: [join(dir, "factory", "builder.md")],
+      knowledgeRoot: join(dir, "knowledge"),
+      baseDir: join(dir, "factory"),
+    }),
+  });
+
+  const accepted: Array<PrimedConnection> = [];
+  const waiters: Array<(c: PrimedConnection) => void> = [];
+
+  const server = await startChannelServer({
+    socketPath: join(dir, "channel.sock"),
+    slotClaim: acceptAll,
+    onAccepted: (slot, h, connection) => {
+      const primed = primer.prime(slot, h, connection);
+      accepted.push(primed);
+      waiters.shift()?.(primed);
+    },
+  });
+
+  cleanups.push(() => server.close());
+
+  const nextAccepted = (): Promise<PrimedConnection> =>
+    new Promise((resolve) => {
+      const ready = accepted.shift();
+
+      if (ready === undefined) {waiters.push(resolve);}
+      else {resolve(ready);}
+    });
+
+  const connect = async (launchId: string, onPrime: (id: string) => void) => {
+    const opened = await openChannel({
+      socketPath: server.socketPath,
+      hello: {
+        type: "hello",
+        protocolVersion: PROTOCOL_VERSION,
+        factoryId: "f1",
+        slotId: "builder/1",
+        launchId,
+        conversationRef: "conv-builder/1",
+        hasRecoverableHistory: false,
+        mode: "headless",
+        tools: [],
+      },
+      heartbeatIntervalMs: 60_000,
+      onFrame: (frame: DaemonFrame) => {
+        if (frame.type === "prime") {onPrime(frame.id);}
+      },
+    });
+
+    if (!opened.accepted) {throw new Error(`hello for ${launchId} was not accepted`);}
+
+    cleanups.push(() => opened.channel.close());
+
+    return opened.channel;
+  };
+
+  const stale = await connect("launch-1", () => {});
+  const first = await within("the first connection accepted", nextAccepted());
+  stale.close();
+  expect(await within("the closed connection's priming", first.outcome)).toEqual(PrimingOutcome.Closed());
+
+  const primed = signal<string>();
+  await connect("launch-3", primed.resolve);
+  const second = await within("the second connection accepted", nextAccepted());
+
+  expect(await freezer.unfreeze({ factoryId: "f1", slotId: "builder/1" })).toMatchObject({ outcome: "unfrozen" });
+  expect(await within("the live launch's prime", second.outcome)).toEqual(PrimingOutcome.Sent({ primeId: "prime-1" }));
+  expect(await within("the prime on the wire", primed.promise)).toBe("prime-1");
+  expect(await run(primesForConversation(store, "f1", "builder/1", "conv-builder/1"))).toMatchObject([
+    { id: "prime-1", launchId: "launch-3" },
+  ]);
 });
