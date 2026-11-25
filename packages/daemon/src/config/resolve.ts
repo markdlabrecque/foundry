@@ -1,5 +1,5 @@
-import { isAbsolute, resolve as resolvePath } from "node:path";
 import type { ConfigProblem } from "./decode.js";
+import { resolveConfiguredPath } from "./paths.js";
 import type { FactoryConfig } from "./schema.js";
 
 /**
@@ -13,7 +13,8 @@ import type { FactoryConfig } from "./schema.js";
  *   replaces it, and `[]` clears it. Extension tool names travel with their extension.
  *
  * Pure: it reads no files and checks no names, references or files (other checks
- * do that). Relative paths resolve from `baseDir`, the YAML's directory.
+ * do that). Relative paths resolve from `baseDir`, the YAML's directory, and a
+ * leading `~` expands to the home directory, as in the offline checks.
  */
 
 /** A configured extension with the tools it contributes; `[]` means hooks only. */
@@ -42,6 +43,8 @@ export interface ResolveOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** The factory YAML's directory; relative paths resolve from here. */
   readonly baseDir: string;
+  /** The home directory a leading `~` expands to. Defaults to the process's. */
+  readonly home?: string;
 }
 
 export type ResolveResult =
@@ -82,7 +85,7 @@ const resolveModel = (
 
 export const resolveStations = (config: FactoryConfig, options: ResolveOptions): ResolveResult => {
   const toPath = (path: string): string =>
-    isAbsolute(path) ? path : resolvePath(options.baseDir, path);
+    resolveConfiguredPath(path, options.baseDir, options.home);
   const toExtension = (entry: string | { readonly path: string; readonly tools: ReadonlyArray<string> }): EffectiveExtension =>
     typeof entry === "string"
       ? { path: toPath(entry), tools: [] }
