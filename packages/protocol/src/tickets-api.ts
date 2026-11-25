@@ -105,6 +105,8 @@ export const TicketTransition = Schema.Struct({
   commit: Schema.NullOr(Schema.String),
   evidence: Schema.Array(Schema.String),
   configLoad: Schema.NullOr(Schema.String),
+  /** Sequence IDs of evaluations invalidated by this daemon transition. */
+  voidedTransitions: Schema.optionalKey(Schema.Array(Schema.Number)),
 });
 
 export type TicketTransition = typeof TicketTransition.Type;

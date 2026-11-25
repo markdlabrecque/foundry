@@ -751,6 +751,13 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `CREATE INDEX agent_request_deadline ON agent_request (deadline) WHERE status = 'open'`,
     ],
   },
+  {
+    id: 29,
+    name: "voided_evaluations",
+    statements: [
+      `ALTER TABLE ticket_transition ADD COLUMN voided_transitions TEXT NOT NULL DEFAULT '[]' CHECK (json_valid(voided_transitions))`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

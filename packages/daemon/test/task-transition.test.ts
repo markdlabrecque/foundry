@@ -17,6 +17,7 @@ import { git as fixtureGit, isolatedGitEnv, makeGitSource } from "@foundry/testk
 import { FactoryConfig } from "../src/config/schema.js";
 import { getFromDaemon, postToDaemon } from "../../cli/src/management-client.js";
 import { approvalAnswerPath } from "@foundry/protocol/approvals";
+import { voidStaleApprovals } from "../src/approval-voiding.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
   version: 1, name: "shop", repository: { source: "/disposable", default_branch: "main" },
@@ -58,7 +59,8 @@ const frame = (assignmentId: string) => ({ type: "tool_call", tool: TASK_TRANSIT
 
 const snapshot = (store: Store) => Effect.all({
   tickets: store.read(`SELECT * FROM ticket`), assignments: store.read(`SELECT * FROM assignment`),
-  transitions: store.read(`SELECT * FROM ticket_transition`), history: store.read(`SELECT * FROM history`),
+  transitions: store.read(`SELECT * FROM ticket_transition`).pipe(Effect.map((rows) => rows.map((row) => ({ voided_transitions: "[]", ...row })))),
+  history: store.read(`SELECT * FROM history`),
   submissions: store.read(`SELECT * FROM submission`), messages: store.read(`SELECT * FROM message`),
   approvals: store.read(`SELECT * FROM approval`),
   requests: store.read(`SELECT * FROM agent_request`),
@@ -1314,7 +1316,19 @@ test("cancellation migration preserves resolved stage gates and integration-inte
     const factories = [{ factoryId: "shop", config: gatedConfig }];
     const submissions = createSubmissions({ store, handlers: new Map([[TASK_TRANSITION, taskTransitionHandler({ factories })]]) });
     yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, gitCommit: head } }));
-    yield* createApprovalDecisions({ store, factories }).resolve(1, "approved");
+    // Populate the pre-voiding schema as the old resolver did; this tests migration,
+    // not current runtime services against an intentionally outdated database.
+    yield* store.change((change) => Effect.gen(function* () {
+      const [transition] = yield* change.query<{ sequence: number }>(`INSERT INTO ticket_transition
+        (factory_id, ticket_number, recorded_at, actor, from_state, from_stage, from_status, to_state, to_stage, to_status, outcome, git_commit)
+        VALUES ('shop', 1, 1, 'operator', 'stage', 'plan', 'awaiting_approval', 'stage', 'plan', 'awaiting_approval', 'done', ?) RETURNING sequence`, [head]);
+
+      if (transition === undefined) {throw new Error("missing fixture transition");}
+
+      yield* change.query(`UPDATE approval SET state = 'resolved', closed_at = 1, decision = 'approved', resolution_transition = ?`, [transition.sequence]);
+      yield* change.query(`INSERT INTO integration_intent VALUES (1, 'shop', 1, ?, ?, 1)`, [head, transition.sequence]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "old-approved-gate" });
+    }));
 
     return { root, approvals: yield* store.read(`SELECT * FROM approval`), intents: yield* store.read(`SELECT * FROM integration_intent`) };
   }), foundryMigrations.filter((migration) => migration.id < 26));
@@ -1394,11 +1408,7 @@ test.each([
       expect(yield* snapshot(store)).toEqual(afterMessage);
       expect(yield* store.read(`SELECT * FROM integration_intent`)).toEqual([]);
 
-      // Branch-head invalidation is a separate ticket. This seam must never substitute a later
-      // HEAD for the commit actually evaluated by the worker and approved by the operator.
-      writeFileSync(join(root, "worktree", "tracked.txt"), "later\n");
-      git(join(root, "worktree"), "commit", "-am", "later", "--quiet");
-      expect(git(join(root, "worktree"), "rev-parse", "HEAD")).not.toBe(head);
+      // Unchanged HEAD preserves the evaluated commit through the operator decision.
       expect((yield* Effect.promise(() => runApprovalDecision(options))).exitCode).toBe(0);
       const after = yield* snapshot(store);
       const target = decision === "approve" ? final ? "plan" : "next" : routed ? "revise" : "plan";
@@ -1459,6 +1469,129 @@ test("operator routed rejection respects the persisted rejection ceiling after a
     expect(yield* createAssignmentScheduler({ store, slots, factories }).schedule()).toEqual([]);
     expect(yield* Effect.exit(decisions.resolve(1, "rejected", "Repeat"))).toMatchObject(Exit.fail({ code: "invalid_state" }));
     expect(yield* snapshot(store)).toEqual(after);
+  }));
+});
+
+test.each([false, true])("changed head voids an %s-approved final gate, preserves history and survives restart", async (approved) => {
+  const saved = await gateFixture(true, false, (store, id, root, head, gatedConfig) => Effect.gen(function* () {
+    const factories = [{ factoryId: "shop", config: gatedConfig }];
+    const submissions = createSubmissions({ store, handlers: new Map([[TASK_TRANSITION, taskTransitionHandler({ factories })]]) });
+    yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, gitCommit: head } }));
+
+    if (approved) {yield* createApprovalDecisions({ store, factories }).resolve(1, "approved");}
+
+    const invalidated = yield* store.read<{ sequence: number }>(`SELECT sequence FROM ticket_transition WHERE outcome = 'done' ORDER BY sequence`);
+    const before = yield* snapshot(store);
+    expect(yield* voidStaleApprovals({ store, factories })).toBe(0);
+    expect(yield* snapshot(store)).toEqual(before);
+    const path = join(root, "worktree");
+    writeFileSync(join(path, "tracked.txt"), "new head\n");
+    git(path, "commit", "-am", "new head", "--quiet");
+    const current = git(path, "rev-parse", "HEAD");
+    expect(yield* voidStaleApprovals({ store, factories, configLoad: () => "void-load" })).toBe(1);
+    const after = yield* snapshot(store);
+    expect(after.tickets).toMatchObject([{ stage: "plan", status: "queued" }]);
+    expect(after.transitions.slice(0, -1)).toEqual(before.transitions);
+    expect(after.transitions.at(-1)).toMatchObject({ actor: "daemon", outcome: "voided", to_stage: "plan", to_status: "queued",
+      git_commit: current, voided_transitions: JSON.stringify(invalidated.map((row) => row.sequence)), config_load: "void-load" });
+    expect(after.approvals).toMatchObject([{ state: "resolved", decision: approved ? "approved" : null }]);
+    expect(yield* store.read(`SELECT * FROM integration_intent`)).toEqual([]);
+    expect(yield* Effect.promise(() => storeApprovalsReader(store).list())).toEqual({ approvals: [] });
+    expect(Exit.isFailure(yield* Effect.exit(createApprovalDecisions({ store, factories }).resolve(1, "approved")))).toBe(true);
+    expect(yield* voidStaleApprovals({ store, factories })).toBe(0);
+    expect(yield* snapshot(store)).toEqual(after);
+    const detail = yield* createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(gatedConfig)] }).show("shop", 1);
+    expect(detail.transitions.at(-1)?.voidedTransitions).toEqual(invalidated.map((row) => row.sequence));
+    expect(yield* store.read(`PRAGMA foreign_key_check`)).toEqual([]);
+
+    return { root, after };
+  }));
+
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    expect(yield* snapshot(store)).toEqual(saved.after);
+  })));
+});
+
+test("operator decision itself detects a stale gate, without waiting for a background sweep", async () => {
+  await gateFixture(false, false, (store, id, root, head, gatedConfig) => Effect.gen(function* () {
+    const factories = [{ factoryId: "shop", config: gatedConfig }];
+    const submissions = createSubmissions({ store, handlers: new Map([[TASK_TRANSITION, taskTransitionHandler({ factories })]]) });
+    yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, gitCommit: head } }));
+    const path = join(root, "worktree");
+    writeFileSync(join(path, "tracked.txt"), "moved\n");
+    git(path, "commit", "-am", "moved", "--quiet");
+    expect(Exit.isFailure(yield* Effect.exit(createApprovalDecisions({ store, factories }).resolve(1, "approved")))).toBe(true);
+    expect(yield* store.read(`SELECT stage, status FROM ticket`)).toEqual([{ stage: "plan", status: "queued" }]);
+    expect(yield* store.read(`SELECT * FROM integration_intent`)).toEqual([]);
+  }));
+});
+
+test("scheduler voids multiple stale non-writing evaluations at the earliest stage and creates a fresh assignment", async () => {
+  await gateFixture(false, false, (store, id, root, head, gatedConfig) => Effect.gen(function* () {
+    // plan is a plain non-writing review; next is a later QA stage. Stage order, not
+    // transition insertion order, determines the earliest invalidated stage.
+    const stages = [
+      { id: "plan", station: "floor.worker", writing: false, approval: false },
+      { id: "next", station: "floor.worker", writing: false, approval: false },
+      { id: "final", station: "floor.reviewer", writing: false, approval: true },
+    ];
+
+    const reviewConfig = { ...gatedConfig, production_lines: { standard: { stages } } };
+    const factories = [{ factoryId: "shop", config: reviewConfig }];
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1, end_reason = 'done' WHERE id = ?`, [id]);
+      yield* change.query(`UPDATE ticket SET stage = 'final', status = 'queued'`);
+
+      for (const stage of ["next", "plan"]) {
+        yield* change.query(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor, from_state, from_stage,
+          from_status, to_state, to_stage, to_status, outcome, git_commit)
+          VALUES ('shop', 1, 1, 'worker', 'stage', ?, 'assigned', 'stage', 'final', 'queued', 'done', ?)`, [stage, head]);
+      }
+
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "reviews" });
+    }));
+    const path = join(root, "worktree");
+    writeFileSync(join(path, "tracked.txt"), "changed\n");
+    git(path, "commit", "-am", "changed", "--quiet");
+
+    const failing: Store = { ...store, change: (body) => store.change((change) =>
+      Effect.flatMap(body(change), () => Effect.fail(new StoreError({ reason: "Sql", message: "commit failure" })))) };
+
+    const before = yield* snapshot(store);
+    expect(Exit.isFailure(yield* Effect.exit(voidStaleApprovals({ store: failing, factories })))).toBe(true);
+    expect(yield* snapshot(store)).toEqual(before);
+    const assigned = yield* createAssignmentScheduler({ store, slots, factories }).schedule();
+    expect(assigned).toMatchObject([{ stage: "plan", slotId: "worker/1" }]);
+    expect(assigned[0]?.id).not.toBe(id);
+    expect(yield* store.read(`SELECT outcome, to_stage, voided_transitions FROM ticket_transition WHERE outcome = 'voided'`))
+      .toMatchObject([{ outcome: "voided", to_stage: "plan", voided_transitions: expect.any(String) }]);
+    expect(yield* voidStaleApprovals({ store, factories })).toBe(0);
+  }));
+});
+
+test("active non-writing work is settled before voiding and a changed Git fence rolls back", async () => {
+  await gateFixture(false, false, (store, id, root, head, gatedConfig) => Effect.gen(function* () {
+    const factories = [{ factoryId: "shop", config: gatedConfig }];
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor, from_state, from_stage,
+        from_status, to_state, to_stage, to_status, outcome, git_commit)
+        VALUES ('shop', 1, 1, 'reviewer', 'stage', 'plan', 'assigned', 'stage', 'next', 'assigned', 'done', ?)`, [head]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "evaluation" });
+    }));
+    const path = join(root, "worktree");
+    writeFileSync(join(path, "tracked.txt"), "changed\n");
+    git(path, "commit", "-am", "changed", "--quiet");
+    const before = yield* snapshot(store);
+    expect(yield* voidStaleApprovals({ store, factories })).toBe(0);
+    expect(yield* snapshot(store)).toEqual(before);
+    expect(Exit.isFailure(yield* Effect.exit(voidStaleApprovals({ store, factories, interrupt: async () => {
+      writeFileSync(join(path, "tracked.txt"), "changed during settlement\n");
+    } })))).toBe(true);
+    expect(yield* snapshot(store)).toEqual(before);
+    expect(yield* voidStaleApprovals({ store, factories, interrupt: async () => {} })).toBe(1);
+    expect(yield* store.read(`SELECT id, status, end_reason FROM assignment`)).toEqual([{ id, status: "ended", end_reason: "voided" }]);
+    expect(yield* store.read(`SELECT stage, status FROM ticket`)).toEqual([{ stage: "plan", status: "queued" }]);
   }));
 });
 

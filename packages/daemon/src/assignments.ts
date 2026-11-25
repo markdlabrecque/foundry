@@ -5,6 +5,7 @@ import { Cause, Clock, Data, Effect, Exit } from "effect";
 import { acceptMessage } from "./agent-message.js";
 import { abandonAssignment } from "./assignment-abandon.js";
 import { composeResumeNotice } from "./resume-notice.js";
+import { voidStaleApprovals } from "./approval-voiding.js";
 import { isAssignmentSlotReserved, onAssignmentSlotReleased } from "./assignment-reservation.js";
 import { eligibleAssignmentSlots } from "./assignment-slots.js";
 import { composeAssignmentRepositoryContext, recordAssignmentRepositoryContext } from "./assignment-repository-context.js";
@@ -282,6 +283,12 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
 
   return {
     schedule: (): Effect.Effect<ReadonlyArray<Assignment>, StoreError> => Effect.gen(function* () {
+      yield* voidStaleApprovals(options).pipe(Effect.catch((cause) => Effect.gen(function* () {
+        // Preserve main's quiet, deferred SQLite loading; the store is already open here.
+        const { StoreError } = yield* Effect.promise(() => import("./store.js"));
+
+        return yield* new StoreError({ reason: "Sql", message: "Could not verify ticket approvals against HEAD", cause });
+      })));
       const first = yield* scan();
 
       if (options.prepareWorktree === undefined || first.pending.length === 0) {return first.assigned;}

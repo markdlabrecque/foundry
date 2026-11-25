@@ -5,6 +5,8 @@ import { expectDefined } from "@foundry/protocol/errors";
 import type { AssignmentFactory } from "./assignments.js";
 import { ticketRecord } from "./history-records.js";
 import { enqueueOperationIn } from "./operations.js";
+import { inspectCode } from "./code-observation.js";
+import { voidStaleApprovals } from "./approval-voiding.js";
 import { outcomeRoute } from "./outcome-route.js";
 import type { Store, StoreError } from "./store.js";
 
@@ -43,7 +45,22 @@ export interface ApprovalDecisionOptions {
 }
 
 export const createApprovalDecisions = (options: ApprovalDecisionOptions): ApprovalDecisions => ({
-  resolve: (id, decision, reason) => options.store.change((change) => Effect.gen(function* () {
+  resolve: (id, decision, reason) => Effect.gen(function* () {
+    const [ticket] = yield* options.store.read<{ factory_id: string; number: number; worktree_path: string | null; branch: string | null }>(
+      `SELECT t.factory_id, t.number, t.worktree_path, t.branch FROM approval a
+       JOIN ticket t ON t.factory_id = a.factory_id AND t.number = a.ticket_number WHERE a.id = ?`, [id]);
+
+    const observation = ticket !== undefined && ticket.worktree_path !== null && ticket.branch !== null
+      ? yield* inspectCode(ticket.worktree_path, ticket.branch).pipe(Effect.mapError((cause) => new ApprovalDecisionError({ code: "invalid_state", message: cause.detail })))
+      : undefined;
+
+    if (ticket !== undefined) {
+      yield* voidStaleApprovals(options, { factory: ticket.factory_id, ticket: ticket.number }).pipe(
+        Effect.mapError(() => new ApprovalDecisionError({ code: "invalid_state", message: "Could not verify approval HEAD; retry" })),
+      );
+    }
+
+    return yield* options.store.change((change) => Effect.gen(function* () {
     if (!Number.isSafeInteger(id) || id < 1 || (decision === "rejected" && (reason === undefined || reason.trim() === ""))) {
       return yield* new ApprovalDecisionError({ code: "invalid_request", message: "reject requires a non-empty reason and an approval ID" });
     }
@@ -74,6 +91,12 @@ export const createApprovalDecisions = (options: ApprovalDecisionOptions): Appro
     if (stage === undefined || !stage.approval) {
       return yield* new ApprovalDecisionError({ code: "invalid_state", message: "the gated stage is not configured" });
     }
+
+    if (observation === undefined || observation.head !== gate.git_commit || observation.branch !== `refs/heads/${ticket?.branch}`) {
+      return yield* new ApprovalDecisionError({ code: "invalid_state", message: "The approval no longer evaluates the current ticket branch head" });
+    }
+
+    yield* observation.validate().pipe(Effect.mapError((cause) => new ApprovalDecisionError({ code: "invalid_state", message: cause.detail })));
 
     const integrationRequested = decision === "approved" && index === (stages?.length ?? 0) - 1;
     const target = outcomeRoute(stages ?? [], gate.stage, decision === "approved" ? "done" : "rejected");
@@ -125,8 +148,11 @@ export const createApprovalDecisions = (options: ApprovalDecisionOptions): Appro
     yield* change.recordHistory({ factoryId: gate.factory_id, kind: "ticket.transitioned", subject: String(gate.ticket_number),
       detail: { fromStage: gate.stage, stage: nextStage, status, approvalId: id }, records: [ticketRecord(gate.ticket_number)] });
 
+    yield* observation.validate().pipe(Effect.mapError((cause) => new ApprovalDecisionError({ code: "invalid_state", message: cause.detail })));
+
     return { approvalId: id, decision, transition, commit: gate.git_commit, integrationRequested };
-  })).pipe(Effect.tap((result) => Effect.sync(() => {
+    }));
+  }).pipe(Effect.tap((result) => Effect.sync(() => {
     if (result.integrationRequested) {options.onIntegrationQueued?.();}
   }))),
 });
