@@ -11,6 +11,8 @@ export default defineConfig({
     ...cloudflare.ignorePatterns,
     "**/dist/**",
     ".scratch/**",
+    // Recorded probes: kept byte-for-byte as run, so the evidence they back stays true.
+    "docs/evidence/**",
     ".agent/**",
     ".agents/**",
     ".claude/**",

@@ -18,20 +18,15 @@ import { Type } from "typebox";
 
 const LOG = process.env.PROBE_LOG;
 let seq = 0;
-
 function log(record: Record<string, unknown>): void {
-	if (!LOG) {return;}
-
+	if (!LOG) return;
 	appendFileSync(LOG, `${JSON.stringify({ seq: seq++, ...record })}\n`);
 }
 
 function textOf(message: any): string {
 	const c = message?.content;
-
-	if (typeof c === "string") {return c;}
-
-	if (Array.isArray(c)) {return c.map((b: any) => (b?.type === "text" ? b.text : "")).join("");}
-
+	if (typeof c === "string") return c;
+	if (Array.isArray(c)) return c.map((b: any) => (b?.type === "text" ? b.text : "")).join("");
 	return "";
 }
 
@@ -52,30 +47,22 @@ export default function (pi: ExtensionAPI) {
 		};
 		log({ kind: "event", type: "input", rounds: plan.rounds, size: plan.size, promptChars: event.text.length });
 	});
-
 	const respond = (context: any) => {
-		const messages: Array<any> = context.messages;
+		const messages: any[] = context.messages;
 		const chars = messages.reduce((n, m) => n + textOf(m).length, 0);
-
 		if (getCurrentSystemPrompt(messages).includes("context summarization assistant")) {
 			log({ kind: "model_call", purpose: "summary", requestChars: chars });
-
 			return fauxAssistantMessage(fauxText("## Goal\nProbe compaction.\n\n## Progress\n- [x] probe summary"));
 		}
-
 		if (plan.done < plan.rounds) {
 			plan.done++;
 			padCalls++;
 			log({ kind: "model_call", purpose: "tool_call", round: plan.done, requestChars: chars });
-
 			return fauxAssistantMessage(fauxToolCall("pad", { size: plan.size }, { id: `pad-${padCalls}` }), { stopReason: "toolUse" });
 		}
-
 		log({ kind: "model_call", purpose: "final_text", requestChars: chars });
-
 		return fauxAssistantMessage(fauxText("done"));
 	};
-
 	// The faux core pops one queued step per request; queue plenty of the same factory.
 	faux.setResponses(Array.from({ length: 500 }, () => respond));
 	pi.registerProvider(faux.provider);
@@ -98,19 +85,14 @@ export default function (pi: ExtensionAPI) {
 		"tool_execution_start",
 		"tool_execution_end",
 	] as const;
-
 	for (const type of plain) {
 		pi.on(type as any, async (event: any, ctx: any) => {
 			const extra: Record<string, unknown> = {};
-
-			if (type === "tool_execution_start" || type === "tool_execution_end") {extra.toolCallId = event.toolCallId;}
-
-			if (type === "agent_settled") {extra.aborted = event.aborted;}
-
+			if (type === "tool_execution_start" || type === "tool_execution_end") extra.toolCallId = event.toolCallId;
+			if (type === "agent_settled") extra.aborted = event.aborted;
 			log({ kind: "event", type, idle: ctx.isIdle(), ...extra });
 		});
 	}
-
 	pi.on("turn_start", async (event, ctx) => log({ kind: "event", type: "turn_start", turnIndex: event.turnIndex, idle: ctx.isIdle() }));
 	pi.on("turn_end", async (event, ctx) =>
 		log({

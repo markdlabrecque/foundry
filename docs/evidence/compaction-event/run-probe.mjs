@@ -13,18 +13,16 @@
 //             crosses the threshold between tool rounds of the same run.
 
 import { spawn } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
-const here = import.meta.dirname;
-
+const here = dirname(fileURLToPath(import.meta.url));
 const PI_BIN =
 	process.env.PI_BIN ??
 	join(process.env.HOME, ".pi/agent/install/releases/1.6.0/node_modules/@earendil-works/pi-coding-agent/dist/cli.js");
-
 const outDir = resolve(process.argv[2] ?? mkdtempSync(join(tmpdir(), "fou28-out-")));
-
 mkdirSync(outDir, { recursive: true });
 
 const SETTINGS = {
@@ -36,10 +34,10 @@ const SCENARIOS = {
 	// Negative control: one ~6250-token prompt crosses the threshold (8000 window -
 	// 2000 reserve = 6000), but the session has a single user-message span, so
 	// prepareCompaction finds nothing to summarize and Pi silently skips compaction.
-	auto_single_span: ["ROUNDS 0 " + "y".repeat(25_000)],
+	auto_single_span: ["ROUNDS 0 " + "y".repeat(25000)],
 	// Configured automatic compaction: two text-only runs (~3000 + ~3500 tokens). The
 	// second run crosses the threshold with the first span available to summarize.
-	auto: ["ROUNDS 0 " + "y".repeat(12_000), "ROUNDS 0 " + "z".repeat(14_000)],
+	auto: ["ROUNDS 0 " + "y".repeat(12000), "ROUNDS 0 " + "z".repeat(14000)],
 	// Each pad result is ~2500 tokens; the threshold is crossed after the second or third.
 	midrun: ["ROUNDS 4 SIZE 10000"],
 };
@@ -56,9 +54,7 @@ function runScenario(name, prompts) {
 	const agentDir = join(root, "agent");
 	const sessions = join(root, "sessions");
 	const work = join(root, "work");
-
-	for (const d of [home, agentDir, sessions, work]) {mkdirSync(d, { recursive: true });}
-
+	for (const d of [home, agentDir, sessions, work]) mkdirSync(d, { recursive: true });
 	writeFileSync(join(agentDir, "settings.json"), JSON.stringify(SETTINGS, null, 2));
 	const extLog = join(outDir, `${name}.extension.jsonl`);
 	const rpcLog = join(outDir, `${name}.rpc.jsonl`);
@@ -74,7 +70,6 @@ function runScenario(name, prompts) {
 		"--no-approve", "--offline",
 		"--session-dir", sessions,
 	];
-
 	const env = {
 		PATH: process.env.PATH,
 		HOME: home,
@@ -86,7 +81,6 @@ function runScenario(name, prompts) {
 		PI_TELEMETRY: "0",
 		PROBE_LOG: extLog,
 	};
-
 	const isJs = PI_BIN.endsWith(".js");
 	const child = spawn(isJs ? process.execPath : PI_BIN, isJs ? [PI_BIN, ...args] : args, { cwd: work, env, stdio: ["pipe", "pipe", "pipe"] });
 
@@ -98,24 +92,16 @@ function runScenario(name, prompts) {
 	child.stdout.on("data", (d) => {
 		buf += d;
 		let i;
-
 		while ((i = buf.indexOf("\n")) >= 0) {
 			const line = buf.slice(0, i);
 			buf = buf.slice(i + 1);
-
-			if (!line.trim()) {continue;}
-
+			if (!line.trim()) continue;
 			let ev;
-
 			try { ev = JSON.parse(line); } catch { continue; }
-
 			if (KEEP.has(ev.type)) {
 				const rec = { seq: rpcSeq++, type: ev.type };
-
-				if (ev.type === "response") {Object.assign(rec, { command: ev.command, success: ev.success, data: ev.data, error: ev.error });}
-
-				if (ev.type === "compaction_start") {rec.reason = ev.reason;}
-
+				if (ev.type === "response") Object.assign(rec, { command: ev.command, success: ev.success, data: ev.data, error: ev.error });
+				if (ev.type === "compaction_start") rec.reason = ev.reason;
 				if (ev.type === "compaction_end") {
 					const r = ev.result;
 					Object.assign(rec, {
@@ -123,26 +109,19 @@ function runScenario(name, prompts) {
 						result: r && { tokensBefore: r.tokensBefore, estimatedTokensAfter: r.estimatedTokensAfter, summaryChars: r.summary?.length, details: r.details },
 					});
 				}
-
-				if (ev.type === "turn_end") {rec.stopReason = ev.message?.stopReason;}
-
-				if (ev.type.startsWith("tool_execution")) {rec.toolCallId = ev.toolCallId;}
-
-				if (ev.type === "agent_settled") {rec.aborted = ev.aborted;}
-
+				if (ev.type === "turn_end") rec.stopReason = ev.message?.stopReason;
+				if (ev.type.startsWith("tool_execution")) rec.toolCallId = ev.toolCallId;
+				if (ev.type === "agent_settled") rec.aborted = ev.aborted;
 				writeFileSync(rpcLog, JSON.stringify(rec) + "\n", { flag: "a" });
 			}
-
-			for (const w of [...waiters]) {if (w.match(ev)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(ev); }}
+			for (const w of [...waiters]) if (w.match(ev)) { waiters.splice(waiters.indexOf(w), 1); w.resolve(ev); }
 		}
 	});
-
-	const waitFor = (match, ms = 30_000) =>
+	const waitFor = (match, ms = 30000) =>
 		new Promise((res, rej) => {
 			const t = setTimeout(() => rej(new Error(`${name}: timeout waiting; stderr:\n${stderr}`)), ms);
 			waiters.push({ match, resolve: (e) => { clearTimeout(t); res(e); } });
 		});
-
 	const send = (cmd) => child.stdin.write(JSON.stringify(cmd) + "\n");
 
 	return (async () => {
@@ -151,7 +130,6 @@ function runScenario(name, prompts) {
 			send({ id: `p${n}`, type: "prompt", message });
 			await settled;
 		}
-
 		const entriesP = waitFor((e) => e.type === "response" && e.command === "get_entries");
 		send({ id: "entries", type: "get_entries" });
 		const entries = await entriesP;
@@ -159,44 +137,31 @@ function runScenario(name, prompts) {
 		child.kill("SIGTERM");
 		const types = (entries.data?.entries ?? entries.data ?? []).map?.((e) => e.type + (e.message ? `:${e.message.role}` : "")) ?? [];
 		writeFileSync(join(outDir, `${name}.entries.json`), JSON.stringify(types, null, 2));
-
 		return { name, root, extLog, rpcLog, stderr };
 	})();
 }
 
 function summarize(name, extLog) {
 	const recs = readFileSync(extLog, "utf8").trim().split("\n").filter(Boolean).map((l) => JSON.parse(l));
-
 	const line = recs
 		.filter((r) => r.kind === "event" || r.purpose === "summary")
 		.map((r) => {
-			if (r.kind === "model_call") {return "[summary-call]";}
-
+			if (r.kind === "model_call") return "[summary-call]";
 			let s = r.type;
-
-			if (r.reason) {s += `(${r.reason}${r.willRetry ? ",retry" : ""})`;}
-
-			if (r.type === "turn_end") {s += `(${r.stopReason})`;}
-
-			if (r.type === "session_compact" || r.type === "session_before_compact") {s += r.idle ? "[idle]" : "[busy]";}
-
+			if (r.reason) s += `(${r.reason}${r.willRetry ? ",retry" : ""})`;
+			if (r.type === "turn_end") s += `(${r.stopReason})`;
+			if (r.type === "session_compact" || r.type === "session_before_compact") s += r.idle ? "[idle]" : "[busy]";
 			return s;
 		});
-
 	const compacts = recs.filter((r) => r.type === "session_compact");
-
 	return { name, sessionCompactCount: compacts.length, reasons: compacts.map((c) => c.reason), order: line };
 }
 
 const results = [];
-
 for (const [name, prompts] of Object.entries(SCENARIOS)) {
 	const r = await runScenario(name, prompts);
 	results.push(summarize(name, r.extLog));
 }
-
 const report = { piBin: PI_BIN, node: process.version, outDir, settings: SETTINGS, results };
-
 writeFileSync(join(outDir, "summary.json"), JSON.stringify(report, null, 2));
-
 console.log(JSON.stringify(report, null, 2));
