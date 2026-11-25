@@ -17,6 +17,8 @@ export * from "./agent-request.js";
 
 export * from "./agent-reply.js";
 
+export * from "./task-transition.js";
+
 export * from "./message-routing.js";
 
 export * from "./agent-discover.js";

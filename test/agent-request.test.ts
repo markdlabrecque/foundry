@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { startChannelServer } from "@foundry/daemon";
 import { connectWorker } from "@foundry/extension";
-import { AGENT_REPLY, AGENT_REQUEST } from "@foundry/protocol";
+import { AGENT_REPLY, AGENT_REQUEST, TASK_TRANSITION } from "@foundry/protocol";
 import type { ToolCall } from "@foundry/protocol";
 import { startFauxSession } from "@foundry/testkit";
 
@@ -21,6 +21,8 @@ test.each([
     value: { requestId: "request-1", deadline: 1_800_000_060_000 } },
   { tool: AGENT_REPLY, args: { requestId: "request-1", body: "Reviewed" },
     value: { requestId: "request-1", status: "completed", replyId: "reply-1" } },
+  { tool: TASK_TRANSITION, args: { assignmentId: "assignment-1", outcome: "done", reason: "Plan ready", evidence: ["evidence/plan.md"] },
+    value: { assignmentId: "assignment-1", ticket: 1, stage: "implement", status: "queued" } },
 ])("Pi advertises $tool, forwards its arguments and returns the committed result", async ({ tool, args, value }) => {
   const dir = await mkdtemp(join(tmpdir(), "foundry-request-wiring-"));
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
