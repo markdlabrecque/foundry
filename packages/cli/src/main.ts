@@ -8,6 +8,7 @@ import { Argument, CliError, Command, Flag } from "effect/cli";
 import { NodeRuntime, NodeServices } from "@effect/platform-node";
 import { EXIT_USAGE, runStatus } from "./status.js";
 import { runLogs } from "./logs.js";
+import { runMessageSend } from "./messages.js";
 import { validateFactoryFile } from "./validate.js";
 import { runTicketList, runTicketPause, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
@@ -192,6 +193,22 @@ const report = (run: () => Promise<TicketOutcome>) =>
     process.exitCode = outcome.exitCode;
   });
 
+const messageSend = Command.make(
+  "send",
+  {
+    ...ticketFlags,
+    recipient: Argument.String("room.station"),
+    body: Argument.String("text"),
+    delivery: Flag.String("delivery").pipe(Flag.optional, Flag.withDescription("after_turn (default) or when_idle")),
+  },
+  ({ json, home, factory, recipient, body, delivery }) => report(() => runMessageSend({
+    json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory),
+    recipient, body, delivery: Option.getOrUndefined(delivery), env: process.env,
+  })),
+).pipe(Command.withDescription("Accept an operator message in the daemon's durable log, without spending budget"));
+
+const message = Command.make("message").pipe(Command.withSubcommands([messageSend]));
+
 const ticketSubmit = Command.make(
   "submit",
   {
@@ -349,7 +366,7 @@ const shutdown = Command.make(
 ).pipe(Command.withDescription("Stop every factory's workers, then the Worker Host, then the daemon"));
 
 const foundry = Command.make("foundry").pipe(
-  Command.withSubcommands([validate, status, shutdown, hold, logs, ticket, events, factory, slot]),
+  Command.withSubcommands([validate, status, shutdown, hold, logs, ticket, events, factory, slot, message]),
 );
 
 Command.run(foundry, { version: "0.0.0" }).pipe(

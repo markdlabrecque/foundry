@@ -23,6 +23,8 @@ export {
 
 export { runLogs, type LogsOptions, type LogsOutcome } from "./logs.js";
 
+export { runMessageSend, type MessageSendOptions } from "./messages.js";
+
 export { runHoldList, runHoldShow, type HoldOptions, type HoldOutcome } from "./holds.js";
 
 export { runFactoryList, type FactoryListOptions, type FactoryOutcome } from "./factories.js";

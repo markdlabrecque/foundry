@@ -18,6 +18,7 @@ import { createKnowledgeLayout, LoadFactoriesResult, loadFactoryFiles, recordRun
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
 import { createTicketService, ticketFactoryFrom } from "./tickets.js";
 import type { TicketServiceOptions } from "./tickets.js";
+import { createOperatorMessages } from "./operator-message.js";
 import { assignedSlot, assignmentContextSlot, assignmentTicket, watchAssignments } from "./assignments.js";
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
@@ -653,6 +654,7 @@ const main = async (): Promise<void> => {
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
       tickets: createTicketService(ticketOptions),
+      messages: createOperatorMessages({ store, factories: () => ticketFactories.map((f) => f.name), slots: plannedSlots }),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,
       sync,

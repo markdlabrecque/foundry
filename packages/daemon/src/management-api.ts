@@ -12,7 +12,7 @@ import { createServer } from "node:http";
 import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { join } from "node:path";
-import { Option, Schema } from "effect";
+import { Cause, Effect, Exit, Option, Schema } from "effect";
 import type { HoldsReader } from "./holds.js";
 import { HOLDS_PATH } from "@foundry/protocol/holds";
 import { EVENTS_PATH, managementSocketPath, parseEventsQuery, STATUS_PATH } from "@foundry/protocol/management-api";
@@ -37,6 +37,9 @@ import { ShutdownError } from "./shutdown.js";
 import type { InstanceShutdown } from "./shutdown.js";
 import { matchSlotInterruptPath, matchSlotPath, matchSlotUnfreezePath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
+import { MESSAGES_PATH, SendMessageRequest } from "@foundry/protocol/messages-api";
+import { OperatorMessageError } from "./operator-message.js";
+import type { OperatorMessages } from "./operator-message.js";
 import type { SlotControl, SlotInterrupter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
 
 /** What the API reports, injected so the server is independent of where status comes from. */
@@ -50,6 +53,8 @@ export interface ManagementApiInputs {
   readonly holds?: HoldsReader;
   /** Serves the ticket routes when given; without it they answer 404. */
   readonly tickets?: TicketService;
+  /** Durable daemon-authored operator acceptance (PRD §11.4). */
+  readonly messages?: OperatorMessages;
   /** The dedicated clone path of a loaded factory (PRD §9.1); `undefined` for an unknown one. */
   readonly clonePath?: (factory: string) => string | undefined;
   /** The loaded factories, read from daemon state. Without it the route answers 503. */
@@ -256,6 +261,8 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
   const url = new URL(request.url ?? "/", "http://foundry");
   const path = url.pathname;
 
+  if (path === MESSAGES_PATH) {return handleOperatorMessage(inputs, request, response);}
+
   // Ticket routes first: submit reads a POST body, so it must not be drained.
   if (inputs.tickets !== undefined && (path === TICKETS_PATH || path.startsWith(`${TICKETS_PATH}/`))) {
     void handleTickets(inputs.tickets, request, url).then(
@@ -310,6 +317,40 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
     ([status, body]) => send(response, status, body),
     (cause: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${messageOf(cause)}`)),
   );
+};
+
+/** Only this endpoint can author an operator message; worker frames cannot choose attribution. */
+const handleOperatorMessage = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse): void => {
+  if (request.method !== "POST") {
+    request.resume();
+    response.setHeader("allow", "POST");
+
+    return send(response, 405, failure("method_not_allowed", `${MESSAGES_PATH} only accepts POST`));
+  }
+
+  void (async () => {
+    const text = await readSmallBody(request, 1024 * 1024);
+
+    if (text === undefined) {return send(response, 413, failure("payload_too_large", "message body exceeds 1048576 bytes"));}
+
+    const decoded = Schema.decodeUnknownOption(Schema.fromJsonString(SendMessageRequest))(text);
+
+    if (Option.isNone(decoded)) {return send(response, 400, failure("bad_request", "expected recipient, body and optional factory and after_turn/when_idle delivery"));}
+
+    if (inputs.messages === undefined) {return send(response, 503, failure("unavailable", "operator messages are not served by this daemon"));}
+
+    const result = await Effect.runPromiseExit(inputs.messages.send(decoded.value));
+
+    if (Exit.isSuccess(result)) {return send(response, 201, { ok: true, result: result.value });}
+
+    const error = Cause.squash(result.cause);
+
+    if (error instanceof OperatorMessageError) {
+      return send(response, error.code === "factory_required" ? 400 : 404, failure(error.code, error.message));
+    }
+
+    send(response, 500, failure("internal", "operator message was not committed"));
+  })().catch(() => send(response, 500, failure("internal", "operator message request failed")));
 };
 
 /** `POST /api/v1/slots/<station>/<ordinal>/interrupt`: an action, so it answers only `POST`. */
