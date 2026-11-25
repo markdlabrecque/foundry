@@ -9,7 +9,9 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 import type { AgentSession, ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { registeredToolSet } from "@foundry/extension";
-import { PI_BUILTIN_TOOLS } from "@foundry/protocol";
+import { AGENT_REPLY, PI_BUILTIN_TOOLS } from "@foundry/protocol";
+import { Check } from "typebox/value";
+import { connectWorker } from "../src/worker.js";
 
 let root: string;
 let session: AgentSession | undefined;
@@ -52,7 +54,7 @@ const writeExtension = async (file: string, tools: ReadonlyArray<FixtureTool>): 
 };
 
 /** Start a real Pi session with `extensions` in load order and `allowlist` as `--tools`. */
-const reportFrom = async (extensions: ReadonlyArray<string>, allowlist: ReadonlyArray<string>) => {
+const reportFrom = async (extensions: ReadonlyArray<string>, allowlist: ReadonlyArray<string>, register?: (pi: ExtensionAPI) => void) => {
   const agentDir = join(root, "agent");
   const cwd = join(root, "work");
   let foundry: ExtensionAPI | undefined;
@@ -68,7 +70,7 @@ const reportFrom = async (extensions: ReadonlyArray<string>, allowlist: Readonly
     noThemes: true,
     noContextFiles: true,
     additionalExtensionPaths: [...extensions],
-    extensionFactories: [(pi) => void (foundry = pi)],
+    extensionFactories: [(pi) => { foundry = pi; register?.(pi); }],
   });
 
   await resourceLoader.reload();
@@ -97,6 +99,28 @@ const byName = <T extends { readonly name: string }>(tools: ReadonlyArray<T>): A
   [...tools].sort((a, b) => a.name.localeCompare(b.name));
 
 const builtins = PI_BUILTIN_TOOLS.map((name) => ({ name, source: `builtin:${name}` }));
+
+test("registered agent_reply accepts request and delegation forms, but rejects ambiguous or incomplete resolutions", async () => {
+  await reportFrom([], [AGENT_REPLY], (pi) => connectWorker(pi, {
+    socketPath: join(root, "unused.sock"), factoryId: "fixture", slotId: "reviewer/1", launchId: "fixture-launch",
+  }));
+  const tool = session?.getAllTools().find((entry) => entry.name === AGENT_REPLY);
+
+  if (tool === undefined) {throw new Error("agent_reply was not registered");}
+
+  expect(tool.description).toContain("delegationId");
+  expect(Check(tool.parameters, { requestId: "request", body: "reviewed" })).toBe(true);
+  expect(Check(tool.parameters, { delegationId: "delegation", outcome: "reviewed", evidence: "checks pass" })).toBe(true);
+
+  for (const input of [
+    {}, { delegationId: "delegation" }, { delegationId: "delegation", outcome: "reviewed" },
+    { delegationId: "delegation", outcome: "", evidence: "checks pass" },
+    { delegationId: "delegation", outcome: "reviewed", evidence: "" },
+    { requestId: "request", body: "reviewed", delegationId: "delegation", outcome: "reviewed", evidence: "checks pass" },
+  ]) {
+    expect(Check(tool.parameters, input)).toBe(false);
+  }
+});
 
 test("reports named tools from configured extensions with their source, and hides the rest", async () => {
   await mkdir(join(root, "extensions"));
