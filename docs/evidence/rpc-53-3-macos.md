@@ -11,7 +11,7 @@ Ticket: FOU-115 (draft 53d), under FOU-12 (launcher decision). Product contract:
 | Configured extension registering an agent tool name is refused, with its source shown | **Inconclusive (platform unavailable)** |
 | Station with `extensions: []` gets neither the extension nor its tools | **Inconclusive (platform unavailable)** |
 
-**Overall: inconclusive (platform unavailable). This is not a pass.** No macOS host was available to this run, and nothing was executed on macOS. Under FOU-136 an inconclusive case is neither positive evidence for RPC nor a reproduced failure. It does not count towards selecting RPC, and it does not activate SDK work (FOU-147). The gate stays open until this check runs on a real macOS machine.
+**Overall: inconclusive (platform unavailable). This is not a pass.** No macOS host was available to this run, and nothing was executed on macOS. Under FOU-136 ("Record the RPC gate decision", which this ticket blocks) an inconclusive case is neither positive evidence for RPC nor a reproduced failure. It does not count towards selecting RPC, and it does not activate SDK work (FOU-147). The gate stays open until this check runs on a real macOS machine.
 
 No Linux result is recorded here. The same checks on Linux belong to FOU-108, and a Linux pass is not evidence for macOS. The macOS-specific risk is canonical source paths, for example `/var` versus `/private/var` under `mktemp -d`. `canonicalSource` in `packages/daemon/src/tool-set-check.ts` handles it, but no run has observed it.
 
@@ -43,6 +43,8 @@ Not tested, on any platform, by this ticket:
 
 `resolvePiExecutable` (`packages/host/src/launch-command.ts`): with no `FOUNDRY_PI_BIN`, the command is `process.execPath` running the pinned package's `rpc-entry` export, `node_modules/@earendil-works/pi-coding-agent/dist/bundle/rpc-entry.js`. `buildLaunchArgs` produces:
 
+The default `rpc-entry` already prepends `--mode rpc`, so it appears twice in the real argv. `launch-command.ts` notes this as harmless.
+
 ```
 <node> <pi>/dist/bundle/rpc-entry.js
   --mode rpc
@@ -61,16 +63,20 @@ The cwd is the slot's neutral folder under the state root. The environment is th
 
 ## Fixture plan for the macOS run (not executed)
 
-Each variant needs its own `mktemp -d` root, following `packages/daemon/e2e/worker-channel.e2e.test.ts`. Isolate `HOME`, `XDG_*` and `PI_CODING_AGENT_DIR`, and set `PI_OFFLINE=1` and `PI_TELEMETRY=0`. Use a fresh `--home` state root and a throwaway git source repository from `makeGitSource`. Every station uses the testkit's faux provider extension and model `foundry-faux/scripted`. Then:
+Each variant needs its own `mktemp -d` root, following `packages/daemon/e2e/worker-channel.e2e.test.ts`. Isolate `HOME`, `XDG_*` and `PI_CODING_AGENT_DIR`, and set `PI_OFFLINE=1` and `PI_TELEMETRY=0`. Use a fresh `--home` state root and a throwaway git source repository from `makeGitSource`. The model is `foundry-faux/scripted`. Its provider is registered by the testkit's faux provider extension (`FAUX_PROVIDER_EXTENSION`), which reaches Pi only as a configured station extension, as in the e2e test. So every variant lists it, written `<faux>` below. `<ext>` is the variant's fixture extension path as resolved from the YAML's directory. Then:
 
 | Variant | Station extensions (YAML) | Fixture extension registers | Expected observation |
 |---|---|---|---|
-| Missing named tool | `[{path: ./ext.ts, tools: [fixture_missing]}]` | nothing | `hello` refused `tool_set_mismatch`. Slot frozen, hold evidence `missing: [{name: fixture_missing, source: <ext.ts realpath>}]`. Launch stopped. |
-| Reserved Pi tool collision | `[{path: ./ext.ts, tools: []}]` | `read` | Hold evidence `replaced: [{name: read, expected: builtin:read, actual: <ext.ts path>}]`. Launch stopped. |
-| Agent-name collision | `[{path: ./ext.ts, tools: []}]` | `agent_message` | Hold evidence `extra: [{name: agent_message, source: <ext.ts path>}]` while `REGISTERED_AGENT_TOOLS` is empty, or `replaced` once FOU-36 lands. Launch stopped. |
-| Cleared list | defaults name `./ext.ts` with `fixture_echo`, station sets `extensions: []` | `fixture_echo` | No `--extension ./ext.ts` on the launch argv, `fixture_echo` absent from `hello`, `hello` accepted. |
+| Missing named tool | `[<faux>, {path: ./ext.ts, tools: [fixture_missing]}]` | nothing | `hello` refused `tool_set_mismatch`. Slot frozen, hold evidence `missing: [{name: fixture_missing, source: <ext>}]`, `extra: []`, `replaced: []`. Launch stopped. |
+| Reserved Pi tool collision | `[<faux>, {path: ./ext.ts, tools: []}]` | `read` | Hold evidence `missing: []`, `extra: []`, `replaced: [{name: read, expected: builtin:read, actual: <ext>}]`. Launch stopped. |
+| Agent-name collision | `[<faux>, {path: ./ext.ts, tools: []}]` | `agent_message` | While `REGISTERED_AGENT_TOOLS` is empty (this commit): hold evidence `missing: []`, `extra: [{name: agent_message, source: <ext>}]`, `replaced: []`. Launch stopped. |
+| Cleared list | defaults `[<faux>, {path: ./ext.ts, tools: [fixture_echo]}]`, station sets `extensions: []` | `fixture_echo` | No `--extension <ext>` on the launch argv, `fixture_echo` absent from `--tools` and from `hello`, `hello` accepted. See the confounder below. |
 
-The YAML cannot name `read` or `agent_message` itself, because `checkToolNames` rejects reserved names at load. So the collisions come from an extension that registers a reserved name the YAML doesn't name. `--tools` still lets it through, because the name is in the fixed list. For each variant, record `foundry slot list --json`, the open hold (`kind: frozen_slot`, subject the slot ID, `evidence.cause: tool_set_mismatch`) and the rest of its evidence (`launchId`, `conversationRef`, `missing`, `extra`, `replaced`), the daemon log lines (`channel hello refused`), and the host's inventory showing the launch gone. The macOS check that matters is that `actual` and `source` paths under `/var/folders/...` compare equal to their `/private/var/...` realpaths. That means a correct variant must not freeze for a path spelling.
+**Agent-name collision after FOU-36.** Once the Foundry extension registers the agent tools, this variant will probably *not* freeze. `buildLaunchArgs` passes `--extension <foundry>` before every configured extension. Pi's `ExtensionRunner.getAllRegisteredTools` (`dist/core/extensions/runner.js`) keeps the first extension that registers a name, and `_refreshToolRegistry` builds the registry from that list. So the Foundry extension's `agent_message` wins, the `hello` matches, and the collision shows only as Pi's `detectExtensionConflicts` load error, which the daemon never sees. That is a gap this check would not catch, and it is read from source, not run.
+
+**Cleared-list confounder.** `extensions: []` also clears `<faux>`, so `foundry-faux/scripted` names a provider nothing registers, and the launch may fail before `hello`. The argv observation (no `<ext>`, no `fixture_echo`) holds either way. Before the run, resolve how the cleared station gets its model without a configured extension (for example a provider in the isolated `PI_CODING_AGENT_DIR`'s `models.json`; untested). Otherwise a launch failure here is a fixture problem, not a gate failure, and must be recorded as such.
+
+The YAML cannot name `read` or `agent_message` itself, because `checkToolNames` rejects reserved names at load. So the collisions come from an extension that registers a reserved name the YAML doesn't name. `--tools` still lets it through, because the name is in the fixed list. For each variant, record `foundry slot list --json`, the open hold (`kind: frozen_slot`, subject the slot ID, `evidence.cause: tool_set_mismatch`) and the rest of its evidence (`launchId`, `conversationRef`, `missing`, `extra`, `replaced`), the daemon log lines (`channel hello refused`), and the host's inventory showing the launch gone. The macOS check that matters is that a configured extension's `/var/folders/...` path, as resolved from the YAML, compares equal to the `/private/var/...` spelling Pi may report. That means a correct variant must not freeze for a path spelling. `canonicalSource` applies only to that `replaced` comparison. `missing` and `extra` evidence is stored as given, never canonicalised, so it reads `/var/folders/...` on macOS.
 
 ## How Pi 1.6.0 surfaces a collision, from source (not run)
 
