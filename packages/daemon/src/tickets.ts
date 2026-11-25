@@ -32,6 +32,7 @@ import type { Query, Store, StoreError } from "./store.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { reserveAssignmentSlot } from "./assignment-reservation.js";
 import { restoreRejectionAllowance } from "./rejection-allowance.js";
+import { restoreMessageAllowance } from "./message-allowance.js";
 
 /** What submission needs to know about a loaded factory's production line. */
 export interface TicketLine {
@@ -561,7 +562,8 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
     );
 
   const resume: TicketService["resume"] = (name, number, message, allowAbandon = false) => Effect.gen(function* () {
-    const factory = (yield* loadedFactory(name)).name;
+    const loaded = yield* loadedFactory(name);
+    const factory = loaded.name;
     yield* store.change((change) => Effect.gen(function* () {
       if (yield* restoreRejectionAllowance(change, options, factory, number, "resume")) {return;}
 
@@ -576,11 +578,12 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
 
       if (row.status === 'queued' && !allowAbandon) {return yield* refuse("invalid_state", "The ticket is already queued for resume");}
 
+      const now = yield* Clock.currentTimeMillis;
+      const allowanceReason = yield* restoreMessageAllowance(change, factory, number, loaded.messageBudget, now, "resume");
       const limit = yield* change.query(`SELECT id FROM approval WHERE factory_id = ? AND ticket_number = ? AND kind = 'limit_reached' AND state = 'open'`, [factory, number]);
 
-      if (limit.length > 0) {return yield* refuse("invalid_state", "Resuming a limit-reached ticket requires an allowance grant");}
+      if (limit.length > 0) {return yield* refuse("invalid_state", "Resuming this limit-reached ticket requires an allowance grant");}
 
-      const now = yield* Clock.currentTimeMillis;
       yield* change.query(`INSERT INTO assignment_resume (assignment_id, operator_message, allow_abandon) VALUES (?, ?, ?)
         ON CONFLICT(assignment_id) DO UPDATE SET operator_message = excluded.operator_message, allow_abandon = excluded.allow_abandon`, [row.id, message ?? null, allowAbandon ? 1 : 0]);
       yield* change.query(`UPDATE ticket SET status = 'queued' WHERE factory_id = ? AND number = ?`, [factory, number]);
@@ -589,9 +592,9 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       if (row.status === 'paused') {
         yield* change.query(
           `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
-            from_state, from_stage, from_status, to_state, to_stage, to_status, config_load)
-           VALUES (?, ?, ?, 'operator', 'stage', ?, 'paused', 'stage', ?, 'queued', ?)`,
-          [factory, number, now, row.stage, row.stage, options.configLoad?.(factory) ?? null],
+            from_state, from_stage, from_status, to_state, to_stage, to_status, reason, config_load)
+           VALUES (?, ?, ?, 'operator', 'stage', ?, 'paused', 'stage', ?, 'queued', ?, ?)`,
+          [factory, number, now, row.stage, row.stage, allowanceReason ?? null, options.configLoad?.(factory) ?? null],
         );
       }
 

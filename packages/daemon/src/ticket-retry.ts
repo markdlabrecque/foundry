@@ -9,6 +9,7 @@ import type { Change } from "./store.js";
 import { TicketError } from "./tickets.js";
 import type { TicketServiceOptions } from "./tickets.js";
 import { restoreRejectionAllowance } from "./rejection-allowance.js";
+import { restoreMessageAllowance } from "./message-allowance.js";
 
 export const interruptTicketSlot = (interrupter: SlotInterrupter | undefined, factory: string, slot: string) => {
   if (interrupter === undefined) {
@@ -105,6 +106,13 @@ export const retryTicket = (options: TicketServiceOptions, factory: string, numb
     }
 
     const now = yield* Clock.currentTimeMillis;
+    const loaded = options.factories().find((item) => item.name === factory);
+
+    if (loaded === undefined) {
+      return yield* new TicketError({ code: "unknown_factory", message: `No factory "${factory}" is loaded` });
+    }
+
+    const allowanceReason = yield* restoreMessageAllowance(change, factory, number, loaded.messageBudget, now, "retry");
     const records = [ticketRecord(number), slotRecord(assignment.slot_id)];
 
     const requests = yield* change.query<{ id: string; notice_id: string; requester_slot: string; recipient_slot: string | null }>(
@@ -154,8 +162,9 @@ export const retryTicket = (options: TicketServiceOptions, factory: string, numb
     yield* change.query(
       `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
          from_state, from_stage, from_status, to_state, to_stage, to_status, reason, config_load)
-       VALUES (?, ?, ?, 'operator', 'stage', ?, ?, 'stage', ?, 'queued', 'ticket retry', ?)`,
-      [factory, number, now, assignment.stage, assignment.status, assignment.stage, options.configLoad?.(factory) ?? null],
+       VALUES (?, ?, ?, 'operator', 'stage', ?, ?, 'stage', ?, 'queued', ?, ?)`,
+      [factory, number, now, assignment.stage, assignment.status, assignment.stage,
+        allowanceReason === undefined ? "ticket retry" : `ticket retry; ${allowanceReason}`, options.configLoad?.(factory) ?? null],
     );
     yield* change.recordHistory({ factoryId: factory, kind: "ticket.retried", subject: String(number),
       detail: { assignment: assignment.id, slotId: assignment.slot_id }, records });
