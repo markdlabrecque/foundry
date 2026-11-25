@@ -20,6 +20,9 @@ afterEach(async () => {
 // FOUNDRY_HOME is never the operator's root: every call names --home.
 const env = { FOUNDRY_HOME: "/nonexistent-foundry-home" };
 
+const run = <A>(effect: Effect.Effect<A, unknown>) => Effect.runPromise(effect);
+
+
 const serveHolds = async (): Promise<{ home: string; store: Store }> => {
   const home = mkdtempSync(join(tmpdir(), "foundry-holds-"));
   cleanups.push(() => rmSync(home, { recursive: true, force: true }));
@@ -38,7 +41,6 @@ const frozen = (evidence: HoldEvidence) =>
 
 test("a repeated hold keeps one open record, refreshes its evidence, and shows it with its commands", async () => {
   const { home, store } = await serveHolds();
-  const run = <A>(effect: Effect.Effect<A, unknown>) => Effect.runPromise(effect);
 
   const first = await run(raiseHold(store, frozen({ cause: "host lost", launchId: "L1" })));
   const again = await run(raiseHold(store, frozen({ cause: "host lost", launchId: "L1" })));

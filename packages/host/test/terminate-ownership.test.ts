@@ -58,8 +58,10 @@ function recordingRegistry(fake: { alive: boolean; forward?: boolean }) {
     sent,
     exited: () =>
       new Promise<LaunchRecord>((resolve) => {
-        if (exits.length > 0) {resolve(exits[0] as LaunchRecord);}
-        else {onExit = resolve;}
+        const [first] = exits;
+
+        if (first === undefined) {onExit = resolve;}
+        else {resolve(first);}
       }),
     nextProbe: () => new Promise<void>((resolve) => { onProbe = () => ((onProbe = undefined), resolve()); }),
   };

@@ -8,6 +8,23 @@ import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { connectHost } from "@foundry/host";
 import type { HostIdentity } from "@foundry/host";
+import { Schema } from "effect";
+
+const decodeStarted = Schema.decodeUnknownSync(
+  Schema.fromJsonString(
+    Schema.Struct({
+      starterPid: Schema.Number,
+      started: Schema.Struct({
+        hostId: Schema.String,
+        pid: Schema.Number,
+        startedAt: Schema.String,
+        stateRoot: Schema.String,
+        controlVersion: Schema.Number,
+        bootId: Schema.String,
+      }),
+    }),
+  ),
+);
 
 const repoRoot = fileURLToPath(new URL("../../..", import.meta.url));
 const cleanups: Array<() => Promise<void>> = [];
@@ -49,14 +66,16 @@ function startHostFromStarterProcess(stateRoot: string): { starterPid: number; s
 
   expect(result.status, result.stderr).toBe(0);
 
-  return JSON.parse(result.stdout) as { starterPid: number; started: HostIdentity };
+  return decodeStarted(result.stdout);
 }
 
 test("a detached Worker Host survives its starter and control client and can be reached again", async () => {
   const stateRoot = await mkdtemp(join(tmpdir(), "foundry-host-"));
-  cleanups.push(() => rm(stateRoot, { recursive: true, force: true }));
-  // Registered before the start, so a failed check below still stops the host.
-  cleanups.push(() => stopHostIfRunning(stateRoot));
+  // The host stop is registered before the start, so a failed check below still stops the host.
+  cleanups.push(
+    () => rm(stateRoot, { recursive: true, force: true }),
+    () => stopHostIfRunning(stateRoot),
+  );
 
   const { starterPid, started } = startHostFromStarterProcess(stateRoot);
   expect(started.pid).not.toBe(starterPid);

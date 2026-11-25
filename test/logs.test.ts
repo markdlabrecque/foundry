@@ -12,7 +12,12 @@ import { afterEach, expect, test } from "vitest";
 import { DAEMON_LOG_NAME, serveManagementApi } from "@foundry/daemon";
 import { HOST_LOG_NAME, launchStderrPath } from "@foundry/host";
 import { EXIT_OK, EXIT_USAGE, runLogs } from "@foundry/cli";
-import { LOGS_PATH } from "@foundry/protocol/log-query";
+import { LOGS_PATH, LogsResult } from "@foundry/protocol/log-query";
+import { Schema } from "effect";
+
+const decodeMsg = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Struct({ msg: Schema.String })));
+
+const decodeLogsResult = Schema.decodeUnknownSync(LogsResult);
 
 const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
 
@@ -64,7 +69,7 @@ const fixture = (): string => {
   return root;
 };
 
-const msgs = (lines: ReadonlyArray<string>): Array<string> => lines.map((l) => (JSON.parse(l) as { msg: string }).msg);
+const msgs = (lines: ReadonlyArray<string>): Array<string> => lines.map((l) => decodeMsg(l).msg);
 
 const get = (socketPath: string, path: string): Promise<{ status: number; body: any }> =>
   new Promise((resolve, reject) => {
@@ -93,7 +98,7 @@ test("the logs API selects fixture lines by reference across rotated files, olde
     const reply = await get(api.socketPath, `${LOGS_PATH}${search}`);
     expect(reply.status).toBe(200);
 
-    return reply.body.result;
+    return decodeLogsResult(reply.body.result);
   };
 
   expect(msgs((await logs("?ticket=7")).lines)).toEqual(["oldest", "middle"]);

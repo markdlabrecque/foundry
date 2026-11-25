@@ -84,7 +84,7 @@ const deadPid = async (): Promise<number> => {
 
 const ownerFile = (pid: number): string => `${JSON.stringify({ pid, startedAt: "fixture" })}\n`;
 
-const refusal = (claim: () => unknown): StateRootLockedError => {
+const refusal = (claim: () => void): StateRootLockedError => {
   try {
     claim();
   } catch (error) {

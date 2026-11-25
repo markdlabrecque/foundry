@@ -5,10 +5,12 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
+import { Effect, Exit, Schema, Scope } from "effect";
 import { DATABASE_FILE_NAME, createTicketService, openStore, readEvents, serveManagementApi, slugify, StoreError, ticketDirectory } from "@foundry/daemon";
 import type { Store, TicketFactory } from "@foundry/daemon";
 import { TICKETS_PATH, ticketPath } from "@foundry/protocol/tickets-api";
+
+const isText = Schema.is(Schema.String);
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -59,7 +61,7 @@ const start = async (root: string, factories: ReadonlyArray<TicketFactory>) => {
 
   return {
     store,
-    call: (method: string, path: string, body?: unknown) => call(api.socketPath, method, path, body),
+    call: (method: string, path: string, body?: Schema.Json) => call(api.socketPath, method, path, body),
     stop: async () => {
       await api.close();
       await stopStore();
@@ -67,7 +69,7 @@ const start = async (root: string, factories: ReadonlyArray<TicketFactory>) => {
   };
 };
 
-const call = (socketPath: string, method: string, path: string, body?: unknown): Promise<{ status: number; body: any }> =>
+const call = (socketPath: string, method: string, path: string, body?: Schema.Json): Promise<{ status: number; body: any }> =>
   new Promise((resolve, reject) => {
     // agent: false — a pooled keep-alive socket would outlive the daemon a test restarts on the same path.
     const req = request({ socketPath, path, method, agent: false }, (res) => {
@@ -78,7 +80,7 @@ const call = (socketPath: string, method: string, path: string, body?: unknown):
     });
 
     req.on("error", reject);
-    req.end(body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body));
+    req.end(body === undefined ? undefined : isText(body) ? body : JSON.stringify(body));
   });
 
 const SPEC = "# Add a password reset\n\n## Objective\nLet users reset passwords.\n";
@@ -188,7 +190,7 @@ test("malformed submit requests are refused before anything is written", async (
   const root = tempRoot();
   const daemon = await start(root, [shop]);
 
-  const cases: Array<[unknown, string]> = [
+  const cases: Array<[Schema.Json, string]> = [
     ["not json", "invalid_request"],
     [[], "invalid_request"],
     [{ spec: "x" }, "invalid_request"],

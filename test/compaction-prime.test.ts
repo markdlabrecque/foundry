@@ -9,7 +9,7 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
+import { Effect, Exit, Schema, Scope } from "effect";
 import { Type } from "typebox";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { CompactionPrimingOutcome, composePrime, createPrimer, openStore, primesForConversation, startChannelServer } from "@foundry/daemon";
@@ -19,6 +19,8 @@ import type { ConversationAdapter, OpenChannel } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello } from "@foundry/protocol";
 import { startFauxSession } from "@foundry/testkit";
+
+const decodeFoundryDetails = Schema.decodeUnknownSync(Schema.Struct({ foundryId: Schema.String }));
 
 const hello: Hello = {
   type: "hello",
@@ -211,7 +213,7 @@ test("a compaction prime reaches the same launch's conversation at the next tool
 
   // In the conversation: after the tool round's result and before the next assistant response.
   const entries = session.sessionManager.getEntries().flatMap((e) => {
-    if (e.type === "custom_message") {return [`foundry:${(e.details as { foundryId: string }).foundryId}`];}
+    if (e.type === "custom_message") {return [`foundry:${decodeFoundryDetails(e.details).foundryId}`];}
 
     // Pi's own system-prompt entries are not part of the ordering under test.
     if (e.type === "message" && e.message.role !== "system") {return [e.message.role];}

@@ -7,6 +7,9 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { LAUNCH_ENV, connectHost, startHost } from "@foundry/host";
 import type { LaunchRecord } from "@foundry/host";
+import { Schema } from "effect";
+
+const decodeIdentity = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Record(Schema.String, Schema.String)));
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -57,13 +60,10 @@ test("the host owns a launched process group through launch and exit, across a l
       }
     }
   });
-  let hostPid: number | undefined;
-  cleanups.push(async () => {
-    if (hostPid !== undefined && isAlive(hostPid)) {process.kill(hostPid, "SIGTERM");}
-  });
-
   const host = await startHost(stateRoot);
-  hostPid = host.pid;
+  cleanups.push(async () => {
+    if (isAlive(host.pid)) {process.kill(host.pid, "SIGTERM");}
+  });
   await mkdir(launchDir, { recursive: true });
 
   const first = await connectHost(stateRoot);
@@ -111,7 +111,7 @@ test("the host owns a launched process group through launch and exit, across a l
   second.close();
 
   // The launch learned its identity from the host (written before it could exit).
-  const identity = JSON.parse(await readFile(join(launchDir, "identity.json"), "utf8")) as Record<string, string>;
+  const identity = decodeIdentity(await readFile(join(launchDir, "identity.json"), "utf8"));
   expect(identity).toEqual({ factoryId: "factory-a", slotId: "slot-1", launchId: launched.launchId });
 
   // A client that missed the event learns the same exit from the inventory.

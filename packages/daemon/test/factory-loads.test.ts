@@ -9,17 +9,19 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
-import { Effect } from "effect";
+import { Effect, Schema } from "effect";
 import { DATABASE_FILE_NAME, openStore } from "@foundry/daemon";
 import { isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { runFactoryList } from "@foundry/cli";
 
+const isNumber = Schema.is(Schema.Number);
+
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
 
 // The version the daemon records is its package's.
-const daemonVersion = (
-  JSON.parse(readFileSync(new URL("../package.json", import.meta.resolve("@foundry/daemon")), "utf8")) as { version: string }
-).version;
+const decodeManifest = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Struct({ version: Schema.String })));
+
+const daemonVersion = decodeManifest(readFileSync(new URL("../package.json", import.meta.resolve("@foundry/daemon")), "utf8")).version;
 
 const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
 
@@ -30,7 +32,7 @@ const foundry = (args: ReadonlyArray<string>, home: string): Promise<{ code: num
       process.execPath,
       [cliMain, ...args],
       { env: { ...process.env, FOUNDRY_HOME: join(home, "not-this-one") }, timeout: 20_000 },
-      (error, _stdout, stderr) => done({ code: error === null ? 0 : typeof error.code === "number" ? error.code : null, stderr }),
+      (error, _stdout, stderr) => done({ code: error === null ? 0 : isNumber(error.code) ? error.code : null, stderr }),
     );
   });
 

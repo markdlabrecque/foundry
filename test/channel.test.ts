@@ -12,6 +12,11 @@ import type { ChannelLostCause, ChannelServer, ClaimedSlot, LapseTimer, SlotClai
 import { openChannel } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello, HelloRejectReason, WorkerFrame } from "@foundry/protocol";
+import { Schema } from "effect";
+
+const isText = Schema.is(Schema.String);
+
+const decodeJson = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Json));
 
 const hello: Hello = {
   type: "hello",
@@ -68,7 +73,7 @@ const rawExchange = (socketPath: string, lines: Array<string>): Promise<Array<un
     socket.on("data", (chunk: string) => (received += chunk));
     socket.on("error", reject);
     socket.on("close", () =>
-      resolve(received.split("\n").filter(Boolean).map((line) => JSON.parse(line) as unknown)),
+      resolve(received.split("\n").filter(Boolean).map((line) => decodeJson(line))),
     );
   });
 
@@ -132,7 +137,7 @@ test.each([
     onFrame: (_slot, frame) => frames.push(frame),
   });
 
-  const firstLine = typeof first === "string" ? `${first}\n` : `${JSON.stringify(first)}\n`;
+  const firstLine = isText(first) ? `${first}\n` : `${JSON.stringify(first)}\n`;
   const replies = await rawExchange(server.socketPath, [firstLine, `${JSON.stringify({ type: "heartbeat" })}\n`]);
 
   expect(replies).toEqual([{ type: "hello_rejected", reason: expect.objectContaining({ kind: "terminal", code }) }]);

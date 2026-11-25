@@ -74,13 +74,10 @@ test("terminating a launch ends its whole group, non-detached child included, wh
       }
     }
   });
-  let hostPid: number | undefined;
-  cleanups.push(async () => {
-    if (hostPid !== undefined && isAlive(hostPid)) {process.kill(hostPid, "SIGTERM");}
-  });
-
   const host = await startHost(stateRoot);
-  hostPid = host.pid;
+  cleanups.push(async () => {
+    if (isAlive(host.pid)) {process.kill(host.pid, "SIGTERM");}
+  });
   const control = await connectHost(stateRoot);
   cleanups.push(async () => control.close());
 

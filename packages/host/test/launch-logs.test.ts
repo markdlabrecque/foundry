@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { LAUNCH_STDERR_KEEP_PER_SLOT, connectHost, hostLogPath, launchStderrPath, startHost } from "@foundry/host";
 import type { HostConnection, LaunchRecord, LaunchSpec } from "@foundry/host";
+import { Schema } from "effect";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -39,11 +40,9 @@ async function runToExit(control: HostConnection, spec: LaunchSpec, groups: Arra
   });
 }
 
-const lines = (text: string): Array<Record<string, unknown>> =>
-  text
-    .split("\n")
-    .filter((l) => l !== "")
-    .map((l) => JSON.parse(l) as Record<string, unknown>);
+const decodeLine = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Json)));
+
+const lines = (text: string) => text.split("\n").flatMap((l) => (l === "" ? [] : [decodeLine(l)]));
 
 test("the host logs launches with references and keeps stderr only for unexpected ends, separately per launch", async () => {
   const stateRoot = await mkdtemp(join(tmpdir(), "foundry-host-logs-"));
@@ -59,13 +58,10 @@ test("the host logs launches with references and keeps stderr only for unexpecte
       }
     }
   });
-  let hostPid: number | undefined;
-  cleanups.push(async () => {
-    if (hostPid !== undefined && isAlive(hostPid)) {process.kill(hostPid, "SIGTERM");}
-  });
-
   const host = await startHost(stateRoot);
-  hostPid = host.pid;
+  cleanups.push(async () => {
+    if (isAlive(host.pid)) {process.kill(host.pid, "SIGTERM");}
+  });
   const control = await connectHost(stateRoot);
   cleanups.push(async () => control.close());
 

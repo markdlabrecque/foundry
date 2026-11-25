@@ -9,6 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { channelLogEvents, daemonLogPath, OMITTED, openDaemonLog, REDACTED } from "@foundry/daemon";
+import { Schema } from "effect";
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
 
@@ -28,11 +29,9 @@ const tempRoot = (): string => {
   return root;
 };
 
-const lines = (text: string): Array<Record<string, unknown>> =>
-  text
-    .split("\n")
-    .filter((l) => l !== "")
-    .map((l) => JSON.parse(l) as Record<string, unknown>);
+const decodeLine = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Record(Schema.String, Schema.Json)));
+
+const lines = (text: string) => text.split("\n").flatMap((l) => (l === "" ? [] : [decodeLine(l)]));
 
 test("daemon log lines are JSON with the run ID and references, private, and free of credentials and bodies", () => {
   const root = tempRoot();

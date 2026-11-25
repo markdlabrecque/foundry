@@ -9,10 +9,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
-import { Effect, Predicate } from "effect";
+import { Effect, Predicate, Schema } from "effect";
 import { clearCloneStaging, CLONE_MARKER_FILE_NAME, DATABASE_FILE_NAME, ensureFactoryClone, factoryClonePath, FactoryCloneError, loadFactoryFiles, openStore } from "@foundry/daemon";
 import type { LoadedFactory } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
+
+const isNumber = Schema.is(Schema.Number);
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
 const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
@@ -192,7 +194,7 @@ const foundry = (args: ReadonlyArray<string>, home: string): Promise<{ code: num
       [cliMain, ...args, "--home", home],
       { env: { ...process.env, FOUNDRY_HOME: join(home, "not-this-one") }, timeout: 20_000 },
       (error, stdout, stderr) =>
-        done({ code: error === null ? 0 : typeof error.code === "number" ? error.code : null, stdout, stderr }),
+        done({ code: error === null ? 0 : isNumber(error.code) ? error.code : null, stdout, stderr }),
     );
   });
 

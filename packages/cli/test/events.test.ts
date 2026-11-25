@@ -6,11 +6,13 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
+import { Effect, Exit, Schema, Scope } from "effect";
 import { openStore, serveManagementApi, storeEventSource, ticketRecord } from "@foundry/daemon";
 import { managementSocketPath } from "@foundry/protocol/management-api";
 import { EXIT_OK, EXIT_UNREACHABLE, EXIT_USAGE, runEvents } from "@foundry/cli";
 import type { EventsOptions } from "@foundry/cli";
+
+const decodeEventId = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Struct({ id: Schema.Number })));
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -63,12 +65,11 @@ test("foundry events prints history after --since, as text or JSON, and ends", a
   const append = (kind: string, subject: string, ticket?: string) =>
     Effect.runPromise(
       store.change(({ recordHistory }) =>
-        recordHistory({
-          factoryId: "f1",
-          kind,
-          subject,
-          ...(ticket === undefined ? {} : { records: [ticketRecord(Number(ticket))] }),
-        }),
+        recordHistory(
+          ticket === undefined
+            ? { factoryId: "f1", kind, subject }
+            : { factoryId: "f1", kind, subject, records: [ticketRecord(Number(ticket))] },
+        ),
       ),
     );
 
@@ -82,7 +83,7 @@ test("foundry events prints history after --since, as text or JSON, and ends", a
 
   const json = await run(home, { json: true });
   expect(json.exitCode).toBe(EXIT_OK);
-  expect(json.lines.map((line) => JSON.parse(line).id)).toEqual([first, second]);
+  expect(json.lines.map((line) => decodeEventId(line).id)).toEqual([first, second]);
 });
 
 test("foundry events refuses bad arguments and reports an absent daemon as unreachable", async () => {

@@ -38,6 +38,10 @@ const tempRoot = (): string => {
 // FOUNDRY_HOME is never the operator's root: every call names --home.
 const env = { FOUNDRY_HOME: "/nonexistent-foundry-home" };
 
+const run = (args: Array<string>): number | null =>
+  spawnSync(process.execPath, [cliMain, ...args], { env: { ...process.env, ...env }, encoding: "utf8", timeout: 20_000 }).status;
+
+
 const serve = async (home: string): Promise<void> => {
   const scope = await Effect.runPromise(Scope.make());
   cleanups.push(() => Effect.runPromise(Scope.close(scope, Exit.void)));
@@ -91,8 +95,6 @@ test("the foundry binary wires ticket commands: usage errors exit 2, no daemon e
   const file = join(home, "spec.md");
   writeFileSync(file, "# T\n");
 
-  const run = (args: Array<string>): number | null =>
-    spawnSync(process.execPath, [cliMain, ...args], { env: { ...process.env, ...env }, encoding: "utf8", timeout: 20_000 }).status;
 
   expect(run(["ticket", "show", "abc", "--home", home])).toBe(EXIT_USAGE);
   expect(run(["ticket", "submit", "--home", home])).toBe(EXIT_USAGE);

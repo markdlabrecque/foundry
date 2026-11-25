@@ -158,7 +158,7 @@ const rejected: ReadonlyArray<[string, string, { path: string; message: RegExp; 
   ["negative delegation depth", `${minimal}delegation_depth_limit: -1\n`, { path: "delegation_depth_limit", message: /greater than or equal to 0/, line: 22 }],
   ["zero rejection limit", minimal.replace("    stages:\n", "    rejection_limit: 0\n    stages:\n"), { path: "production_lines.feature.rejection_limit", message: /greater than 0/, line: 14 }],
   ["writing as a string", minimal.replace("writing: true", "writing: 'yes'"), { path: "production_lines.feature.stages.0.writing", message: /boolean/, line: 17 }],
-  ["no stages", minimal.replace(/    stages:\n[\s\S]*$/, "    stages: []\n"), { path: "production_lines.feature.stages", message: /at least one stage/, line: 14 }],
+  ["no stages", minimal.replace(/ {4}stages:\n[\s\S]*$/, "    stages: []\n"), { path: "production_lines.feature.stages", message: /at least one stage/, line: 14 }],
   ["verify not a list", minimal.replace("    stages:\n", "    verify: npm test\n    stages:\n"), { path: "production_lines.feature.verify", message: /array/, line: 14 }],
   ["extension object missing tools", minimal.replace("isolation: worktree", "extensions: [{ path: x.ts }]"), { path: "rooms.engineering.stations.developer.extensions.0.tools", message: /Missing key/, line: 11 }],
   ["document is not a mapping", "- a\n- b\n", { path: "", message: /Expected object/, line: 1 }],

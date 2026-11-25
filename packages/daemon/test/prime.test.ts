@@ -7,6 +7,11 @@ import { afterEach, describe, expect, test } from "vitest";
 import { composePrime, ComposePrimeResult } from "@foundry/daemon";
 import type { Prime, PrimeRequest, ReadSource } from "@foundry/daemon";
 
+const reader =
+  (read: () => Promise<Uint8Array>): ReadSource =>
+  () =>
+    read();
+
 // Unit tier for ordering and the header: composition is a function of the
 // request and an injected reader. One integration test exercises the real
 // filesystem read against a disposable temp dir (re-read on the next prime and
@@ -98,10 +103,6 @@ describe("composition", () => {
 });
 
 describe("source bytes", () => {
-  const reader =
-    (read: () => Promise<Uint8Array>): ReadSource =>
-    () =>
-      read();
 
   test("the hash covers the raw bytes, including a byte-order mark the content drops", async () => {
     const bytes = new TextEncoder().encode("\uFEFFX");

@@ -7,11 +7,12 @@ import type { IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { Effect, Exit, Scope } from "effect";
+import { Effect, Exit, Schema, Scope } from "effect";
 import { openStore, serveManagementApi, storeEventSource, ticketRecord } from "@foundry/daemon";
 import type { EventSource, HistoryEntry, Store } from "@foundry/daemon";
-import { eventsPath } from "@foundry/protocol/management-api";
-import type { FactoryEvent } from "@foundry/protocol/management-api";
+import { eventsPath, FactoryEvent } from "@foundry/protocol/management-api";
+
+const decodeEvent = Schema.decodeUnknownSync(Schema.fromJsonString(FactoryEvent));
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -72,7 +73,7 @@ const openStream = (socketPath: string, path: string, headers: Record<string, st
 
           if (id !== undefined) {ids.push(id);}
 
-          if (data !== undefined) {events.push(JSON.parse(data) as FactoryEvent);}
+          if (data !== undefined) {events.push(decodeEvent(data));}
         }
 
         settle();
@@ -195,7 +196,7 @@ test("a row committed while a followed replay is being read is sent once, in seq
 
 test("a client that disconnects from a followed stream stops listening for commits", async () => {
   let live = 0;
-  let released: () => void = () => {};
+  let released: (() => void) | undefined;
   const unsubscribed = new Promise<void>((resolve) => { released = resolve; });
 
   const { socketPath } = await serveStore((source) => ({
@@ -207,7 +208,7 @@ test("a client that disconnects from a followed stream stops listening for commi
       return () => {
         off();
         live -= 1;
-        released();
+        released?.();
       };
     },
   }));

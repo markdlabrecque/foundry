@@ -9,8 +9,9 @@ import { afterEach, expect, test } from "vitest";
 import { startChannelServer } from "@foundry/daemon";
 import type { ChannelServer, SlotClaim } from "@foundry/daemon";
 import { startFauxPi } from "@foundry/testkit";
-import type { FauxPi, RpcEvent } from "@foundry/testkit";
+import type { FauxPi } from "@foundry/testkit";
 import { BLOCK_TOOL } from "./fixtures/interrupt-worker.js";
+import { Schema } from "effect";
 
 const WORKER_EXTENSION = join(import.meta.dirname, "fixtures", "interrupt-worker.ts");
 
@@ -33,11 +34,13 @@ afterEach(async () => {
   dir = undefined;
 });
 
-const sessionId = async (p: FauxPi, id: string): Promise<unknown> => {
+const decodeState = Schema.decodeUnknownSync(Schema.Struct({ data: Schema.Struct({ sessionId: Schema.String }) }));
+
+const sessionId = async (p: FauxPi, id: string): Promise<string> => {
   const reply = p.waitFor((e) => e.type === "response" && e.id === id);
   p.send({ id, type: "get_state" });
 
-  return ((await reply) as RpcEvent & { data: { sessionId: unknown } }).data.sessionId;
+  return decodeState(await reply).data.sessionId;
 };
 
 test("an interrupt aborts the active run and keeps the launch and conversation", async () => {

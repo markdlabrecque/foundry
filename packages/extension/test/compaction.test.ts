@@ -5,6 +5,9 @@ import { CompactionReporter, reportCompactions } from "@foundry/extension";
 import type { OpenChannel } from "@foundry/extension";
 import type { WorkerFrame } from "@foundry/protocol";
 
+/** Pi gives each handler its own event and context types; the fake passes what the test gives. */
+type PiHandler = (...args: Array<any>) => void;
+
 /** A channel that records what it was sent; `fail` makes every send reject while `closed` stays pending. */
 const fakeChannel = (fail = false) => {
   const sent: Array<WorkerFrame> = [];
@@ -44,14 +47,14 @@ test("a send that fails before the channel reports closed is kept for the next c
 });
 
 test("only Pi's completed-compaction event is reported", async () => {
-  const handlers = new Map<string, () => void>();
+  const handlers = new Map<string, PiHandler>();
 
   const pi = {
-    on: ((event: string, handler: () => void) => {
+    on: (event: string, handler: PiHandler) => {
       handlers.set(event, handler);
 
       return () => {};
-    }) as never,
+    },
   };
 
   const reporter = new CompactionReporter();

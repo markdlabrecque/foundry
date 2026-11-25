@@ -26,11 +26,11 @@ const line = (...stages: Array<string>): Lines[string] => ({
   stages: stages.map((id) => ({ id, station: "eng.dev", writing: false, approval: false })),
 });
 
-const factory = (factoryId: string, lines: Lines, loadId?: number): StartingFactory => ({
-  factoryId,
-  config: { production_lines: lines },
-  ...(loadId === undefined ? {} : { loadId }),
-});
+const factory = (factoryId: string, lines: Lines, loadId?: number): StartingFactory => {
+  const config = { production_lines: lines };
+
+  return loadId === undefined ? { factoryId, config } : { factoryId, config, loadId };
+};
 
 type Position = { state: "backlog" } | { state: "stage"; stage: string; status: string } | { state: "completed" | "cancelled"; stage: string };
 

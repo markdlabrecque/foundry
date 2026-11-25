@@ -10,7 +10,7 @@ import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
 import { openStore, recordRun, serveManagementApi, storeFactoriesReader } from "@foundry/daemon";
-import type { LoadedFactory, Store } from "@foundry/daemon";
+import type { RecordedFactory, Store } from "@foundry/daemon";
 import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, runFactoryList } from "@foundry/cli";
 
 const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
@@ -39,16 +39,16 @@ const openTempStore = async (home: string): Promise<Store> => {
 };
 
 /** The fields `recordRun` stores; the rest of a loaded factory is not read by it. */
-const factory = (factoryId: string, hash: string): LoadedFactory =>
+const factory = (factoryId: string, hash: string): RecordedFactory =>
   ({
     factoryId,
     yamlFile: `/fixture/${factoryId}/factory.yaml`,
     configJson: "{}",
     configHash: `sha256:${hash}`,
     knowledge: { root: `/fixture/${factoryId}/knowledge`, directories: [] },
-  }) as unknown as LoadedFactory;
+  });
 
-const record = (store: Store, runId: string, startedAt: number, factories: ReadonlyArray<LoadedFactory>) =>
+const record = (store: Store, runId: string, startedAt: number, factories: ReadonlyArray<RecordedFactory>) =>
   Effect.runPromise(recordRun(store, { runId, startedAt, version: "0.0.0", factories }));
 
 test("factory list answers from the served run's recorded configuration loads", async () => {

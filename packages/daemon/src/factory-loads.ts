@@ -161,13 +161,16 @@ export interface RecordedLoad {
   readonly configHash: string;
 }
 
+/** The parts of a loaded factory that a run records. */
+export type RecordedFactory = Pick<LoadedFactory, "factoryId" | "yamlFile" | "configJson" | "configHash" | "knowledge">;
+
 export interface RunRecord {
   readonly runId: string;
   /** Wall-clock milliseconds since the Unix epoch. */
   readonly startedAt: number;
   /** The Foundry version that started. */
   readonly version: string;
-  readonly factories: ReadonlyArray<LoadedFactory>;
+  readonly factories: ReadonlyArray<RecordedFactory>;
 }
 
 /** Records the run and each configuration load in one change, with a history row for each. */

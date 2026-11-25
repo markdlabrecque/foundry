@@ -4,6 +4,8 @@ import { FIXED_TOOLS } from "@foundry/protocol";
 import { decodeFactoryYaml, resolveStations, toolSetOf, ToolSource } from "@foundry/daemon/config";
 import type { ToolSetEntry } from "@foundry/daemon/config";
 
+const ext = (tools: string): string => `  extensions:\n    - path: ext/a.ts\n      tools: ${tools}\n`;
+
 // Unit tier: Tool Sets are a pure function of decoded config; no files are read.
 
 /** A factory whose `defaults` block and the `eng.dev` station's settings vary per case; `ops.gate` only completes the line's final-stage contract. */
@@ -76,7 +78,6 @@ describe("a Tool Set is the fixed tools plus those named on the effective extens
 });
 
 describe("extension tool names are exact, unreserved and listed once", () => {
-  const ext = (tools: string): string => `  extensions:\n    - path: ext/a.ts\n      tools: ${tools}\n`;
 
   // Each row: the defaults block, then the problem path and message.
   const rejected: ReadonlyArray<[string, string, string, string, RegExp]> = [

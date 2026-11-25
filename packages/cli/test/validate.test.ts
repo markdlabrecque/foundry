@@ -23,7 +23,7 @@ writeFileSync(join(dir, "ext/tools.ts"), "");
 
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
-const run = (yaml: string): { status: number; stdout: string; stderr: string } => {
+const run = (yaml: string) => {
   const file = join(dir, `${Math.random().toString(36).slice(2)}.yaml`);
   writeFileSync(file, yaml);
   const result = spawnSync(process.execPath, [main, "validate", file], { encoding: "utf8" });
@@ -76,8 +76,8 @@ test("foundry validate prints each station's Tool Set with the source of every t
   expect(result.status).toBe(0);
   const lines = result.stdout.trimEnd().split("\n");
   expect(lines[1]).toBe("Tool Set for r.s (13 tools):");
-  expect(lines).toContainEqual(expect.stringMatching(/^  read +Pi built-in$/));
-  expect(lines).toContainEqual(expect.stringMatching(/^  agent_message +Foundry extension$/));
+  expect(lines).toContainEqual(expect.stringMatching(/^ {2}read +Pi built-in$/));
+  expect(lines).toContainEqual(expect.stringMatching(/^ {2}agent_message +Foundry extension$/));
   expect(lines).toContainEqual(expect.stringMatching(new RegExp(`^  web_fetch +extension ${join(dir, "ext/tools.ts")}$`)));
   expect(lines.at(-1)).toMatch(/registers them is not checked/);
 });

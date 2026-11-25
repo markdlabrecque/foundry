@@ -29,6 +29,10 @@ const tempRoot = (): string => {
 // FOUNDRY_HOME is never the operator's root: every call names --home.
 const env = { FOUNDRY_HOME: "/nonexistent-foundry-home" };
 
+const run = (args: Array<string>): number | null =>
+  spawnSync(process.execPath, [cliMain, ...args], { env: { ...process.env, ...env }, encoding: "utf8", timeout: 20_000 }).status;
+
+
 const startDaemon = (home: string): Promise<ChildProcess> => {
   const child = spawn(process.execPath, [daemonMain, "--home", home], { stdio: ["ignore", "pipe", "pipe"] });
   // Registered before anything can fail, so no daemon outlives the test.
@@ -75,8 +79,6 @@ test("foundry status shows the running daemon's instance, and --json prints the 
 test("the foundry binary exits 2 on usage errors and wires status through to the daemon check", () => {
   const home = tempRoot();
 
-  const run = (args: Array<string>): number | null =>
-    spawnSync(process.execPath, [cliMain, ...args], { env: { ...process.env, ...env }, encoding: "utf8", timeout: 20_000 }).status;
 
   expect(run(["nope"])).toBe(EXIT_USAGE);
   expect(run(["status", "--bogus", "--home", home])).toBe(EXIT_USAGE);

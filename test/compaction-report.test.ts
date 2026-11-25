@@ -12,6 +12,9 @@ import type { OpenChannel } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello, WorkerFrame } from "@foundry/protocol";
 
+/** Pi gives each handler its own event and context types; the fake passes what the test gives. */
+type PiHandler = (...args: Array<any>) => void;
+
 const hello: Hello = {
   type: "hello",
   protocolVersion: PROTOCOL_VERSION,
@@ -30,14 +33,14 @@ const acceptAll: SlotClaim = {
 
 /** A stand-in for Pi's extension API that lets the test fire registered events. */
 const fakePi = () => {
-  const handlers = new Map<string, Array<() => void>>();
+  const handlers = new Map<string, Array<PiHandler>>();
 
   return {
-    on: ((event: string, handler: () => void) => {
+    on: (event: string, handler: PiHandler) => {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
 
       return () => {};
-    }) as never,
+    },
     emit: (event: string) => (handlers.get(event) ?? []).forEach((h) => h()),
   };
 };
