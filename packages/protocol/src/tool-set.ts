@@ -7,9 +7,11 @@
 /** Pi's four built-in tools every worker has, in launch order. */
 export const PI_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
 
-/** The eight P0 agent tools the Foundry extension registers (PRD §6.1). */
+export const AGENT_DISCOVER = "agent_discover";
+
+/** The eight P0 agent tools reserved for the Foundry extension (PRD §6.1). */
 export const AGENT_TOOLS = [
-  "agent_discover",
+  AGENT_DISCOVER,
   "agent_status",
   "agent_message",
   "agent_request",
@@ -22,10 +24,9 @@ export const AGENT_TOOLS = [
 /**
  * The agent tools the Foundry extension in this build actually registers. The `hello` check
  * expects only these from the Foundry extension, so a worker is not frozen for agent tools no
- * build can offer yet. Staged: empty until the agent tools land (FOU-36), which sets it to
- * `AGENT_TOOLS`. Until then an agent tool reported by a worker is an extra tool.
+ * build can offer yet. Add each tool here when the extension and daemon can serve it.
  */
-export const REGISTERED_AGENT_TOOLS: ReadonlyArray<string> = [];
+export const REGISTERED_AGENT_TOOLS: ReadonlyArray<string> = [AGENT_DISCOVER];
 
 /** How the extension reports a Pi built-in's source: `builtin:<name>` (Pi's own attribution). */
 export const builtinToolSource = (name: string): string => `builtin:${name}`;

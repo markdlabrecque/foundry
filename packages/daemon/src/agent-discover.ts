@@ -8,8 +8,6 @@ import { Effect } from "effect";
 import type { PlannedSlot } from "./slots.js";
 import type { ToolHandler } from "./submissions.js";
 
-export const AGENT_DISCOVER = "agent_discover";
-
 /** One configured station of the sender's factory, with its slots in ordinal order. */
 // Type aliases, not interfaces: only aliases are assignable to `Schema.Json`'s index signature.
 export type DiscoveredStation = {
