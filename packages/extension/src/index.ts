@@ -7,3 +7,4 @@ export * from "./conversation/adapter.js";
 export * from "./conversation/receipts.js";
 export * from "./interrupt.js";
 export * from "./priming.js";
+export * from "./tool-set.js";
