@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit, Predicate, Scope } from "effect";
 import { acknowledgeMessage, acknowledgePrime, createMessageDelivery, createMessageDisposition, createPrimer, createReconciler, createSlotFreezer, openSlotGate, openStore, primesForConversation, raiseHold, recordPrime, serveManagementApi, startChannelServer } from "@foundry/daemon";
-import type { ChannelServer, Store } from "@foundry/daemon";
+import type { ChannelServer, Store, SqlValue } from "@foundry/daemon";
 import { createConversationAdapter, openChannel, receiveDaemonFrames } from "@foundry/extension";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
 import { startFauxSession } from "@foundry/testkit";
@@ -566,6 +566,34 @@ test.each(["resend", "drop"] as const)("ambiguous delivery survives restart and 
     expect((await runMessageDisposition({ ...common, yes: true })).exitCode).toBe(1);
     expect(errors).toEqual([]);
   } finally {await api.close();}
+});
+
+test("resend racing a delivery snapshot still precedes later same-slot copies", async () => {
+  await seed(1);
+  await seed(2);
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE message SET status = 'indeterminate' WHERE id = 'm1'`);
+    yield* change.recordHistory({ factoryId: slot.factoryId, kind: "fixture.ambiguous", subject: "m1" });
+  })));
+  await delivery.stop();
+  let raced = false;
+
+  // Force the operator commit between the bound-message snapshot and its first attempt.
+  const read = <Row extends object>(statement: string, params?: ReadonlyArray<SqlValue>) => store.read<Row>(statement, params).pipe(Effect.tap(() => {
+    if (raced || !statement.includes("SELECT id, body, delivery FROM message")) {return Effect.void;}
+
+    raced = true;
+
+    return createMessageDisposition(store).act("m1", "resend").pipe(Effect.orDie);
+  }));
+
+  delivery = createMessageDelivery({ store: { ...store, read }, gate: openSlotGate, onError: (cause) => errors.push(cause) });
+  const frames: Array<DaemonFrame> = [];
+  delivery.attach(slot, { send: async (frame) => { frames.push(frame); } });
+  await delivery.idle();
+  expect(frames).toMatchObject([{ id: "m1" }, { id: "m2" }]);
+  expect(await attempts()).toHaveLength(2);
+  expect(errors).toEqual([]);
 });
 
 test.each(["request_notice", "delegation_notice"])("drop publishes %s correlation atomically, leaving kind-specific handling to its consumer", async (kind) => {
