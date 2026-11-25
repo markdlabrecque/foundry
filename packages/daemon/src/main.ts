@@ -433,7 +433,8 @@ const main = async (): Promise<void> => {
   try {
     // Frozen slots are read back from the store, so a freeze survives a daemon restart (PRD §5.3).
     // Each freeze cause registers its own unfreeze check with the ticket that raises it; until
-    // then an unfreeze is refused rather than trusted.
+    // then an unfreeze is refused rather than trusted. Whichever ticket wires the channel and primer
+    // in here must pass `gate: freezer` to `createPrimer`.
     const freezer = await createSlotFreezer({ store, checks: {} });
 
     api = await serveManagementApi({

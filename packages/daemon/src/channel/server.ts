@@ -53,7 +53,10 @@ export type ChannelLostCause = "heartbeat_lapse" | "peer_closed" | "protocol_err
 export interface AcceptedConnection {
   /** Resolves once written to the socket; rejects if the connection has ended. */
   send(frame: DaemonFrame): Promise<void>;
-  /** Resolves once the connection has ended, whatever the cause. */
+  /**
+   * Resolves once the connection has ended, whatever the cause. Real connections must provide it:
+   * without it, a prime waiting on a frozen slot is released only by an unfreeze.
+   */
   readonly closed?: Promise<void>;
 }
 

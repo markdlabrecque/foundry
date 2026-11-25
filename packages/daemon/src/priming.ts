@@ -198,7 +198,7 @@ export type PrimingOutcome = Data.TaggedEnum<{
   SourceUnavailable: { readonly problems: ReadonlyArray<PrimeSourceProblem> };
   /** Recorded, but the write failed; the record stays unacknowledged. */
   SendFailed: { readonly primeId: string; readonly error: unknown };
-  /** The connection ended while its slot was frozen. Nothing was recorded or sent. */
+  /** The connection ended while its slot was frozen. Nothing was sent; a prime may stay recorded unacknowledged. */
   Closed: Record<never, never>;
 }>;
 
@@ -456,6 +456,11 @@ export const createPrimer = (options: PrimerOptions): Primer => {
         parts: composed.prime.parts,
       }),
     );
+
+    // The slot may have been frozen while the prime was composed and recorded: it waits for the
+    // unfreeze, and nothing is awaited between this check and the write. A connection that ends
+    // first leaves the record unacknowledged, as a failed send does.
+    if (gate.isFrozen(slot) && !(await whenSendable(gate, slot, connection.closed))) {return PrimingOutcome.Closed();}
 
     try {
       await connection.send({ type: "prime", id: primeId, text: composed.prime.text });

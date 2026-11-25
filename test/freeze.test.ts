@@ -10,6 +10,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
 import {
+  composePrime,
   createPrimer,
   createSlotFreezer,
   createSlotScheduler,
@@ -23,7 +24,7 @@ import {
   storeSlotControl,
   storeSlotsReader,
 } from "@foundry/daemon";
-import type { PrimedConnection, SlotClaim, SlotHost, Store } from "@foundry/daemon";
+import type { AcceptedConnection, PrimedConnection, SlotClaim, SlotGate, SlotHost, Store } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import type { LaunchRecord } from "@foundry/host";
 import { openChannel } from "@foundry/extension";
@@ -380,4 +381,73 @@ test("a connection that ends while its slot is frozen is never primed; the live 
   expect(await run(primesForConversation(store, "f1", "builder/1", "conv-builder/1"))).toMatchObject([
     { id: "prime-1", launchId: "launch-3" },
   ]);
+});
+
+test("a slot frozen while its prime is being composed gets the prime only once unfrozen", async () => {
+  const { dir, store, scheduler } = await fixture();
+  await scheduler.schedule();
+  const freezer = await createSlotFreezer({ store, checks: { host_lost: async () => ({ fixed: true }) } });
+  const slot = { factoryId: "f1", slotId: "builder/1" };
+
+  // The primer's writer registers the first unfreeze listener; a send waiting on the gate registers the second.
+  const waitingToSend = signal();
+  let registrations = 0;
+
+  const gate: SlotGate = {
+    isFrozen: (s) => freezer.isFrozen(s),
+    onUnfrozen: (listener) => {
+      registrations += 1;
+
+      if (registrations === 2) {waitingToSend.resolve();}
+
+      return freezer.onUnfrozen(listener);
+    },
+  };
+
+  const primer = createPrimer({
+    store,
+    gate,
+    newPrimeId: () => "prime-1",
+    compose: async (request) => {
+      await freezer.freeze({ ...slot, cause: "host_lost", evidence: { launchId: "launch-1" } });
+
+      return composePrime(request);
+    },
+    primeRequest: () => ({
+      address: "eng.builder",
+      slotId: "builder/1",
+      isolation: "none",
+      instructions: [join(dir, "factory", "builder.md")],
+      knowledgeRoot: join(dir, "knowledge"),
+      baseDir: join(dir, "factory"),
+    }),
+  });
+
+  // Each write notes whether the slot was frozen at that moment.
+  const written: Array<{ readonly id: string; readonly frozen: boolean }> = [];
+
+  const connection: AcceptedConnection = {
+    send: async (frame) => void written.push({ id: frame.type === "prime" ? frame.id : frame.type, frozen: freezer.isFrozen(slot) }),
+    closed: new Promise<void>(() => {}),
+  };
+
+  const hello: Hello = {
+    type: "hello",
+    protocolVersion: PROTOCOL_VERSION,
+    factoryId: "f1",
+    slotId: "builder/1",
+    launchId: "launch-1",
+    conversationRef: "conv-builder/1",
+    hasRecoverableHistory: false,
+    mode: "headless",
+    tools: [],
+  };
+
+  const primed = primer.prime({ ...slot, launchId: "launch-1" }, hello, connection);
+  await within("the recorded prime waiting on the frozen slot", waitingToSend.promise);
+  expect(written).toEqual([]);
+
+  expect(await freezer.unfreeze(slot)).toMatchObject({ outcome: "unfrozen" });
+  expect(await within("the prime after unfreeze", primed.outcome)).toEqual(PrimingOutcome.Sent({ primeId: "prime-1" }));
+  expect(written).toEqual([{ id: "prime-1", frozen: false }]);
 });

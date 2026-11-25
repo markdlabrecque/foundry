@@ -15,7 +15,7 @@
  * A frozen slot (`freeze.ts`) is never launched into: scheduling reports it `held`.
  *
  * Out of scope here: relaunching a slot whose launch ended (recovery, the recovery limit and the
- * recovery prime), and deciding to freeze a slot whose ownership the host cannot confirm (43a).
+ * recovery prime), and deciding to freeze a slot whose ownership the host cannot confirm (FOU-80).
  * Such slots are reported and left alone.
  */
 import { existsSync, mkdirSync } from "node:fs";
