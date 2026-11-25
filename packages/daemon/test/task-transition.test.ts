@@ -294,6 +294,9 @@ test.each(["blocked", "rejected"] as const)("%s pauses atomically, frees capacit
       actor: "worker/1", reason: "Need operator input", git_commit: "evaluated-commit",
       evidence: '["evidence/plan.md"]', config_load: "load-1" });
     expect(after.approvals).toMatchObject([{ kind: "blocked", state: "open", assignment_id: id }]);
+    expect(after.history.slice(before.history.length)).toMatchObject([
+      { kind: "ticket.transitioned" }, { kind: "approval.requested" },
+    ]);
     expect(yield* Effect.promise(() => submissions.submit(owner, call))).toEqual(result);
     expect(yield* Effect.promise(() => submissions.submit(owner, { ...call, callId: "stale" })))
       .toMatchObject({ status: "refused", code: "not_assignment_owner" });

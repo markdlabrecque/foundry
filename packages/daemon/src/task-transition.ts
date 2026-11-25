@@ -88,7 +88,7 @@ export const taskTransitionHandler = (options: TaskTransitionOptions): ToolHandl
         stage: assignment.stage, status: "paused", approvalId }, records,
     });
     yield* change.recordHistory({
-      factoryId: call.factoryId, kind: "approval.raised", subject: String(approvalId),
+      factoryId: call.factoryId, kind: "approval.requested", subject: String(approvalId),
       detail: { kind: "blocked", ticket: assignment.ticket_number, transition }, records,
     });
 
