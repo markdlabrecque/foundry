@@ -120,6 +120,8 @@ export interface ChannelServer {
   close(): Promise<void>;
 }
 
+const slotKey = (factoryId: string, slotId: string): string => JSON.stringify([factoryId, slotId]);
+
 /** Start listening on `socketPath`. Socket permissions (0600) are P0's only access control. */
 export const startChannelServer = async (options: ChannelServerOptions): Promise<ChannelServer> => {
   const lostAfter = options.channelLostAfterMs ?? CHANNEL_LOST_AFTER_MS;
@@ -138,6 +140,7 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
   }
 
   const byLaunch = new Map<string, Accepted>();
+  const slotEpoch = new Map<string, number>();
 
   const handle = (socket: Socket): void => {
     connections.add(socket);
@@ -203,6 +206,8 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
       if (!decoded.ok) {return reject(decoded.reason);}
 
       state = "claiming";
+      const key = slotKey(decoded.value.factoryId, decoded.value.slotId);
+      const epoch = slotEpoch.get(key);
       let result: SlotClaimResult;
 
       try {
@@ -218,7 +223,11 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
 
       if (!result.accepted) {return reject(result.reason);}
 
+      if (slotEpoch.get(key) !== epoch) {return reject({ kind: "terminal", code: "launch_not_current", detail: "slot conversation was reset during claim" });}
+
       slot = result.slot;
+      // A reconnect supersedes every earlier channel for this launch, not just its index entry.
+      byLaunch.get(slot.launchId)?.end();
       state = "accepted";
 
       const connection: AcceptedConnection = {
@@ -330,6 +339,9 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
   return {
     socketPath: options.socketPath,
     revokeSlot: (factoryId, slotId) => {
+      const key = slotKey(factoryId, slotId);
+      slotEpoch.set(key, (slotEpoch.get(key) ?? 0) + 1);
+
       for (const accepted of byLaunch.values()) {
         if (accepted.slot.factoryId === factoryId && accepted.slot.slotId === slotId) {accepted.end();}
       }

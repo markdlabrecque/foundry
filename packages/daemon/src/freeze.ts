@@ -148,7 +148,7 @@ export const createSlotFreezer = async (options: SlotFreezerOptions): Promise<Sl
   const { store, checks } = options;
 
   const frozen = new Set(
-    (await run(store.read<FrozenRow>(`SELECT factory_id, slot_id FROM slot WHERE condition = 'frozen'`))).map((row) =>
+    (await run(store.read<FrozenRow>(`SELECT factory_id, slot_id FROM slot WHERE condition IN ('frozen', 'parked')`))).map((row) =>
       keyOf({ factoryId: row.factory_id, slotId: row.slot_id }),
     ),
   );

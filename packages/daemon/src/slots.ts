@@ -780,7 +780,6 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
         if (!confirmed && !force) {throw new SlotsError("reset_refused", `old process group for slot ${ref.slotId} is unconfirmed; use --force to reset`);}
 
-        options.revokeSlot?.(ref.factoryId, ref.slotId);
         await Effect.runPromise(store.change((change) => Effect.gen(function* () {
           const now = yield* Clock.currentTimeMillis;
 
@@ -795,22 +794,34 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
           yield* change.query(`UPDATE conversation SET status = 'discarded' WHERE factory_id = ? AND slot_id = ? AND status = 'current'`,
             [ref.factoryId, ref.slotId]);
-          yield* change.query(`UPDATE slot SET condition = 'normal', freeze_cause = NULL, recovery_count = 0,
-            current_launch = NULL, pending_host = NULL, pending_boot = NULL WHERE factory_id = ? AND slot_id = ?`, [ref.factoryId, ref.slotId]);
+          // Keep the existing condition and hold until a replacement is durably recorded. A
+          // refused/uncertain launch remains gated and can be reset again using host evidence.
+          yield* change.query(`UPDATE slot SET current_launch = NULL, pending_host = NULL, pending_boot = NULL
+            WHERE factory_id = ? AND slot_id = ?`, [ref.factoryId, ref.slotId]);
           // Preserve binding, IDs and attempts. Only unacknowledged sent messages need re-offering.
           yield* change.query(`UPDATE message SET status = 'bound' WHERE factory_id = ? AND bound_slot = ? AND status IN ('sent', 'indeterminate')`,
             [ref.factoryId, ref.slotId]);
+
+          yield* change.recordHistory({ factoryId: ref.factoryId, kind: "slot.reset_requested", subject: ref.slotId,
+            detail: { force, groupsConfirmedGone: confirmed }, records: [slotRecord(ref.slotId)] });
+        })));
+        // Current launch is now cleared: new claims refuse, and in-flight claims are invalidated.
+        options.revokeSlot?.(ref.factoryId, ref.slotId);
+        const started = await launchInto(slot, "started");
+
+        if (started.launchId === undefined) {throw new SlotsError("reset_refused", started.error ?? `slot ${ref.slotId} was not launched`);}
+
+        await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+          yield* change.query(`UPDATE slot SET condition = 'normal', freeze_cause = NULL, recovery_count = 0
+            WHERE factory_id = ? AND slot_id = ?`, [ref.factoryId, ref.slotId]);
 
           for (const kind of ["parked_slot", "frozen_slot"] as const) {
             yield* closeOpenHoldIn(change, { factoryId: ref.factoryId, kind, subject: ref.slotId }, "resolved");
           }
 
           yield* change.recordHistory({ factoryId: ref.factoryId, kind: "slot.reset", subject: ref.slotId,
-            detail: { force, groupsConfirmedGone: confirmed }, records: [slotRecord(ref.slotId)] });
+            detail: { force, groupsConfirmedGone: confirmed, launchId: started.launchId }, records: [slotRecord(ref.slotId)] });
         })));
-        const started = await launchInto(slot, "started");
-
-        if (started.launchId === undefined) {throw new Error(started.error ?? `slot ${ref.slotId} was not launched`);}
 
         return { launchId: started.launchId };
       }));

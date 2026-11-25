@@ -601,6 +601,54 @@ test.each([true, false])("parking during an in-flight unfreeze wins over its che
 
 const resetRef = { factoryId: "alpha", slotId: "lead/1" };
 
+test.each(["refused", "ambiguous"])("failed reset launch stays held and a safe retry recovers: %s", async (failure) => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const worker = fakeHost(inventory);
+  const freezer = await createSlotFreezer({ store, checks: {} });
+  let failLaunch = false;
+
+  const host: SlotHost = {
+    inventory: worker.host.inventory,
+    launch: async (spec) => {
+      if (!failLaunch) {return worker.host.launch(spec);}
+
+      if (failure === "refused") {throw new HostRefusedError("launch", "fixture refused");}
+
+      await worker.host.launch(spec); // The reply is lost after spawn, so the pending request matters.
+      throw new Error("connection closed after spawn");
+    },
+  };
+
+  const slots = await scheduler(store, stateRoot, host, "host-1", [station("lead", 1)], "boot-1", freezer, 1, {
+    terminate: async (id) => {
+      const index = inventory.findIndex((l) => l.launchId === id);
+      const launch: LaunchRecord = { ...inventory[index]!, liveness: "gone", exit: { code: 0, signal: null, requested: true, endedAt: "2026-01-01T00:06:00.000Z" } };
+      inventory[index] = launch;
+
+      return { launch, outcome: "gone", escalated: false };
+    },
+  });
+
+  await slots.schedule();
+  inventory[0] = failed("boot-1-launch-1");
+  await slots.launchExited(inventory[0]);
+  failLaunch = true;
+  await expect(slots.reset(resetRef)).rejects.toThrow();
+  expect((await recoveryState(store)).slots).toEqual([{ condition: "parked", recovery_count: 1 }]);
+  expect((await recoveryState(store)).holds).toMatchObject([{ kind: "parked_slot", state: "open" }]);
+  expect(freezer.isFrozen(resetRef)).toBe(true);
+  const reloaded = await createSlotFreezer({ store, checks: {} });
+  expect(reloaded.isFrozen(resetRef)).toBe(true);
+  expect(await Effect.runPromise(store.read(`SELECT pending_host FROM slot`)))
+    .toEqual([{ pending_host: failure === "ambiguous" ? "host-1" : null }]);
+  failLaunch = false;
+  await slots.reset(resetRef);
+  expect((await recoveryState(store)).slots).toEqual([{ condition: "normal", recovery_count: 0 }]);
+  expect((await recoveryState(store)).holds).toEqual([]);
+  expect(inventory.filter((l) => l.liveness === "live")).toHaveLength(1);
+});
+
 test("reset refuses an unknown old group without writes; force starts a new conversation without changing an active assignment", async () => {
   const { stateRoot, store } = await openTempStore();
   const inventory: Array<LaunchRecord> = [];
