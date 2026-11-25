@@ -144,7 +144,7 @@ test("assignments send the branch's changed context, skip received hashes and sc
 
     // Exercise the extension's real turn-triggering boundary. The first injection
     // that can start a turn must contain both the assignment and its current context.
-    const receiver = new MessageReceiver({ inject: (injection, options) => {
+    const receiver = new MessageReceiver({ pending: () => [], inject: (injection, options) => {
       if (options?.triggerTurn) {turns.push(injection.content);}
     } });
 
