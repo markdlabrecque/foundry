@@ -226,7 +226,7 @@ const stop = async (child: ChildProcess): Promise<number | null> => {
   return exited;
 };
 
-test("daemon start creates the clone and foundry factory path prints it; a restart reuses it", async () => {
+test("daemon start creates the clone and foundry factory path prints it; a restart does not fetch, an explicit sync does", async () => {
   const f = fixture();
   const first = git(f.source, ["rev-parse", "main"]);
   const path = factoryClonePath(f.home, "alpha");
@@ -241,13 +241,26 @@ test("daemon start creates the clone and foundry factory path prints it; a resta
   expect(unknown.stderr).toContain('no loaded factory named "nope"');
   expect(await stop(daemon)).toBe(0);
 
-  advanceSource(f);
+  const fetched = advanceSource(f);
+  const sourceRefs = snapshot(f.source).refs;
   daemon = await startDaemon(f.home, f.yamlFile);
   expect(await foundry(["factory", "path", "alpha"], f.home)).toMatchObject({ code: 0, stdout: `${path}\n` });
-  expect(await stop(daemon)).toBe(0);
   // The source is still there and has moved on, yet the restart never fetched it.
   expectNotFetched(path, first);
   expect(existsSync(join(f.source, CLONE_MARKER_FILE_NAME))).toBe(false);
+
+  // Only the operator's explicit sync contacts the source, and it advances the clone.
+  const synced = await foundry(["factory", "sync", "alpha", "--wait", "--json"], f.home);
+  expect(synced.code).toBe(0);
+  expect(JSON.parse(synced.stdout)).toMatchObject({
+    ok: true,
+    result: { factory: "alpha", operation: { status: "complete", result: { previousHead: first, fetchedHead: fetched, head: fetched } } },
+  });
+  expect(git(path, ["rev-parse", "main"])).toBe(fetched);
+  expect((await foundry(["factory", "sync", "nope"], f.home)).code).toBe(1);
+  expect(await stop(daemon)).toBe(0);
+  // P0 never pushes: the source's refs are as the operator left them.
+  expect(snapshot(f.source).refs).toBe(sourceRefs);
 });
 
 test("a factory whose clone path is not Foundry's is refused alone; the daemon serves the other", async () => {
