@@ -27,9 +27,9 @@ import { readLogs } from "@foundry/protocol/log-read";
 import { matchFactoryPathPath } from "@foundry/protocol/factory-path";
 import { FACTORIES_PATH } from "@foundry/protocol/factories-api";
 import type { FactoriesReader } from "./factories.js";
-import { matchSlotPath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
+import { matchSlotInterruptPath, matchSlotPath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
-import type { SlotsErrorCode, SlotsReader } from "./slots-error.js";
+import type { SlotInterrupter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
 
 /** What the API reports, injected so the server is independent of where status comes from. */
 export interface ManagementApiInputs {
@@ -48,6 +48,8 @@ export interface ManagementApiInputs {
   readonly factories?: FactoriesReader;
   /** The configured slots and their launches. Without it the slot routes answer 503. */
   readonly slots?: SlotsReader;
+  /** Interrupts a slot's worker over its channel (PRD §5.3). Without it the route answers 503. */
+  readonly slotInterrupter?: SlotInterrupter;
 }
 
 export interface ManagementApi {
@@ -256,6 +258,10 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
   if (path === EVENTS_PATH) {return handleEvents(inputs, url, request, response);}
 
+  const interruptSlot = matchSlotInterruptPath(path);
+
+  if (interruptSlot !== undefined) {return handleSlotInterrupt(inputs, interruptSlot, url.searchParams, request, response);}
+
   const route = routeFor(inputs, path, url.searchParams);
 
   if (route === undefined) {
@@ -272,6 +278,41 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
     ([status, body]) => send(response, status, body),
     (cause: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${messageOf(cause)}`)),
   );
+};
+
+/** `POST /api/v1/slots/<station>/<ordinal>/interrupt`: an action, so it answers only `POST`. */
+const handleSlotInterrupt = (
+  inputs: ManagementApiInputs,
+  slotId: string | null,
+  params: URLSearchParams,
+  request: IncomingMessage,
+  response: ServerResponse,
+): void => {
+  if (request.method !== "POST") {
+    response.setHeader("allow", "POST");
+
+    return send(response, 405, failure("method_not_allowed", `${request.url ?? ""} only accepts POST`));
+  }
+
+  if (slotId === null) {return send(response, 400, failure("bad_request", "a slot is addressed as station/ordinal"));}
+
+  const interrupter = inputs.slotInterrupter;
+
+  if (interrupter === undefined) {return send(response, 503, failure("unavailable", "slot interrupt is not served by this daemon"));}
+
+  const factory = params.get(SLOT_FACTORY_PARAM) ?? undefined;
+
+  if (factory === "") {return send(response, 400, failure("bad_request", "factory must not be empty"));}
+
+  void (async () => {
+    try {
+      send(response, 200, { ok: true, result: await interrupter.interrupt(slotId, factory) });
+    } catch (error) {
+      if (error instanceof SlotsError) {return send(response, SLOT_ERROR_STATUS[error.code], failure(error.code, error.message));}
+
+      send(response, 500, failure("internal", `slot interrupt failed: ${messageOf(error)}`));
+    }
+  })();
 };
 
 const handleEvents = (inputs: ManagementApiInputs, url: URL, request: IncomingMessage, response: ServerResponse): void => {
@@ -322,6 +363,9 @@ const SLOT_ERROR_STATUS: Record<SlotsErrorCode, number> = {
   factory_required: 400,
   unknown_factory: 404,
   slot_not_found: 404,
+  no_live_launch: 409,
+  channel_unavailable: 409,
+  interrupt_unacknowledged: 504,
 };
 
 const slotRoute = (inputs: ManagementApiInputs, path: string, params: URLSearchParams): Route | undefined => {

@@ -25,7 +25,9 @@ import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { SlotCondition, slotIdOf } from "@foundry/protocol/slots-api";
 import type { LaunchEndReason, SlotLaunch, SlotLaunchHistoryEntry, SlotSummary } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
-import type { SlotsReader } from "./slots-error.js";
+import type { SlotInterrupter, SlotsReader } from "./slots-error.js";
+import { ChannelUnavailableError } from "./channel/server.js";
+import type { ChannelServer } from "./channel/server.js";
 import type { EffectiveStation } from "./config/index.js";
 import { slotRecord } from "./history-records.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
@@ -462,7 +464,7 @@ export const connectOrStartHost = async (stateRoot: string): Promise<HostConnect
   }
 };
 
-export { SlotsError, type SlotsErrorCode, type SlotsReader } from "./slots-error.js";
+export { SlotsError, type SlotInterrupter, type SlotsErrorCode, type SlotsReader } from "./slots-error.js";
 
 const iso = (ms: number): string => new Date(ms).toISOString();
 
@@ -480,6 +482,56 @@ const toLaunch = (row: LaunchRow): SlotLaunch => ({
   exitSignal: row.exit_signal,
 });
 
+/** The slot as it stands in the store: its condition and its current launch. */
+const summaryOf = async (store: Store, slot: PlannedSlot): Promise<SlotSummary> => {
+  const row = await Effect.runPromise(readSlot(store, slot.factoryId, slot.slotId));
+  const current = row?.current_launch ?? null;
+  const launch = current === null ? undefined : await Effect.runPromise(readLaunch(store, current));
+
+  return {
+    factoryId: slot.factoryId,
+    slotId: slot.slotId,
+    station: slot.station.address,
+    ordinal: slot.ordinal,
+    // Read as stored: a condition this build does not serve yet fails loudly, not as `normal`.
+    condition: row === undefined ? "normal" : decodeCondition(row.condition),
+    launch: launch === undefined ? null : toLaunch(launch),
+  };
+};
+
+/** The named factory, or the only one loaded; refuses with `SlotsError` otherwise. */
+const resolveFactory = (factories: ReadonlyArray<string>, factory: string | undefined): string => {
+  if (factory !== undefined) {
+    if (!factories.includes(factory)) {throw new SlotsError("unknown_factory", `No factory "${factory}" is loaded`);}
+
+    return factory;
+  }
+
+  const [only] = factories;
+
+  if (factories.length === 1 && only !== undefined) {return only;}
+
+  throw new SlotsError(
+    "factory_required",
+    factories.length === 0 ? "No factory is loaded" : "More than one factory is loaded; name one with --factory",
+  );
+};
+
+/** The configured slot a request names; refuses with `SlotsError` when there is none. */
+const findSlot = (
+  factories: ReadonlyArray<string>,
+  slots: ReadonlyArray<PlannedSlot>,
+  slotId: string,
+  factory: string | undefined,
+): PlannedSlot => {
+  const factoryId = resolveFactory(factories, factory);
+  const slot = slots.find((s) => s.factoryId === factoryId && s.slotId === slotId);
+
+  if (slot === undefined) {throw new SlotsError("slot_not_found", `No slot ${slotId} in factory "${factoryId}"`);}
+
+  return slot;
+};
+
 /**
  * Serves the configured slots of the started factories from the store, read afresh on each
  * request. Configuration is read only at start, so `slots` is fixed for the run.
@@ -489,72 +541,92 @@ export const storeSlotsReader = (
   stateRoot: string,
   factories: ReadonlyArray<string>,
   slots: ReadonlyArray<PlannedSlot>,
-): SlotsReader => {
-  const summary = async (slot: PlannedSlot): Promise<SlotSummary> => {
-    const row = await Effect.runPromise(readSlot(store, slot.factoryId, slot.slotId));
-    const current = row?.current_launch ?? null;
-    const launch = current === null ? undefined : await Effect.runPromise(readLaunch(store, current));
+): SlotsReader => ({
+  list: async (factory) => {
+    if (factory !== undefined) {resolveFactory(factories, factory);}
 
-    return {
-      factoryId: slot.factoryId,
-      slotId: slot.slotId,
-      station: slot.station.address,
-      ordinal: slot.ordinal,
-      // Read as stored: a condition this build does not serve yet fails loudly, not as `normal`.
-      condition: row === undefined ? "normal" : decodeCondition(row.condition),
-      launch: launch === undefined ? null : toLaunch(launch),
-    };
-  };
+    const listed: Array<SlotSummary> = [];
 
-  const resolveFactory = (factory: string | undefined): string => {
-    if (factory !== undefined) {
-      if (!factories.includes(factory)) {throw new SlotsError("unknown_factory", `No factory "${factory}" is loaded`);}
-
-      return factory;
+    for (const slot of slots) {
+      if (factory === undefined || slot.factoryId === factory) {listed.push(await summaryOf(store, slot));}
     }
 
-    const [only] = factories;
+    return { slots: listed };
+  },
+  show: async (slotId, factory) => {
+    const slot = findSlot(factories, slots, slotId, factory);
 
-    if (factories.length === 1 && only !== undefined) {return only;}
-
-    throw new SlotsError(
-      "factory_required",
-      factories.length === 0 ? "No factory is loaded" : "More than one factory is loaded; name one with --factory",
+    const rows = await Effect.runPromise(
+      store.read<LaunchRow>(
+        `SELECT ${LAUNCH_COLUMNS} FROM launch WHERE factory_id = ? AND slot_id = ? ORDER BY started_at, rowid`,
+        [slot.factoryId, slotId],
+      ),
     );
-  };
+
+    const launches = rows.map((row): SlotLaunchHistoryEntry => {
+      const stderr = launchStderrPath(stateRoot, row.launch_id);
+
+      return { ...toLaunch(row), stderrPath: existsSync(stderr) ? stderr : null };
+    });
+
+    return { slot: await summaryOf(store, slot), launches };
+  },
+});
+
+/** How long an interrupt waits for the worker's acknowledgement before it is refused. */
+export const SLOT_INTERRUPT_ACK_TIMEOUT_MS = 30_000;
+
+/** The worker channel's interrupt; a `ChannelServer` satisfies it. */
+export type SlotChannel = Pick<ChannelServer, "interrupt">;
+
+export interface SlotInterrupterOptions {
+  readonly store: Store;
+  readonly factories: ReadonlyArray<string>;
+  readonly slots: ReadonlyArray<PlannedSlot>;
+  readonly channel: SlotChannel;
+  /** Defaults to `SLOT_INTERRUPT_ACK_TIMEOUT_MS`. */
+  readonly ackTimeoutMs?: number;
+}
+
+/**
+ * Interrupts a slot's worker (PRD §5.3) through the authenticated channel's interrupt: the run is
+ * aborted, the launch and conversation are kept. Nothing is recorded and nothing is launched or
+ * terminated; a worker that does not answer is refused, never restarted.
+ */
+export const storeSlotInterrupter = (options: SlotInterrupterOptions): SlotInterrupter => {
+  const ackTimeoutMs = options.ackTimeoutMs ?? SLOT_INTERRUPT_ACK_TIMEOUT_MS;
 
   return {
-    list: async (factory) => {
-      if (factory !== undefined) {resolveFactory(factory);}
+    interrupt: async (slotId, factory) => {
+      const slot = findSlot(options.factories, options.slots, slotId, factory);
+      const launch = (await summaryOf(options.store, slot)).launch;
 
-      const listed: Array<SlotSummary> = [];
-
-      for (const slot of slots) {
-        if (factory === undefined || slot.factoryId === factory) {listed.push(await summary(slot));}
+      if (launch === null || launch.endedAt !== null) {
+        throw new SlotsError("no_live_launch", `Slot ${slotId} has no live launch to interrupt`);
       }
 
-      return { slots: listed };
-    },
-    show: async (slotId, factory) => {
-      const factoryId = resolveFactory(factory);
-      const slot = slots.find((s) => s.factoryId === factoryId && s.slotId === slotId);
+      let timer: ReturnType<typeof setTimeout> | undefined;
 
-      if (slot === undefined) {throw new SlotsError("slot_not_found", `No slot ${slotId} in factory "${factoryId}"`);}
-
-      const rows = await Effect.runPromise(
-        store.read<LaunchRow>(
-          `SELECT ${LAUNCH_COLUMNS} FROM launch WHERE factory_id = ? AND slot_id = ? ORDER BY started_at, rowid`,
-          [factoryId, slotId],
-        ),
-      );
-
-      const launches = rows.map((row): SlotLaunchHistoryEntry => {
-        const stderr = launchStderrPath(stateRoot, row.launch_id);
-
-        return { ...toLaunch(row), stderrPath: existsSync(stderr) ? stderr : null };
+      const timedOut = new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(
+          () => reject(new SlotsError("interrupt_unacknowledged", `The worker on launch ${launch.launchId} did not acknowledge the interrupt within ${ackTimeoutMs} ms`)),
+          ackTimeoutMs,
+        );
       });
 
-      return { slot: await summary(slot), launches };
+      let outcome;
+
+      try {
+        outcome = await Promise.race([options.channel.interrupt(launch.launchId), timedOut]);
+      } catch (error) {
+        if (error instanceof ChannelUnavailableError) {throw new SlotsError("channel_unavailable", `Slot ${slotId}: ${error.message}`);}
+
+        throw error;
+      } finally {
+        clearTimeout(timer);
+      }
+
+      return { launchId: launch.launchId, outcome, slot: await summaryOf(options.store, slot) };
     },
   };
 };
