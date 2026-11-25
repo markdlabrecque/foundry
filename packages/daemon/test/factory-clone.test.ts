@@ -1,0 +1,208 @@
+// Integration tier: the claim is about real Git and the filesystem — a dedicated clone created once
+// under the state root, reused without contacting the source, refused when not Foundry's, and the
+// source left unchanged — so it runs real Git against a local bare repository in a temp dir. One
+// row starts the built daemon and runs the built CLI to prove the start and `factory path` wiring.
+import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { afterEach, expect, test } from "vitest";
+import {
+  CLONE_MARKER_FILE_NAME,
+  ensureFactoryClone,
+  factoryClonePath,
+  FactoryCloneError,
+  loadFactoryFiles,
+  type LoadedFactory,
+} from "@foundry/daemon";
+import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
+
+const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
+const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
+
+const roots: string[] = [];
+const children: ChildProcess[] = [];
+afterEach(() => {
+  for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+const factoryYaml = (name: string, source: string): string => `version: 1
+name: ${name}
+repository:
+  source: ${source}
+  default_branch: main
+default_production_line: f
+rooms:
+  eng:
+    stations:
+      dev: { isolation: worktree, model: p/m }
+      rev: { isolation: worktree, model: p/m }
+production_lines:
+  f:
+    verify: [npm, test]
+    stages:
+      - id: a
+        station: eng.dev
+        writing: true
+      - id: b
+        station: eng.rev
+        approval: true
+        on_rejection: a
+`;
+
+interface Fixture {
+  readonly dir: string;
+  readonly home: string;
+  /** The bare source repository. */
+  readonly source: string;
+  readonly yamlFile: string;
+  readonly load: (name?: string) => LoadedFactory;
+}
+
+/** A temp dir holding a bare source repository with one commit on main, and a factory YAML naming it. */
+const fixture = (name = "alpha"): Fixture => {
+  const dir = mkdtempSync(join(tmpdir(), "foundry-clone-"));
+  roots.push(dir);
+  makeGitSource(join(dir, "seed"));
+  git(dir, ["clone", "--quiet", "--bare", "seed", "source.git"]);
+  const source = join(dir, "source.git");
+  const yamlFile = join(dir, "factory.yaml");
+  writeFileSync(yamlFile, factoryYaml(name, "./source.git"));
+  const load = (factoryName = name): LoadedFactory => {
+    writeFileSync(yamlFile, factoryYaml(factoryName, "./source.git"));
+    const loaded = loadFactoryFiles([yamlFile], { env: {} });
+    if (loaded._tag !== "Loaded") throw new Error(loaded.message);
+    return loaded.factories[0]!;
+  };
+  return { dir, home: join(dir, "home"), source, yamlFile, load };
+};
+
+/** Adds a commit to the source's main, through the seed working copy. */
+const advanceSource = (f: Fixture): string => {
+  const seed = join(f.dir, "seed");
+  writeFileSync(join(seed, "later.md"), "later\n");
+  git(seed, ["add", "later.md"]);
+  git(seed, ["commit", "--quiet", "--no-verify", "-m", "later"]);
+  git(seed, ["push", "--quiet", f.source, "main"]);
+  return git(seed, ["rev-parse", "HEAD"]);
+};
+
+/** Every ref and the file list of a bare repository: what "unchanged" means for the source. */
+const snapshot = (repo: string) => ({ refs: git(repo, ["for-each-ref", "--format=%(refname) %(objectname)"]), files: readdirSync(repo).sort() });
+
+const options = (home: string) => ({ stateRoot: home, env: isolatedGitEnv() });
+
+test("first start clones the source under the state root and marks it; a later start reuses it without contacting the source", async () => {
+  const f = fixture();
+  const before = snapshot(f.source);
+  const first = git(f.source, ["rev-parse", "main"]);
+
+  const factory = f.load();
+  const created = await ensureFactoryClone(factory, options(f.home));
+
+  expect(created).toEqual({ factory: "alpha", path: join(f.home, "clones", "alpha"), created: true, source: f.source });
+  expect(created.path).toBe(factoryClonePath(f.home, "alpha"));
+  expect(git(created.path, ["rev-parse", "HEAD"])).toBe(first);
+  expect(git(created.path, ["symbolic-ref", "--short", "HEAD"])).toBe("main");
+  expect(JSON.parse(readFileSync(join(created.path, ".git", CLONE_MARKER_FILE_NAME), "utf8"))).toMatchObject({
+    factory: "alpha",
+    source: f.source,
+  });
+  // No staging directory is left beside the clone.
+  expect(readdirSync(join(f.home, "clones"))).toEqual(["alpha"]);
+  // The marker is only in the clone's Git directory, not a tracked or untracked file.
+  expect(git(created.path, ["status", "--porcelain"])).toBe("");
+  expect(snapshot(f.source)).toEqual(before);
+
+  // The source moves on, then disappears: reuse neither fetches nor needs it. (Daemon start
+  // validates that a local source exists, so the factory is loaded before it goes.)
+  advanceSource(f);
+  renameSync(f.source, `${f.source}.away`);
+  const reused = await ensureFactoryClone(factory, options(f.home));
+  expect(reused).toEqual({ ...created, created: false });
+  expect(git(reused.path, ["rev-parse", "HEAD"])).toBe(first);
+  expect(git(reused.path, ["rev-parse", "origin/main"])).toBe(first);
+});
+
+test("an unmarked directory or another factory's clone at the clone path is refused and left untouched", async () => {
+  const f = fixture();
+  const path = factoryClonePath(f.home, "alpha");
+  mkdirSync(path, { recursive: true });
+  writeFileSync(join(path, "operator-file"), "mine\n");
+
+  await expect(ensureFactoryClone(f.load(), options(f.home))).rejects.toThrow(FactoryCloneError);
+  expect(readdirSync(path)).toEqual(["operator-file"]);
+
+  // Another factory's marked clone, moved into alpha's place.
+  rmSync(path, { recursive: true });
+  const beta = await ensureFactoryClone(f.load("beta"), options(f.home));
+  renameSync(beta.path, path);
+  await expect(ensureFactoryClone(f.load("alpha"), options(f.home))).rejects.toThrow(/clone of factory "beta"/);
+  expect(JSON.parse(readFileSync(join(path, ".git", CLONE_MARKER_FILE_NAME), "utf8"))).toMatchObject({ factory: "beta" });
+});
+
+test("a clone that fails leaves nothing at the clone path", async () => {
+  const f = fixture();
+  const factory = f.load();
+  const missingBranch = { ...factory, config: { ...factory.config, repository: { ...factory.config.repository, default_branch: "absent" } } };
+
+  await expect(ensureFactoryClone(missingBranch, options(f.home))).rejects.toThrow(/cannot clone .* \(branch absent\)/);
+  expect(readdirSync(join(f.home, "clones"))).toEqual([]);
+});
+
+const foundry = (args: ReadonlyArray<string>, home: string): Promise<{ code: number | null; stdout: string; stderr: string }> =>
+  new Promise((done) => {
+    execFile(
+      process.execPath,
+      [cliMain, ...args, "--home", home],
+      { env: { ...process.env, FOUNDRY_HOME: join(home, "not-this-one") }, timeout: 20_000 },
+      (error, stdout, stderr) =>
+        done({ code: error === null ? 0 : typeof error.code === "number" ? error.code : null, stdout, stderr }),
+    );
+  });
+
+const startDaemon = (home: string, file: string): Promise<ChildProcess> => {
+  const child = spawn(process.execPath, [daemonMain, "--home", home, file], {
+    env: { ...isolatedGitEnv(), FOUNDRY_HOME: join(home, "not-this-one") },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  children.push(child);
+  let stdout = "";
+  let stderr = "";
+  child.stderr!.on("data", (c: Buffer) => (stderr += c.toString()));
+  return new Promise((resolve, reject) => {
+    child.stdout!.on("data", (c: Buffer) => {
+      stdout += c.toString();
+      if (stdout.includes("management API on")) resolve(child);
+    });
+    child.on("exit", (code) => reject(new Error(`daemon exited ${code} before serving: ${stderr}`)));
+  });
+};
+
+const stop = async (child: ChildProcess): Promise<number | null> => {
+  const exited = new Promise<number | null>((done) => child.on("exit", done));
+  child.kill("SIGTERM");
+  return exited;
+};
+
+test("daemon start creates the clone and foundry factory path prints it; a restart reuses it", async () => {
+  const f = fixture();
+  const first = git(f.source, ["rev-parse", "main"]);
+  const path = factoryClonePath(f.home, "alpha");
+
+  let daemon = await startDaemon(f.home, f.yamlFile);
+  expect(await foundry(["factory", "path", "alpha"], f.home)).toEqual({ code: 0, stdout: `${path}\n`, stderr: "" });
+  const unknown = await foundry(["factory", "path", "nope"], f.home);
+  expect(unknown.code).toBe(1);
+  expect(unknown.stderr).toContain('no loaded factory named "nope"');
+  expect(await stop(daemon)).toBe(0);
+
+  advanceSource(f);
+  daemon = await startDaemon(f.home, f.yamlFile);
+  expect(await foundry(["factory", "path", "alpha"], f.home)).toMatchObject({ code: 0, stdout: `${path}\n` });
+  expect(await stop(daemon)).toBe(0);
+  expect(git(path, ["rev-parse", "HEAD"])).toBe(first);
+  expect(existsSync(join(f.source, CLONE_MARKER_FILE_NAME))).toBe(false);
+});

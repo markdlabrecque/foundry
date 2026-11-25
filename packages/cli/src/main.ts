@@ -12,6 +12,7 @@ import { validateFactoryFile } from "./validate.js";
 import { runTicketList, runTicketShow, runTicketSubmit, type TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow, type HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
+import { runFactoryPath } from "./factory.js";
 
 const validate = Command.make(
   "validate",
@@ -214,7 +215,19 @@ const ticket = Command.make("ticket").pipe(
   Command.withSubcommands([ticketSubmit, ticketList, ticketShow]),
 );
 
-const foundry = Command.make("foundry").pipe(Command.withSubcommands([validate, status, hold, logs, ticket, events]));
+const factoryPath = Command.make("path", { ...commonFlags, name: Argument.String("name") }, ({ json, home, name }) =>
+  Effect.flatMap(
+    Effect.promise(() => runFactoryPath({ json, home: Option.getOrUndefined(home), env: process.env, name })),
+    print,
+  ),
+).pipe(Command.withDescription("Print the path of a factory's dedicated clone, to add as a Git remote"));
+
+const factory = Command.make("factory").pipe(
+  Command.withDescription("Loaded factories and their dedicated clones"),
+  Command.withSubcommands([factoryPath]),
+);
+
+const foundry = Command.make("foundry").pipe(Command.withSubcommands([validate, status, hold, logs, ticket, events, factory]));
 
 Command.run(foundry, { version: "0.0.0" }).pipe(
   // effect/cli has already printed the problem and the help; PRD §11.5 makes a usage error exit 2.

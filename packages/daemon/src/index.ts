@@ -62,3 +62,14 @@ export {
 export { readEvents, storeEventSource, type EventPageQuery, type EventSource } from "./events.js";
 export { formatEvent } from "./events-stream.js";
 export * from "./factory-loads.js";
+export {
+  CLONE_MARKER_FILE_NAME,
+  CLONES_DIR_NAME,
+  cloneSource,
+  ensureFactoryClone,
+  factoryClonePath,
+  FactoryCloneError,
+  type CloneMarker,
+  type EnsureCloneOptions,
+  type EnsuredClone,
+} from "./factory-clone.js";

@@ -8,12 +8,14 @@
  * serves operator holds and the event stream. Stop order: API close, store close, log close, lock release.
  * Factory files named on the command line are validated read-only before the root is claimed; an
  * invalid one refuses start with one line and exit 1. Once the store is open, each factory's empty
- * knowledge layout is created and the run and each configuration load are recorded in it.
+ * knowledge layout is created, its dedicated clone is created on first start or reused (never
+ * fetched) after (PRD §9.1), and the run and each configuration load are recorded in it.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { createKnowledgeLayout, loadFactoryFiles, recordRun, type LoadedFactory, type RecordedLoad } from "./factory-loads.js";
 import { makeTicketService, ticketFactoryFrom } from "./tickets.js";
+import { ensureFactoryClone, type EnsuredClone } from "./factory-clone.js";
 import { Effect, Exit, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
@@ -127,6 +129,25 @@ const main = async (): Promise<void> => {
   }
 
   const startedAt = new Date().toISOString();
+  // The dedicated clone of each factory (PRD §9.1): created once, then reused without contacting the source.
+  const clones = new Map<string, EnsuredClone>();
+  for (const factory of factories) {
+    try {
+      const clone = await ensureFactoryClone(factory, { stateRoot });
+      clones.set(factory.factoryId, clone);
+      log.info(clone.created ? "factory clone created" : "factory clone reused", {
+        factoryId: factory.factoryId,
+        detail: { path: clone.path, source: clone.source },
+      });
+    } catch (error) {
+      log.error("factory clone refused", { factoryId: factory.factoryId, detail: { error: (error as Error).message } });
+      await closeStore();
+      log.close();
+      claim.release();
+      fail((error as Error).message);
+      return;
+    }
+  }
   let loads: ReadonlyArray<RecordedLoad>;
   try {
     // The reserved, empty knowledge layout (PRD §5.4.3); existing directories are left alone.
@@ -195,6 +216,7 @@ const main = async (): Promise<void> => {
         configLoad: (factory) => loadIds.get(factory),
       }),
       events: storeEventSource(store),
+      clonePath: (factory) => clones.get(factory)?.path,
     });
   } catch (error) {
     if (error instanceof ManagementSocketError) {
