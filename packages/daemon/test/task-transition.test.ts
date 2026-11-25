@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
 import { Effect, Exit, Match, Schema } from "effect";
 import {
-  agentDelegateHandler, agentRequestHandler, assignmentTicket, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
+  acceptMessage, agentDelegateHandler, agentRequestHandler, assignmentTicket, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
   createApprovalAnswers, humanRequestHandler, createApprovalDecisions, createOperatorMessages, foundryMigrations, messageBudget, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
 } from "@foundry/daemon";
 import type { Migration, Store } from "@foundry/daemon";
@@ -81,10 +81,28 @@ const fixture = async <A, E>(use: (store: Store, assignmentId: string, root: str
     }));
     yield* createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(config)] })
       .submit({ title: "Plan", spec: "Disposable spec" }).pipe(Effect.orDie);
-    const assigned = yield* createAssignmentScheduler(schedulerOptions(store)).schedule();
-    const id = assigned[0]?.id;
 
-    if (id === undefined) {throw new Error("fixture did not assign");}
+    if (migrations === foundryMigrations) {
+      const assigned = yield* createAssignmentScheduler(schedulerOptions(store)).schedule();
+      const id = assigned[0]?.id;
+
+      if (id === undefined) {throw new Error("fixture did not assign");}
+
+      return yield* use(store, id, root);
+    }
+
+    // Historical schemas predate resume tables; seed their original assignment shape rather
+    // than calling today's scheduler against a database it has not migrated yet.
+    const id = 'historical-assignment';
+    yield* store.change((change) => Effect.gen(function* () {
+      const context = yield* acceptMessage(change, { factoryId: 'shop', senderKind: 'daemon', senderSlot: null,
+        recipient: 'floor.worker', body: 'historical context', kind: 'ordinary', delivery: 'after_turn', correlation: { ticket: 1 } });
+
+      yield* change.query(`INSERT INTO assignment (id, factory_id, ticket_number, stage, slot_id, status, recovery_ceiling, created_at, context_message)
+        VALUES (?, 'shop', 1, 'plan', 'worker/1', 'active', 3, 1, ?)`, [id, context.id]);
+      yield* change.query(`UPDATE ticket SET state = 'stage', stage = 'plan', status = 'assigned' WHERE number = 1`);
+      yield* change.recordHistory({ factoryId: 'shop', kind: 'fixture', subject: id });
+    }));
 
     return yield* use(store, id, root);
   })));
@@ -292,7 +310,7 @@ test("ticket cancel CLI discloses, refuses nonterminal use without --yes, and ca
 });
 
 test("rejection limit migration preserves blocked and worker request approvals and their constraints", async () => {
-  const previousMigrations = foundryMigrations.filter((migration) => migration.id < 24);
+  const previousMigrations = foundryMigrations.slice(0, foundryMigrations.findIndex((migration) => migration.name === "message_limit_approvals"));
 
   const saved = await fixture((store, id, root) => Effect.gen(function* () {
     const submissions = createSubmissions({ store, handlers: new Map([...handlers, [HUMAN_REQUEST, humanRequestHandler]]) });
@@ -306,10 +324,8 @@ test("rejection limit migration preserves blocked and worker request approvals a
 
   await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
     const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
-    const after = yield* snapshot(store);
-    expect(after).toEqual({ ...saved.after, approvals: saved.after.approvals.map((approval) => ({
-      ...approval, decision: null, resolution_transition: null,
-    })) });
+    const expected = { ...saved.after, approvals: saved.after.approvals.map((approval) => ({ ...approval, decision: null, resolution_transition: null })) };
+    expect(yield* snapshot(store)).toEqual(expected);
     expect(yield* store.read(`PRAGMA foreign_key_check`)).toEqual([]);
     expect(yield* Effect.promise(() => storeApprovalsReader(store).list())).toMatchObject({ approvals: [
       { id: 1, kind: "worker_request", reason: "Choose an option", transition: null },
@@ -325,7 +341,7 @@ test("rejection limit migration preserves blocked and worker request approvals a
     })));
 
     expect(Exit.isFailure(invalid)).toBe(true);
-    expect(yield* snapshot(store)).toEqual(after);
+    expect(yield* snapshot(store)).toEqual(expected);
   })));
 });
 
