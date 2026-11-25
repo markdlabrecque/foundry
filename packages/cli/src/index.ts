@@ -9,3 +9,12 @@ export {
   type StatusOptions,
   type StatusOutcome,
 } from "./status.js";
+export {
+  defaultTitle,
+  runTicketList,
+  runTicketShow,
+  runTicketSubmit,
+  type ShowOptions,
+  type SubmitOptions,
+  type TicketOutcome,
+} from "./tickets.js";
