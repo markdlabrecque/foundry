@@ -8,8 +8,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit, Predicate, Scope } from "effect";
 import type { AgentSession } from "@earendil-works/pi-coding-agent";
-import { composePrime, createPrimer, openStore, primesForConversation, PrimingOutcome, startChannelServer } from "@foundry/daemon";
-import type { AcceptedConnection, AcknowledgeOutcome, ChannelServer, PrimedConnection, Primer, PrimeRequest, SlotClaim, Store } from "@foundry/daemon";
+import { composePrime, createPrimer, createSlotFreezer, openStore, primesForConversation, PrimingOutcome, startChannelServer } from "@foundry/daemon";
+import type { AcceptedConnection, AcknowledgeOutcome, ChannelServer, FreezeChecks, PrimedConnection, Primer, PrimeRequest, SlotClaim, Store } from "@foundry/daemon";
 import { createConversationAdapter, openChannel, ReceiptReporter, receiveDaemonFrames, RunInterrupter } from "@foundry/extension";
 import type { ConversationAdapter, OpenChannel } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
@@ -260,6 +260,60 @@ test("the prime is on record before its frame is written, so a sent prime always
   expect(recordedAtSend).toEqual([["prime-1"]]);
 });
 
+test("history-loss unfreeze requires a live accepted hello for the recorded launch and restored conversation", async () => {
+  const replacement = { ...slot, launchId: "launch-2" };
+  await Effect.runPromise(store.change(({ query, recordHistory }) => Effect.gen(function* () {
+    yield* query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition, current_launch)
+      VALUES ('f1', 'builder-1', 'build.builder', 1, 'normal', 'launch-2')`);
+    yield* query(`INSERT INTO conversation (factory_id, slot_id, ref, status, created_at)
+      VALUES ('f1', 'builder-1', 'conv-1', 'current', 1)`);
+    yield* recordHistory({ factoryId: "f1", kind: "fixture.slot", subject: "builder-1" });
+  })));
+  const checks: FreezeChecks = {};
+  const freezer = await createSlotFreezer({ store, checks });
+  let n = 0;
+
+  const primer = createPrimer({ store, primeRequest, gate: freezer, freeze: (request) => freezer.freeze(request),
+    newPrimeId: () => `prime-${++n}` });
+
+  checks.prime_without_history = primer.recheckHistory;
+  const sent: Array<DaemonFrame> = [];
+  const connection = { send: async (frame: DaemonFrame) => { sent.push(frame); } };
+  await primer.prime(slot, hello, connection).outcome;
+  await primer.receipt(slot, "prime-1");
+  expect(await primer.prime(replacement, { ...hello, ...replacement }, connection).outcome).toEqual(PrimingOutcome.HistoryUnavailable());
+  expect(await freezer.unfreeze(slot)).toMatchObject({ outcome: "cause_persists", cause: "prime_without_history" });
+  expect(sent).toHaveLength(1);
+
+  // A stale launch's positive report is insufficient, even though it was accepted previously.
+  let close!: () => void;
+  const closed = new Promise<void>((resolve) => { close = resolve; });
+  const stale = primer.prime(slot, { ...hello, hasRecoverableHistory: true }, { ...connection, closed });
+  expect(await freezer.unfreeze(slot)).toMatchObject({ outcome: "cause_persists" });
+  close();
+  expect(await stale.outcome).toEqual(PrimingOutcome.Closed());
+  expect(await freezer.unfreeze(slot)).toMatchObject({ outcome: "cause_persists" });
+
+  // Same launch, wrong conversation is insufficient as well (the production claim also rejects it).
+  let closeWrong!: () => void;
+  const wrongClosed = new Promise<void>((resolve) => { closeWrong = resolve; });
+
+  const wrong = primer.prime(replacement, { ...hello, ...replacement, conversationRef: "wrong", hasRecoverableHistory: true },
+    { ...connection, closed: wrongClosed });
+
+  expect(await freezer.unfreeze(slot)).toMatchObject({ outcome: "cause_persists" });
+  closeWrong();
+  expect(await wrong.outcome).toEqual(PrimingOutcome.Closed());
+
+  const restored = primer.prime(replacement, { ...hello, ...replacement, hasRecoverableHistory: true }, connection);
+  const later = restored.connection.send({ type: "message", id: "work", body: "resume", delivery: "after_turn" });
+  expect(await freezer.unfreeze(slot)).toMatchObject({ outcome: "unfrozen" });
+  expect(await restored.outcome).toEqual(PrimingOutcome.Sent({ primeId: "prime-2" }));
+  await later;
+  expect(sent.map((frame) => frame.type)).toEqual(["prime", "prime", "message"]);
+  expect((await conversationPrimes())[1]).toMatchObject({ situation: "recovery" });
+});
+
 test("two hellos from one launch send one fresh prime; the reconnect names it while it is unacknowledged", async () => {
   const written: Array<string> = [];
   const stub: AcceptedConnection = { send: async (frame) => void written.push(frame.type === "prime" ? frame.id : frame.type) };
@@ -276,5 +330,5 @@ test("two hellos from one launch send one fresh prime; the reconnect names it wh
   expect(await conversationPrimes()).toHaveLength(1);
 
   await primer.receipt(slot, "prime-1");
-  expect(await primer.prime(slot, hello, stub).outcome).toEqual(PrimingOutcome.Reconnect({}));
+  expect(await primer.prime(slot, { ...hello, hasRecoverableHistory: true }, stub).outcome).toEqual(PrimingOutcome.Reconnect({}));
 });
