@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { decodeFactoryYaml, locateProblems, resolveStations } from "@foundry/daemon/config";
+import { locateProblems, resolveStations, validateFactoryYaml } from "@foundry/daemon/config";
 import type { ConfigProblem } from "@foundry/daemon/config";
 import { renderToolSets } from "./tool-set-listing.js";
 
@@ -20,7 +20,8 @@ const describe = (file: string, problem: ConfigProblem): string => {
 
 /**
  * Validates one factory YAML file, read-only and offline (PRD §4).
- * Reads the file and decodes it; it writes nothing and runs nothing.
+ * Reads the file, decodes it and checks the files and settings it names;
+ * it creates nothing, contacts nothing and runs nothing.
  */
 export const validateFactoryFile = (file: string): ValidateOutcome => {
   let text: string;
@@ -30,7 +31,8 @@ export const validateFactoryFile = (file: string): ValidateOutcome => {
     const reason = error instanceof Error ? error.message : String(error);
     return { exitCode: 1, stdout: [], stderr: [`${file}: cannot read factory YAML: ${reason}`] };
   }
-  const result = decodeFactoryYaml(text);
+  // Decode, then the offline file and setting checks, then station resolution.
+  const result = validateFactoryYaml(text, { yamlFile: file });
   if (result._tag === "Invalid") {
     return { exitCode: 1, stdout: [], stderr: result.problems.map((p) => describe(file, p)) };
   }

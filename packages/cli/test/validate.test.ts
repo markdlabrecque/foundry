@@ -1,5 +1,5 @@
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -11,6 +11,11 @@ import { afterAll, expect, test } from "vitest";
 const require = createRequire(import.meta.url);
 const main = join(dirname(require.resolve("@foundry/cli")), "main.js");
 const dir = mkdtempSync(join(tmpdir(), "foundry-validate-"));
+mkdirSync(join(dir, "repo"));
+// Configured files must exist offline (FOU-25); the Tool Set case names these.
+mkdirSync(join(dir, "ext"));
+writeFileSync(join(dir, "ext/hooks.ts"), "");
+writeFileSync(join(dir, "ext/tools.ts"), "");
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const run = (yaml: string): { status: number; stdout: string; stderr: string } => {
@@ -27,7 +32,7 @@ const run = (yaml: string): { status: number; stdout: string; stderr: string } =
 const valid = `version: 1
 name: smoke
 repository:
-  source: ../p
+  source: ./repo
   default_branch: main
 default_production_line: f
 rooms:
@@ -87,4 +92,16 @@ test("foundry validate prints a missing verify as a warning and still exits 0", 
   expect(result.status).toBe(0);
   expect(result.stdout).toMatch(/^F: factory "smoke" is valid\n/);
   expect(result.stderr).toMatch(/^F:13:5: production_lines\.f: No verify command.*\(warning\)$/m);
+});
+
+test("foundry validate reports an offline-check failure at its setting", () => {
+  const result = run(valid.replace("      s: { isolation: worktree, model: p/m }", "      s:\n        isolation: worktree\n        model: p/m\n        instructions: missing.md"));
+  expect(result.status).toBe(1);
+  expect(result.stderr).toMatch(/^F:13:23: rooms\.r\.stations\.s\.instructions: Configured file not found: .*missing\.md$/m);
+});
+
+test("foundry validate reports a station-resolution failure at its setting", () => {
+  const result = run(valid.replace("      s: { isolation: worktree, model: p/m }", "      s:\n        isolation: worktree\n        model: ${FOUNDRY_TEST_UNSET_MODEL}"));
+  expect(result.status).toBe(1);
+  expect(result.stderr).toMatch(/^F:12:\d+: rooms\.r\.stations\.s\.model: Model variable FOUNDRY_TEST_UNSET_MODEL is not set$/m);
 });
