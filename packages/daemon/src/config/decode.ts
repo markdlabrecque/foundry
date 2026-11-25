@@ -2,6 +2,7 @@ import { Schema, SchemaIssue } from "effect";
 import * as Result from "effect/Result";
 import { isAlias, isMap, isScalar, isSeq, LineCounter, parseDocument } from "yaml";
 import type { Document, Node as YamlNode } from "yaml";
+import { checkNames } from "./names.js";
 import { FactoryConfig } from "./schema.js";
 
 /** One reason a factory YAML file is rejected, with its YAML location where available. */
@@ -56,7 +57,16 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
     onExcessProperty: "error",
     errors: "all",
   });
-  if (Result.isSuccess(decoded)) return { _tag: "Valid", config: decoded.success };
+  if (Result.isSuccess(decoded)) {
+    // Name rules (PRD §4) run on the decoded value; a name problem points at its key.
+    const nameProblems = checkNames(decoded.success).map((problem) => ({
+      path: problem.path.join("."),
+      message: problem.message,
+      ...at(locate(doc, problem.path, true) ?? 0),
+    }));
+    if (nameProblems.length > 0) return { _tag: "Invalid", problems: nameProblems };
+    return { _tag: "Valid", config: decoded.success };
+  }
 
   const problems = formatIssue(decoded.failure.issue).issues.map((issue) => {
     const path = (issue.path ?? []).map((segment) =>
