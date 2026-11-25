@@ -22,6 +22,7 @@ import type {
   TicketTransition,
 } from "@foundry/protocol/tickets-api";
 import type { FactoryConfig } from "./config/schema.js";
+import { ticketRecord } from "./history-records.js";
 import type { Store, StoreError } from "./store.js";
 
 /** What submission needs to know about a loaded factory's production line. */
@@ -291,6 +292,7 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
               factoryId: factory.name,
               kind: "ticket.submitted",
               subject: String(number),
+              records: [ticketRecord(number)],
               detail: { title, line: lineName, directory },
             });
             // Last, so a failed statement never leaves files; a failed commit removes them below.

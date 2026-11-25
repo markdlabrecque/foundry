@@ -16,6 +16,7 @@ import { Clock, Data, Effect } from "effect";
 import type { Scope } from "effect";
 import { Reactivity } from "effect/reactivity";
 import { SqlClient, SqlError } from "effect/sql";
+import type { HistoryRecordRef } from "./history-records.js";
 
 /** Table the migrator records applied migrations in. */
 const MIGRATIONS_TABLE = "foundry_migrations";
@@ -127,6 +128,26 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
   },
   {
     id: 4,
+    name: "history_records",
+    statements: [
+      // The records a history row concerns beyond its subject (PRD §15.1), so events can be
+      // filtered by ticket, slot and the like. Append-only, like the row it belongs to.
+      `CREATE TABLE history_record (
+        sequence INTEGER NOT NULL REFERENCES history (sequence),
+        record_kind TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        PRIMARY KEY (sequence, record_kind, record_id)
+      ) STRICT, WITHOUT ROWID`,
+      `CREATE INDEX history_record_by_record ON history_record (record_kind, record_id, sequence)`,
+      `CREATE INDEX history_by_factory ON history (factory_id, sequence)`,
+      `CREATE TRIGGER history_record_no_update BEFORE UPDATE ON history_record
+       BEGIN SELECT RAISE(ABORT, 'history is append-only'); END`,
+      `CREATE TRIGGER history_record_no_delete BEFORE DELETE ON history_record
+       BEGIN SELECT RAISE(ABORT, 'history is append-only'); END`,
+    ],
+  },
+  {
+    id: 5,
     name: "prime",
     statements: [
       // One row per prime the daemon sends (PRD §5.5, §10.1). `parts` is the
@@ -180,7 +201,15 @@ export interface HistoryEntry {
   readonly subject: string;
   /** JSON-serialisable detail. */
   readonly detail?: unknown;
+  /**
+   * Other records the row concerns, e.g. `{ kind: "ticket", id: "42" }`, so events can be
+   * filtered by them. Ticket IDs are their numbers in decimal.
+   */
+  readonly records?: ReadonlyArray<HistoryRecordRef>;
 }
+
+// Record refs live in their own module so readers can use them without loading `node:sqlite`.
+export * from "./history-records.js";
 
 /** Runs one statement and returns its rows (empty for writes without `RETURNING`). */
 export type Query = <Row extends object = Record<string, unknown>>(
@@ -209,6 +238,11 @@ export interface Store {
   readonly change: <A, E, R>(
     body: (change: Change) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | StoreError, R>;
+  /**
+   * Calls `listener` after each change commits, so readers can look for new history rows.
+   * Returns a function that removes it. A listener that throws is ignored; it never fails the change.
+   */
+  readonly onCommit: (listener: () => void) => () => void;
 }
 
 export interface OpenStoreOptions {
@@ -274,6 +308,7 @@ export const openStore = (
       Effect.mapError(sqlFailure("Migration", `Could not migrate ${options.filename}`)),
     );
 
+    const commitListeners = new Set<() => void>();
     const change: Store["change"] = (body) =>
       Effect.gen(function* () {
         let historyRows = 0;
@@ -285,8 +320,15 @@ export const openStore = (
                VALUES (?, ?, ?, ?, ?) RETURNING sequence`,
               [entry.factoryId, recordedAt, entry.kind, entry.subject, JSON.stringify(entry.detail ?? null)],
             );
+            const sequence = rows[0]!.sequence;
+            for (const record of entry.records ?? []) {
+              yield* query(
+                `INSERT OR IGNORE INTO history_record (sequence, record_kind, record_id) VALUES (?, ?, ?)`,
+                [sequence, record.kind, record.id],
+              );
+            }
             historyRows += 1;
-            return rows[0]!.sequence;
+            return sequence;
           });
         const result = yield* body({ query, recordHistory });
         if (historyRows === 0) {
@@ -299,6 +341,19 @@ export const openStore = (
       }).pipe(
         sql.withTransaction,
         Effect.mapError((e) => (SqlError.isSqlError(e) ? sqlFailure("Sql", "Transaction failed")(e) : e)),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            // The change has committed. A listener must never turn that into a reported failure,
+            // or the caller would think it lost and might retry, writing duplicates (ADR 0001).
+            for (const listener of [...commitListeners]) {
+              try {
+                listener();
+              } catch {
+                // Ignored: the listener only signals readers; history is already durable.
+              }
+            }
+          }),
+        ),
       ) as never;
 
     return {
@@ -306,6 +361,11 @@ export const openStore = (
       schemaVersion: Math.max(applied, known),
       read: query,
       change,
+      onCommit: (listener) => {
+        const registered = () => listener();
+        commitListeners.add(registered);
+        return () => void commitListeners.delete(registered);
+      },
     } satisfies Store;
   });
 

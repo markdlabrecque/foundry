@@ -11,6 +11,7 @@
  */
 import { chmod, lstat, mkdtemp, rename, rmdir, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
+import { randomUUID } from "node:crypto";
 import { createServer, type Server, type Socket } from "node:net";
 import {
   CHANNEL_LOST_AFTER_MS,
@@ -22,6 +23,7 @@ import {
   type DaemonFrame,
   type Hello,
   type HelloRejectReason,
+  type InterruptOutcome,
   type WorkerFrame,
 } from "@foundry/protocol";
 
@@ -62,7 +64,10 @@ export interface AcceptedConnection {
 }
 
 export interface ChannelEvents {
-  /** An authenticated frame from an accepted connection, attributed to its claimed slot. */
+  /**
+   * An authenticated frame from an accepted connection, attributed to its claimed
+   * slot. Includes `interrupt_ack`, after it has settled the matching `interrupt()` call.
+   */
   onFrame?(slot: ClaimedSlot, frame: WorkerFrame): void;
   onAccepted?(slot: ClaimedSlot, hello: Hello, connection: AcceptedConnection): void;
   onRejected?(reason: HelloRejectReason): void;
@@ -79,8 +84,24 @@ export interface ChannelServerOptions extends ChannelEvents {
   readonly lapseTimer?: LapseTimer;
 }
 
+/** No accepted channel speaks for the launch, or it was lost before the worker acknowledged. */
+export class ChannelUnavailableError extends Error {
+  constructor(readonly launchId: string, detail: string) {
+    super(`channel for launch ${launchId} ${detail}`);
+    this.name = "ChannelUnavailableError";
+  }
+}
+
 export interface ChannelServer {
   readonly socketPath: string;
+  /**
+   * Ask the worker on `launchId`'s accepted channel to abort its current Pi run
+   * (PRD §3.2). Resolves with the worker's acknowledgement, once Pi is idle;
+   * the launch and conversation are kept. Rejects with
+   * `ChannelUnavailableError` if no channel is accepted for the launch or it is
+   * lost before the ack. Callers bound the wait themselves.
+   */
+  interrupt(launchId: string): Promise<InterruptOutcome>;
   close(): Promise<void>;
 }
 
@@ -91,6 +112,14 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
   const connections = new Set<Socket>();
   let closing = false;
 
+  /** Accepted channels by launch, with interrupts awaiting their ack. */
+  interface Accepted {
+    /** The one writer for this connection; `interrupt()` and the primer both write through it. */
+    readonly connection: AcceptedConnection;
+    readonly pending: Map<string, { resolve: (o: InterruptOutcome) => void; reject: (e: Error) => void }>;
+  }
+  const byLaunch = new Map<string, Accepted>();
+
   const handle = (socket: Socket): void => {
     connections.add(socket);
     socket.setEncoding("utf8");
@@ -98,6 +127,7 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
     let state: "awaiting_hello" | "claiming" | "accepted" | "ended" = "awaiting_hello";
     let slot: ClaimedSlot | undefined;
     let cancelLapse: (() => void) | undefined;
+    let accepted: Accepted | undefined;
 
     const end = (cause: ChannelLostCause): void => {
       if (state === "ended") return;
@@ -105,6 +135,13 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
       state = "ended";
       cancelLapse?.();
       socket.destroy();
+      if (accepted && slot) {
+        if (byLaunch.get(slot.launchId) === accepted) byLaunch.delete(slot.launchId);
+        for (const { reject } of accepted.pending.values()) {
+          reject(new ChannelUnavailableError(slot.launchId, `was lost before the interrupt was acknowledged (${cause})`));
+        }
+        accepted.pending.clear();
+      }
       if (wasAccepted && slot) options.onChannelLost?.(slot, cause);
     };
 
@@ -141,8 +178,6 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
       if (!result.accepted) return reject(result.reason);
       slot = result.slot;
       state = "accepted";
-      socket.write(encodeFrame({ type: "hello_accepted", protocolVersion: PROTOCOL_VERSION }));
-      armLapse();
       const connection: AcceptedConnection = {
         send: (frame) =>
           new Promise<void>((done, failed) => {
@@ -152,6 +187,10 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
             socket.write(encodeFrame(frame), (error) => (error ? failed(error) : done()));
           }),
       };
+      accepted = { connection, pending: new Map() };
+      byLaunch.set(slot.launchId, accepted);
+      socket.write(encodeFrame({ type: "hello_accepted", protocolVersion: PROTOCOL_VERSION }));
+      armLapse();
       options.onAccepted?.(slot, decoded.value, connection);
     };
 
@@ -166,6 +205,11 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         return Promise.resolve();
       }
       if (decoded.value.type === "heartbeat") armLapse();
+      if (decoded.value.type === "interrupt_ack") {
+        const waiter = accepted?.pending.get(decoded.value.requestId);
+        accepted?.pending.delete(decoded.value.requestId);
+        waiter?.resolve(decoded.value.outcome);
+      }
       options.onFrame?.(slot, decoded.value);
       return Promise.resolve();
     };
@@ -195,6 +239,19 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
   await listenPrivately(server, options.socketPath);
   return {
     socketPath: options.socketPath,
+    interrupt: (launchId) =>
+      new Promise<InterruptOutcome>((resolve, reject) => {
+        const channel = byLaunch.get(launchId);
+        if (!channel) return reject(new ChannelUnavailableError(launchId, "is not connected"));
+        const requestId = randomUUID();
+        channel.pending.set(requestId, { resolve, reject });
+        // Written straight to the connection, not through the primer's queue: an
+        // interrupt is a control frame, outside §5.5's prime-before-messages ordering.
+        channel.connection.send({ type: "interrupt", requestId }).catch((error: unknown) => {
+          channel.pending.delete(requestId);
+          reject(new ChannelUnavailableError(launchId, `could not be written to (${String(error)})`));
+        });
+      }),
     close: async () => {
       closing = true;
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));

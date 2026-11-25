@@ -28,6 +28,7 @@ import {
   openChannel,
   ReceiptReporter,
   receiveDaemonFrames,
+  RunInterrupter,
   type ConversationAdapter,
   type OpenChannel,
 } from "@foundry/extension";
@@ -118,7 +119,7 @@ const serveDaemon = async (primer: Primer) => {
   };
 };
 
-const connect = async (onFrame: (frame: DaemonFrame) => void, h: Hello = hello): Promise<OpenChannel> => {
+const connect = async (onFrame: (frame: DaemonFrame, channel: OpenChannel) => void, h: Hello = hello): Promise<OpenChannel> => {
   const opened = await openChannel({ socketPath: server!.socketPath, hello: h, heartbeatIntervalMs: 60_000, onFrame });
   if (!opened.accepted) throw new Error("hello was not accepted");
   channels.push(opened.channel);
@@ -159,7 +160,7 @@ test("the fresh prime is recorded unacknowledged and reaches the worker before a
   expect(await primed.outcome).toEqual({ _tag: "Sent", primeId: "prime-1" });
   await later;
   await twoFrames;
-  expect(received.map((f) => f.id)).toEqual(["prime-1", "later-frame"]);
+  expect(received.map((f) => (f.type === "prime" ? f.id : f.type))).toEqual(["prime-1", "later-frame"]);
   expect(received[0]).toMatchObject({ type: "prime", text: expect.stringContaining("Situation: fresh") });
 
   const [record] = await conversationPrimes();
@@ -214,9 +215,9 @@ test("the prime alone starts no turn; once it is in the session file its receipt
   });
   if (!adapter) throw new Error("conversation adapter not registered");
   const injected = new Promise<void>((resolve) => {
-    const inject = receiveDaemonFrames(adapter!);
-    void connect((frame) => {
-      inject(frame);
+    const dispatch = receiveDaemonFrames({ adapter: adapter!, interrupter: new RunInterrupter() });
+    void connect((frame, channel) => {
+      dispatch(frame, channel);
       resolve();
     }).then((channel) => reporter.attach(channel));
   });
@@ -263,7 +264,7 @@ test("the prime is on record before its frame is written, so a sent prime always
 
 test("two hellos from one launch send one fresh prime; the reconnect names it while it is unacknowledged", async () => {
   const written: string[] = [];
-  const stub: AcceptedConnection = { send: async (frame) => void written.push(frame.id) };
+  const stub: AcceptedConnection = { send: async (frame) => void written.push(frame.type === "prime" ? frame.id : frame.type) };
   let n = 0;
   const primer = createPrimer({ store, primeRequest, newPrimeId: () => `prime-${++n}` });
 

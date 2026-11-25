@@ -8,6 +8,7 @@
 import type { DaemonFrame } from "@foundry/protocol";
 import type { OpenChannel } from "./channel/client.js";
 import type { ConversationAdapter } from "./conversation/adapter.js";
+import type { RunInterrupter } from "./interrupt.js";
 
 /**
  * Sends receipts over the attached channel, holding them while there is none.
@@ -59,9 +60,29 @@ export class ReceiptReporter {
   }
 }
 
-/** Route daemon frames into the conversation. Pass as `openChannel`'s `onFrame`. */
+export interface DaemonFrameHandlers {
+  readonly adapter: Pick<ConversationAdapter, "inject">;
+  readonly interrupter: Pick<RunInterrupter, "handle">;
+}
+
+/**
+ * The one dispatcher for daemon frames. Pass as `openChannel`'s `onFrame`:
+ * a prime goes into the conversation (never starting a turn), an interrupt to
+ * the run interrupter, which answers on the channel the frame arrived on.
+ */
 export const receiveDaemonFrames =
-  (adapter: Pick<ConversationAdapter, "inject">) =>
-  (frame: DaemonFrame): void => {
-    if (frame.type === "prime") adapter.inject({ id: frame.id, kind: "prime", content: frame.text });
+  (handlers: DaemonFrameHandlers) =>
+  (frame: DaemonFrame, channel: OpenChannel): void => {
+    switch (frame.type) {
+      case "prime":
+        handlers.adapter.inject({ id: frame.id, kind: "prime", content: frame.text });
+        return;
+      case "interrupt":
+        handlers.interrupter.handle(frame, channel);
+        return;
+      default: {
+        const unhandled: never = frame;
+        throw new Error(`unhandled daemon frame ${JSON.stringify(unhandled)}`);
+      }
+    }
   };
