@@ -49,7 +49,24 @@ production_lines:
 
 test("foundry validate accepts a valid factory with exit 0", () => {
   const result = run(valid);
-  expect(result).toEqual({ status: 0, stdout: 'F: factory "smoke" is valid\n', stderr: "" });
+  expect(result.status).toBe(0);
+  expect(result.stdout).toMatch(/^F: factory "smoke" is valid\n/);
+  expect(result.stderr).toBe("");
+});
+
+test("foundry validate prints each station's Tool Set with the source of every tool", () => {
+  const station = "      s: { isolation: worktree, model: p/m }";
+  expect(valid).toContain(station);
+  const result = run(
+    valid.replace(station, "      s:\n        isolation: worktree\n        model: p/m\n        extensions:\n          - ext/hooks.ts\n          - { path: ext/tools.ts, tools: [web_fetch] }"),
+  );
+  expect(result.status).toBe(0);
+  const lines = result.stdout.trimEnd().split("\n");
+  expect(lines[1]).toBe("Tool Set for r.s (13 tools):");
+  expect(lines).toContainEqual(expect.stringMatching(/^  read +Pi built-in$/));
+  expect(lines).toContainEqual(expect.stringMatching(/^  agent_message +Foundry extension$/));
+  expect(lines).toContainEqual(expect.stringMatching(new RegExp(`^  web_fetch +extension ${join(dir, "ext/tools.ts")}$`)));
+  expect(lines.at(-1)).toMatch(/registers them is not checked/);
 });
 
 test("foundry validate reports the location of each problem and exits 1", () => {
@@ -68,6 +85,6 @@ test("foundry validate reports a duplicate key at its line", () => {
 test("foundry validate prints a missing verify as a warning and still exits 0", () => {
   const result = run(valid.replace("    verify: [npm, test]\n", ""));
   expect(result.status).toBe(0);
-  expect(result.stdout).toBe('F: factory "smoke" is valid\n');
+  expect(result.stdout).toMatch(/^F: factory "smoke" is valid\n/);
   expect(result.stderr).toMatch(/^F:13:5: production_lines\.f: No verify command.*\(warning\)$/m);
 });
