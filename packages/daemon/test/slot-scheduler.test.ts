@@ -583,12 +583,15 @@ test.each([true, false])("parking during an in-flight unfreeze wins over its che
   await freezer.freeze({ factoryId: "alpha", slotId: "lead/1", cause: "tool_set_mismatch", evidence: {} });
   const unfreezing = freezer.unfreeze({ factoryId: "alpha", slotId: "lead/1" });
   await checkStarted.promise;
+  const queuedFreeze = freezer.freeze({ factoryId: "alpha", slotId: "lead/1", cause: "instruction_missing", evidence: {} });
   inventory[0] = failed("boot-1-launch-1");
   await slots.launchExited(inventory[0]);
   const parked = await recoveryState(store);
   expect(parked.slots).toEqual([{ condition: "parked", recovery_count: 1 }]);
   finishCheck.resolve();
   expect(await unfreezing).toEqual({ outcome: "not_frozen" });
+  expect(await queuedFreeze).toBe("parked");
+  expect(await freezer.unfreeze({ factoryId: "alpha", slotId: "lead/1" })).toEqual({ outcome: "not_frozen" });
   expect(await recoveryState(store)).toEqual(parked);
   expect((await slots.schedule()).map((s) => s.outcome)).toEqual(["held"]);
   expect(worker.asked).toHaveLength(1);

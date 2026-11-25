@@ -418,6 +418,7 @@ const main = async (): Promise<void> => {
             const refs = { factoryId: changed.factoryId, slotId: changed.slotId, launchId: changed.launchId };
 
             if (outcome === "frozen") {log.warn("slot frozen: conversation changed", refs);}
+            else if (outcome === "parked") {log.warn("conversation changed on a parked slot; reset required", refs);}
             else {log.error("conversation changed on a slot with no record; not frozen", refs);}
           },
         }),

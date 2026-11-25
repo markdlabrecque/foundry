@@ -55,8 +55,9 @@ export interface FreezeRequest extends SlotRef {
 /**
  * - `frozen`: the slot is now frozen with this cause, and its hold open or refreshed.
  * - `unknown_slot`: no slot record exists; nothing was written.
+ * - `parked`: parking takes precedence; nothing was written. Only reset may unpark.
  */
-export type FreezeOutcome = "frozen" | "unknown_slot";
+export type FreezeOutcome = "frozen" | "unknown_slot" | "parked";
 
 export type UnfreezeResult =
   | { readonly outcome: "unfrozen"; readonly resolvedHold: number | null }
@@ -90,6 +91,8 @@ interface FrozenRow {
 }
 
 class StaleUnfreeze extends Data.TaggedError("StaleUnfreeze") {}
+
+class ParkedFreeze extends Data.TaggedError("ParkedFreeze") {}
 
 /** An asynchronous check cannot resolve a slot which has since parked or changed cause. */
 const requireSameFreeze = (change: Change, slot: SlotRef, cause: FreezeCause) => Effect.gen(function* () {
@@ -178,7 +181,7 @@ export const createSlotFreezer = async (options: SlotFreezerOptions): Promise<Sl
     frozen.add(key);
 
     try {
-      await run(
+      return await run(
         store.change((change) =>
           Effect.gen(function* () {
             if (request.create !== undefined) {
@@ -188,6 +191,14 @@ export const createSlotFreezer = async (options: SlotFreezerOptions): Promise<Sl
                 [slot.factoryId, slot.slotId, request.create.station, request.create.ordinal],
               );
             }
+
+            // Recovery may have parked while this freeze waited in the queue. Never downgrade it.
+            const parked = yield* change.query(
+              `SELECT 1 FROM slot WHERE factory_id = ? AND slot_id = ? AND condition = 'parked'`,
+              [slot.factoryId, slot.slotId],
+            );
+
+            if (parked.length !== 0) {return yield* new ParkedFreeze();}
 
             yield* change.query(`UPDATE slot SET condition = 'frozen', freeze_cause = ? WHERE factory_id = ? AND slot_id = ?`, [
               request.cause,
@@ -202,16 +213,16 @@ export const createSlotFreezer = async (options: SlotFreezerOptions): Promise<Sl
               detail: { cause: request.cause, holdId: hold.id },
               records: [slotRecord(slot.slotId)],
             });
+
+            return "frozen" as const;
           }),
-        ),
+        ).pipe(Effect.catchTag("ParkedFreeze", () => Effect.succeed("parked" as const))),
       );
     } catch (cause) {
       if (!wasFrozen) {frozen.delete(key);}
 
       throw cause;
     }
-
-    return "frozen";
   };
 
   const unfreeze = async (slot: SlotRef): Promise<UnfreezeResult> => {
