@@ -24,6 +24,7 @@ import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefus
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
 import { interruptRunningOperations } from "./operations.js";
+import { recoverInterruptedSyncs } from "./sync-recovery.js";
 import { createTicketWorktrees } from "./worktrees.js";
 import { createWorktreeService } from "./worktree-cleanup.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
@@ -847,7 +848,32 @@ const main = async (): Promise<void> => {
 
   // Resume only accepted, not-yet-started work (PRD §9.4). An empty queue does not fetch, and a
   // factory with an operation interrupted at startup admits nothing until its recovery runs.
-  for (const factory of decision.started) {void sync.resumeQueued(factory);}
+  // PRD §10.2 step 3: interrupted syncs are reconciled from the clone alone, never rerun or fetched.
+  const recoverAndResume = async (factory: string): Promise<void> => {
+    const clone = clones.get(factory);
+    const loaded = factories.find((f) => f.factoryId === factory);
+
+    if (clone !== undefined && loaded !== undefined) {
+      const target = { clonePath: clone.path, defaultBranch: loaded.config.repository.default_branch };
+
+      try {
+        for (const recovered of await Effect.runPromise(recoverInterruptedSyncs(store, factory, target, process.env))) {
+          log.warn("interrupted sync recovered", { factoryId: factory, operationId: String(recovered.operation.id), detail: { verdict: recovered.verdict } });
+        }
+      } catch (error) {
+        log.error("interrupted sync not recovered", { factoryId: factory, detail: { error: messageOf(error) } });
+      }
+    } else {
+      log.error("interrupted sync not recovered", {
+        factoryId: factory,
+        detail: { error: clone === undefined ? "no clone for the factory" : "factory not loaded" },
+      });
+    }
+
+    await sync.resumeQueued(factory);
+  };
+
+  for (const factory of decision.started) {void recoverAndResume(factory);}
 
   log.info("daemon started", {
     detail: { pid: process.pid, stateRoot, socket: api.socketPath, logLevel: log.level },

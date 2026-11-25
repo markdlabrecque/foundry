@@ -147,6 +147,8 @@ export * from "./operations.js";
 
 export * from "./factory-sync.js";
 
+export * from "./sync-recovery.js";
+
 export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";
 
 export {
