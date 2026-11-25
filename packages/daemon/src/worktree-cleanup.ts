@@ -27,8 +27,8 @@ const summary = (row: WorktreeRow): WorktreeSummary => ({
 });
 
 export const createWorktreeService = (options: TicketWorktreesOptions & { readonly factories: () => ReadonlyArray<string> }) => {
-  const git = (cwd: string, args: ReadonlyArray<string>) => Effect.tryPromise({
-    try: () => runCloneGit(args, options.env ?? process.env, cwd),
+  const git = (cwd: string, args: ReadonlyArray<string>, rawOutput = false) => Effect.tryPromise({
+    try: () => runCloneGit(args, options.env ?? process.env, cwd, rawOutput),
     catch: (cause) => refuse(messageOf(cause)),
   });
 
@@ -85,8 +85,8 @@ export const createWorktreeService = (options: TicketWorktreesOptions & { readon
     const commits = yield* git(target.clonePath, ["log", "--format=%H %s", `${base}..${head}`, "--"]);
     const diff = yield* git(item.path, ["diff", "--binary", "HEAD", "--"]);
     const staged = yield* git(item.path, ["diff", "--cached", "--binary", "--"]);
-    const untracked = yield* git(item.path, ["ls-files", "--others", "--exclude-standard", "-z"]);
-    const ignored = yield* git(item.path, ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"]);
+    const untracked = yield* git(item.path, ["ls-files", "--others", "--exclude-standard", "-z"], true);
+    const ignored = yield* git(item.path, ["ls-files", "--others", "--ignored", "--exclude-standard", "-z"], true);
 
     const contents = yield* Effect.try({
       try: () => {

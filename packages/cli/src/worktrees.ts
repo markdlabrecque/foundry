@@ -22,6 +22,8 @@ interface WorktreeCleanOptions extends WorktreeOptions {
   readonly yes: boolean;
   readonly terminal?: boolean;
   readonly confirm?: (losses: string) => Promise<boolean>;
+  /** Stream the disclosure before acting; stdout remains an untouched JSON envelope. */
+  readonly notice?: (losses: string) => void;
 }
 
 const refused = (message: string, exitCode: StatusOutcome["exitCode"] = EXIT_REFUSED): StatusOutcome => ({ exitCode, stdout: "", stderr: `foundry: ${message}\n` });
@@ -51,8 +53,7 @@ export const runWorktreeList = async (options: WorktreeOptions): Promise<StatusO
   } catch (cause) {return failure(cause);}
 };
 
-const prompt = async (losses: string): Promise<boolean> => {
-  process.stderr.write(losses);
+const prompt = async (): Promise<boolean> => {
   const input = createInterface({ input: process.stdin, output: process.stderr });
 
   try {return (await input.question("Discard this worktree and branch? [y/N] ")).trim().toLowerCase() === "y";}
@@ -77,6 +78,8 @@ export const runWorktreeClean = async (options: WorktreeCleanOptions): Promise<S
 
       const result = inspection.envelope.result;
       const losses = `Remove ${result.path} and branch ${result.branch}\nUncommitted/untracked files:\n${result.files || "(none)"}\nUnmerged commits:\n${result.commits || "(none)"}\n`;
+
+      (options.notice ?? ((text: string) => { process.stderr.write(text); }))(losses);
 
       if (!options.yes) {
         if (!(options.terminal ?? process.stdin.isTTY === true)) {return refused("--force requires a terminal or --yes; nothing removed", EXIT_USAGE);}

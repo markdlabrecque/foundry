@@ -220,7 +220,7 @@ test("cleanup is explicit, intent-first, removes merged worktrees and branches, 
   }));
 });
 
-test.each(["tracked", "untracked", "unmerged", "ignored"])("cleanup refuses %s work and requires confirmation of the current losses", async (kind) => {
+test.each(["tracked", "untracked", "unmerged", "ignored", "whitespace-untracked", "whitespace-ignored"])("cleanup refuses %s work and requires confirmation of the current losses", async (kind) => {
   await fixture(({ store, root, scheduler, worktrees }) => Effect.gen(function* () {
     yield* scheduler.schedule();
     yield* finishTicket(store);
@@ -228,8 +228,13 @@ test.each(["tracked", "untracked", "unmerged", "ignored"])("cleanup refuses %s w
 
     if (kind === "unmerged") {git(path, ["commit", "--quiet", "--allow-empty", "-m", "unmerged work"]);}
     else if (kind === "tracked") {writeFileSync(join(path, "README.md"), "changed tracked work");}
-    else if (kind === "ignored") {writeFileSync(join(path, ".gitignore"), "ignored\n"); git(path, ["add", ".gitignore"]); writeFileSync(join(path, "ignored"), "work");}
-    else {writeFileSync(join(path, "new.txt"), "work");}
+    else if (kind === "ignored" || kind === "whitespace-ignored") {
+      const name = kind === "ignored" ? "ignored" : " ignored ";
+      writeFileSync(join(path, ".gitignore"), kind === "ignored" ? "ignored\n" : "*ignored*\n");
+      git(path, ["add", ".gitignore"]);
+      writeFileSync(join(path, name), "work");
+    }
+    else {writeFileSync(join(path, kind === "whitespace-untracked" ? " precious " : "new.txt"), "work");}
 
     const inspected = yield* worktrees.inspect(undefined, 1);
     expect(inspected.files !== "" || inspected.commits !== "").toBe(true);
@@ -296,7 +301,8 @@ test("CLI list and confirmed force traverse the management socket without deleti
       status: () => ({ instance: { stateRoot: root, daemonPid: 1, startedAt: "2026-01-01T00:00:00Z" } }),
     }));
 
-    const common = { home: root, env: {}, factory: undefined, json: false };
+    const disclosures: Array<string> = [];
+    const common = { home: root, env: {}, factory: undefined, json: false, notice: (text: string) => { disclosures.push(text); } };
 
     try {
       expect(yield* Effect.promise(() => runWorktreeList(common))).toMatchObject({ exitCode: 0, stdout: expect.stringContaining(path) });
@@ -304,13 +310,24 @@ test("CLI list and confirmed force traverse the management socket without deleti
       expect(yield* Effect.promise(() => runWorktreeClean({ ...common, number: 1, force: true, yes: false, terminal: false }))).toMatchObject({ exitCode: 2 });
       let losses = "";
       expect(yield* Effect.promise(() => runWorktreeClean({ ...common, number: 1, force: true, yes: false, terminal: true,
-        confirm: async (text) => { losses = text;
+        confirm: async (text) => {
+          losses = text;
 
- return false; },
+          return false;
+        },
       }))).toMatchObject({ exitCode: 2 });
       expect(losses).toContain("precious.txt");
       expect(existsSync(path)).toBe(true);
-      expect(yield* Effect.promise(() => runWorktreeClean({ ...common, number: 1, force: true, yes: true, json: true }))).toMatchObject({ exitCode: 0, stdout: expect.stringContaining('"ok":true') });
+      disclosures.length = 0;
+      expect(yield* Effect.promise(() => runWorktreeClean({ ...common, number: 1, force: true, yes: true, json: true,
+        notice: (text) => {
+          expect(existsSync(path)).toBe(true);
+          disclosures.push(text);
+        },
+      }))).toMatchObject({ exitCode: 0, stdout: expect.stringContaining('"ok":true') });
+      expect(disclosures).toHaveLength(1);
+      expect(disclosures[0]).toContain("precious.txt");
+      expect(disclosures[0]).toContain("Unmerged commits:");
       expect(existsSync(path)).toBe(false);
     } finally {yield* Effect.promise(api.close);}
   }));
