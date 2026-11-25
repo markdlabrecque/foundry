@@ -200,7 +200,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   pi.registerTool({
     name: TASK_TRANSITION,
     label: "Report an assignment outcome",
-    description: "Report done, blocked or rejected for your active assignment with reason and evidence references. Blocked and rejected without a configured rejection route pause for an operator decision. The daemon chooses routing; you cannot choose a destination. Routed rejection and done at approval, code or final stages are not supported yet.",
+    description: "Report done, blocked or rejected for your active assignment with reason and evidence references. Blocked and rejected without a configured rejection route pause for an operator decision. The daemon chooses routing; you cannot choose a destination. Code-stage done requires the exact ticket branch HEAD commit; all non-writing outcomes require reverting branch movement and tracked changes. Routed rejection and done at approval or final stages are not supported yet.",
     parameters: Type.Object({
       assignmentId: Type.String({ minLength: 1 }),
       outcome: Type.Union([Type.Literal("done"), Type.Literal("blocked"), Type.Literal("rejected")]),
