@@ -18,7 +18,7 @@ interface HookResult {
 }
 
 /** Stream both outputs to disk, not an unbounded in-memory buffer. No shell is involved. */
-const execute = (argv: ReadonlyArray<string>, cwd: string, logPath: string, env: NodeJS.ProcessEnv): Promise<HookResult> =>
+const execute = (argv: ReadonlyArray<string>, cwd: string, logPath: string, env: NodeJS.ProcessEnv, signal: AbortSignal): Promise<HookResult> =>
   new Promise((resolve) => {
     let fd: number | undefined;
 
@@ -35,7 +35,7 @@ const execute = (argv: ReadonlyArray<string>, cwd: string, logPath: string, env:
 
       if (command === undefined) {throw new Error("after_create command is empty");}
 
-      const child = spawn(command, argv.slice(1), { cwd, env, shell: false, stdio: ["ignore", fd, fd] });
+      const child = spawn(command, argv.slice(1), { cwd, env, shell: false, signal, killSignal: "SIGKILL", stdio: ["ignore", fd, fd] });
       let reason: string | null = null;
       child.on("error", (error) => {
         reason = messageOf(error);
@@ -63,7 +63,7 @@ export const runFirstAfterCreate = (options: {
   readonly env: NodeJS.ProcessEnv;
 }) => Effect.gen(function* () {
   const { store, operation, ticket, stage, argv, path, logPath, env } = options;
-  const result = yield* Effect.promise(() => execute(argv, path, logPath, env));
+  const result = yield* Effect.promise((signal) => execute(argv, path, logPath, env, signal));
   const succeeded = result.exitStatus === 0 && result.reason === null;
 
   yield* store.change((change) => Effect.gen(function* () {

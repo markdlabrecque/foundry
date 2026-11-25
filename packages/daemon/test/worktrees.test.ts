@@ -2,6 +2,8 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
+import { createServer } from "node:net";
+import type { Socket } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { Effect } from "effect";
@@ -12,6 +14,7 @@ import { MessageReceiver } from "@foundry/extension";
 import type { AssignmentSchedulerOptions, Store } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { createTicketWorktrees } from "../src/worktrees.js";
+import { watchAssignments } from "../src/assignments.js";
 import { createWorktreeService } from "../src/worktree-cleanup.js";
 import type { WorktreeService } from "../src/worktree-cleanup.js";
 import { serveManagementApi } from "../src/management-api.js";
@@ -26,6 +29,7 @@ const fixture = async <A, E>(use: (f: {
   slots: ReturnType<typeof planSlots>;
   scheduler: ReturnType<typeof createAssignmentScheduler>;
   newScheduler: (overrides?: Partial<AssignmentSchedulerOptions>) => ReturnType<typeof createAssignmentScheduler>;
+  watch: (onError: (error: Error) => void) => () => Promise<void>;
 }) => Effect.Effect<A, E>, settings = "root: ./worktrees") => {
   const root = mkdtempSync(join(tmpdir(), "foundry-worktrees-"));
   roots.push(root);
@@ -67,16 +71,18 @@ production_lines:
     const tickets = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(factory.config)] });
     yield* tickets.submit({ title: "Build widget", spec: "Implement widget" }).pipe(Effect.orDie);
 
-    const newScheduler = (overrides: Partial<AssignmentSchedulerOptions> = {}) => createAssignmentScheduler({
+    const schedulerOptions = {
       store, slots, factories: [factory],
       prepareWorktree: createTicketWorktrees({ store, target: () => ({ factory, clonePath: clone.path }), env: isolatedGitEnv(), home: root }),
-      ...overrides,
-    });
+    };
+
+    const newScheduler = (overrides: Partial<AssignmentSchedulerOptions> = {}) => createAssignmentScheduler({ ...schedulerOptions, ...overrides });
 
     const worktrees = createWorktreeService({ store, target: () => ({ factory, clonePath: clone.path }),
       factories: () => ["shop"], env: isolatedGitEnv() });
 
-    return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler, worktrees });
+    return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler, worktrees,
+      watch: (onError) => watchAssignments(schedulerOptions, onError) });
   })));
 };
 
@@ -602,6 +608,54 @@ test.each([
     expect(yield* store.read(`SELECT to_state, to_status, reason FROM ticket_transition ORDER BY sequence DESC LIMIT 1`))
       .toEqual([{ to_state: "stage", to_status: "paused", reason: "after_create failed" }]);
   }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+});
+
+test("a waiting after_create does not block later tickets, and watcher shutdown terminates it", async () => {
+  const root = mkdtempSync(join(tmpdir(), "foundry-hook-listener-"));
+  roots.push(root);
+  const socketPath = join(root, "hook.sock");
+  const server = createServer();
+  await new Promise<void>((resolve) => { server.listen(socketPath, resolve); });
+  const connected = new Promise<Socket>((resolve) => { server.once("connection", resolve); });
+  const command = [process.execPath, "-e", `if (!process.cwd().endsWith('2-next')) { const c = require('node:net').connect(${JSON.stringify(socketPath)}); c.on('data', () => {}); }`];
+
+  try {
+    await fixture(({ store, watch }) => Effect.gen(function* () {
+      const errors: Array<Error> = [];
+      const stop = watch((error) => errors.push(error));
+      const socket = yield* Effect.promise(() => connected);
+      const closed = new Promise<void>((resolve) => { socket.once("close", () => resolve()); });
+      let unsubscribe: (() => void) | undefined;
+
+      const assigned = new Promise<void>((resolve) => {
+        unsubscribe = store.onCommit(() => {
+          // This read is scheduled after the committing transaction releases its connection.
+          void Effect.runPromise(store.read(`SELECT 1 FROM assignment WHERE ticket_number = 2`)).then((rows) => {
+            if (rows.length > 0) {resolve();}
+          });
+        });
+      });
+
+      try {
+        yield* store.change((change) => Effect.gen(function* () {
+          yield* change.query(`INSERT INTO ticket (factory_id, number, title, slug, production_line, directory, state,
+            rejection_ceiling, message_ceiling, submitted_at)
+            SELECT factory_id, 2, 'Next', 'next', production_line, directory, 'backlog',
+              rejection_ceiling, message_ceiling, submitted_at + 1 FROM ticket WHERE number = 1`);
+          yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "next ticket" });
+        }));
+        yield* Effect.promise(() => assigned);
+        expect(yield* store.read(`SELECT ticket_number FROM assignment`)).toEqual([{ ticket_number: 2 }]);
+        expect((yield* listOperations(store, "shop")).filter((op) => op.kind === "hook"))
+          .toMatchObject([{ ticket: 1, status: "running" }, { ticket: 2, status: "complete" }]);
+      } finally {unsubscribe?.(); yield* Effect.promise(stop);}
+
+      yield* Effect.promise(() => closed);
+      expect(errors).toEqual([]);
+      // Interrupted setup remains durable for recovery; shutdown must not fabricate success/failure.
+      expect((yield* listOperations(store, "shop")).find((op) => op.kind === "hook" && op.ticket === 1)?.status).toBe("running");
+    }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+  } finally {await new Promise<void>((resolve) => { server.close(() => resolve()); });}
 });
 
 test("configured tilde root and branch pattern are used", async () => {
