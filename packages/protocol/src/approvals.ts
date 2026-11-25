@@ -20,9 +20,11 @@ export const ApprovalRecord = Schema.Struct({
   assignmentId: Schema.String,
   transition: Schema.NullOr(Schema.Number),
   stage: Schema.String,
-  kind: Schema.Literals(["blocked", "worker_request", "limit_reached"]),
+  kind: Schema.Literals(["blocked", "worker_request", "limit_reached", "stage_gate"]),
   state: Schema.Literals(["open", "resolved"]),
-  outcome: Schema.NullOr(Schema.Literals(["blocked", "rejected"])),
+  outcome: Schema.NullOr(Schema.Literals(["done", "blocked", "rejected"])),
+  decision: Schema.NullOr(Schema.Literals(["approved", "rejected"])),
+  resolutionTransition: Schema.NullOr(Schema.Number),
   reason: Schema.String,
   evidence: Schema.Array(Schema.String),
   commit: Schema.NullOr(Schema.String),
@@ -41,6 +43,20 @@ export const ApprovalShowResult = Schema.Struct({ approval: ApprovalRecord, comm
 
 export type ApprovalShowResult = typeof ApprovalShowResult.Type;
 
+export const ApprovalDecisionRequest = Schema.Struct({ reason: Schema.optionalKey(Schema.NonEmptyString) });
+
+export const ApprovalDecisionResult = Schema.Struct({
+  approvalId: Schema.Number,
+  decision: Schema.Literals(["approved", "rejected"]),
+  transition: Schema.Number,
+  commit: Schema.String,
+  integrationRequested: Schema.Boolean,
+});
+
+export type ApprovalDecisionResult = typeof ApprovalDecisionResult.Type;
+
+export const isApprovalDecisionResult = Schema.is(ApprovalDecisionResult);
+
 export const isApprovalListResult = Schema.is(ApprovalListResult);
 export const isApprovalShowResult = Schema.is(ApprovalShowResult);
 
@@ -49,6 +65,11 @@ export const approvalCommands = (approval: Pick<ApprovalRecord, "id" | "factoryI
   if (approval.state !== "open") {return [];}
 
   if (approval.kind === "worker_request") {return [`foundry approval answer ${approval.id} "text"`];}
+
+  if (approval.kind === "stage_gate") {
+    return [`foundry approval approve ${approval.id}`, `foundry approval reject ${approval.id} --reason "text"`];
+  }
+
 
   const factory = `'${approval.factoryId.replaceAll("'", String.raw`'\''`)}'`;
 

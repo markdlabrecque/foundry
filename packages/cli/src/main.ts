@@ -13,7 +13,7 @@ import { validateFactoryFile } from "./validate.js";
 import { runTicketList, runTicketPause, runTicketRetry, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow } from "./holds.js";
-import { runApprovalAnswer, runApprovalList, runApprovalShow } from "./approvals.js";
+import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow } from "./approvals.js";
 import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath, runFactorySync } from "./factory.js";
@@ -132,9 +132,19 @@ const approvalAnswer = Command.make("answer", { ...commonFlags, id: Argument.Str
   Effect.flatMap(Effect.promise(() => runApprovalAnswer({ json, home: Option.getOrUndefined(home), env: process.env, id, body })), print),
 );
 
+const approvalApprove = Command.make("approve", { ...commonFlags, id: Argument.String("id") }, ({ json, home, id }) =>
+  Effect.flatMap(Effect.promise(() => runApprovalDecision({ json, home: Option.getOrUndefined(home), env: process.env, id, decision: "approve" })), print),
+);
+
+const approvalReject = Command.make("reject", {
+  ...commonFlags, id: Argument.String("id"), reason: Flag.String("reason"),
+}, ({ json, home, id, reason }) =>
+  Effect.flatMap(Effect.promise(() => runApprovalDecision({ json, home: Option.getOrUndefined(home), env: process.env, id, decision: "reject", reason })), print),
+);
+
 const approval = Command.make("approval").pipe(
   Command.withDescription("Operator decisions about work"),
-  Command.withSubcommands([approvalList, approvalShow, approvalAnswer]),
+  Command.withSubcommands([approvalList, approvalShow, approvalAnswer, approvalApprove, approvalReject]),
 );
 
 const holdList = Command.make("list", commonFlags, ({ json, home }) =>

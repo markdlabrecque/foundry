@@ -29,7 +29,7 @@ export { runMessageSend, type MessageSendOptions } from "./messages.js";
 
 export { runHoldList, runHoldShow, type HoldOptions, type HoldOutcome } from "./holds.js";
 
-export { runApprovalAnswer, runApprovalList, runApprovalShow } from "./approvals.js";
+export { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow } from "./approvals.js";
 
 export { runFactoryList, type FactoryListOptions, type FactoryOutcome } from "./factories.js";
 

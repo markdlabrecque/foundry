@@ -2,6 +2,7 @@
 import { selectStateRoot } from "@foundry/protocol/state-root";
 import { messageOf } from "@foundry/protocol/errors";
 import { DaemonUnreachableError, getFromDaemon } from "./management-client.js";
+import type { ApiReply } from "./management-client.js";
 import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, EXIT_USAGE } from "./status.js";
 import type { StatusOutcome } from "./status.js";
 
@@ -20,6 +21,7 @@ export const fetchAndRender = async <A>(
   path: string,
   is: (value: unknown) => value is A,
   render: (result: A) => string,
+  request: (stateRoot: string, path: string) => Promise<ApiReply> = getFromDaemon,
 ): Promise<StatusOutcome> => {
   if (options.home === "") {return usage("--home needs a directory");}
 
@@ -27,7 +29,7 @@ export const fetchAndRender = async <A>(
   let reply;
 
   try {
-    reply = await getFromDaemon(stateRoot, path);
+    reply = await request(stateRoot, path);
   } catch (error) {
     if (error instanceof DaemonUnreachableError) {
       return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
