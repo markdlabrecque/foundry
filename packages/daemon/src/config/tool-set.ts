@@ -1,3 +1,4 @@
+import { Data, Schema } from "effect";
 import { FIXED_TOOLS, isPlainToolName, isReservedToolName, PI_BUILTIN_TOOLS } from "@foundry/protocol";
 import type { NameProblem } from "./names.js";
 import type { EffectiveStation } from "./resolve.js";
@@ -13,15 +14,21 @@ import type { FactoryConfig } from "./schema.js";
  */
 
 /** Where a tool in a Tool Set comes from. */
-export type ToolSource =
-  | { readonly _tag: "Pi" }
-  | { readonly _tag: "Foundry" }
-  | { readonly _tag: "Extension"; readonly path: string };
+export type ToolSource = Data.TaggedEnum<{
+  Pi: Record<never, never>;
+  Foundry: Record<never, never>;
+  Extension: { readonly path: string };
+}>;
+
+export const ToolSource = Data.taggedEnum<ToolSource>();
 
 export interface ToolSetEntry {
   readonly name: string;
   readonly source: ToolSource;
 }
+
+/** A path-only extension entry: hooks, no tools. */
+const isPathOnly = Schema.is(Schema.String);
 
 type ExtensionList = NonNullable<NonNullable<FactoryConfig["defaults"]>["extensions"]>;
 
@@ -29,7 +36,7 @@ const checkList = (list: ExtensionList | undefined, at: ReadonlyArray<string>): 
   const problems: Array<NameProblem> = [];
   const firstAt = new Map<string, string>();
   (list ?? []).forEach((entry, index) => {
-    if (typeof entry === "string") {return;}
+    if (isPathOnly(entry)) {return;}
 
     entry.tools.forEach((name, toolIndex) => {
       const path = [...at, String(index), "tools", String(toolIndex)];
@@ -76,9 +83,9 @@ const PI_BUILTINS: ReadonlySet<string> = new Set(PI_BUILTIN_TOOLS);
 export const toolSetOf = (station: Pick<EffectiveStation, "extensions">): ReadonlyArray<ToolSetEntry> => [
   ...FIXED_TOOLS.map((name): ToolSetEntry => ({
     name,
-    source: PI_BUILTINS.has(name) ? { _tag: "Pi" } : { _tag: "Foundry" },
+    source: PI_BUILTINS.has(name) ? ToolSource.Pi() : ToolSource.Foundry(),
   })),
   ...station.extensions.flatMap((extension) =>
-    extension.tools.map((name): ToolSetEntry => ({ name, source: { _tag: "Extension", path: extension.path } })),
+    extension.tools.map((name): ToolSetEntry => ({ name, source: ToolSource.Extension({ path: extension.path }) })),
   ),
 ];

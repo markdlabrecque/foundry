@@ -20,6 +20,6 @@ export type {
   ResolveResult,
 } from "./resolve.js";
 
-export { checkToolNames, toolSetOf } from "./tool-set.js";
+export { checkToolNames, toolSetOf, ToolSource } from "./tool-set.js";
 
-export type { ToolSetEntry, ToolSource } from "./tool-set.js";
+export type { ToolSetEntry } from "./tool-set.js";

@@ -1,20 +1,16 @@
-import { toolSetOf } from "@foundry/daemon/config";
-import type { EffectiveStation, ToolSource } from "@foundry/daemon/config";
+import { toolSetOf, ToolSource } from "@foundry/daemon/config";
+import type { EffectiveStation } from "@foundry/daemon/config";
 
 /** States what validation does not prove about extension tools (PRD §4 "Validation"). */
 export const REGISTRATION_DISCLAIMER =
   "Extension tools are listed as configured; whether each extension registers them is not checked.";
 
-const describeSource = (source: ToolSource): string => {
-  switch (source._tag) {
-    case "Pi":
-      return "Pi built-in";
-    case "Foundry":
-      return "Foundry extension";
-    case "Extension":
-      return `extension ${source.path}`;
-  }
-};
+const describeSource = (source: ToolSource): string =>
+  ToolSource.$match(source, {
+    Pi: () => "Pi built-in",
+    Foundry: () => "Foundry extension",
+    Extension: ({ path }) => `extension ${path}`,
+  });
 
 /**
  * Renders each station's effective Tool Set, one tool per line with where it comes
