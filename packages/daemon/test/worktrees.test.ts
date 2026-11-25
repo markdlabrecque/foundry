@@ -13,6 +13,9 @@ import type { DaemonFrame } from "@foundry/protocol";
 import { MessageReceiver } from "@foundry/extension";
 import type { AssignmentSchedulerOptions, Store } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
+import { CompactionPrimingOutcome, createPrimer, startChannelServer } from "@foundry/daemon";
+import { openChannel } from "@foundry/extension";
+import { PROTOCOL_VERSION } from "@foundry/protocol";
 import { createTicketWorktrees } from "../src/worktrees.js";
 import { watchAssignments } from "../src/assignments.js";
 import { createWorktreeService } from "../src/worktree-cleanup.js";
@@ -30,7 +33,7 @@ const fixture = async <A, E>(use: (f: {
   scheduler: ReturnType<typeof createAssignmentScheduler>;
   newScheduler: (overrides?: Partial<AssignmentSchedulerOptions>) => ReturnType<typeof createAssignmentScheduler>;
   watch: (onError: (error: Error) => void) => () => Promise<void>;
-}) => Effect.Effect<A, E>, settings = "root: ./worktrees") => {
+}) => Effect.Effect<A, E>, settings = "root: ./worktrees", isolation = "worktree") => {
   const root = mkdtempSync(join(tmpdir(), "foundry-worktrees-"));
   roots.push(root);
   const source = join(root, "source");
@@ -44,12 +47,12 @@ default_production_line: standard
 rooms:
   floor:
     stations:
-      worker: { isolation: worktree, model: fake/model }
-production_lines:
+      worker: { isolation: ${isolation}, model: fake/model }
+${isolation === "none" ? "      final: { isolation: worktree, model: fake/model }\n" : ""}production_lines:
   standard:
     stages:
-      - { id: develop, station: floor.worker, writing: true }
-      - { id: review, station: floor.worker, approval: true, on_rejection: develop }
+      - { id: develop, station: floor.worker, writing: ${isolation === "worktree"} }
+${isolation === "none" ? "      - { id: implement, station: floor.final, writing: true }\n" : ""}      - { id: review, station: floor.${isolation === "none" ? "final" : "worker"}, approval: true, on_rejection: ${isolation === "none" ? "implement" : "develop"} }
 `);
   const loaded = loadFactoryFiles([yamlFile], { env: {} });
 
@@ -245,6 +248,130 @@ test("assignments send the branch's changed context, skip received hashes and sc
       yield* Effect.promise(() => delivery.stop());
     }
   }));
+});
+
+test.each(["worktree", "none"])("compaction restores full unchanged %s context over the channel only while assigned", async (isolation) => {
+  await fixture(({ store, root, clone, slots, newScheduler }) => Effect.gen(function* () {
+    writeFileSync(join(clone, "AGENTS.md"), "Full repository instructions");
+    mkdirSync(join(clone, ".pi", "skills"), { recursive: true });
+    writeFileSync(join(clone, ".pi", "APPEND_SYSTEM.md"), "Full appended instructions");
+    writeFileSync(join(clone, ".pi", "skills", "review.md"), "---\nname: review\ndescription: Review carefully\n---\nPRIVATE SKILL BODY");
+    git(clone, ["add", "."]);
+    git(clone, ["commit", "--quiet", "-m", "context fixture"]);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`INSERT INTO conversation VALUES ('shop', 'worker/1', 'conversation', 'current', 0)`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "conversation" });
+    }));
+    yield* newScheduler({ clonePath: () => clone }).schedule();
+    const slot = { factoryId: "shop", slotId: "worker/1", launchId: "launch" };
+
+    const primer = createPrimer({ store, clonePath: () => clone, primeRequest: () => ({
+      address: "floor.worker", slotId: slot.slotId, isolation: isolation === "none" ? "none" : "worktree",
+      instructions: [], knowledgeRoot: join(root, "knowledge"), baseDir: root,
+    }) });
+
+    const frames: Array<DaemonFrame> = [];
+    const delivery = createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => { throw cause; } });
+    let accepted!: Promise<unknown>;
+    let compacted!: Promise<unknown>;
+
+    const server = yield* Effect.promise(() => startChannelServer({
+      socketPath: join(root, "channel.sock"),
+      slotClaim: { claim: async () => ({ accepted: true, slot }) },
+      onAccepted: (claimed, hello, connection) => {
+        const primed = primer.prime(claimed, hello, connection);
+        accepted = primed.outcome.then(() => delivery.attach(claimed, primed.connection));
+      },
+      onFrame: (claimed, frame) => {
+        if (frame.type === "compacted") {compacted = primer.compacted(claimed);}
+      },
+    }));
+
+    const waiters: Array<{ count: number; resolve: () => void }> = [];
+
+    const received = (count: number) => new Promise<void>((resolve, reject) => {
+      if (frames.length >= count) {
+        resolve();
+
+        return;
+      }
+
+      const timer = setTimeout(() => reject(new Error(`missing channel frame ${count}`)), 2000);
+      waiters.push({ count, resolve: () => { clearTimeout(timer); resolve(); } });
+    });
+
+    const opened = yield* Effect.promise(() => openChannel({
+      socketPath: server.socketPath,
+      hello: { type: "hello", protocolVersion: PROTOCOL_VERSION, ...slot, conversationRef: "conversation",
+        hasRecoverableHistory: false, mode: "headless", tools: [] },
+      onFrame: (frame) => {
+        frames.push(frame);
+
+        for (const waiter of waiters.filter((w) => frames.length >= w.count)) {waiter.resolve();}
+      },
+    }));
+
+    if (!opened.accepted) {throw new Error("fixture channel refused");}
+
+    const drain = () => Effect.gen(function* () {
+      yield* bindStationMessages({ store, slots, contextSlot: assignmentContextSlot });
+      yield* Effect.promise(() => delivery.idle());
+    });
+
+    const compact = () => Effect.gen(function* () {
+      const count = frames.length;
+      yield* Effect.promise(() => opened.channel.send({ type: "compacted" }));
+      yield* Effect.promise(() => received(count + 1)); // prime proves the report was processed
+      expect(yield* Effect.promise(() => compacted)).toMatchObject(CompactionPrimingOutcome.Sent({ primeId: expect.any(String) }));
+      yield* drain();
+    });
+
+    try {
+      yield* Effect.promise(() => received(1));
+      yield* Effect.promise(() => accepted);
+      yield* drain();
+      yield* Effect.promise(() => received(2));
+      const first = frames[1];
+
+      if (first?.type !== "message") {throw new Error("assignment message missing");}
+
+      expect(yield* acknowledgeMessage(store, slot, first.id)).toBe(true);
+      const initial = yield* store.read<{ parts: string; root: string }>(`SELECT parts, root FROM repository_context`);
+      const expectedRoot = isolation === "none" ? clone : join(root, "worktrees", "shop", "1-build-widget");
+      expect(initial[0]?.root).toBe(expectedRoot);
+      yield* compact();
+      yield* Effect.promise(() => received(4));
+      expect(frames.map((frame) => frame.type)).toEqual(["prime", "message", "prime", "message"]);
+      const restored = frames[3];
+
+      if (restored?.type !== "message") {throw new Error("restored repository context missing");}
+
+      expect(restored.body).toContain(`Root: ${expectedRoot}`);
+      expect(restored.body).toContain("Full repository instructions");
+      expect(restored.body).toContain("Full appended instructions");
+      expect(restored.body).toContain(`Path: ${expectedRoot}/.pi/skills/review.md`);
+      expect(restored.body).not.toContain("PRIVATE SKILL BODY");
+      expect(yield* acknowledgeMessage(store, slot, restored.id)).toBe(true);
+      expect(yield* store.read(`SELECT parts, root FROM repository_context ORDER BY rowid`)).toEqual([initial[0], initial[0]]);
+
+      for (const status of ["suspended", "ended"]) {
+        yield* store.change((change) => Effect.gen(function* () {
+          yield* change.query(`UPDATE assignment SET status = ?, ended_at = ?`, [status, status === "ended" ? 1 : null]);
+          yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: status });
+        }));
+        yield* compact();
+      }
+
+      // Each unassigned compaction still primes, but accepts/sends no context message.
+      expect(frames.map((frame) => frame.type)).toEqual(["prime", "message", "prime", "message", "prime", "prime"]);
+      expect(yield* store.read(`SELECT COUNT(*) AS count FROM repository_context`)).toEqual([{ count: 2 }]);
+      expect(yield* store.read(`SELECT messages_spent FROM ticket`)).toEqual([{ messages_spent: 0 }]);
+    } finally {
+      opened.channel.close();
+      yield* Effect.promise(() => server.close());
+      yield* Effect.promise(() => delivery.stop());
+    }
+  }), "root: ./worktrees", isolation);
 });
 
 test("equivalent skill headers in two tickets refresh their effective worktree paths", async () => {
