@@ -352,10 +352,17 @@ const main = async (): Promise<void> => {
       });
       const recorder = scheduler;
 
+      // Only the host's exit report is death evidence; a lost channel never relaunches a slot (PRD §5.3).
       host.onLaunchExited((launch) => {
-        void recorder.recordExit(launch).then(
-          (ended) => {
+        void recorder.launchExited(launch).then(
+          ({ ended, recovery }) => {
             if (ended) {log.info("launch ended", { factoryId: launch.factoryId, slotId: launch.slotId, launchId: launch.launchId });}
+
+            if (recovery?.outcome === "relaunched" && recovery.launchId !== undefined) {
+              log.info("slot relaunched", { factoryId: recovery.factoryId, slotId: recovery.slotId, launchId: recovery.launchId });
+            } else if (recovery?.outcome === "refused") {
+              log.warn("slot relaunch refused", { factoryId: recovery.factoryId, slotId: recovery.slotId, detail: { error: recovery.error ?? "" } });
+            }
           },
           (cause: unknown) =>
             log.error("launch end not recorded", { factoryId: launch.factoryId, launchId: launch.launchId, detail: { error: messageOf(cause) } }),

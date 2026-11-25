@@ -21,6 +21,7 @@ function inputs(overrides: Partial<LaunchInputs> = {}): LaunchInputs {
     slotDir: "/state/slots/factory-1/developer-1",
     factoryId: "factory-1",
     slotId: "developer/1",
+    conversationRef: "conv-3f2a",
     launchId: "launch-7",
     ...overrides,
   };
@@ -36,6 +37,7 @@ test("maps effective station inputs literally onto Pi's RPC argv", () => {
   expect(parsed.fileArgs).toEqual([]);
   expect(parsed.mode).toBe("rpc");
   expect(parsed.model).toBe("faux/scripted");
+  expect(parsed.sessionId).toBe("conv-3f2a");
   expect(parsed.provider).toBeUndefined();
   expect(parsed.tools).toEqual([...FIXED_TOOLS, "web_fetch", "jira_get"]);
   expect(parsed.extensions).toEqual([
@@ -113,6 +115,8 @@ test.each([
   ["a tool name that would split the list", { extensions: [{ path: "/e.ts", tools: ["a,b"] }] }],
   ["a tool pattern", { extensions: [{ path: "/e.ts", tools: ["web_*"] }] }],
   ["an empty launch ID", { launchId: "" }],
+  ["a conversation that reads as a flag", { conversationRef: "-c" }],
+  ["a conversation Pi would not take as a session ID", { conversationRef: "conv/1" }],
 ])("refuses %s", (_label, overrides: Partial<LaunchInputs>) => {
   expect(() => buildLaunchCommand(inputs(overrides), pi, {})).toThrow();
 });

@@ -64,6 +64,12 @@ export interface LaunchInputs {
   readonly slotDir: string;
   readonly factoryId: string;
   readonly slotId: string;
+  /**
+   * The slot's conversation, which outlives a launch (PRD §5.3, §10.2). Every launch of the slot
+   * opens it with `--session-id`, so Pi reopens the slot folder's session with this ID, or starts
+   * it with this ID when none exists yet.
+   */
+  readonly conversationRef: string;
   readonly launchId: string;
 }
 
@@ -156,6 +162,7 @@ export function buildLaunchArgs(inputs: SlotLaunchInputs, pi: PiExecutable): Lau
 
   requireValue("factoryId", inputs.factoryId);
   requireValue("slotId", inputs.slotId);
+  requireSessionId(inputs.conversationRef);
 
   const tools = [...FIXED_TOOLS, ...inputs.extensions.flatMap((extension) => extension.tools)];
 
@@ -166,6 +173,8 @@ export function buildLaunchArgs(inputs: SlotLaunchInputs, pi: PiExecutable): Lau
     "--mode",
     "rpc",
     ...SUPPRESSION_FLAGS,
+    "--session-id",
+    inputs.conversationRef,
     "--model",
     inputs.model,
     "--tools",
@@ -182,6 +191,15 @@ export function buildLaunchArgs(inputs: SlotLaunchInputs, pi: PiExecutable): Lau
 function requireValue(field: string, value: string): void {
   if (value === "" || value.startsWith("-")) {
     throw new Error(`launch input ${field} must be non-empty and not start with "-": ${JSON.stringify(value)}`);
+  }
+}
+
+/** Pi 1.6.0's own session ID rule, so Pi never refuses the launch for its conversation. */
+const SESSION_ID = /^[A-Za-z0-9](?:[A-Za-z0-9._-]*[A-Za-z0-9])?$/;
+
+function requireSessionId(ref: string): void {
+  if (!SESSION_ID.test(ref)) {
+    throw new Error(`launch input conversationRef must be a Pi session ID: ${JSON.stringify(ref)}`);
   }
 }
 
