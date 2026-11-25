@@ -308,6 +308,29 @@ test("an indeterminate integration declared landed without its approved commit o
   expect(git(saved.repository, "merge-base", "--is-ancestor", saved.approved, "main")).toBe("");
 });
 
+test("not landed is refused while the clone has a leftover Git index lock, leaving the hold's evidence in place", async () => {
+  const saved = await interruptedIntegration(false);
+  const indexLock = join(saved.repository, ".git", "index.lock");
+  writeFileSync(indexLock, "");
+
+  await declareAfterRestart(saved, (store) => Effect.gen(function* () {
+    const before = yield* store.read(`SELECT * FROM operation`);
+    const scratchBefore = existsSync(saved.scratch);
+    const lockBefore = existsSync(saved.lock);
+
+    expect(yield* declare(saved, false)).toMatchObject({ exitCode: 1, stderr: expect.stringContaining("Repair the factory clone") });
+    expect(yield* store.read(`SELECT * FROM operation`)).toEqual(before);
+    expect(yield* store.read(`SELECT state, status FROM ticket`)).toEqual([{ state: "stage", status: "paused" }]);
+    expect(yield* listOpenHolds(store)).toMatchObject([{ kind: "indeterminate_integration", subject: "1" }]);
+    expect(yield* startNextOperation(store, "shop")).toBeUndefined();
+    // The refusal discards nothing the hold lists as evidence.
+    expect(existsSync(saved.scratch)).toBe(scratchBefore);
+    expect(existsSync(saved.lock)).toBe(lockBefore);
+  }).pipe(Effect.orDie));
+
+  expect(git(saved.repository, "rev-parse", "main")).toBe(saved.recordedHead);
+});
+
 test("an indeterminate integration whose approved commit is on the default branch can be declared landed: it completes, cleans up and reopens the queue", async () => {
   const saved = await interruptedIntegration(false);
   git(saved.repository, "merge", "--ff-only", "--quiet", saved.approved);

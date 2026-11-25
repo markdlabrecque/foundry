@@ -105,10 +105,10 @@ const temporaryWorktreeOf = (intent: RecordedIntent | undefined): string | null 
  * Why the clone cannot take a rerun, if it cannot: Git died mid-write (its index lock is left) or
  * the checkout is dirty. A rerun would only refuse again on every restart, so the operator decides.
  */
-const brokenClone = (
-  git: (args: ReadonlyArray<string>) => Effect.Effect<string, RecoveryGitFailed>,
+export const brokenClone = <E>(
+  git: (args: ReadonlyArray<string>) => Effect.Effect<string, E>,
   clonePath: string,
-): Effect.Effect<string | undefined, RecoveryGitFailed> => Effect.gen(function* () {
+): Effect.Effect<string | undefined, E> => Effect.gen(function* () {
   const indexLock = resolve(clonePath, yield* git(["rev-parse", "--git-path", "index.lock"]));
 
   if (existsSync(indexLock)) {return `factory clone has a leftover Git index lock: ${indexLock}`;}

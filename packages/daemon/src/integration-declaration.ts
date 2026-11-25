@@ -18,10 +18,10 @@ import { runCloneGit } from "./factory-clone.js";
 import type { SyncTarget } from "./factory-sync.js";
 import { ticketRecord } from "./history-records.js";
 import { closeOpenHoldIn } from "./holds.js";
-import { discardIntegrationLeftovers, recordedTemporaryWorktree } from "./integration-recovery.js";
+import { brokenClone, discardIntegrationLeftovers, recordedTemporaryWorktree } from "./integration-recovery.js";
 import { completeIndeterminateIntegrationIn, getOperation, requeueIndeterminateIntegrationIn } from "./operations.js";
 import { TicketError } from "./tickets.js";
-import type { Change, Store, StoreError } from "./store.js";
+import type { Query, Store, StoreError } from "./store.js";
 import type { WorktreeService } from "./worktree-cleanup.js";
 
 export type IntegrationDeclaration = "landed" | "not-landed";
@@ -55,8 +55,8 @@ const RecoveryEvidence = Schema.Struct({ branchLock: Schema.optionalKey(Schema.N
 const decodeEvidence = Schema.decodeUnknownOption(RecoveryEvidence);
 
 /** The ticket while it is paused on this integration's approval; `undefined` otherwise. */
-const pausedTicket = (change: Change, factory: string, number: number, approvalId: number) => Effect.map(
-  change.query<{ stage: string; approved_commit: string }>(`SELECT t.stage, i.approved_commit FROM ticket t
+const pausedTicket = (query: Query, factory: string, number: number, approvalId: number) => Effect.map(
+  query<{ stage: string; approved_commit: string }>(`SELECT t.stage, i.approved_commit FROM ticket t
     JOIN integration_intent i ON i.factory_id = t.factory_id AND i.ticket_number = t.number
     JOIN approval a ON a.id = i.approval_id
     WHERE t.factory_id = ? AND t.number = ? AND t.state = 'stage' AND t.status = 'paused'
@@ -111,6 +111,23 @@ export const declareIntegration = (
       }
     }
 
+    if (declaration === "not-landed") {
+      // Refuse before touching the clone, so a refusal leaves the hold's evidence in place. The
+      // transaction below checks the ticket again.
+      const ticket = yield* pausedTicket(store.read, factory, number, approvalId);
+
+      if (ticket === undefined || ticket.approved_commit !== approvedCommit) {
+        return yield* refuse("invalid_state", `Ticket ${number} is not paused with the integration's approval; cannot rerun it`);
+      }
+
+      // A rerun into a clone Git died writing would crash mid-run and turn indeterminate again.
+      const broken = yield* brokenClone(git, target.clonePath);
+
+      if (broken !== undefined) {
+        return yield* refuse("invalid_state", `Repair the factory clone before declaring not landed: ${broken}`);
+      }
+    }
+
     // The interrupted run's scratch checkout and empty ticket-branch lock would block cleanup or a rerun.
     const evidence = Option.getOrUndefined(decodeEvidence(operation.result ?? {}));
 
@@ -122,7 +139,7 @@ export const declareIntegration = (
 
     if (declaration === "not-landed") {
       yield* store.change((change) => Effect.gen(function* () {
-        const ticket = yield* pausedTicket(change, factory, number, approvalId);
+        const ticket = yield* pausedTicket(change.query, factory, number, approvalId);
 
         if (ticket === undefined || ticket.approved_commit !== approvedCommit) {
           return yield* refuse("invalid_state", `Ticket ${number} is not paused with the integration's approval; cannot rerun it`);
@@ -157,7 +174,7 @@ export const declareIntegration = (
       if (done === undefined) {return yield* refuse("invalid_state", `Integration ${operation.id} is no longer indeterminate`);}
 
       yield* closeOpenHoldIn(change, hold, "resolved");
-      const ticket = yield* pausedTicket(change, factory, number, approvalId);
+      const ticket = yield* pausedTicket(change.query, factory, number, approvalId);
 
       if (ticket === undefined) {return false;}
 
