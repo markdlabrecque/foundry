@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { Effect, Match, Schema } from "effect";
+import { Effect, Exit, Match, Schema } from "effect";
 import {
   agentDelegateHandler, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
   foundryMigrations, humanRequestHandler, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
@@ -113,7 +113,7 @@ test("rejection limit migration preserves blocked and worker request approvals a
        SELECT factory_id, ticket_number, assignment_id, NULL, 'limit_reached', 'open', raised_at FROM approval WHERE id = 2`,
     )));
 
-    expect(invalid).toMatchObject({ _tag: "Failure" });
+    expect(Exit.isFailure(invalid)).toBe(true);
     expect(yield* snapshot(store)).toEqual(saved.after);
   })));
 });

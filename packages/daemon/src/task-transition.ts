@@ -216,8 +216,9 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
 
   if (observation !== undefined) {yield* observation.validate();}
 
-  return { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: target, status,
-    approvalId };
+  const result = { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: target, status };
+
+  return approvalId === undefined ? result : { ...result, approvalId };
 });
 
 /** Git inspection is read-only and outside the submission transaction. No failed inspection can
