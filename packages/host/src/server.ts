@@ -1,19 +1,25 @@
-/** The Worker Host control server: serves identity on the host socket. */
+/** The Worker Host control server: serves identity, launches and inventory on the host socket. */
 import { randomUUID } from "node:crypto";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { connect, createServer, type Socket } from "node:net";
+import { readBootId } from "./boot.js";
 import {
   HOST_CONTROL_VERSION,
   hostSocketPath,
   readLines,
+  type HostEvent,
   type HostIdentity,
   type HostResponse,
 } from "./control.js";
+import { LaunchRefused, createLaunchRegistry, type LaunchRegistry, type LaunchSpec } from "./launches.js";
 
 export interface RunningHost {
   readonly identity: HostIdentity;
   readonly socketPath: string;
-  /** Stops listening, drops control connections and removes the socket. */
+  /**
+   * Stops listening, drops control connections and removes the socket.
+   * Launches are left running: stopping them is a separate, explicit decision.
+   */
   close(): Promise<void>;
 }
 
@@ -23,23 +29,43 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
   await mkdir(stateRoot, { recursive: true, mode: 0o700 });
   await clearStaleSocket(socketPath);
 
+  const bootId = readBootId();
   const identity: HostIdentity = {
     hostId: randomUUID(),
     pid: process.pid,
     startedAt: new Date().toISOString(),
     stateRoot,
     controlVersion: HOST_CONTROL_VERSION,
+    bootId,
   };
 
   const clients = new Set<Socket>();
+  const send = (socket: Socket, message: HostResponse | HostEvent): void => {
+    if (socket.writable) socket.write(`${JSON.stringify(message)}\n`);
+  };
+  const registry = createLaunchRegistry({
+    bootId,
+    // An exit is reported to whoever is connected now; a client that was not
+    // connected learns it from the inventory when it asks.
+    onExit: (launch) => {
+      for (const client of clients) send(client, { event: "launch-exited", launch });
+    },
+  });
+
   const server = createServer((socket) => {
     clients.add(socket);
     socket.on("close", () => clients.delete(socket));
-    // A control client vanishing is ordinary; it must never take the host down.
+    // A control client vanishing is ordinary; it must never take the host or a launch down.
     socket.on("error", () => {});
     readLines(socket, (line) => {
-      if (!socket.writable) return;
-      socket.write(`${JSON.stringify(answer(line, identity))}\n`);
+      // An unexpected failure answers this request; it must not take the host down.
+      void answer(line, identity, registry)
+        .catch((error: unknown): HostResponse => ({
+          id: requestId(line),
+          ok: false,
+          error: `internal error: ${error instanceof Error ? error.message : String(error)}`,
+        }))
+        .then((response) => send(socket, response));
     });
   });
 
@@ -65,7 +91,7 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
   };
 }
 
-function answer(line: string, identity: HostIdentity): HostResponse {
+async function answer(line: string, identity: HostIdentity, registry: LaunchRegistry): Promise<HostResponse> {
   let request: unknown;
   try {
     request = JSON.parse(line);
@@ -75,12 +101,54 @@ function answer(line: string, identity: HostIdentity): HostResponse {
   if (typeof request !== "object" || request === null) {
     return { id: null, ok: false, error: "malformed request: not an object" };
   }
-  const { id, op } = request as { id?: unknown; op?: unknown };
+  const { id, op, spec } = request as { id?: unknown; op?: unknown; spec?: unknown };
   if (typeof id !== "number") {
     return { id: null, ok: false, error: "malformed request: missing numeric id" };
   }
-  if (op === "identify") return { id, ok: true, identity };
-  return { id, ok: false, error: `unknown op: ${String(op)}` };
+  switch (op) {
+    case "identify":
+      return { id, ok: true, identity };
+    case "inventory":
+      return { id, ok: true, launches: registry.inventory() };
+    case "launch": {
+      const problem = checkLaunchSpec(spec);
+      if (problem !== undefined) return { id, ok: false, error: `malformed launch spec: ${problem}` };
+      try {
+        return { id, ok: true, launch: await registry.launch(spec as LaunchSpec) };
+      } catch (error) {
+        if (error instanceof LaunchRefused) return { id, ok: false, error: error.message };
+        throw error;
+      }
+    }
+    default:
+      return { id, ok: false, error: `unknown op: ${String(op)}` };
+  }
+}
+
+function requestId(line: string): number | null {
+  try {
+    const { id } = JSON.parse(line) as { id?: unknown };
+    return typeof id === "number" ? id : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Names the first thing wrong with a launch spec, or returns undefined. */
+function checkLaunchSpec(spec: unknown): string | undefined {
+  if (typeof spec !== "object" || spec === null) return "not an object";
+  const s = spec as Record<string, unknown>;
+  for (const field of ["factoryId", "slotId", "command", "cwd"] as const) {
+    if (typeof s[field] !== "string" || s[field] === "") return `${field} must be a non-empty string`;
+  }
+  if (!Array.isArray(s.args) || !s.args.every((a) => typeof a === "string")) {
+    return "args must be an array of strings";
+  }
+  if (s.env !== undefined) {
+    if (typeof s.env !== "object" || s.env === null || Array.isArray(s.env)) return "env must be an object";
+    if (!Object.values(s.env).every((v) => typeof v === "string")) return "env values must be strings";
+  }
+  return undefined;
 }
 
 /**

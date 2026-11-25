@@ -1,9 +1,9 @@
 import { accessSync, constants, statSync } from "node:fs";
 import type { Stats } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, isAbsolute, join, resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 import { decodeFactoryYaml, locateProblems } from "./decode.js";
-import type { ConfigProblem, DecodeResult, SettingProblem } from "./decode.js";
+import type { ConfigProblem, DecodeResult } from "./decode.js";
+import { resolveConfiguredPath as resolveFrom } from "./paths.js";
 import type { FactoryConfig } from "./schema.js";
 
 /**
@@ -24,13 +24,15 @@ export interface OfflineCheckOptions {
 
 type Path = ReadonlyArray<string | number>;
 
-/** Resolves a configured path: `~` from home, relative from the YAML's directory. */
-export const resolveConfiguredPath = (value: string, options: OfflineCheckOptions): string => {
-  const home = options.home ?? homedir();
-  if (value === "~") return home;
-  if (value.startsWith("~/")) return join(home, value.slice(2));
-  return isAbsolute(value) ? value : resolve(dirname(resolve(options.yamlFile)), value);
-};
+/** A problem with its setting path as segments, joined into a dotted path when reported. */
+interface SettingProblem {
+  readonly path: Path;
+  readonly message: string;
+}
+
+/** Resolves a configured path against the YAML's directory, via the shared helper. */
+const resolveConfiguredPath = (value: string, options: OfflineCheckOptions): string =>
+  resolveFrom(value, dirname(resolve(options.yamlFile)), options.home);
 
 const statOf = (path: string): Stats | undefined => {
   try {
@@ -191,7 +193,7 @@ const checkResources = (
 export const checkOffline = (
   config: FactoryConfig,
   options: OfflineCheckOptions,
-): ReadonlyArray<SettingProblem> => {
+): ReadonlyArray<ConfigProblem> => {
   const problems: SettingProblem[] = [];
   problems.push(...checkSource(config.repository.source, options));
   const branch = branchNameProblem(config.repository.default_branch);
@@ -224,7 +226,7 @@ export const checkOffline = (
   for (const [lineName, line] of Object.entries(config.production_lines)) {
     problems.push(...checkCommand(["production_lines", lineName, "verify"], line.verify));
   }
-  return problems;
+  return problems.map((problem) => ({ path: problem.path.map(String).join("."), message: problem.message }));
 };
 
 /**
@@ -234,6 +236,7 @@ export const checkOffline = (
 export const validateFactoryYaml = (text: string, options: OfflineCheckOptions): DecodeResult => {
   const decoded = decodeFactoryYaml(text);
   if (decoded._tag === "Invalid") return decoded;
-  const problems: ReadonlyArray<ConfigProblem> = locateProblems(text, checkOffline(decoded.config, options));
+  const problems = [...locateProblems(text, checkOffline(decoded.config, options))];
+  problems.sort((a, b) => (a.line ?? 0) - (b.line ?? 0) || (a.column ?? 0) - (b.column ?? 0));
   return problems.length === 0 ? decoded : { _tag: "Invalid", problems };
 };

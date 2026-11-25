@@ -8,9 +8,12 @@ import {
   HOST_CONTROL_VERSION,
   hostSocketPath,
   readLines,
+  type HostEvent,
   type HostIdentity,
+  type HostRequest,
   type HostResponse,
 } from "./control.js";
+import type { LaunchRecord, LaunchSpec } from "./launches.js";
 
 /** Path, relative to the state root, of the file that receives the host's stderr (PRD §15.2). */
 export const HOST_LOG_NAME = join("logs", "host.log");
@@ -97,6 +100,12 @@ export async function startHost(
 /** A control connection to a running Worker Host. Closing it leaves the host running. */
 export interface HostConnection {
   identify(): Promise<HostIdentity>;
+  /** Starts a launch in its own process group; rejects if the host refuses. */
+  launch(spec: LaunchSpec): Promise<LaunchRecord>;
+  /** Every launch the host has started, with its liveness and, once gone, its exit. */
+  inventory(): Promise<LaunchRecord[]>;
+  /** Called for each launch exit the host reports while this connection is open. */
+  onLaunchExited(listener: (launch: LaunchRecord) => void): void;
   close(): void;
 }
 
@@ -127,13 +136,19 @@ export async function connectHost(
   };
   socket.on("error", (error) => failAll(error));
   socket.on("close", () => failAll(new Error("worker host connection closed")));
+  const exitListeners: Array<(launch: LaunchRecord) => void> = [];
   readLines(socket, (line) => {
-    let response: HostResponse;
+    let message: HostResponse | HostEvent;
     try {
-      response = JSON.parse(line) as HostResponse;
+      message = JSON.parse(line) as HostResponse | HostEvent;
     } catch {
       return;
     }
+    if ("event" in message) {
+      if (message.event === "launch-exited") for (const listener of exitListeners) listener(message.launch);
+      return;
+    }
+    const response = message;
     if (response.id === null) return;
     const waiter = pending.get(response.id);
     if (waiter === undefined) return;
@@ -141,7 +156,7 @@ export async function connectHost(
     waiter.resolve(response);
   });
 
-  const request = (op: "identify"): Promise<HostResponse> => {
+  const request = (op: HostRequest["op"], fields: Record<string, unknown> = {}): Promise<HostResponse> => {
     const id = nextId++;
     return new Promise<HostResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -158,7 +173,7 @@ export async function connectHost(
           reject(e);
         },
       });
-      socket.write(`${JSON.stringify({ id, op })}\n`);
+      socket.write(`${JSON.stringify({ ...fields, id, op })}\n`);
     });
   };
 
@@ -166,12 +181,28 @@ export async function connectHost(
     async identify() {
       const response = await request("identify");
       if (!response.ok) throw new Error(`worker host refused identify: ${response.error}`);
+      if (!("identity" in response)) throw new Error("worker host answered identify without an identity");
       if (response.identity.controlVersion !== HOST_CONTROL_VERSION) {
         throw new Error(
           `worker host control version ${response.identity.controlVersion} does not match ${HOST_CONTROL_VERSION}`,
         );
       }
       return response.identity;
+    },
+    async launch(spec) {
+      const response = await request("launch", { spec });
+      if (!response.ok) throw new Error(`worker host refused launch: ${response.error}`);
+      if (!("launch" in response)) throw new Error("worker host answered launch without a launch");
+      return response.launch;
+    },
+    async inventory() {
+      const response = await request("inventory");
+      if (!response.ok) throw new Error(`worker host refused inventory: ${response.error}`);
+      if (!("launches" in response)) throw new Error("worker host answered inventory without launches");
+      return [...response.launches];
+    },
+    onLaunchExited(listener) {
+      exitListeners.push(listener);
     },
     close() {
       socket.end();

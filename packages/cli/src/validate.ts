@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
-import { validateFactoryYaml } from "@foundry/daemon/config";
+import { dirname, resolve } from "node:path";
+import { locateProblems, resolveStations, validateFactoryYaml } from "@foundry/daemon/config";
 import type { ConfigProblem } from "@foundry/daemon/config";
 
 /** What `foundry validate` prints and the exit code it ends with. */
@@ -29,9 +30,18 @@ export const validateFactoryFile = (file: string): ValidateOutcome => {
     const reason = error instanceof Error ? error.message : String(error);
     return { exitCode: 1, stdout: [], stderr: [`${file}: cannot read factory YAML: ${reason}`] };
   }
+  // Decode, then the offline file and setting checks, then station resolution.
   const result = validateFactoryYaml(text, { yamlFile: file });
-  if (result._tag === "Valid") {
-    return { exitCode: 0, stdout: [`${file}: factory "${result.config.name}" is valid`], stderr: [] };
+  if (result._tag === "Invalid") {
+    return { exitCode: 1, stdout: [], stderr: result.problems.map((p) => describe(file, p)) };
   }
-  return { exitCode: 1, stdout: [], stderr: result.problems.map((p) => describe(file, p)) };
+  const stations = resolveStations(result.config, {
+    env: process.env,
+    baseDir: dirname(resolve(file)),
+  });
+  if (stations._tag === "Invalid") {
+    const problems = locateProblems(text, stations.problems);
+    return { exitCode: 1, stdout: [], stderr: problems.map((p) => describe(file, p)) };
+  }
+  return { exitCode: 0, stdout: [`${file}: factory "${result.config.name}" is valid`], stderr: [] };
 };
