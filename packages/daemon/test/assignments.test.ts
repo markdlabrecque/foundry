@@ -154,22 +154,87 @@ test("parked-slot resume waits for fallback capacity then abandons and notifies 
   }));
 });
 
-test('resume cannot bypass a message-limit decision before the allowance-grant workflow is implemented', async () => {
+test.each(['resume', 'retry', 'cancel'] as const)('%s resolves message limits, preserving spent counts and exempt daemon notices', async (action) => {
   await fixture((store, root) => Effect.gen(function* () {
-    yield* createAssignmentScheduler(options(store)).schedule();
+    const scheduler = createAssignmentScheduler(options(store));
+    const [original] = yield* scheduler.schedule();
+
+    if (original === undefined) {throw new Error('no assignment');}
+
     yield* store.change((change) => Effect.gen(function* () {
-      yield* change.query(`UPDATE ticket SET message_ceiling = 1 WHERE number = 1`);
-      yield* change.recordHistory({ factoryId: 'shop', kind: 'fixture', subject: 'one-message' });
+      yield* change.query(`UPDATE ticket SET message_ceiling = 2 WHERE number = 1`);
+      yield* change.recordHistory({ factoryId: 'shop', kind: 'fixture', subject: 'small-budget' });
     }));
-    yield* store.change((change) => agentMessageHandler(slots, { assignmentTicket, budget: messageBudget() })(change, {
-      factoryId: 'shop', slotId: 'worker/1', launchId: 'fixture', callId: 'last-message', tool: 'agent_message',
-      args: { recipient: 'floor.worker', body: 'last allowed message' },
+
+    const send = () => store.change((change) => agentMessageHandler(slots, { assignmentTicket, budget: messageBudget() })(change, {
+      factoryId: 'shop', slotId: 'worker/1', launchId: 'fixture', callId: 'message', tool: 'agent_message',
+      args: { recipient: 'floor.worker', body: 'charged message' },
     }));
-    const before = yield* snapshot(store);
-    const tickets = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(config)] });
-    expect(Exit.isFailure(yield* Effect.exit(tickets.resume('shop', 1)))).toBe(true);
-    expect(yield* snapshot(store)).toEqual(before);
+
+    yield* send();
+    yield* send();
+
+    const tickets = createTicketService({ store, stateRoot: root,
+      factories: () => [{ ...ticketFactoryFrom(config), messageBudget: 3 }] });
+
+    expect((yield* tickets.show('shop', 1)).ticket).toMatchObject({ status: 'paused', messages: { spent: 2, ceiling: 2 } });
     expect(yield* store.read(`SELECT state FROM approval WHERE kind = 'limit_reached'`)).toEqual([{ state: 'open' }]);
+    // The shared acceptance guard must exempt daemon notices even when no agent budget remains.
+    yield* store.change((change) => acceptMessage(change, {
+      factoryId: 'shop', senderKind: 'daemon', senderSlot: null, recipient: 'floor.worker',
+      body: 'Operator action required', delivery: 'after_turn', kind: 'ordinary', correlation: { ticket: 1 },
+    }, { budget: messageBudget() }));
+    expect((yield* tickets.show('shop', 1)).ticket.messages).toEqual({ spent: 2, ceiling: 2 });
+
+    if (action === 'cancel') {
+      const confirmation = yield* tickets.inspectCancellation('shop', 1);
+      expect((yield* tickets.cancel('shop', 1, confirmation.confirmation)).ticket)
+        .toMatchObject({ state: 'cancelled', messages: { spent: 2, ceiling: 2 } });
+      expect(yield* store.read(`SELECT state FROM approval WHERE kind = 'limit_reached'`)).toEqual([{ state: 'resolved' }]);
+
+      return;
+    }
+
+    // A failure after the grant must roll back the allowance, approval and action together.
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`CREATE TRIGGER fail_allowance_transition BEFORE INSERT ON ticket_transition
+        BEGIN SELECT RAISE(ABORT, 'fixture transition failure'); END`);
+      yield* change.recordHistory({ factoryId: 'shop', kind: 'fixture', subject: 'rollback' });
+    }));
+    const before = yield* tickets.show('shop', 1);
+    expect(Exit.isFailure(yield* Effect.exit(tickets[action]('shop', 1)))).toBe(true);
+    expect(yield* tickets.show('shop', 1)).toEqual(before);
+    expect(yield* store.read(`SELECT state FROM approval WHERE kind = 'limit_reached'`)).toEqual([{ state: 'open' }]);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`DROP TRIGGER fail_allowance_transition`);
+      yield* change.recordHistory({ factoryId: 'shop', kind: 'fixture', subject: 'allow-transition' });
+    }));
+
+    for (let cycle = 0; cycle < 2; cycle++) {
+      const detail = yield* tickets[action]('shop', 1);
+      expect(detail.ticket).toMatchObject({ status: 'queued', messages: { spent: 2 + cycle * 3, ceiling: 5 + cycle * 3 } });
+      expect(detail.transitions.at(-1)?.reason).toContain('Message allowance increased by 3');
+      expect(yield* store.read(`SELECT state FROM approval WHERE kind = 'limit_reached'`))
+        .toEqual(Array.from({ length: cycle + 1 }, () => ({ state: 'resolved' })));
+      expect(Exit.isFailure(yield* Effect.exit(tickets[action]('shop', 1)))).toBe(true);
+      expect(yield* tickets.show('shop', 1)).toEqual(detail);
+      expect(yield* store.read(`SELECT state FROM approval WHERE kind = 'limit_reached'`))
+        .toEqual(Array.from({ length: cycle + 1 }, () => ({ state: 'resolved' })));
+      const [assigned] = yield* createAssignmentScheduler(options(store)).schedule();
+      expect(assigned?.id === original.id).toBe(action === 'resume');
+      expect((yield* tickets.show('shop', 1)).ticket.messages).toEqual({ spent: 2 + cycle * 3, ceiling: 5 + cycle * 3 });
+
+      // Check the actual scheduler notice, not a pre-existing daemon message.
+      const notices = action === 'resume'
+        ? yield* store.read(`SELECT sender_kind FROM message WHERE kind = 'resume_notice' AND ticket_number = 1`)
+        : yield* store.read(`SELECT sender_kind FROM message WHERE id = ?`, [assigned?.contextMessage ?? 'missing']);
+
+      expect(notices).toEqual(Array.from({ length: action === 'resume' ? cycle + 1 : 1 }, () => ({ sender_kind: 'daemon' })));
+      yield* send();
+      yield* send();
+      yield* send();
+      expect((yield* tickets.show('shop', 1)).ticket).toMatchObject({ status: 'paused', messages: { spent: 5 + cycle * 3, ceiling: 5 + cycle * 3 } });
+    }
   }));
 });
 
