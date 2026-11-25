@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -11,6 +11,7 @@ import { afterAll, expect, test } from "vitest";
 const require = createRequire(import.meta.url);
 const main = join(dirname(require.resolve("@foundry/cli")), "main.js");
 const dir = mkdtempSync(join(tmpdir(), "foundry-validate-"));
+mkdirSync(join(dir, "repo"));
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const run = (yaml: string): { status: number; stdout: string; stderr: string } => {
@@ -31,7 +32,7 @@ const run = (yaml: string): { status: number; stdout: string; stderr: string } =
 const valid = `version: 1
 name: smoke
 repository:
-  source: ../p
+  source: ./repo
   default_branch: main
 default_production_line: f
 rooms:
@@ -61,4 +62,10 @@ test("foundry validate reports a duplicate key at its line", () => {
   const result = run(`${valid}name: again\n`);
   expect(result.status).toBe(1);
   expect(result.stderr).toMatch(/^F:16:1: .*DUPLICATE_KEY/m);
+});
+
+test("foundry validate reports a missing configured file at its setting", () => {
+  const result = run(valid.replace("      s: {}", "      s:\n        instructions: missing.md"));
+  expect(result.status).toBe(1);
+  expect(result.stderr).toMatch(/^F:11:23: rooms\.r\.stations\.s\.instructions: Configured file not found: .*missing\.md$/m);
 });

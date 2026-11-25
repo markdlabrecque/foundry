@@ -74,6 +74,32 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
   return { _tag: "Invalid", problems };
 };
 
+/** A problem found on a decoded configuration, before it is given a YAML location. */
+export interface SettingProblem {
+  /** Path segments to the offending setting, as in the YAML document. */
+  readonly path: ReadonlyArray<string | number>;
+  readonly message: string;
+}
+
+/**
+ * Gives problems found after decoding the YAML locations of their settings. A
+ * setting that is absent from the text (a default) is located at its deepest
+ * existing ancestor.
+ */
+export const locateProblems = (
+  text: string,
+  problems: ReadonlyArray<SettingProblem>,
+): ReadonlyArray<ConfigProblem> => {
+  const lineCounter = new LineCounter();
+  const doc = parseDocument(text, { uniqueKeys: true, prettyErrors: false, lineCounter });
+  const located = problems.map((problem) => {
+    const { line, col } = lineCounter.linePos(locate(doc, problem.path, false) ?? 0);
+    return { path: problem.path.map(String).join("."), message: problem.message, line, column: col };
+  });
+  located.sort((a, b) => a.line - b.line || a.column - b.column);
+  return located;
+};
+
 /**
  * Finds the start offset of the node at `path`, or of its deepest existing
  * ancestor when the path does not exist (a missing key). For an unknown key the
