@@ -15,6 +15,7 @@ import { runBeforeRemove } from "./before-remove.js";
 import type { HookLogIo } from "./before-remove.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { TicketError } from "./tickets.js";
+import { createFailedWorktreeActions } from "./worktree-retry.js";
 
 interface WorktreeRow {
   readonly factory_id: string;
@@ -277,7 +278,10 @@ export const createWorktreeService = (options: TicketWorktreesOptions & { readon
     return yield* cleanRow(row, cleanup.intent["force"] === true, undefined, { cleanup, hooks });
   });
 
-  return { list, inspect, clean, rerun };
+  // A failed creation (failed-worktree hold): `foundry worktree retry | discard` (worktree-retry.ts).
+  const failed = createFailedWorktreeActions(options);
+
+  return { list, inspect, clean, rerun, ...failed };
 };
 
 export type WorktreeService = ReturnType<typeof createWorktreeService>;

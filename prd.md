@@ -785,7 +785,9 @@ A stuck integration never stalls workers, and one frozen slot never stalls a fac
 | Interrupted sync | Recorded head, fetched commit | Run the sync again |
 | Sync conflict | Recorded head, fetched commit, conflicting files | Resolve in the operator's own repository, push to the source, run the sync again; clears when a sync completes |
 | Stuck worker | Message ID and how long it has been unacknowledged | Interrupt or restart; clears itself on acknowledgement |
+| Failed worktree | Recorded intent (path, branch, default branch, starting point), the failed operation ID, the branch head when last inspected, and the reason | `worktree retry`, `worktree discard` or `ticket cancel`; resolved when a retry or discard publishes the worktree |
 
+- **Failed worktree.** Raised on the ticket when worktree creation fails, or when recovery refuses to touch Git it cannot prove is Foundry's partial work. The ticket cannot be assigned until it is resolved. `worktree retry` deletes nothing: it creates the worktree from the default branch head when no branch was left, or re-attaches an existing branch that descends from the recorded starting point. `worktree discard` removes the partial worktree and branch and creates both again from the default branch head; when the branch has unmerged commits or the worktree has files, it shows them and needs confirmation. Neither touches a branch checked out in another worktree, a worktree on another branch, a locked worktree or an unregistered directory at the path.
 - **Subjects.** A hook-failure hold concerns a ticket, a sync-conflict hold a factory, and a parked-slot hold a slot. A parked-slot hold stays open until the reset, whatever happens to its ticket, including a cancel. A repeated sync conflict refreshes the hold's evidence.
 - **Indeterminate message.** Until it is resolved, later messages bound to that slot wait, so order is preserved. Dropping a request fails it to the requester at once. Dropping a delegation notice closes the delegation as abandoned and tells the delegating slot. The daemon never picks alone.
 - **Indeterminate integration.** The ticket is paused, approvals are kept, and the factory's queue stays closed until the operator declares one. Landed: the daemon checks the approved commit is an ancestor of the default branch, records completion and continues to cleanup. Not landed: the daemon records the current head as the new starting point and reruns. The daemon never resets the default branch itself.
@@ -852,6 +854,7 @@ foundry message resend | drop <id>
 foundry integration landed | not-landed | retry <n> [--wait]
 foundry worktree list
 foundry worktree clean <n> [--force]
+foundry worktree retry | discard <n>
 ```
 
 P0 has no factory registry and no `init`, `up`, `down`, `restart`, `rooms`, `stations`, `workers`, `inbox`, `conversation` or `dashboard` commands.
@@ -878,7 +881,7 @@ P0 has no factory registry and no `init`, `up`, `down`, `restart`, `rooms`, `sta
 
 ### 11.5 Confirmation, waiting and exit codes
 
-Six commands ask before acting, each printing exactly what will be lost:
+Seven commands ask before acting, each printing exactly what will be lost:
 
 - `ticket resume`, only when another slot will take the ticket: the open delegations and requests that will be abandoned.
 - `ticket retry`: the open delegations and requests that will be abandoned. No prompt when there are none.
@@ -886,6 +889,7 @@ Six commands ask before acting, each printing exactly what will be lost:
 - `slot reset`: the conversation is discarded.
 - `message drop`: the request or delegation that will fail.
 - `worktree clean --force`: the uncommitted files and unmerged commits.
+- `worktree discard`, only when there is something to lose: the uncommitted files and unmerged commits.
 
 `--yes` skips the prompt. Without a terminal and without `--yes`, the command refuses.
 
@@ -1066,7 +1070,7 @@ operation.indeterminate
 - `ticket.transitioned` is the only event for a change to a ticket's stage or status; from, to, outcome, actor and reason are fields.
 - `operation.*` carries the kind as a field: integration, source sync, worktree creation, hook run or cleanup.
 - `submission.recorded` is written with every committed agent tool call (§6.1), in the transaction that applies its effects; launch ID, call ID and tool are fields. A replayed call writes nothing.
-- `hold.*` carries the kind as a field: frozen slot, parked slot, hook failure, indeterminate message, indeterminate integration, interrupted sync, sync conflict or stuck worker.
+- `hold.*` carries the kind as a field: frozen slot, parked slot, hook failure, indeterminate message, indeterminate integration, interrupted sync, sync conflict, stuck worker or failed worktree.
 - `message.*` carries the kind as a field, so a resume notice or a repository context message is a `message.*` event of that kind.
 - Every event carries its time, the factory ID and the identifiers of the records it concerns.
 

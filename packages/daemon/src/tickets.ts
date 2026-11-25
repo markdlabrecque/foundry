@@ -468,6 +468,7 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       yield* change.query(`UPDATE message SET status = 'dropped' WHERE factory_id = ? AND ticket_number = ?
         AND status IN ('unbound', 'bound') AND NOT EXISTS (SELECT 1 FROM message_attempt WHERE message_id = message.id)`, [factory, number]);
       yield* closeOpenHoldIn(change, { factoryId: factory, kind: "hook_failure", subject: String(number) }, "resolved");
+      yield* closeOpenHoldIn(change, { factoryId: factory, kind: "failed_worktree", subject: String(number) }, "resolved");
       yield* change.query(`UPDATE ticket SET state = 'cancelled', stage = NULL, status = NULL WHERE factory_id = ? AND number = ?`, [factory, number]);
 
       const transitions = yield* change.query<{ sequence: number }>(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,

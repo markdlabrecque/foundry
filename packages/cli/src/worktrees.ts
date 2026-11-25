@@ -2,8 +2,8 @@
 import { createInterface } from "node:readline/promises";
 import { messageOf } from "@foundry/protocol/errors";
 import { selectStateRoot } from "@foundry/protocol/state-root";
-import { isWorktreeCleanResult, isWorktreeInspection, isWorktreeListResult, WORKTREES_PATH, worktreePath } from "@foundry/protocol/worktrees-api";
-import type { WorktreeCleanRequest } from "@foundry/protocol/worktrees-api";
+import { isFailedWorktreeInspection, isWorktreeCleanResult, isWorktreeInspection, isWorktreeListResult, isWorktreeRecreateResult, WORKTREES_PATH, worktreeFailedPath, worktreePath } from "@foundry/protocol/worktrees-api";
+import type { WorktreeCleanRequest, WorktreeDiscardRequest, WorktreeRecreateResult } from "@foundry/protocol/worktrees-api";
 import { DaemonUnreachableError, getFromDaemon, postToDaemon } from "./management-client.js";
 import type { ApiReply } from "./management-client.js";
 import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, EXIT_USAGE } from "./status.js";
@@ -98,5 +98,94 @@ export const runWorktreeClean = async (options: WorktreeCleanOptions): Promise<S
     const result = reply.envelope.ok ? reply.envelope.result : undefined;
 
     return answer(reply, options.json, !isWorktreeCleanResult(result) ? undefined : `removed worktree for ${result.factoryId} ticket ${result.ticket} (operation ${result.operationId})\n`);
+  } catch (cause) {return failure(cause);}
+};
+
+interface FailedWorktreeOptions extends WorktreeOptions {
+  readonly number: number;
+}
+
+interface WorktreeDiscardOptions extends FailedWorktreeOptions {
+  readonly yes: boolean;
+  readonly terminal?: boolean;
+  readonly confirm?: (losses: string) => Promise<boolean>;
+  /** Stream the disclosure before acting; stdout remains an untouched JSON envelope. */
+  readonly notice?: (losses: string) => void;
+}
+
+// Creation and its first after_create run before the daemon answers.
+const RECREATE_TIMEOUT_MS = 10 * 60 * 1000;
+
+const recreated = (verb: string) => (result: WorktreeRecreateResult): string =>
+  `${verb} worktree for ${result.factoryId} ticket ${result.ticket} at ${result.path} on ${result.branch} (operation ${result.operationId})\n`;
+
+const invalidTicket = (options: FailedWorktreeOptions): StatusOutcome | undefined =>
+  options.home === "" || !Number.isSafeInteger(options.number) || options.number < 1
+    ? refused("provide a positive ticket number and valid --home", EXIT_USAGE) : undefined;
+
+/** `foundry worktree retry <n>`: create a failed ticket worktree again, deleting nothing. */
+export const runWorktreeRetry = async (options: FailedWorktreeOptions): Promise<StatusOutcome> => {
+  const invalid = invalidTicket(options);
+
+  if (invalid !== undefined) {return invalid;}
+
+  try {
+    const reply = await postToDaemon(selectStateRoot(options), worktreeFailedPath(options.number, "retry", options.factory), {},
+      { timeoutMs: RECREATE_TIMEOUT_MS });
+
+    const result = reply.envelope.ok ? reply.envelope.result : undefined;
+
+    return answer(reply, options.json, isWorktreeRecreateResult(result) ? recreated("created")(result) : undefined);
+  } catch (cause) {return failure(cause);}
+};
+
+const discardPrompt = async (): Promise<boolean> => {
+  const input = createInterface({ input: process.stdin, output: process.stderr });
+
+  try {return (await input.question("Discard this partial worktree and branch? [y/N] ")).trim().toLowerCase() === "y";}
+  finally {input.close();}
+};
+
+/**
+ * `foundry worktree discard <n>`: remove a failed creation's partial worktree and branch, then
+ * create both again from the default branch. Commits or files are shown and need confirmation.
+ */
+export const runWorktreeDiscard = async (options: WorktreeDiscardOptions): Promise<StatusOutcome> => {
+  const invalid = invalidTicket(options);
+
+  if (invalid !== undefined) {return invalid;}
+
+  const stateRoot = selectStateRoot(options);
+
+  try {
+    const inspection = await getFromDaemon(stateRoot, worktreeFailedPath(options.number, undefined, options.factory));
+
+    if (!inspection.envelope.ok) {return answer(inspection, options.json, undefined);}
+
+    if (!isFailedWorktreeInspection(inspection.envelope.result)) {return refused("the daemon answered with an unexpected inspection");}
+
+    const result = inspection.envelope.result;
+    let body: WorktreeDiscardRequest = {};
+
+    if (result.needsConfirmation) {
+      const losses = `Discard ${result.path} and branch ${result.branch}\nUncommitted/untracked files:\n${result.files || "(none)"}\nUnmerged commits:\n${result.commits || "(none)"}\n`;
+
+      (options.notice ?? ((text: string) => { process.stderr.write(text); }))(losses);
+
+      if (!options.yes) {
+        if (!(options.terminal ?? process.stdin.isTTY === true)) {return refused("discarding commits or files requires a terminal or --yes; nothing removed", EXIT_USAGE);}
+
+        if (!await (options.confirm ?? discardPrompt)(losses)) {return refused("discard not confirmed; nothing removed", EXIT_USAGE);}
+      }
+
+      body = { confirmation: result.confirmation };
+    }
+
+    const reply = await postToDaemon(stateRoot, worktreeFailedPath(options.number, "discard", options.factory), body,
+      { timeoutMs: RECREATE_TIMEOUT_MS });
+
+    const done = reply.envelope.ok ? reply.envelope.result : undefined;
+
+    return answer(reply, options.json, isWorktreeRecreateResult(done) ? recreated("recreated")(done) : undefined);
   } catch (cause) {return failure(cause);}
 };

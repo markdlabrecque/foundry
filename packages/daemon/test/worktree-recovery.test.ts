@@ -12,6 +12,10 @@ import {
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
+import { runWorktreeDiscard } from "@foundry/cli";
+import { createWorktreeService } from "../src/worktree-cleanup.js";
+import type { WorktreeService } from "../src/worktree-cleanup.js";
+import { serveManagementApi } from "../src/management-api.js";
 
 const roots: Array<string> = [];
 
@@ -24,7 +28,7 @@ const BRANCH = "ticket/1-build-widget";
  * worktree but before the result committed, and a daemon restart that marked it interrupted.
  */
 const interruptedCreation = async <A, E>(use: (f: {
-  store: Store; clone: string; path: string; startCommit: string;
+  store: Store; root: string; clone: string; path: string; startCommit: string; worktrees: WorktreeService;
   recover: () => ReturnType<typeof recoverInterruptedWorktrees>;
   recovery: () => ReturnType<typeof createWorktreeRecovery>;
   schedule: () => ReturnType<ReturnType<typeof createAssignmentScheduler>["schedule"]>;
@@ -81,8 +85,10 @@ production_lines:
 
     const scheduler = createAssignmentScheduler({ store, slots: planSlots("shop", factory.stations), factories: [factory] });
 
+    const worktrees = createWorktreeService({ store, stateRoot: root, target, factories: () => ["shop"], env: isolatedGitEnv() });
+
     return yield* use({
-      store, clone: clone.path, path, startCommit,
+      store, root, clone: clone.path, path, startCommit, worktrees,
       recover: () => recoverInterruptedWorktrees({ store, factories: ["shop"], target, env: isolatedGitEnv() }),
       recovery: () => createWorktreeRecovery({ store, target, env: isolatedGitEnv(), onError: (error) => { throw error; } }),
       schedule: () => scheduler.schedule(),
@@ -199,4 +205,84 @@ test("once a factory's verdicts are settled, its queued work is admitted", async
     expect(existsSync(path)).toBe(true);
     yield* Effect.promise(() => recoverer.stop());
   }));
+});
+
+/** A branch with authored commits whose worktree directory was removed before the crash. */
+const commitsWithoutWorktree = (path: string): string => {
+  writeFileSync(join(path, "widget.txt"), "widget\n");
+  git(path, ["add", "widget.txt"]);
+  git(path, ["commit", "--quiet", "--no-verify", "-m", "authored work"]);
+  const authored = git(path, ["rev-parse", "HEAD"]);
+  rmSync(path, { recursive: true, force: true });
+
+  return authored;
+};
+
+const openHolds = (store: Store) => store.read<{ kind: string; subject: string; evidence: string }>(
+  `SELECT kind, subject, evidence FROM operator_hold WHERE state = 'open'`);
+
+test("a refused recovery raises a failed-worktree hold; retry re-attaches the branch, resolves it and makes the ticket assignable", async () => {
+  let authored = "";
+  await interruptedCreation(({ store, path, startCommit, recover, schedule, worktrees }) => Effect.gen(function* () {
+    expect((yield* recover()).map((v) => v.verdict)).toEqual(["refused"]);
+
+    const [hold] = yield* openHolds(store);
+    expect(hold).toMatchObject({ kind: "failed_worktree", subject: "1" });
+    expect(JSON.parse(hold?.evidence ?? "{}")).toMatchObject({
+      path, branch: BRANCH, defaultBranch: "main", startCommit, head: authored, reason: expect.stringContaining("worktree is missing"),
+    });
+    expect(yield* schedule()).toEqual([]);
+    expect(yield* schedule()).toEqual([]);
+
+    expect(yield* worktrees.retry(undefined, 1)).toMatchObject({ ticket: 1, path, branch: BRANCH, startCommit });
+
+    expect(yield* openHolds(store)).toEqual([]);
+    expect(git(path, ["rev-parse", "HEAD"])).toBe(authored);
+    expect(git(path, ["branch", "--show-current"])).toBe(BRANCH);
+    expect(yield* store.read(`SELECT worktree_path, branch, start_commit FROM ticket`)).toEqual([
+      { worktree_path: path, branch: BRANCH, start_commit: startCommit },
+    ]);
+    expect(yield* schedule()).toMatchObject([{ ticket: 1, stage: "develop" }]);
+  }), (path) => { authored = commitsWithoutWorktree(path); });
+});
+
+test("discard refuses to drop a branch with commits until confirmed, then recreates the worktree from the default branch", async () => {
+  let authored = "";
+  await interruptedCreation(({ store, root, clone, path, recover, schedule, worktrees }) => Effect.gen(function* () {
+    expect((yield* recover()).map((v) => v.verdict)).toEqual(["refused"]);
+    git(clone, ["commit", "--quiet", "--allow-empty", "-m", "clone advances"]);
+    const main = git(clone, ["rev-parse", "main"]);
+
+    const unconfirmed = yield* worktrees.discard(undefined, 1).pipe(Effect.flip);
+    expect(unconfirmed.message).toContain("confirm");
+    expect(git(clone, ["rev-parse", BRANCH])).toBe(authored);
+
+    const api = yield* Effect.promise(() => serveManagementApi({ stateRoot: root, worktrees,
+      status: () => ({ instance: { stateRoot: root, daemonPid: 1, startedAt: "2026-01-01T00:00:00Z" } }) }));
+
+    const common = { home: root, env: {}, factory: undefined, json: false, number: 1, notice: () => {} };
+
+    try {
+      let losses = "";
+      expect(yield* Effect.promise(() => runWorktreeDiscard({ ...common, yes: false, terminal: true,
+        confirm: async (text) => {
+          losses = text;
+
+          return false;
+        } }))).toMatchObject({ exitCode: 2 });
+      expect(losses).toContain("authored work");
+      expect(git(clone, ["rev-parse", BRANCH])).toBe(authored);
+      expect(yield* openHolds(store)).toMatchObject([{ kind: "failed_worktree" }]);
+
+      expect(yield* Effect.promise(() => runWorktreeDiscard({ ...common, yes: true }))).toMatchObject({ exitCode: 0 });
+    } finally {yield* Effect.promise(api.close);}
+
+    expect(git(path, ["rev-parse", "HEAD"])).toBe(main);
+    expect(git(clone, ["rev-parse", BRANCH])).toBe(main);
+    expect(yield* openHolds(store)).toEqual([]);
+    expect(yield* store.read(`SELECT worktree_path, branch, start_commit FROM ticket`)).toEqual([
+      { worktree_path: path, branch: BRANCH, start_commit: main },
+    ]);
+    expect(yield* schedule()).toMatchObject([{ ticket: 1, stage: "develop" }]);
+  }), (path) => { authored = commitsWithoutWorktree(path); });
 });

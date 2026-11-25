@@ -449,6 +449,7 @@ test("a colliding branch is never overwritten or assigned and failed creation is
     ]);
     expect(yield* listOperations(store, "shop")).toMatchObject([{ status: "failed", result: { reason: expect.stringContaining("already exists") } }]);
     expect(git(clone, ["rev-parse", "ticket/1-build-widget"])).toBe(original);
+    expect(yield* store.read(`SELECT kind, subject FROM operator_hold WHERE state = 'open'`)).toEqual([{ kind: "failed_worktree", subject: "1" }]);
     expect(yield* store.read(`SELECT * FROM assignment`)).toEqual([]);
   }));
 });

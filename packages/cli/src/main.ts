@@ -18,7 +18,7 @@ import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath, runFactorySync } from "./factory.js";
 import { runFactoryList } from "./factories.js";
-import { runWorktreeClean, runWorktreeList } from "./worktrees.js";
+import { runWorktreeClean, runWorktreeDiscard, runWorktreeList, runWorktreeRetry } from "./worktrees.js";
 import { runFactoryStop } from "./factory-stop.js";
 import { runShutdown } from "./shutdown.js";
 import { runSlotInterrupt, runSlotList, runSlotReset, runSlotRestart, runSlotShow, runSlotUnfreeze } from "./slots.js";
@@ -457,7 +457,17 @@ const worktreeClean = Command.make("clean", { ...ticketFlags, number: Argument.I
   report(() => runWorktreeClean({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), env: process.env, number, force, yes })),
 ).pipe(Command.withDescription("Remove an inactive completed or cancelled ticket's worktree and branch"));
 
-const worktree = Command.make("worktree").pipe(Command.withSubcommands([worktreeList, worktreeClean]));
+const worktreeRetry = Command.make("retry", { ...ticketFlags, number: Argument.Int("n") }, ({ json, home, factory, number }) =>
+  report(() => runWorktreeRetry({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), env: process.env, number })),
+).pipe(Command.withDescription("Create a failed ticket worktree again, deleting nothing"));
+
+const worktreeDiscard = Command.make("discard", { ...ticketFlags, number: Argument.Int("n"),
+  yes: Flag.Boolean("yes").pipe(Flag.withDefault(false), Flag.withDescription("Confirm the displayed losses without a prompt")),
+}, ({ json, home, factory, number, yes }) =>
+  report(() => runWorktreeDiscard({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), env: process.env, number, yes })),
+).pipe(Command.withDescription("Remove a failed creation's partial worktree and branch, then create both from the default branch"));
+
+const worktree = Command.make("worktree").pipe(Command.withSubcommands([worktreeList, worktreeClean, worktreeRetry, worktreeDiscard]));
 
 const foundry = Command.make("foundry").pipe(
   Command.withSubcommands([validate, status, shutdown, hold, approval, logs, ticket, events, factory, slot, message, worktree, integration]),
