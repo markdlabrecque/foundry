@@ -361,6 +361,58 @@ test("done commits evidence, ended assignment and queued next stage; replay and 
   })));
 });
 
+test("routed rejection ends its assignment and only later scheduling creates a fresh assignment", async () => {
+  await fixture((store, firstId) => Effect.gen(function* () {
+    // Non-code assessment isolates routing from the separately owned Git outcome guards.
+    const routedConfig = { ...config, production_lines: { standard: {
+      ...config.production_lines.standard,
+      stages: [
+        { id: "plan", station: "floor.worker", approval: false, writing: false },
+        { id: "assess", station: "floor.worker", approval: true, writing: false, on_rejection: "plan" },
+      ],
+    } } };
+
+    const routedHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({
+      factories: [{ factoryId: "shop", config: routedConfig }], configLoad: () => "load-route",
+    })]]);
+
+    const submissions = createSubmissions({ store, handlers: routedHandlers });
+    const scheduler = createAssignmentScheduler({ store, slots, factories: [{ factoryId: "shop", config: routedConfig }] });
+    yield* Effect.promise(() => submissions.submit(owner, frame(firstId)));
+    const assessment = (yield* scheduler.schedule())[0];
+
+    if (assessment === undefined) {throw new Error("assessment not assigned");}
+
+    const rejection = { ...frame(assessment.id), callId: "reject-1",
+      args: { ...frame(assessment.id).args, outcome: "rejected", reason: "Revise plan" },
+    };
+
+    const before = yield* snapshot(store);
+    const result = yield* Effect.promise(() => submissions.submit(owner, rejection));
+    expect(result).toMatchObject({ status: "committed", value: { stage: "plan", status: "queued" } });
+    const after = yield* snapshot(store);
+    expect(after.tickets).toMatchObject([{ stage: "plan", status: "queued", rejections: 1 }]);
+    expect(after.assignments).toHaveLength(2); // No inline assignment creation or continuation.
+    expect(after.assignments.at(-1)).toMatchObject({ id: assessment.id, status: "ended", end_reason: "rejected" });
+    expect(after.messages).toEqual(before.messages);
+    expect(after.transitions).toHaveLength(before.transitions.length + 1);
+    expect(after.transitions.at(-1)).toMatchObject({ actor: owner.slotId, from_stage: "assess", from_status: "assigned",
+      to_stage: "plan", to_status: "queued", outcome: "rejected", reason: "Revise plan",
+      git_commit: null, evidence: '["evidence/plan.md"]', config_load: "load-route" });
+    expect(yield* Effect.promise(() => submissions.submit(owner, rejection))).toEqual(result);
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...rejection, callId: "stale-reject" })))
+      .toMatchObject({ status: "refused", code: "not_assignment_owner" });
+    expect(yield* snapshot(store)).toEqual(after);
+
+    const returned = (yield* scheduler.schedule())[0];
+    expect(returned).toMatchObject({ stage: "plan", slotId: owner.slotId });
+    expect(returned?.id).not.toBe(firstId);
+    expect(returned?.id).not.toBe(assessment.id);
+    expect(yield* store.read(`SELECT status, end_reason FROM assignment WHERE id = ?`, [assessment.id]))
+      .toEqual([{ status: "ended", end_reason: "rejected" }]);
+  }));
+});
+
 test("different slots/factories, suspended assignments, missing IDs and worker destinations cannot advance", async () => {
   await fixture((store, id) => Effect.gen(function* () {
     const submissions = createSubmissions({ store, handlers });
@@ -527,6 +579,9 @@ test.each([
   { mode: "missing commit", writing: true, code: "commit_required" },
   { mode: "wrong commit", writing: true, code: "invalid_code_outcome" },
   { mode: "wrong branch", writing: false, code: "invalid_code_outcome" },
+  { mode: "routed rejection clean", writing: false, code: null },
+  { mode: "routed rejection moved", writing: false, code: "non_writing_changes" },
+  { mode: "routed writing rejection", writing: true, code: null },
   { mode: "clean", writing: false, code: null },
   { mode: "untracked", writing: false, code: null },
   { mode: "new commit", writing: true, code: null },
@@ -554,9 +609,17 @@ test.each([
       yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "worktree" });
     }));
 
+    const codeStage = { id: mode === "planning baseline" ? "implement" : "plan",
+      station: mode.startsWith("mixed") || mode === "planning baseline" ? "floor.worker" : "floor.reviewer",
+      approval: mode.startsWith("routed") && !writing, writing };
+
+    const routedStage = mode.startsWith("routed") ? { ...codeStage, on_rejection: "revise" } : codeStage;
+
     const codeConfig = { ...config, production_lines: { standard: {
       ...config.production_lines.standard,
-      stages: [{ id: mode === "planning baseline" ? "implement" : "plan", station: mode.startsWith("mixed") || mode === "planning baseline" ? "floor.worker" : "floor.reviewer", approval: false, writing },
+      stages: [
+        ...(mode.startsWith("routed") ? [{ id: "revise", station: "floor.worker", approval: false, writing: false }] : []),
+        routedStage,
         { id: "next", station: "floor.worker", approval: false, writing: false }],
     } } };
 
@@ -568,12 +631,12 @@ test.each([
 
     const codeHandlers = new Map([[TASK_TRANSITION, taskTransitionHandler({ factories: [{ factoryId: "shop", config: codeConfig }] })]]);
 
-    if (["moved", "mixed moved", "mixed dirty", "new commit", "dirty", "blocked dirty", "rejected dirty", "staged"].includes(mode)) {
+    if (["moved", "mixed moved", "mixed dirty", "new commit", "dirty", "blocked dirty", "rejected dirty", "staged", "routed rejection moved", "routed writing rejection"].includes(mode)) {
       writeFileSync(join(path, "tracked.txt"), "changed\n");
 
       if (!mode.endsWith("dirty")) {git(path, "add", ".");}
 
-      if (mode.endsWith("moved") || mode === "new commit") {git(path, "commit", "--quiet", "-m", "worker change");}
+      if (mode.endsWith("moved") || mode === "new commit" || mode === "routed writing rejection") {git(path, "commit", "--quiet", "-m", "worker change");}
     }
 
     if (mode === "assume-unchanged" || mode === "skip-worktree") {
@@ -589,7 +652,7 @@ test.each([
     const head = git(path, "rev-parse", "HEAD");
     const gitCommit = mode === "missing commit" ? {} : { gitCommit: mode.endsWith("wrong commit") ? "not-a-commit" : head };
 
-    const reportedOutcome = Match.value(mode).pipe(
+    const reportedOutcome = mode.startsWith("routed") ? "rejected" : Match.value(mode).pipe(
       Match.when("blocked dirty", () => "blocked" as const),
       Match.when("rejected dirty", () => "rejected" as const),
       Match.orElse(() => "done" as const),
@@ -634,10 +697,10 @@ test.each([
       expect(result).toMatchObject({ status: "refused", code });
       expect(yield* snapshot(store)).toEqual(before);
     } else {
-      expect(result).toMatchObject({ status: "committed", value: { stage: "next", status: "queued" } });
+      expect(result).toMatchObject({ status: "committed", value: { stage: mode.startsWith("routed") ? "revise" : "next", status: "queued" } });
       const after = yield* snapshot(store);
-      expect(after.assignments).toContainEqual(expect.objectContaining({ id: activeId, status: "ended", end_reason: "done" }));
-      expect(after.transitions.at(-1)).toMatchObject({ git_commit: head, outcome: "done" });
+      expect(after.assignments).toContainEqual(expect.objectContaining({ id: activeId, status: "ended", end_reason: reportedOutcome }));
+      expect(after.transitions.at(-1)).toMatchObject({ git_commit: head, outcome: reportedOutcome });
       // Even if the worktree disappears, a retry returns the durable result.
       git(repository, "worktree", "remove", "--force", path);
       expect(yield* Effect.promise(() => submissions.submit(owner, outcome))).toEqual(result);
@@ -736,7 +799,7 @@ test.each(["blocked", "rejected"] as const)("%s pauses atomically, frees capacit
   })));
 });
 
-test("blocked works at final and code stages without requiring a destination; routed rejection stays out of scope", async () => {
+test("blocked works at final and code stages without requiring a destination; routed code rejection stays guarded", async () => {
   for (const stage of ["implement", "review"]) {
     await fixture((store, id) => Effect.gen(function* () {
       yield* store.change((change) => Effect.gen(function* () {
@@ -749,7 +812,7 @@ test("blocked works at final and code stages without requiring a destination; ro
       if (stage === "review") {
         const before = yield* snapshot(store);
         expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, outcome: "rejected" } })))
-          .toMatchObject({ status: "refused", code: "unsupported_transition" });
+          .toMatchObject({ status: "refused", code: "invalid_code_outcome" });
         expect(yield* snapshot(store)).toEqual(before);
       }
 
