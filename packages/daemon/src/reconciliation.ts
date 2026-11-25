@@ -5,6 +5,7 @@ import type { DaemonFrame, Hello, ReconciliationAnswer } from "@foundry/protocol
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
 import type { Store } from "./store.js";
 import { acknowledgeMessage } from "./message-delivery.js";
+import { actionableMessage } from "./message-obligations.js";
 import { releaseResumeReplacement } from "./resume-notice.js";
 import { decideMessageRetry } from "./message-retry.js";
 import type { RetryDecision, RetryEvidence } from "./message-retry.js";
@@ -108,25 +109,31 @@ export const createReconciler = (store: Store) => {
 
                 if (decided !== "retry" || ended) {return yield* Effect.fail(new RetryUnchanged({ decision: decided }));}
 
+                // Absence evidence retires copies independently of permission to replay work.
+                // Abandoned messages stay sent/acknowledgeable, but their proven-gone clocks
+                // must not produce stuck-worker holds. Pending/unknown copies never reach here.
+                const retiredAt = yield* Clock.currentTimeMillis;
+
+                const retired = yield* change.query<{ id: string }>(`UPDATE message_attempt SET retired_at = ?
+                  WHERE message_id = ? AND factory_id = ? AND slot_id = ? AND retired_at IS NULL
+                  AND EXISTS (SELECT 1 FROM message m WHERE m.id = message_attempt.message_id
+                    AND m.factory_id = ? AND m.bound_slot = ? AND m.status = 'sent') RETURNING id`,
+                [retiredAt, item.id, slot.factoryId, slot.slotId, slot.factoryId, slot.slotId]);
+
                 const replacement = yield* releaseResumeReplacement(change, item.id, 'sent');
 
                 if (replacement !== null) {return decided;}
 
                 const updated = yield* change.query<{ id: string }>(
-                  `UPDATE message SET status = 'bound' WHERE id = ? AND factory_id = ? AND bound_slot = ? AND status = 'sent' RETURNING id`,
+                  `UPDATE message SET status = 'bound' WHERE id = ? AND factory_id = ? AND bound_slot = ? AND status = 'sent'
+                   AND ${actionableMessage} RETURNING id`,
                   [item.id, slot.factoryId, slot.slotId],
                 );
 
-                if (updated.length === 0) {return yield* Effect.fail(new RetryUnchanged({ decision: decided }));}
+                if (updated.length === 0 && retired.length === 0) {return yield* Effect.fail(new RetryUnchanged({ decision: decided }));}
 
-                // Only the proven-unconsumable copies are retired. Their historical clocks
-                // must not qualify again when redelivery changes the message back to sent.
-                const retiredAt = yield* Clock.currentTimeMillis;
-                yield* change.query(`UPDATE message_attempt SET retired_at = ?
-                  WHERE message_id = ? AND factory_id = ? AND slot_id = ? AND retired_at IS NULL`,
-                [retiredAt, item.id, slot.factoryId, slot.slotId]);
-
-                yield* change.recordHistory({ factoryId: slot.factoryId, kind: "message.retry_ready", subject: item.id,
+                yield* change.recordHistory({ factoryId: slot.factoryId,
+                  kind: updated.length > 0 ? "message.retry_ready" : "message.copies_retired", subject: item.id,
                   detail: { slotId: slot.slotId, launchId: slot.launchId, launch, lifecycle: response.lifecycle ?? "unknown" } });
 
                 return decided;

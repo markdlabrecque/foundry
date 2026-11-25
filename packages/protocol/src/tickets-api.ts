@@ -6,6 +6,7 @@
  * - `GET /api/v1/tickets[?factory=<name>]`: a `TicketListResult`.
  * - `GET /api/v1/tickets/<n>[?factory=<name>]`: a `TicketDetail`.
  * - `POST /api/v1/tickets/<n>/pause[?factory=<name>]`: a `TicketDetail`, after worker settlement.
+ * - `POST /api/v1/tickets/<n>/retry[?factory=<name>]`: a queued `TicketDetail`; scheduling creates the fresh assignment.
  * - `GET /api/v1/tickets/<n>/cancel[?factory=<name>]`: a `TicketCancellation` disclosure.
  * - `POST /api/v1/tickets/<n>/cancel[?factory=<name>]` with `{ confirmation }`: a `TicketDetail`.
  *
