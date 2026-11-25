@@ -44,6 +44,7 @@ export interface TicketFactory {
   readonly defaultLine: string;
   readonly lines: Readonly<Record<string, TicketLine>>;
   readonly messageBudget: number;
+  readonly recoveryLimit?: number;
 }
 
 /** Schema defaults (PRD §4); decoding applies them, but the decoded type still marks the keys optional. */
@@ -55,6 +56,7 @@ export const ticketFactoryFrom = (config: FactoryConfig): TicketFactory => ({
   name: config.name,
   defaultLine: config.default_production_line,
   messageBudget: config.message_budget ?? DEFAULT_MESSAGE_BUDGET,
+  recoveryLimit: config.recovery_limit ?? 3,
   lines: Object.fromEntries(
     Object.entries(config.production_lines).map(([name, line]) => [
       name,
@@ -580,6 +582,12 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       const limit = yield* change.query(`SELECT id FROM approval WHERE factory_id = ? AND ticket_number = ? AND kind = 'limit_reached' AND state = 'open'`, [factory, number]);
 
       if (limit.length > 0) {return yield* refuse("invalid_state", "Resuming this limit-reached ticket requires an allowance grant");}
+
+      // Grant once on the paused -> queued transition, not when queued abandonment consent changes.
+      if (row.status === 'paused') {
+        yield* change.query(`UPDATE assignment SET recovery_ceiling = recovery_ceiling + ?
+          WHERE id = ? AND recovery_count >= recovery_ceiling`, [loaded.recoveryLimit ?? 3, row.id]);
+      }
 
       yield* change.query(`INSERT INTO assignment_resume (assignment_id, operator_message, allow_abandon) VALUES (?, ?, ?)
         ON CONFLICT(assignment_id) DO UPDATE SET operator_message = excluded.operator_message, allow_abandon = excluded.allow_abandon`, [row.id, message ?? null, allowAbandon ? 1 : 0]);

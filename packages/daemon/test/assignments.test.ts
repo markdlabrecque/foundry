@@ -119,6 +119,29 @@ test("resume queues for a busy original slot, then preserves assignment, work an
   }));
 });
 
+test.each([7, 8, 9, 11])('resume retains recovery count %i and grants one configured allowance only at the ceiling', async (count) => {
+  await fixture((store, root) => Effect.gen(function* () {
+    const scheduler = createAssignmentScheduler(options(store));
+    const [original] = yield* scheduler.schedule();
+
+    if (original === undefined) {throw new Error('no assignment');}
+
+    yield* suspendWithOpenWork(store, original.id);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE assignment SET recovery_count = ?, recovery_ceiling = 8 WHERE id = ?`, [count, original.id]);
+      yield* change.recordHistory({ factoryId: 'shop', kind: 'fixture', subject: 'recovery-count' });
+    }));
+    // The increment comes from the current configuration, not the assignment's original ceiling.
+    const resumedConfig = { ...config, recovery_limit: 3 };
+    const tickets = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(resumedConfig)] });
+    yield* tickets.resume('shop', 1);
+    yield* tickets.resume('shop', 1, 'Consent updated while queued', true);
+    expect(yield* scheduler.schedule()).toMatchObject([{ id: original.id, ticket: 1, slotId: original.slotId }]);
+    expect(yield* store.read(`SELECT status, recovery_count, recovery_ceiling FROM assignment WHERE id = ?`, [original.id]))
+      .toEqual([{ status: 'active', recovery_count: count, recovery_ceiling: count >= 8 ? 11 : 8 }]);
+  }));
+});
+
 test("parked-slot resume waits for fallback capacity then abandons and notifies open work", async () => {
   await fixture((store, root) => Effect.gen(function* () {
     const scheduler = createAssignmentScheduler(options(store));
@@ -129,11 +152,15 @@ test("parked-slot resume waits for fallback capacity then abandons and notifies 
     yield* suspendWithOpenWork(store, original.id);
     yield* store.change((change) => Effect.gen(function* () {
       yield* change.query(`UPDATE slot SET condition = 'parked' WHERE slot_id = 'worker/1'`);
+      yield* change.query(`UPDATE assignment SET recovery_count = 4 WHERE id = ?`, [original.id]);
       yield* change.recordHistory({ factoryId: 'shop', kind: 'fixture', subject: 'parked' });
     }));
     const tickets = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(config)] });
     yield* tickets.resume('shop', 1, 'Use the preserved worktree', true);
+    expect(yield* store.read(`SELECT status, recovery_count, recovery_ceiling FROM assignment WHERE id = ?`, [original.id]))
+      .toEqual([{ status: 'suspended', recovery_count: 4, recovery_ceiling: 8 }]);
     expect(yield* scheduler.schedule()).toEqual([]);
+    expect(yield* store.read(`SELECT id FROM assignment WHERE slot_id = 'worker/1' AND status = 'active'`)).toEqual([]);
     expect(yield* store.read(`SELECT status FROM delegation`)).toEqual([{ status: 'open' }]);
     yield* store.change((change) => Effect.gen(function* () {
       yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1 WHERE ticket_number = 2`);
@@ -143,7 +170,10 @@ test("parked-slot resume waits for fallback capacity then abandons and notifies 
     const replacement = yield* createAssignmentScheduler(options(store)).schedule();
     expect(replacement).toMatchObject([{ ticket: 1, slotId: 'worker/2' }]);
     expect(replacement[0]?.id).not.toBe(original.id);
-    expect(yield* store.read(`SELECT status, end_reason FROM assignment WHERE id = ?`, [original.id])).toEqual([{ status: 'ended', end_reason: 'abandoned' }]);
+    expect(yield* store.read(`SELECT status, end_reason, recovery_count, recovery_ceiling FROM assignment WHERE id = ?`, [original.id]))
+      .toEqual([{ status: 'ended', end_reason: 'abandoned', recovery_count: 4, recovery_ceiling: 8 }]);
+    expect(yield* store.read(`SELECT recovery_count, recovery_ceiling FROM assignment WHERE id = ?`, [replacement[0]?.id ?? '']))
+      .toEqual([{ recovery_count: 0, recovery_ceiling: 4 }]);
     expect(yield* store.read(`SELECT status FROM delegation`)).toEqual([{ status: 'abandoned' }]);
     expect(yield* store.read(`SELECT status FROM agent_request`)).toEqual([{ status: 'failed' }]);
     const notifications = yield* store.read(`SELECT bound_slot FROM message WHERE body LIKE '%was abandoned on resume%' ORDER BY bound_slot`);
