@@ -56,6 +56,7 @@ import { createSubmissions } from "./submissions.js";
 import { agentDiscoverHandler } from "./agent-discover.js";
 import { agentStatusHandler } from "./agent-status.js";
 import { agentMessageHandler } from "./agent-message.js";
+import { startMessageRouting } from "./message-routing.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -168,7 +169,13 @@ const main = async (): Promise<void> => {
 
   // One store for the daemon's lifetime, closed with its scope.
   const storeScope = Effect.runSync(Scope.make());
-  const closeStore = (): Promise<void> => Effect.runPromise(Scope.close(storeScope, Exit.void));
+  let stopRouting: (() => Promise<void>) | undefined;
+
+  const closeStore = async (): Promise<void> => {
+    await stopRouting?.();
+    await Effect.runPromise(Scope.close(storeScope, Exit.void));
+  };
+
   const databaseFile = join(stateRoot, DATABASE_FILE_NAME);
   let store: Store;
 
@@ -443,6 +450,11 @@ const main = async (): Promise<void> => {
       });
       const recorder = scheduler;
       markSchedulerReady(scheduler);
+      stopRouting = startMessageRouting({
+        store, slots: plannedSlots,
+        inScope: (factoryId) => factoryStates.isRunning(factoryId),
+        onError: (cause) => log.error("message routing failed", { detail: { error: messageOf(cause) } }),
+      });
 
       // PRD §10.2: prove ownership and recover any vacancy before clearing the hold.
       freezeChecks.host_lost = recorder.recheckOwnership;
