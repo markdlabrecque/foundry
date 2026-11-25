@@ -19,6 +19,7 @@
     "build": "tsc -b",
     "typecheck": "tsc -b && tsc -p tsconfig.test.json",
     "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "clean": "tsc -b --clean"
   },
   "devDependencies": {
