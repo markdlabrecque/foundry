@@ -231,7 +231,16 @@ export const Reconcile = Schema.Struct({
 });
 
 /** Frames a worker sends after its hello is accepted. */
-export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck, DrainAck, ToolCall, ReconciliationAnswer]);
+/** Ordinary message handed to Pi, not yet a recoverable-history receipt. Held when_idle
+ * messages report this only on release; primes never report it. */
+export const MessageInjected = Schema.Struct({
+  type: Schema.Literal("message_injected"),
+  id: Id,
+});
+
+export type MessageInjected = typeof MessageInjected.Type;
+
+export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, MessageInjected, InterruptAck, DrainAck, ToolCall, ReconciliationAnswer]);
 
 export type WorkerFrame = typeof WorkerFrame.Type;
 

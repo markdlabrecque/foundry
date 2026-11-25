@@ -73,7 +73,8 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   interruptRuns(pi, interrupter);
   const receipts = new ReceiptReporter();
   const adapter = createConversationAdapter(pi, { onReceipt: receipts.record });
-  const messages = new MessageReceiver(adapter);
+  const injections = new ReceiptReporter("message_injected");
+  const messages = new MessageReceiver(adapter, injections.record);
   deliverMessages(pi, messages);
   const compactions = new CompactionReporter();
   pi.on("session_compact", () => compactions.record());
@@ -265,6 +266,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
       }
 
       channel = opened.channel;
+      injections.attach(opened.channel);
       receipts.attach(opened.channel);
       compactions.attach(opened.channel);
       toolCalls.attach(opened.channel);
