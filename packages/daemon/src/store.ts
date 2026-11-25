@@ -478,6 +478,13 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
   },
   {
     id: 19,
+    name: "idle_slot_recovery",
+    statements: [
+      `ALTER TABLE slot ADD COLUMN recovery_count INTEGER NOT NULL DEFAULT 0 CHECK (recovery_count >= 0)`,
+    ],
+  },
+  {
+    id: 20,
     name: "assignment_repository_context",
     statements: [
       // Message status/acknowledged_at is the receipt; attribution follows the actual delivery conversation.

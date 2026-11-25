@@ -423,6 +423,7 @@ const main = async (): Promise<void> => {
             const refs = { factoryId: changed.factoryId, slotId: changed.slotId, launchId: changed.launchId };
 
             if (outcome === "frozen") {log.warn("slot frozen: conversation changed", refs);}
+            else if (outcome === "parked") {log.warn("conversation changed on a parked slot; reset required", refs);}
             else {log.error("conversation changed on a slot with no record; not frozen", refs);}
           },
         }),
@@ -501,6 +502,8 @@ const main = async (): Promise<void> => {
         foundryExtension: foundryExtensionPath(),
         slots: plannedSlots,
         freezer,
+        recoveryLimit: (factoryId) => factories.find((f) => f.factoryId === factoryId)?.config.recovery_limit ?? 3,
+        configLoad: (factoryId) => loadIds.get(factoryId),
         inScope: (factoryId) => factoryStates.isRunning(factoryId),
       });
       const recorder = scheduler;
