@@ -3,7 +3,7 @@
  * group, owns it as the parent, and reports what it knows about every launch.
  */
 import { spawn } from "node:child_process";
-import { messageOf } from "@foundry/protocol/errors";
+import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { randomUUID } from "node:crypto";
 import { LAUNCH_ENV } from "./launch-command.js";
 import { LAUNCH_STDERR_TAIL_BYTES, StderrTail } from "./log.js";
@@ -177,7 +177,7 @@ export function createLaunchRegistry(options: {
         occupied.delete(key);
         throw new LaunchRefused(
           `launch failed to start: ${messageOf(error)}`,
-          (error as NodeJS.ErrnoException).code ?? "spawn_failed",
+          codeOf(error) ?? "spawn_failed",
         );
       }
 
@@ -300,7 +300,7 @@ function signalProcessGroup(pgid: number, signal: GroupSignal): boolean {
 
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") {return false;}
+    if (codeOf(error) === "ESRCH") {return false;}
 
     // EPERM: a process remains that the host may not signal; the group is not
     // gone. For SIGTERM/SIGKILL this counts as sent, so it ends as `unconfirmed`.

@@ -10,6 +10,7 @@
  * alive is the Worker Host's call, so this module never reports process death.
  */
 import { chmod, lstat, mkdtemp, rename, rmdir, unlink } from "node:fs/promises";
+import { codeOf } from "@foundry/protocol/errors";
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
@@ -296,7 +297,7 @@ const removeStaleSocket = async (path: string): Promise<void> => {
   try {
     stats = await lstat(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {return;}
+    if (codeOf(error) === "ENOENT") {return;}
 
     throw error;
   }

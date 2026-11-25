@@ -8,7 +8,7 @@
  * values, and keys that look like credentials or message bodies are never written.
  */
 import { randomUUID } from "node:crypto";
-import { messageOf } from "@foundry/protocol/errors";
+import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { chmodSync, closeSync, fchmodSync, fstatSync, mkdirSync, openSync, renameSync, unlinkSync, writeSync } from "node:fs";
 import { join } from "node:path";
 
@@ -147,7 +147,7 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
         try {
           renameSync(from, `${path}.${i}`);
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {throw error;}
+          if (codeOf(error) !== "ENOENT") {throw error;}
         }
       }
     }

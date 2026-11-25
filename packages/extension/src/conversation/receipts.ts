@@ -5,6 +5,7 @@
  * in-memory enqueue, an injection and the start of a turn do not qualify.
  */
 import { readFileSync } from "node:fs";
+import { codeOf } from "@foundry/protocol/errors";
 
 /** The `customType` every Foundry injection carries in Pi's session. */
 export const FOUNDRY_MESSAGE_TYPE = "foundry" as const;
@@ -86,7 +87,7 @@ export const readRecoverableIds = (sessionFile: string | undefined): Set<string>
   try {
     text = readFileSync(sessionFile, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {return ids;}
+    if (codeOf(error) === "ENOENT") {return ids;}
 
     throw error;
   }

@@ -16,7 +16,7 @@
  * Callers must hold the state-root claim.
  */
 import { execFile } from "node:child_process";
-import { messageOf } from "@foundry/protocol/errors";
+import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import type { Stats } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -119,7 +119,7 @@ const entryAt = (path: string): Stats | undefined => {
   try {
     return lstatSync(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {return undefined;}
+    if (codeOf(error) === "ENOENT") {return undefined;}
 
     throw error;
   }
@@ -156,7 +156,7 @@ export const clearCloneStaging = (stateRoot: string): ReadonlyArray<string> => {
   try {
     names = readdirSync(clones);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") {return [];}
+    if (codeOf(error) === "ENOENT") {return [];}
 
     throw error;
   }
