@@ -119,3 +119,90 @@ test("a repeated call ID while the first is pending shares one send and one outc
   ]);
   expect(sent).toHaveLength(1);
 });
+
+const terminalReason = { kind: "terminal", code: "launch_not_current", detail: "host no longer owns this launch" } as const;
+
+test("terminal refusal settles queued and later calls with its exact reason, cancels waits and prevents dispatch", async () => {
+  const wait = manualTimer();
+  const client = new ToolCallClient({ timer: wait.timer });
+  const queued = client.call("queued", "echo", {});
+  const duplicate = client.call("queued", "echo", {});
+  const expected = { status: "refused", code: terminalReason.code, detail: terminalReason.detail };
+
+  client.refuse(terminalReason);
+  const later = client.call("later", "echo", {});
+  const channel = fakeChannel();
+  client.attach(channel.channel);
+  client.receive({ type: "tool_result", callId: "queued", outcome: { status: "committed", value: 1 } });
+  wait.expire();
+
+  expect(await Promise.all([queued, duplicate, later])).toEqual([expected, expected, expected]);
+  expect(wait.running()).toBe(0);
+  expect(client.pendingCallIds()).toEqual([]);
+  expect(channel.sent).toEqual([]);
+  expect(client.terminallyRefused).toBe(true);
+});
+
+test("retryable hello refusal leaves the bounded wait and later committed result intact", async () => {
+  const wait = manualTimer();
+  const client = new ToolCallClient({ timer: wait.timer });
+  const expired = client.call("expired", "echo", {});
+  client.refuse({ kind: "retryable", code: "host_unreachable", detail: "try later" });
+  expect(client.terminallyRefused).toBe(false);
+  expect(wait.running()).toBe(1);
+  wait.expire();
+  expect(await expired).toMatchObject({ status: "not_accepted" });
+
+  const queued = client.call("queued", "echo", {});
+  const channel = fakeChannel();
+  client.attach(channel.channel);
+  client.receive({ type: "tool_result", callId: "queued", outcome: { status: "committed", value: 42 } });
+  expect(await queued).toEqual({ status: "committed", value: 42 });
+  expect(channel.sent).toHaveLength(1);
+});
+
+test.each([false, true])("terminal refusal preserves timed-out dispatch uncertainty (repeat while disconnected: %s)", async (repeatWhileDisconnected) => {
+  const wait = manualTimer();
+  const client = new ToolCallClient({ timer: wait.timer });
+  const channel = fakeChannel();
+  client.attach(channel.channel);
+  const pending = client.call("sent", "echo", {});
+  channel.close();
+  await channel.channel.closed;
+  wait.expire();
+  expect(await pending).toMatchObject({ status: "not_accepted" });
+
+  const repeated = repeatWhileDisconnected ? client.call("sent", "echo", {}) : undefined;
+
+  client.refuse(terminalReason);
+
+  const expected = {
+    status: "not_accepted",
+    detail: `${terminalReason.code}: ${terminalReason.detail}; the call may or may not have been committed`,
+  };
+
+  if (repeated !== undefined) {expect(await repeated).toEqual(expected);}
+
+  expect(await client.call("sent", "echo", {})).toEqual(expected);
+  expect(wait.running()).toBe(0);
+});
+
+test("terminal refusal after a lost result preserves commit uncertainty, including repeated call IDs", async () => {
+  const wait = manualTimer();
+  const client = new ToolCallClient({ timer: wait.timer });
+  const first = fakeChannel();
+  client.attach(first.channel);
+  const pending = client.call("sent", "echo", {});
+  first.close();
+  await first.channel.closed;
+  client.refuse(terminalReason);
+  const outcome = await pending;
+
+  expect(outcome).toEqual({
+    status: "not_accepted",
+    detail: `${terminalReason.code}: ${terminalReason.detail}; the call may or may not have been committed`,
+  });
+  expect(await client.call("sent", "echo", {})).toEqual(outcome);
+  expect(wait.running()).toBe(0);
+  expect(client.pendingCallIds()).toEqual([]);
+});
