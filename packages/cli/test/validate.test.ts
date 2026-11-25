@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
@@ -17,16 +17,12 @@ afterAll(() => rmSync(dir, { recursive: true, force: true }));
 const run = (yaml: string): { status: number; stdout: string; stderr: string } => {
   const file = join(dir, `${Math.random().toString(36).slice(2)}.yaml`);
   writeFileSync(file, yaml);
-  try {
-    const stdout = execFileSync(process.execPath, [main, "validate", file], {
-      encoding: "utf8",
-      stdio: "pipe",
-    });
-    return { status: 0, stdout: stdout.replaceAll(file, "F"), stderr: "" };
-  } catch (error) {
-    const e = error as { status: number; stdout: string; stderr: string };
-    return { status: e.status, stdout: e.stdout.replaceAll(file, "F"), stderr: e.stderr.replaceAll(file, "F") };
-  }
+  const result = spawnSync(process.execPath, [main, "validate", file], { encoding: "utf8" });
+  return {
+    status: result.status ?? -1,
+    stdout: result.stdout.replaceAll(file, "F"),
+    stderr: result.stderr.replaceAll(file, "F"),
+  };
 };
 
 const valid = `version: 1
@@ -38,34 +34,53 @@ default_production_line: f
 rooms:
   r:
     stations:
-      s: { model: p/m }
+      s: { isolation: worktree, model: p/m }
 production_lines:
   f:
+    verify: [npm, test]
     stages:
       - id: a
         station: r.s
+        writing: true
+      - id: b
+        station: r.s
+        approval: true
+        on_rejection: a
 `;
 
 test("foundry validate accepts a valid factory with exit 0", () => {
   const result = run(valid);
-  expect(result).toMatchObject({ status: 0, stdout: 'F: factory "smoke" is valid\n' });
+  expect(result).toEqual({ status: 0, stdout: 'F: factory "smoke" is valid\n', stderr: "" });
 });
 
 test("foundry validate reports the location of each problem and exits 1", () => {
-  const result = run(valid.replace("version: 1", "version: 2").replace("      s: { model: p/m }", "      s:\n        on_demand: true"));
+  const result = run(valid.replace("version: 1", "version: 2").replace("      s: { isolation: worktree, model: p/m }", "      s:\n        isolation: worktree\n        on_demand: true"));
   expect(result.status).toBe(1);
   expect(result.stderr).toContain("F:1:10: version: Unsupported version");
-  expect(result.stderr).toContain("F:11:9: rooms.r.stations.s.on_demand: Unknown key");
+  expect(result.stderr).toContain("F:12:9: rooms.r.stations.s.on_demand: Unknown key");
 });
 
 test("foundry validate reports a duplicate key at its line", () => {
   const result = run(`${valid}name: again\n`);
   expect(result.status).toBe(1);
-  expect(result.stderr).toMatch(/^F:16:1: .*DUPLICATE_KEY/m);
+  expect(result.stderr).toMatch(/^F:22:1: .*DUPLICATE_KEY/m);
 });
 
-test("foundry validate reports a missing configured file at its setting", () => {
-  const result = run(valid.replace("      s: { model: p/m }", "      s:\n        model: p/m\n        instructions: missing.md"));
+test("foundry validate prints a missing verify as a warning and still exits 0", () => {
+  const result = run(valid.replace("    verify: [npm, test]\n", ""));
+  expect(result.status).toBe(0);
+  expect(result.stdout).toBe('F: factory "smoke" is valid\n');
+  expect(result.stderr).toMatch(/^F:13:5: production_lines\.f: No verify command.*\(warning\)$/m);
+});
+
+test("foundry validate reports an offline-check failure at its setting", () => {
+  const result = run(valid.replace("      s: { isolation: worktree, model: p/m }", "      s:\n        isolation: worktree\n        model: p/m\n        instructions: missing.md"));
   expect(result.status).toBe(1);
-  expect(result.stderr).toMatch(/^F:12:23: rooms\.r\.stations\.s\.instructions: Configured file not found: .*missing\.md$/m);
+  expect(result.stderr).toMatch(/^F:13:23: rooms\.r\.stations\.s\.instructions: Configured file not found: .*missing\.md$/m);
+});
+
+test("foundry validate reports a station-resolution failure at its setting", () => {
+  const result = run(valid.replace("      s: { isolation: worktree, model: p/m }", "      s:\n        isolation: worktree\n        model: ${FOUNDRY_TEST_UNSET_MODEL}"));
+  expect(result.status).toBe(1);
+  expect(result.stderr).toMatch(/^F:12:\d+: rooms\.r\.stations\.s\.model: Model variable FOUNDRY_TEST_UNSET_MODEL is not set$/m);
 });

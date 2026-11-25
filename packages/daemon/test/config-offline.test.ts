@@ -63,6 +63,10 @@ production_lines:
       - id: develop
         station: engineering.developer
         writing: true
+      - id: integrate
+        station: engineering.developer
+        approval: true
+        on_rejection: develop
 `;
 
 const validate = (text: string) => validateFactoryYaml(text, { yamlFile, home });
