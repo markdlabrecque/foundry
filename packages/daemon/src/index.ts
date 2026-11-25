@@ -2,6 +2,7 @@
 export const packageName = "@foundry/daemon" as const;
 
 export * from "./channel/server.js";
+export { channelLogEvents } from "./channel/log-events.js";
 export { selectStateRoot, type StateRootInputs } from "./state-root.js";
 export {
   claimStateRoot,
@@ -19,3 +20,20 @@ export {
   type SkillHeader,
 } from "./repository-context.js";
 export * from "./store.js";
+export {
+  DAEMON_LOG_KEEP_FILES,
+  DAEMON_LOG_MAX_BYTES,
+  DAEMON_LOG_NAME,
+  LOG_LEVELS,
+  OMITTED,
+  REDACTED,
+  daemonLogPath,
+  isLogLevel,
+  openDaemonLog,
+  type DaemonLogger,
+  type DaemonLoggerOptions,
+  type LogDetailValue,
+  type LogEntry,
+  type LogLevel,
+  type LogRefs,
+} from "./log.js";

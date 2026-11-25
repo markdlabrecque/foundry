@@ -12,7 +12,13 @@ export {
   type LaunchExitedEvent,
 } from "./control.js";
 export type { LaunchExit, LaunchRecord, LaunchSpec } from "./launches.js";
-export { serveHost, type RunningHost } from "./server.js";
+export { endedUnexpectedly, serveHost, type RunningHost } from "./server.js";
+export {
+  LAUNCH_LOGS_DIR,
+  LAUNCH_STDERR_KEEP_PER_SLOT,
+  LAUNCH_STDERR_TAIL_BYTES,
+  launchStderrPath,
+} from "./log.js";
 export {
   HOST_LOG_NAME,
   connectHost,
