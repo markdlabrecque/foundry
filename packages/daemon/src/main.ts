@@ -40,7 +40,7 @@ import type { DaemonLogger, LogLevel, LogRefs } from "./log.js";
 import { ManagementSocketError, serveManagementApi } from "./management-api.js";
 import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
-import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, TASK_TRANSITION, channelSocketPath } from "@foundry/protocol";
+import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, TASK_TRANSITION, HUMAN_REQUEST, channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
 import { connectHost, resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
@@ -70,6 +70,7 @@ import { agentDelegateHandler } from "./agent-delegate.js";
 import { agentRequestHandler } from "./agent-request.js";
 import { agentReplyHandler } from "./agent-reply.js";
 import { taskTransitionHandler } from "./task-transition.js";
+import { humanRequestHandler } from "./human-request.js";
 import { startMessageRouting } from "./message-routing.js";
 import { startRequestExpiry } from "./request-expiry.js";
 
@@ -458,6 +459,7 @@ const main = async (): Promise<void> => {
         toolCalls: createSubmissions({
           store,
           handlers: new Map([
+            [HUMAN_REQUEST, humanRequestHandler],
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
             [AGENT_STATUS, agentStatusHandler(plannedSlots)],
             [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket, budget: messageBudget((id) => loadIds.get(id)) })],

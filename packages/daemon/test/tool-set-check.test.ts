@@ -25,6 +25,7 @@ test("the expected Tool Set includes Pi's built-ins, discovery, status, messagin
   { name: "agent_reply", source: FOUNDRY },
   { name: "agent_delegate", source: FOUNDRY },
   { name: "task_transition", source: FOUNDRY },
+  { name: "human_request", source: FOUNDRY },
     { name: "web_fetch", source: PROJECT },
   ]);
 });

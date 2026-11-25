@@ -11,7 +11,7 @@
  */
 import { existsSync } from "node:fs";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION, TASK_TRANSITION } from "@foundry/protocol";
+import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION, TASK_TRANSITION, HUMAN_REQUEST } from "@foundry/protocol";
 import type { Hello, ToolCallOutcome } from "@foundry/protocol";
 import { Type } from "typebox";
 import { openChannel } from "./channel/client.js";
@@ -200,7 +200,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   pi.registerTool({
     name: TASK_TRANSITION,
     label: "Report an assignment outcome",
-    description: "Report done, blocked or rejected for your active assignment with reason and evidence references. Blocked and rejected without a configured rejection route pause for an operator decision. The daemon chooses routing; you cannot choose a destination. Routed rejection and done at approval, code or final stages are not supported yet.",
+    description: "Report done, blocked or rejected for your active assignment with reason and evidence references. Blocked and rejected without a configured rejection route pause for an operator decision. The daemon chooses routing; you cannot choose a destination. Code-stage done requires the exact ticket branch HEAD commit; all non-writing outcomes require reverting branch movement and tracked changes. Routed rejection and done at approval or final stages are not supported yet.",
     parameters: Type.Object({
       assignmentId: Type.String({ minLength: 1 }),
       outcome: Type.Union([Type.Literal("done"), Type.Literal("blocked"), Type.Literal("rejected")]),
@@ -210,6 +210,27 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
     }, { additionalProperties: false }),
     async execute(callId, args): Promise<AgentToolResult<ToolCallOutcome>> {
       const outcome = await toolCalls.call(callId, TASK_TRANSITION, args);
+
+      if (outcome.status === "committed") {
+        return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
+      }
+
+      const code = outcome.status === "refused" ? outcome.code : outcome.status;
+
+      return { content: [{ type: "text", text: `${code}: ${outcome.detail}` }], details: outcome, isError: true };
+    },
+  });
+
+  pi.registerTool({
+    name: HUMAN_REQUEST,
+    label: "Ask the operator for a decision",
+    description: "Record a worker-request approval for your active assignment without pausing or gating stage movement. Returns after durable acceptance; the operator answer is asynchronous.",
+    parameters: Type.Object({
+      assignmentId: Type.String({ minLength: 1 }),
+      body: Type.String({ minLength: 1 }),
+    }, { additionalProperties: false }),
+    async execute(callId, args): Promise<AgentToolResult<ToolCallOutcome>> {
+      const outcome = await toolCalls.call(callId, HUMAN_REQUEST, args);
 
       if (outcome.status === "committed") {
         return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
