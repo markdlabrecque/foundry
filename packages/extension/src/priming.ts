@@ -67,7 +67,7 @@ export class ReceiptReporter {
 }
 
 export interface DaemonFrameHandlers {
-  readonly adapter: Pick<ConversationAdapter, "inject">;
+  readonly adapter: Pick<ConversationAdapter, "inject" | "pending">;
   readonly messages?: Pick<MessageReceiver, "receive" | "drain">;
   readonly interrupter: Pick<RunInterrupter, "handle" | "handleDrain">;
   /** Receives tool results. Without one, a result is dropped: no call can be waiting on it. */

@@ -8,8 +8,9 @@ export class MessageReceiver {
   private readonly held = new Map<string, Message>();
   private control: Pick<ExtensionContext, "isIdle"> | undefined;
   private draining = false;
+  private batchTail: string | undefined;
 
-  constructor(private readonly adapter: Pick<ConversationAdapter, "inject">) {}
+  constructor(private readonly adapter: Pick<ConversationAdapter, "inject" | "pending">) {}
 
   bind(control: Pick<ExtensionContext, "isIdle">): void {
     this.control = control;
@@ -50,18 +51,27 @@ export class MessageReceiver {
       return;
     }
 
-    // Take the entire FIFO batch before injection starts a new turn. Later arrivals wait
-    // for that turn to settle, rather than overtaking any member of this batch.
+    // Pi can defer triggerTurn while emitting settlement, awaiting its entire run
+    // before the next deferred injection. Append the prefix without starting work,
+    // and let only the tail trigger a turn. Do not release another batch until that
+    // tail is recoverable, even if async settle handlers leave Pi apparently idle.
+    if (this.batchTail !== undefined && this.adapter.pending().includes(this.batchTail)) {return;}
+
     const batch = [...this.held.values()];
+    const tail = batch.at(-1);
+
+    if (tail === undefined) {return;}
+
+    this.batchTail = tail.id;
     this.held.clear();
 
-    for (const message of batch) {this.inject(message);}
+    for (const message of batch) {this.inject(message, message === tail);}
   }
 
   pending(): ReadonlyArray<string> { return [...this.held.keys()]; }
 
-  private inject(message: Message): void {
-    this.adapter.inject({ id: message.id, kind: "message", content: message.body }, { triggerTurn: true });
+  private inject(message: Message, triggerTurn = true): void {
+    this.adapter.inject({ id: message.id, kind: "message", content: message.body }, { triggerTurn });
   }
 }
 
@@ -69,8 +79,8 @@ export class MessageReceiver {
 export const deliverMessages = (pi: Pick<ExtensionAPI, "on">, receiver: MessageReceiver): void => {
   pi.on("session_start", (_event, ctx) => receiver.bind(ctx));
   pi.on("session_shutdown", () => receiver.drain());
-  // Pi defers triggerTurn injections made inside agent_settled and awaits each
-  // resulting run separately. Leave that handler before injecting the FIFO batch.
+  // Yield to Pi's lifecycle bookkeeping. Async handlers can keep settlement open
+  // past this callback, so batch-tail gating above (not timing) guarantees FIFO.
   const settled = () => { setImmediate(() => receiver.settled()); };
 
   pi.on("agent_settled", settled);

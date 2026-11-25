@@ -5,20 +5,21 @@ import type { ConversationAdapter } from "@foundry/extension";
 import type { Message } from "@foundry/protocol";
 
 // Like the interrupt fixture, handlers accept the event/context supplied by each test.
-type PiHandler = (...args: Array<any>) => void;
+type PiHandler = (...args: Array<any>) => any;
 
 const fixture = (busy = true, deferSettledInjections = false) => {
   const handlers = new Map<string, Array<PiHandler>>();
   const injected: Array<string> = [];
   const state = { busy, emittingSettled: false, disposed: false };
   const deferred: Array<() => Promise<void>> = [];
+  const pending = new Set<string>();
   let duringRun: (() => void) | undefined;
 
   const inject: ConversationAdapter["inject"] = (injection, options) => {
-    expect(options).toEqual({ triggerTurn: true });
+    pending.add(injection.id);
     expect(injection.kind).toBe("message");
 
-    if (deferSettledInjections && state.emittingSettled) {
+    if (deferSettledInjections && state.emittingSettled && options?.triggerTurn) {
       deferred.push(async () => {
         inject(injection, options);
         duringRun?.();
@@ -29,10 +30,12 @@ const fixture = (busy = true, deferSettledInjections = false) => {
     }
 
     injected.push(injection.id);
-    state.busy = true;
+    pending.delete(injection.id);
+
+    if (options?.triggerTurn) {state.busy = true;}
   };
 
-  const receiver = new MessageReceiver({ inject });
+  const receiver = new MessageReceiver({ inject, pending: () => [...pending] });
 
   const pi = {
     on: (event: string, handler: PiHandler) => {
@@ -42,7 +45,7 @@ const fixture = (busy = true, deferSettledInjections = false) => {
     },
     emit: (event: string) => {
       for (const handler of handlers.get(event) ?? []) {
-        handler({}, { isIdle: () => {
+        void handler({}, { isIdle: () => {
           if (state.disposed) {throw new Error("This extension ctx is stale after session replacement or reload.");}
 
           return !state.busy;
@@ -62,7 +65,9 @@ const fixture = (busy = true, deferSettledInjections = false) => {
   const settle = async () => {
     state.busy = false;
     state.emittingSettled = true;
-    pi.emit("agent_settled");
+
+    for (const handler of handlers.get("agent_settled") ?? []) {await handler({}, {});}
+
     state.emittingSettled = false;
 
     for (const action of deferred.splice(0)) {await action();}
@@ -149,6 +154,38 @@ test("settle-deferred runs cannot let a newer when_idle message overtake the old
   expect(injected).toEqual(["A", "B", "C"]);
 });
 
+test("an async settlement handler cannot let later messages overtake a deferred batch tail", async () => {
+  const { pi, receive, injected, settle, duringRun, receiver } = fixture(true, true);
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+
+  pi.on("agent_settled", () => blocked);
+  receive("A");
+  receive("B");
+  const settling = settle();
+  await tick(); // The receiver flushes while Pi is still awaiting the later handler.
+  expect(injected).toEqual(["A"]);
+  receive("C"); // Pi appears idle, but B's injection is still deferred.
+  expect(receiver.pending()).toEqual(["C"]);
+  duringRun(() => receive("D"));
+  release();
+  await settling;
+  await tick();
+  expect(injected).toEqual(["A", "B", "C", "D"]);
+  expect(receiver.pending()).toEqual([]);
+});
+
+test("session shutdown keeps held messages from starting another turn", async () => {
+  const { pi, state, receive, injected, receiver } = fixture();
+  receive("held");
+  pi.emit("session_shutdown");
+  state.busy = false;
+  pi.emit("agent_settled");
+  await tick();
+  expect(injected).toEqual([]);
+  expect(receiver.pending()).toEqual(["held"]);
+});
+
 test("a queued flush cannot use Pi's context after runtime disposal", async () => {
   const { state, receive, injected, settle, receiver } = fixture();
   receive("held");
@@ -171,7 +208,7 @@ test("drain prevents a scheduled settled flush and acknowledges without starting
   const channel = { send: async (frame: { type: string }) => { acknowledgements.push(frame.type); },
     close: () => {}, closed: new Promise<void>(() => {}) };
 
-  const dispatch = receiveDaemonFrames({ adapter: { inject: () => {} }, messages: receiver, interrupter });
+  const dispatch = receiveDaemonFrames({ adapter: { inject: () => {}, pending: () => [] }, messages: receiver, interrupter });
 
   receive("held");
   dispatch({ type: "drain", requestId: "drain-1" }, channel);
