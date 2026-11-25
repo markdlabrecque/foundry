@@ -29,6 +29,12 @@ export interface SyncTarget {
 /** The identity of a merge commit the daemon makes in its own clone. */
 const MERGE_IDENTITY = ["-c", "user.name=Foundry", "-c", "user.email=foundry@foundry.invalid"] as const;
 
+/**
+ * Fast-forward when possible and never sign, whatever the operator's `merge.ff` or `commit.gpgSign`
+ * say (PRD §9.1): their Git config must not force a merge commit, refuse one, or wait on pinentry.
+ */
+const MERGE_POLICY = ["--ff", "--no-gpg-sign"] as const;
+
 /** No hooks: the operator's configured hooks are not Foundry's. */
 const NO_HOOKS = ["-c", "core.hooksPath=/dev/null"] as const;
 
@@ -83,7 +89,7 @@ export const syncClone = (
     const fastForward = yield* Effect.promise(() => isAncestor(clone, previousHead, fetchedHead, env));
 
     yield* git(
-      [...NO_HOOKS, ...MERGE_IDENTITY, "merge", "--quiet", "--no-edit", "-m", `Sync ${branch} from source`, fetchedHead],
+      [...NO_HOOKS, ...MERGE_IDENTITY, "merge", ...MERGE_POLICY, "--quiet", "--no-edit", "-m", `Sync ${branch} from source`, fetchedHead],
       (reason) => ({ previousHead, fetchedHead, reason: `merge failed: ${reason}` }),
     ).pipe(
       // Leave no half-finished merge behind. Restoring the recorded head with a sync-conflict hold is FOU-61.

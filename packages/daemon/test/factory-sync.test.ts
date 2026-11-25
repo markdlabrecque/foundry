@@ -98,6 +98,31 @@ test("a clone ahead of its source gets a merge commit whose parents are the prev
   expect(git(f.clone, ["rev-parse", "main^1", "main^2"]).split("\n")).toEqual([previous, fetched]);
 });
 
+test("the clone's merge.ff=false and commit.gpgSign=true neither prevent a fast-forward nor block a merge commit", async () => {
+  const f = fixture();
+  git(f.clone, ["config", "merge.ff", "false"]);
+  const fastForwarded = commit(f.seed, "later.md", "later\n");
+  pushSeed(f);
+
+  const first = await withStore(f.dir, (store) => syncer(store, f).request("alpha", true));
+
+  expect(first).toMatchObject({ operation: { status: "complete", result: { head: fastForwarded, fastForward: true } } });
+  expect(git(f.clone, ["rev-parse", "main"])).toBe(fastForwarded);
+
+  const local = commit(f.clone, "local.md", "local\n");
+  // Set after the local commit, which would otherwise need signing too. The signing program always
+  // fails, so an attempted signature fails the sync instead of prompting.
+  git(f.clone, ["config", "commit.gpgSign", "true"]);
+  git(f.clone, ["config", "gpg.program", "false"]);
+  const fetched = commit(f.seed, "again.md", "again\n");
+  pushSeed(f);
+
+  const second = await withStore(f.dir, (store) => syncer(store, f).request("alpha", true));
+
+  expect(second).toMatchObject({ operation: { status: "complete", result: { previousHead: local, fetchedHead: fetched, fastForward: false } } });
+  expect(git(f.clone, ["rev-parse", "main^1", "main^2"]).split("\n")).toEqual([local, fetched]);
+});
+
 test("a conflicting sync fails with both heads recorded and leaves no merge in progress", async () => {
   const f = fixture();
   const previous = commit(f.clone, "README.md", "clone side\n");
