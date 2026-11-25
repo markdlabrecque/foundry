@@ -131,6 +131,11 @@ export interface HostConnection {
   terminate(launchId: string, options?: TerminateOptions): Promise<Termination>;
   /** Called for each launch exit the host reports while this connection is open. */
   onLaunchExited(listener: (launch: LaunchRecord) => void): void;
+  /**
+   * Asks the host to exit. Resolves once the host accepted; it then closes its socket and exits.
+   * Rejects with `HostRefusedError` while any owned process group is not confirmed gone.
+   */
+  shutdown(): Promise<void>;
   close(): void;
 }
 
@@ -268,6 +273,13 @@ export async function connectHost(
     },
     onLaunchExited(listener) {
       exitListeners.push(listener);
+    },
+    async shutdown() {
+      const response = await request("shutdown");
+
+      if (!response.ok) {throw new HostRefusedError("shutdown", response.error);}
+
+      if (!("shutdown" in response)) {throw new Error("worker host answered shutdown without accepting it");}
     },
     close() {
       socket.end();

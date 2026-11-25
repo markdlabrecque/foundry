@@ -12,7 +12,7 @@
  * fetched) after (PRD §9.1), and the run and each configuration load are recorded in it.
  */
 import { readFileSync } from "node:fs";
-import { expectDefined, messageOf } from "@foundry/protocol/errors";
+import { codeOf, expectDefined, messageOf } from "@foundry/protocol/errors";
 import { join } from "node:path";
 import { createKnowledgeLayout, LoadFactoriesResult, loadFactoryFiles, recordRun } from "./factory-loads.js";
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
@@ -35,7 +35,7 @@ import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
 import { channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
-import { resolvePiExecutable } from "@foundry/host";
+import { connectHost, resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
 import { connectOrStartHost, createSlotScheduler, planSlots, storeSlotsReader } from "./slots.js";
 import { startChannelServer } from "./channel/server.js";
@@ -47,6 +47,8 @@ import { createFactoryStates, createFactoryStopper } from "./factory-stop.js";
 import type { FactoryStopperOptions } from "./factory-stop.js";
 import { createSlotFreezer, storeSlotControl } from "./freeze.js";
 import { instructionFilesCheck, plannedPrimeRequests } from "./instruction-freeze.js";
+import { createInstanceShutdown } from "./shutdown.js";
+import type { ShutdownHost } from "./shutdown.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -430,6 +432,25 @@ const main = async (): Promise<void> => {
   };
 
   const slotsReader = storeSlotsReader(store, stateRoot, decision.started, plannedSlots);
+  const stopper = createFactoryStopper(stopperOptions());
+
+  // The host this run connected to, else one a previous run left behind; none answering means none to stop.
+  const shutdownHost = async (): Promise<ShutdownHost | undefined> => {
+    if (host !== undefined) {return host;}
+
+    try {
+      const adopted = await connectHost(stateRoot);
+      host = adopted;
+
+      return adopted;
+    } catch (cause) {
+      const code = codeOf(cause);
+
+      if (code === "ENOENT" || code === "ECONNREFUSED") {return undefined;}
+
+      throw cause;
+    }
+  };
 
   try {
     // Frozen slots are read back from the store, so a freeze survives a daemon restart (PRD §5.3).
@@ -460,7 +481,17 @@ const main = async (): Promise<void> => {
       // Read from the recorded run and its configuration loads, not from memory.
       factories: storeFactoriesReader(store, log.runId, (factoryId) => factoryStates.get(factoryId)),
       // A graceful stop sends `drain` on each live worker's channel before the host terminates it.
-      stopper: createFactoryStopper(stopperOptions()),
+      stopper,
+      // Every factory with the scoped stop, then the Worker Host; the daemon exits 0 once answered.
+      shutdown: createInstanceShutdown({ stopper, states: factoryStates, factories: decision.started, host: shutdownHost }),
+      onShutdown: () => {
+        if (stopping) {return;}
+
+        stopping = true;
+        log.info("daemon stopping", { detail: { signal: "shutdown" } });
+
+        if (api !== undefined) {finish(api);}
+      },
       slots: slotsReader,
       slotControl: storeSlotControl(slotsReader, freezer),
     });

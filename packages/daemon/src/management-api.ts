@@ -29,6 +29,9 @@ import { FACTORIES_PATH, FactoryStopRequest, matchFactoryStopPath } from "@found
 import type { FactoriesReader } from "./factories.js";
 import { FactoryStopError } from "./factory-stop.js";
 import type { FactoryStopErrorCode, FactoryStopper } from "./factory-stop.js";
+import { SHUTDOWN_PATH, ShutdownRequest } from "@foundry/protocol/shutdown-api";
+import { ShutdownError } from "./shutdown.js";
+import type { InstanceShutdown } from "./shutdown.js";
 import { matchSlotInterruptPath, matchSlotPath, matchSlotUnfreezePath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
 import type { SlotControl, SlotInterrupter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
@@ -56,6 +59,10 @@ export interface ManagementApiInputs {
   readonly slotControl?: SlotControl;
   /** Stops one named factory (PRD §10.3). Without it the stop route answers 503. */
   readonly stopper?: FactoryStopper;
+  /** Stops every factory and then the Worker Host (PRD §10.3). Without it the route answers 503. */
+  readonly shutdown?: InstanceShutdown;
+  /** Called once a successful shutdown's answer has been written; the daemon then exits. */
+  readonly onShutdown?: () => void;
 }
 
 export interface ManagementApi {
@@ -262,6 +269,8 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
   if (stopping !== undefined) {return handleFactoryStop(inputs, stopping, request, response);}
 
+  if (path === SHUTDOWN_PATH) {return handleShutdown(inputs, request, response);}
+
   request.resume(); // The remaining routes read no body; drain it so the connection stays usable.
 
   if (path === LOGS_PATH) {return handleLogs(inputs, request, response, url.searchParams);}
@@ -431,6 +440,49 @@ const handleUnfreeze = (
       cause instanceof SlotsError
         ? send(response, SLOT_ERROR_STATUS[cause.code], failure(cause.code, cause.message))
         : send(response, 500, failure("internal", `unfreeze failed: ${messageOf(cause)}`)),
+  );
+};
+
+const decodeShutdownRequest = Schema.decodeUnknownOption(Schema.fromJsonString(ShutdownRequest));
+
+/** `POST /api/v1/shutdown`: answers once every group is confirmed gone and the host stopped, or failed to. */
+const handleShutdown = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse): void => {
+  if (request.method !== "POST") {
+    request.resume();
+    response.setHeader("allow", "POST");
+
+    return send(response, 405, failure("method_not_allowed", "a shutdown only accepts POST"));
+  }
+
+  void (async (): Promise<readonly [number, ApiResponse<unknown>]> => {
+    const text = await readSmallBody(request, STOP_BODY_LIMIT);
+
+    if (text === undefined) {return [413, failure("payload_too_large", `request body exceeds ${STOP_BODY_LIMIT} bytes`)];}
+
+    const decoded = decodeShutdownRequest(text.trim() === "" ? "{}" : text);
+
+    if (Option.isNone(decoded)) {return [400, failure("bad_request", "the body must be a JSON object with an optional boolean force")];}
+
+    const shutdown = inputs.shutdown;
+
+    if (shutdown === undefined) {return [503, failure("unavailable", "shutdown is not served by this daemon")];}
+
+    try {
+      return [200, { ok: true, result: await shutdown.shutdown(decoded.value.force ?? false) }];
+    } catch (error) {
+      if (error instanceof ShutdownError) {return [409, failure(error.code, error.message)];}
+
+      throw error;
+    }
+  })().then(
+    ([status, body]) => {
+      if (status !== 200) {return send(response, status, body);}
+
+      // The daemon exits only after the operator has the answer.
+      response.once("finish", () => inputs.onShutdown?.());
+      send(response, status, body);
+    },
+    (cause: unknown) => send(response, 500, failure("internal", `shutdown failed: ${messageOf(cause)}`)),
   );
 };
 

@@ -14,13 +14,14 @@ if (stateRoot === undefined || stateRoot === "") {
   process.exit(2);
 }
 
-const host = await serveHost(stateRoot);
+// An accepted `shutdown` request (only `foundry shutdown` sends one) stops the host like a signal.
+const host = await serveHost(stateRoot, { onShutdown: () => stop("shutdown") });
 const log = createHostLog(host.identity.hostId);
 
-const stop = (signal: NodeJS.Signals): void => {
-  log("info", "worker host stopping", {}, { signal });
+function stop(reason: NodeJS.Signals | "shutdown"): void {
+  log("info", "worker host stopping", {}, { signal: reason });
   void host.close().then(() => process.exit(0));
-};
+}
 
 process.on("SIGTERM", stop);
 

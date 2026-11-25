@@ -33,6 +33,10 @@
       "types": "./dist/factories-api.d.ts",
       "default": "./dist/factories-api.js"
     },
+    "./shutdown-api": {
+      "types": "./dist/shutdown-api.d.ts",
+      "default": "./dist/shutdown-api.js"
+    },
     "./state-root": {
       "types": "./dist/state-root.d.ts",
       "default": "./dist/state-root.js"
