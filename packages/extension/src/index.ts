@@ -13,6 +13,8 @@ export * from "./interrupt.js";
 
 export * from "./priming.js";
 
+export * from "./tool-calls.js";
+
 export * from "./tool-set.js";
 
 export * from "./worker.js";

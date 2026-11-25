@@ -155,8 +155,55 @@ export const Receipt = Schema.Struct({
 
 export type Receipt = typeof Receipt.Type;
 
+/**
+ * An agent tool call (PRD §6.1): one request frame, answered by one `tool_result`. The daemon keys
+ * its submission record by the launch the connection was claimed for plus Pi's tool call ID, so
+ * re-sending the same call after a lost result changes nothing, while two calls with equal
+ * arguments stay distinct.
+ */
+export const ToolCall = Schema.Struct({
+  type: Schema.Literal("tool_call"),
+  callId: Id,
+  tool: Id,
+  args: Schema.Json,
+});
+
+export type ToolCall = typeof ToolCall.Type;
+
+/**
+ * What a tool call came to. `committed`: the submission, its effects and this stored value are in
+ * the database; a retry returns the same value. `refused`: nothing was committed.
+ */
+export const ToolCallOutcome = Schema.Union([
+  Schema.Struct({ status: Schema.Literal("committed"), value: Schema.Json }),
+  Schema.Struct({ status: Schema.Literal("refused"), code: Id, detail: Schema.String }),
+]);
+
+export type ToolCallOutcome = typeof ToolCallOutcome.Type;
+
+/** Why a tool call was refused. */
+export const ToolRefusalCode = {
+  /** The worker's slot is frozen (PRD §5.3); the daemon refuses its calls. */
+  slotFrozen: "slot_frozen",
+  /** The daemon serves no tool by that name. */
+  unknownTool: "unknown_tool",
+  /** The daemon tried and rolled back: nothing from the call was kept. */
+  notCommitted: "not_committed",
+  /** Set by the extension: no channel carried the call, or its result, within the bounded wait. */
+  notAccepted: "not_accepted",
+} as const;
+
+/** The daemon's answer to a `tool_call`, sent only after the commit. */
+export const ToolResult = Schema.Struct({
+  type: Schema.Literal("tool_result"),
+  callId: Id,
+  outcome: ToolCallOutcome,
+});
+
+export type ToolResult = typeof ToolResult.Type;
+
 /** Frames a worker sends after its hello is accepted. */
-export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck, DrainAck]);
+export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck, DrainAck, ToolCall]);
 
 export type WorkerFrame = typeof WorkerFrame.Type;
 
@@ -173,7 +220,7 @@ export const Prime = Schema.Struct({
 export type Prime = typeof Prime.Type;
 
 /** Frames the daemon sends on an accepted connection, after `hello_accepted`. */
-export const DaemonFrame = Schema.Union([Prime, Interrupt, Drain]);
+export const DaemonFrame = Schema.Union([Prime, Interrupt, Drain, ToolResult]);
 
 export type DaemonFrame = typeof DaemonFrame.Type;
 

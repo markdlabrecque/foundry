@@ -9,6 +9,7 @@ import type { DaemonFrame } from "@foundry/protocol";
 import type { OpenChannel } from "./channel/client.js";
 import type { ConversationAdapter } from "./conversation/adapter.js";
 import type { RunInterrupter } from "./interrupt.js";
+import type { ToolCallClient } from "./tool-calls.js";
 
 /**
  * Sends receipts over the attached channel, holding them while there is none.
@@ -67,6 +68,8 @@ export class ReceiptReporter {
 export interface DaemonFrameHandlers {
   readonly adapter: Pick<ConversationAdapter, "inject">;
   readonly interrupter: Pick<RunInterrupter, "handle" | "handleDrain">;
+  /** Receives tool results. Without one, a result is dropped: no call can be waiting on it. */
+  readonly toolCalls?: Pick<ToolCallClient, "receive">;
 }
 
 /**
@@ -89,6 +92,10 @@ export const receiveDaemonFrames =
         return;
       case "drain":
         handlers.interrupter.handleDrain(frame, channel);
+
+        return;
+      case "tool_result":
+        handlers.toolCalls?.receive(frame);
 
         return;
       default: {

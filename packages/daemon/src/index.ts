@@ -7,6 +7,8 @@ export { channelLogEvents } from "./channel/log-events.js";
 
 export * from "./channel/slot-claim.js";
 
+export * from "./submissions.js";
+
 export { selectStateRoot, type StateRootInputs } from "@foundry/protocol/state-root";
 
 export {

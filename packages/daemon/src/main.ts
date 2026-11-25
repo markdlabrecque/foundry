@@ -51,6 +51,7 @@ import { instructionFilesCheck, plannedPrimeRequests } from "./instruction-freez
 import { createInstanceShutdown } from "./shutdown.js";
 import type { ShutdownHost } from "./shutdown.js";
 import { createToolSetGuard, createToolSetRecheck, expectedToolSet, frozenConversation } from "./tool-set-check.js";
+import { createSubmissions } from "./submissions.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -333,6 +334,8 @@ const main = async (): Promise<void> => {
   // must pass `gate: freezer` and `freeze: freezer.freeze` to `createPrimer`, with the same
   // `plannedPrimeRequests` as its `primeRequest`. Checks are read at unfreeze time, so one
   // registered below, once the scheduler exists, is honoured.
+  // Made before the channel is served, so agent tool calls from a frozen slot are refused from
+  // the first frame.
   const freezeChecks: FreezeChecks = {
     // PRD §5.5: a missing instruction file clears only once the slot's prime composes again.
     instruction_missing: instructionFilesCheck(plannedPrimeRequests(factories, plannedSlots)),
@@ -381,6 +384,8 @@ const main = async (): Promise<void> => {
       channel = await startChannelServer({
         socketPath: channelSocketPath(stateRoot),
         slotClaim: guard,
+        // Each agent tool registers its handler with its own ticket; until then calls are refused.
+        toolCalls: createSubmissions({ store, handlers: new Map(), gate: freezer }),
         ...channelLogEvents(log),
       });
 

@@ -15,8 +15,8 @@ import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import type { Server, Socket } from "node:net";
-import { CHANNEL_LOST_AFTER_MS, decodeHelloLine, decodeWorkerFrameLine, encodeFrame, FrameLineSplitter, PROTOCOL_VERSION } from "@foundry/protocol";
-import type { DaemonFrame, Hello, HelloRejectReason, InterruptOutcome, WorkerFrame } from "@foundry/protocol";
+import { CHANNEL_LOST_AFTER_MS, decodeHelloLine, decodeWorkerFrameLine, encodeFrame, FrameLineSplitter, PROTOCOL_VERSION, ToolRefusalCode } from "@foundry/protocol";
+import type { DaemonFrame, Hello, HelloRejectReason, InterruptOutcome, ToolCall, ToolCallOutcome, WorkerFrame } from "@foundry/protocol";
 
 /** The slot a connection was authorized for, as decided by the slot claim. */
 export interface ClaimedSlot {
@@ -74,9 +74,19 @@ export interface ChannelEvents {
 /** How long a refused peer gets to read its `hello_rejected` before the socket is destroyed. */
 export const REJECTED_SOCKET_GRACE_MS = 1000;
 
+/**
+ * Answers agent tool calls (PRD §6.1). Must resolve only once the outcome is final: the result is
+ * written to the worker after it resolves, so success is never reported before the commit.
+ */
+export interface ToolCallHandler {
+  submit(slot: ClaimedSlot, call: ToolCall): Promise<ToolCallOutcome>;
+}
+
 export interface ChannelServerOptions extends ChannelEvents {
   readonly socketPath: string;
   readonly slotClaim: SlotClaim;
+  /** Without one, every tool call is refused as not committed. */
+  readonly toolCalls?: ToolCallHandler;
   readonly channelLostAfterMs?: number;
   readonly lapseTimer?: LapseTimer;
 }
@@ -258,9 +268,30 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         waiter?.resolve();
       }
 
+      if (decoded.value.type === "tool_call") {answerToolCall(slot, decoded.value);}
+
       options.onFrame?.(slot, decoded.value);
 
       return Promise.resolve();
+    };
+
+    /**
+     * Not awaited, so a slow call never holds back heartbeats or receipts. Written straight to the
+     * connection, not through the primer's queue: a result answers the worker's own request, and a
+     * frozen slot's refusal must still reach it. A result lost with the connection is recovered by
+     * the worker re-sending the call, which returns the stored result.
+     */
+    const answerToolCall = (claimed: ClaimedSlot, call: ToolCall): void => {
+      const connection = accepted?.connection;
+
+      const outcome = options.toolCalls
+        ? options.toolCalls.submit(claimed, call)
+        : Promise.resolve<ToolCallOutcome>({ status: "refused", code: ToolRefusalCode.notCommitted, detail: "the daemon serves no agent tools" });
+
+      void outcome
+        .catch((cause: unknown): ToolCallOutcome => ({ status: "refused", code: ToolRefusalCode.notCommitted, detail: String(cause) }))
+        .then((settled) => connection?.send({ type: "tool_result", callId: call.callId, outcome: settled }))
+        .catch(() => {});
     };
 
     // A peer that never completes its hello is dropped on the same deadline; no slot is reported lost.
