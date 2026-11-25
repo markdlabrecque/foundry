@@ -558,6 +558,36 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `ALTER TABLE message_attempt ADD COLUMN retired_at INTEGER`,
     ],
   },
+  {
+    id: 24,
+    name: "message_limit_approvals",
+    statements: [
+      `ALTER TABLE approval RENAME TO approval_old`,
+      `CREATE TABLE approval (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        assignment_id TEXT NOT NULL REFERENCES assignment(id),
+        transition_sequence INTEGER UNIQUE REFERENCES ticket_transition(sequence),
+        kind TEXT NOT NULL CHECK (kind IN ('blocked', 'worker_request', 'limit_reached')),
+        state TEXT NOT NULL CHECK (state IN ('open', 'resolved')),
+        raised_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        request_body TEXT,
+        request_stage TEXT,
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket(factory_id, number),
+        CHECK ((state = 'open') = (closed_at IS NULL)),
+        CHECK ((kind IN ('blocked', 'limit_reached') AND transition_sequence IS NOT NULL AND request_body IS NULL AND request_stage IS NULL)
+          OR (kind = 'worker_request' AND transition_sequence IS NULL AND request_body IS NOT NULL AND request_stage IS NOT NULL))
+      ) STRICT`,
+      `INSERT INTO approval SELECT * FROM approval_old`,
+      `DROP TABLE approval_old`,
+      `CREATE UNIQUE INDEX approval_one_open_blocked ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'blocked'`,
+      `CREATE UNIQUE INDEX approval_one_open_limit ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'limit_reached'`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */
