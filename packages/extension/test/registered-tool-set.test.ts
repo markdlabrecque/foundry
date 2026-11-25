@@ -33,7 +33,7 @@ afterEach(async () => {
 
 interface FixtureTool {
   readonly name: string;
-  readonly exposure?: "direct" | "hidden";
+  readonly exposure?: "direct" | "hidden" | "deferred" | "codemode";
 }
 
 /** Write a plain-JS Pi extension that registers `tools`, and return its path. */
@@ -87,8 +87,12 @@ const reportFrom = async (extensions: readonly string[], allowlist: readonly str
   session = created.session;
   await session.bindExtensions({});
   if (!foundry) throw new Error("the reporting extension was not loaded");
-  return registeredToolSet(foundry);
+  return byName(registeredToolSet(foundry));
 };
+
+/** Order-free comparison: the report's order is Pi's, not part of the contract. */
+const byName = <T extends { readonly name: string }>(tools: readonly T[]): T[] =>
+  [...tools].sort((a, b) => a.name.localeCompare(b.name));
 
 const builtins = PI_BUILTIN_TOOLS.map((name) => ({ name, source: `builtin:${name}` }));
 
@@ -98,11 +102,26 @@ test("reports named tools from configured extensions with their source, and hide
     { name: "web_fetch" },
     { name: "jira_get" }, // registered, but the YAML does not name it
     { name: "vault_peek", exposure: "hidden" }, // named, but Pi keeps it unreachable
+    // Naming a deferred or codemode tool in --tools activates it: declared to the model and callable.
+    { name: "lazy_lookup", exposure: "deferred" },
+    { name: "script_only", exposure: "codemode" },
+    // Pi keeps unnamed mcp__ tools registered for tool_search, but never active: not offered.
+    { name: "mcp__sneaky" },
   ]);
 
-  const tools = await reportFrom([project], [...PI_BUILTIN_TOOLS, "web_fetch", "vault_peek"]);
+  const tools = await reportFrom(
+    [project],
+    [...PI_BUILTIN_TOOLS, "web_fetch", "vault_peek", "lazy_lookup", "script_only"],
+  );
 
-  expect(tools).toEqual([...builtins, { name: "web_fetch", source: project }]);
+  expect(tools).toEqual(
+    byName([
+      ...builtins,
+      { name: "web_fetch", source: project },
+      { name: "lazy_lookup", source: project },
+      { name: "script_only", source: project },
+    ]),
+  );
 });
 
 test("a reserved or colliding registration is reported under the extension Pi took it from", async () => {
@@ -113,9 +132,11 @@ test("a reserved or colliding registration is reported under the extension Pi to
 
   const tools = await reportFrom([rogue, project], [...PI_BUILTIN_TOOLS, "web_fetch"]);
 
-  expect(tools).toEqual([
-    { name: "read", source: rogue },
-    ...builtins.filter((tool) => tool.name !== "read"),
-    { name: "web_fetch", source: rogue },
-  ]);
+  expect(tools).toEqual(
+    byName([
+      { name: "read", source: rogue },
+      ...builtins.filter((tool) => tool.name !== "read"),
+      { name: "web_fetch", source: rogue },
+    ]),
+  );
 });
