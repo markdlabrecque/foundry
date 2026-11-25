@@ -21,7 +21,7 @@ import { runFactoryList } from "./factories.js";
 import { runWorktreeClean, runWorktreeList } from "./worktrees.js";
 import { runFactoryStop } from "./factory-stop.js";
 import { runShutdown } from "./shutdown.js";
-import { runSlotInterrupt, runSlotList, runSlotReset, runSlotShow, runSlotUnfreeze } from "./slots.js";
+import { runSlotInterrupt, runSlotList, runSlotReset, runSlotRestart, runSlotShow, runSlotUnfreeze } from "./slots.js";
 
 const validate = Command.make(
   "validate",
@@ -366,6 +366,15 @@ const slotUnfreeze = Command.make(
     ),
 ).pipe(Command.withDescription("Unfreeze a slot once the daemon's re-run of its freeze cause check passes"));
 
+const slotRestart = Command.make(
+  "restart",
+  { ...ticketFlags, slot: Argument.String("station/ordinal") },
+  ({ json, home, factory, slot }) => Effect.flatMap(
+    Effect.promise(() => runSlotRestart({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), slot, env: process.env })),
+    print,
+  ),
+).pipe(Command.withDescription("Replace a slot's launch through the host, keeping its conversation"));
+
 const slotReset = Command.make(
   "reset",
   { ...ticketFlags, slot: Argument.String("station/ordinal"), force: Flag.Boolean("force").pipe(Flag.withDefault(false)) },
@@ -377,7 +386,7 @@ const slotReset = Command.make(
 
 const slot = Command.make("slot").pipe(
   Command.withDescription("Slots: each station's fixed worker positions and their launches"),
-  Command.withSubcommands([slotList, slotShow, slotInterrupt, slotUnfreeze, slotReset]),
+  Command.withSubcommands([slotList, slotShow, slotInterrupt, slotRestart, slotUnfreeze, slotReset]),
 );
 
 const shutdown = Command.make(

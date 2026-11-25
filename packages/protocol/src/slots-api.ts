@@ -58,6 +58,20 @@ export const matchSlotPath = (path: string): string | null | undefined => {
   return parseSlotId(slotId) === undefined ? null : slotId;
 };
 
+/** Restart replaces the launch only after host-confirmed termination, keeping its conversation. */
+export const slotRestartPath = (slotId: string, factory?: string): string =>
+  withFactory(`${SLOTS_PATH}/${slotId}/restart`, factory);
+
+export const matchSlotRestartPath = (path: string): string | null | undefined => {
+  const prefix = `${SLOTS_PATH}/`;
+
+  if (!path.startsWith(prefix) || !path.endsWith("/restart")) {return undefined;}
+
+  const slotId = path.slice(prefix.length, -"/restart".length);
+
+  return parseSlotId(slotId) === undefined ? null : slotId;
+};
+
 const INTERRUPT_SUFFIX = "/interrupt";
 
 /** How long the daemon waits for the worker's interrupt acknowledgement before it refuses. */

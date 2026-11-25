@@ -745,6 +745,17 @@ const main = async (): Promise<void> => {
       },
       slots: slotsReader,
       slotControl: storeSlotControl(slotsReader, freezer),
+      slotRestarter: {
+        restart: async (slotId, factory) => {
+          const { slot } = await slotsReader.show(slotId, factory);
+
+          if (scheduler === undefined) {throw new Error("slot scheduler unavailable");}
+
+          await scheduler.restart({ factoryId: slot.factoryId, slotId });
+
+          return slotsReader.show(slotId, slot.factoryId);
+        },
+      },
       slotResetter: {
         reset: async (slotId, factory, force) => {
           const { slot } = await slotsReader.show(slotId, factory);
