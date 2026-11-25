@@ -46,10 +46,19 @@ const refused = (message: string): TicketOutcome => ({ exitCode: EXIT_REFUSED, s
 const query = (factory: string | undefined): string =>
   factory === undefined ? "" : `?${FACTORY_PARAM}=${encodeURIComponent(factory)}`;
 
-/** Title from the file's first Markdown heading, else its name without the extension. */
+/** The generic top heading of a PRD §8.3 specification; it names no ticket. */
+const GENERIC_HEADING = "Specification";
+
+/**
+ * Title from the file's first Markdown heading other than "Specification", else its name
+ * without the extension.
+ */
 export const defaultTitle = (file: string, spec: string): string => {
-  const heading = /^#{1,6}[ \t]+(.+?)[ \t#]*$/m.exec(spec)?.[1]?.trim();
-  return heading !== undefined && heading !== "" ? heading : basename(file, extname(file));
+  for (const match of spec.matchAll(/^#{1,6}[ \t]+(.+?)[ \t#]*$/gm)) {
+    const heading = match[1]?.trim();
+    if (heading !== undefined && heading !== "" && heading !== GENERIC_HEADING) return heading;
+  }
+  return basename(file, extname(file));
 };
 
 const position = (p: TicketPosition): string =>

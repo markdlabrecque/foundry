@@ -77,6 +77,9 @@ test("ticket submit copies the file into the ticket directory; list and show pri
 test("titles default to the first heading, else the file name", () => {
   expect(defaultTitle("/x/a.md", "intro\n## Fix the login  ##\n")).toBe("Fix the login");
   expect(defaultTitle("/x/fix-login.md", "no heading")).toBe("fix-login");
+  // PRD §8.3's generic top heading is skipped.
+  expect(defaultTitle("/x/a.md", "# Specification\n\n# Password reset\n")).toBe("Password reset");
+  expect(defaultTitle("/x/reset.md", "# Specification\n")).toBe("reset");
 });
 
 test("the foundry binary wires ticket commands: usage errors exit 2, no daemon exits 3", () => {

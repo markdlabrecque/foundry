@@ -12,7 +12,9 @@ import {
   openStore,
   serveManagementApi,
   slugify,
+  StoreError,
   ticketDirectory,
+  type Store,
   type TicketFactory,
 } from "@foundry/daemon";
 import { TICKETS_PATH, ticketPath } from "@foundry/protocol/tickets-api";
@@ -39,12 +41,18 @@ const blog: TicketFactory = { name: "blog", defaultLine: "standard", messageBudg
 const status = () => ({ instance: { stateRoot: "/fixture", daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } });
 
 /** A daemon's store and API on `root`; `stop` closes both, as a daemon stopping would. */
-const start = async (root: string, factories: ReadonlyArray<TicketFactory>) => {
+/** The store on `root`; `close` is idempotent and registered before anything can fail. */
+const openTestStore = async (root: string) => {
   const scope = await Effect.runPromise(Scope.make());
-  let stopped = false;
-  const stopStore = () => (stopped ? Promise.resolve() : ((stopped = true), Effect.runPromise(Scope.close(scope, Exit.void))));
-  cleanups.push(stopStore); // Registered before anything can fail.
+  let closed = false;
+  const close = () => (closed ? Promise.resolve() : ((closed = true), Effect.runPromise(Scope.close(scope, Exit.void))));
+  cleanups.push(close);
   const store = await Effect.runPromise(Scope.provide(scope)(openStore({ filename: join(root, DATABASE_FILE_NAME) })));
+  return { store, close };
+};
+
+const start = async (root: string, factories: ReadonlyArray<TicketFactory>) => {
+  const { store, close: stopStore } = await openTestStore(root);
   const api = await serveManagementApi({
     stateRoot: root,
     status,
@@ -194,6 +202,49 @@ test("malformed submit requests are refused before anything is written", async (
   expect((await daemon.call("DELETE", TICKETS_PATH)).status).toBe(405);
   expect((await daemon.call("GET", `${TICKETS_PATH}/0`)).status).toBe(404);
   expect((await daemon.call("GET", TICKETS_PATH)).body.result.tickets).toEqual([]);
+});
+
+test("ticket transitions cannot be updated or deleted", async () => {
+  const root = tempRoot();
+  const daemon = await start(root, [shop]);
+  expect((await daemon.call("POST", TICKETS_PATH, { title: "T", spec: SPEC })).status).toBe(201);
+
+  const attempt = (statement: string) =>
+    Effect.runPromiseExit(
+      daemon.store.change(({ query, recordHistory }) =>
+        Effect.gen(function* () {
+          yield* recordHistory({ factoryId: "shop", kind: "probe", subject: "1" });
+          yield* query(statement);
+        }),
+      ),
+    );
+  expect(await attempt(`UPDATE ticket_transition SET actor = 'daemon'`)).toMatchObject(Exit.fail({ reason: "Sql" }));
+  expect(await attempt(`DELETE FROM ticket_transition`)).toMatchObject(Exit.fail({ reason: "Sql" }));
+  expect(await Effect.runPromise(daemon.store.read(`SELECT actor FROM ticket_transition`))).toEqual([{ actor: "operator" }]);
+});
+
+test("a submission whose change fails after its directory is written leaves no directory behind", async () => {
+  const root = tempRoot();
+  const { store } = await openTestStore(root);
+  // The body runs in full (directory included), then the change fails, as a failed commit would.
+  const failingCommit: Store = {
+    ...store,
+    change: ((body) =>
+      store.change((change) =>
+        Effect.flatMap(body(change), () => Effect.fail(new StoreError({ reason: "Sql", message: "injected commit failure" }))),
+      )) as Store["change"],
+  };
+  const failing = makeTicketService({ stateRoot: root, store: failingCommit, factories: () => [shop] });
+
+  const exit = await Effect.runPromiseExit(failing.submit({ title: "T", spec: SPEC }));
+  expect(exit).toMatchObject(Exit.fail({ reason: "Sql" }));
+  expect(existsSync(ticketDirectory(root, "shop", 1))).toBe(false);
+  expect(await Effect.runPromise(store.read(`SELECT count(*) AS n FROM ticket`))).toEqual([{ n: 0 }]);
+
+  const working = makeTicketService({ stateRoot: root, store, factories: () => [shop] });
+  const submitted = await Effect.runPromise(working.submit({ title: "T", spec: SPEC }));
+  expect(submitted.ticket.number).toBe(1);
+  expect(readFileSync(submitted.ticket.specPath, "utf8")).toBe(SPEC);
 });
 
 test("slugs are lowercase ASCII words joined by hyphens", () => {
