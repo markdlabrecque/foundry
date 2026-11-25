@@ -30,7 +30,11 @@ export const validateFactoryFile = (file: string): ValidateOutcome => {
   }
   const result = decodeFactoryYaml(text);
   if (result._tag === "Valid") {
-    return { exitCode: 0, stdout: [`${file}: factory "${result.config.name}" is valid`], stderr: [] };
+    return {
+      exitCode: 0,
+      stdout: [`${file}: factory "${result.config.name}" is valid`],
+      stderr: result.warnings.map((w) => `${describe(file, w)} (warning)`),
+    };
   }
   return { exitCode: 1, stdout: [], stderr: result.problems.map((p) => describe(file, p)) };
 };

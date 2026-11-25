@@ -20,6 +20,10 @@ production_lines:
       - id: develop
         station: engineering.developer
         writing: true
+      - id: integrate
+        station: engineering.developer
+        approval: true
+        on_rejection: develop
 `;
 
 /** The PRD §4 example, verbatim in shape. */
@@ -127,11 +131,11 @@ describe("valid configuration", () => {
 // and the 1-based line where the problem must be located.
 const rejected: ReadonlyArray<[string, string, { path: string; message: RegExp; line: number }]> = [
   ["malformed YAML", "version: 1\nname: [unclosed\n", { path: "", message: /\]/, line: 3 }],
-  ["multiple documents", `${minimal}---\nversion: 1\n`, { path: "", message: /MULTIPLE_DOCS/, line: 18 }],
+  ["multiple documents", `${minimal}---\nversion: 1\n`, { path: "", message: /MULTIPLE_DOCS/, line: 22 }],
   ["unresolved tag", minimal.replace("name: example-factory", "name: !secret x"), { path: "", message: /TAG_RESOLVE_FAILED/, line: 2 }],
-  ["duplicate top-level key", `${minimal}name: other\n`, { path: "", message: /DUPLICATE_KEY/, line: 18 }],
+  ["duplicate top-level key", `${minimal}name: other\n`, { path: "", message: /DUPLICATE_KEY/, line: 22 }],
   ["duplicate nested key", minimal.replace("        isolation: worktree\n", "        isolation: worktree\n        isolation: none\n"), { path: "", message: /DUPLICATE_KEY/, line: 12 }],
-  ["unknown top-level key", `${minimal}colour: blue\n`, { path: "colour", message: /^Unknown key$/, line: 18 }],
+  ["unknown top-level key", `${minimal}colour: blue\n`, { path: "colour", message: /^Unknown key$/, line: 22 }],
   ["known P1 setting on_demand", minimal.replace("        isolation: worktree\n", "        isolation: worktree\n        on_demand: true\n"), { path: "rooms.engineering.stations.developer.on_demand", message: /^Unknown key$/, line: 12 }],
   ["room-level model override", minimal.replace("    stations:\n", "    model: a/b\n    stations:\n"), { path: "rooms.engineering.model", message: /^Unknown key$/, line: 9 }],
   ["recovery_limit on a line", minimal.replace("    stages:\n", "    recovery_limit: 3\n    stages:\n"), { path: "production_lines.feature.recovery_limit", message: /^Unknown key$/, line: 14 }],
@@ -143,8 +147,8 @@ const rejected: ReadonlyArray<[string, string, { path: string; message: RegExp; 
   ["non-integer instances", minimal.replace("isolation: worktree", "instances: 1.5"), { path: "rooms.engineering.stations.developer.instances", message: /integer/, line: 11 }],
   ["zero instances", minimal.replace("isolation: worktree", "instances: 0"), { path: "rooms.engineering.stations.developer.instances", message: /greater than 0/, line: 11 }],
   ["unknown isolation", minimal.replace("isolation: worktree", "isolation: sandbox"), { path: "rooms.engineering.stations.developer.isolation", message: /"none" \| "worktree"/, line: 11 }],
-  ["negative message budget", `${minimal}message_budget: -1\n`, { path: "message_budget", message: /greater than 0/, line: 18 }],
-  ["negative delegation depth", `${minimal}delegation_depth_limit: -1\n`, { path: "delegation_depth_limit", message: /greater than or equal to 0/, line: 18 }],
+  ["negative message budget", `${minimal}message_budget: -1\n`, { path: "message_budget", message: /greater than 0/, line: 22 }],
+  ["negative delegation depth", `${minimal}delegation_depth_limit: -1\n`, { path: "delegation_depth_limit", message: /greater than or equal to 0/, line: 22 }],
   ["zero rejection limit", minimal.replace("    stages:\n", "    rejection_limit: 0\n    stages:\n"), { path: "production_lines.feature.rejection_limit", message: /greater than 0/, line: 14 }],
   ["writing as a string", minimal.replace("writing: true", "writing: 'yes'"), { path: "production_lines.feature.stages.0.writing", message: /boolean/, line: 17 }],
   ["no stages", minimal.replace(/    stages:\n[\s\S]*$/, "    stages: []\n"), { path: "production_lines.feature.stages", message: /at least one stage/, line: 14 }],
