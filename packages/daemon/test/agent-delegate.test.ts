@@ -129,10 +129,11 @@ test("parent requires the same factory, selected slot, open state and active roo
     });
     const child = (yield* snapshot(store)).delegations[1];
     yield* bindStationMessages({ store, slots });
+    const beforeLimit = yield* snapshot(store);
     expect(yield* Effect.promise(() => submit(store, "grandchild", {
       ...args, parentDelegationId: child?.id ?? "missing-child",
-    }))).toMatchObject({ status: "committed", value: { rootAssignment: parent?.root_assignment, depth: 3 } });
-    expect((yield* snapshot(store)).delegations).toHaveLength(3);
+    }))).toMatchObject({ status: "refused", code: "delegation_depth_limit" });
+    expect(yield* snapshot(store)).toEqual(beforeLimit);
     yield* store.change((change) => Effect.gen(function* () {
       yield* change.query(`UPDATE delegation SET status = 'completed' WHERE id = ?`, [parent?.id ?? ""]);
       yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "closed" });
@@ -267,6 +268,46 @@ test("a failed resolution rolls back result, obligation state, history and submi
     expect(yield* Effect.promise(() => replies(store, failReply).submit(responder, frame))).toMatchObject({ status: "refused", code: "not_committed" });
     expect(yield* snapshot(store)).toEqual(before);
     expect(yield* Effect.promise(() => replies(store).submit(responder, frame))).toMatchObject({ status: "committed" });
+  }));
+});
+
+test.each([0, 1, 3])("configured depth %i accepts exactly the limit and refuses one beyond without writes", async (limit) => {
+  const filename = await fixture();
+  await withStore(filename, (store) => Effect.gen(function* () {
+    const handler = agentDelegateHandler(slots, {
+      delegationDepthLimit: (factoryId) => factoryId === "shop" ? limit : 99,
+      budget: () => Effect.die("depth refusal must precede notice acceptance"),
+    });
+
+    const accepting = agentDelegateHandler(slots, {
+      delegationDepthLimit: (factoryId) => factoryId === "shop" ? limit : 99,
+    });
+
+    let parentDelegationId: string | undefined;
+    let slot = sender;
+
+    for (let depth = 1; depth <= limit; depth++) {
+      const recipient = depth % 2 === 1 ? "floor.reviewer" : "floor.worker";
+
+      const input = parentDelegationId === undefined
+        ? { ...args, recipient }
+        : { ...args, recipient, parentDelegationId };
+
+      expect(yield* Effect.promise(() => submit(store, `depth-${depth}`, input, slot, accepting)))
+        .toMatchObject({ status: "committed", value: { depth } });
+      parentDelegationId = (yield* snapshot(store)).delegations.at(-1)?.id;
+      yield* bindStationMessages({ store, slots });
+      slot = { ...sender, slotId: depth % 2 === 1 ? "reviewer/1" : "worker/1" };
+    }
+
+    expect((yield* snapshot(store)).delegations).toHaveLength(limit);
+    const before = yield* snapshot(store);
+    const forged = { ...args, depth: 0, delegation_depth_limit: 99 };
+    const input = parentDelegationId === undefined ? forged : { ...forged, parentDelegationId };
+
+    expect(yield* Effect.promise(() => submit(store, "beyond", input, slot, handler)))
+      .toMatchObject({ status: "refused", code: "delegation_depth_limit", detail: `delegation depth ${limit + 1} exceeds limit ${limit}` });
+    expect(yield* snapshot(store)).toEqual(before);
   }));
 });
 

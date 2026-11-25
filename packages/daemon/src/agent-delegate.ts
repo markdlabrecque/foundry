@@ -1,4 +1,4 @@
-/** Tracked obligation acceptance (PRD §6.5). Resolution and depth limits are separate handlers. */
+/** Tracked obligation acceptance and depth refusal (PRD §6.4–5). Resolution is separate. */
 import { randomUUID } from "node:crypto";
 import { Clock, Effect, Schema } from "effect";
 import { acceptMessage } from "./agent-message.js";
@@ -15,6 +15,11 @@ const DelegateArgs = Schema.Struct({
   delivery: Schema.optional(Schema.Literals(["after_turn", "when_idle"])),
 });
 
+interface DelegationGuards extends MessageAcceptanceGuards {
+  /** Factory configuration is fixed for the daemon run; worker arguments never set the limit. */
+  readonly delegationDepthLimit?: (factoryId: string) => number;
+}
+
 interface RootRow {
   readonly id: string;
   readonly ticket_number: number;
@@ -24,7 +29,7 @@ interface RootRow {
 /** Root and parent identities are read from durable state, never accepted from worker arguments.
  * A child can only be delegated by its open parent's selected recipient. Notices bind later,
  * through the ordinary station router; acceptance does not wait for a running recipient. */
-export const agentDelegateHandler = (slots: ReadonlyArray<PlannedSlot>, guards: MessageAcceptanceGuards = {}): ToolHandler =>
+export const agentDelegateHandler = (slots: ReadonlyArray<PlannedSlot>, guards: DelegationGuards = {}): ToolHandler =>
   (change, call) => Effect.gen(function* () {
     const args = yield* Schema.decodeUnknownEffect(DelegateArgs)(call.args).pipe(
       Effect.mapError(() => new ToolRefusal({ code: "invalid_arguments", detail: "agent_delegate needs recipient, body, optional parentDelegationId and after_turn/when_idle delivery" })),
@@ -52,8 +57,14 @@ export const agentDelegateHandler = (slots: ReadonlyArray<PlannedSlot>, guards: 
       return yield* new ToolRefusal({ code: "delegation_scope", detail: "requires an active assignment or an open parent selected for your slot under an active root assignment" });
     }
 
-    const delegationId = randomUUID();
     const depth = root.depth + 1;
+    const limit = guards.delegationDepthLimit?.(call.factoryId) ?? 2;
+
+    if (depth > limit) {
+      return yield* new ToolRefusal({ code: "delegation_depth_limit", detail: `delegation depth ${depth} exceeds limit ${limit}` });
+    }
+
+    const delegationId = randomUUID();
     const acceptedAt = yield* Clock.currentTimeMillis;
 
     const notice = yield* acceptMessage(change, {

@@ -5,9 +5,9 @@
  * the configuration just loaded. A factory with any open record naming configuration that no
  * longer exists is refused alone: one `factory.start_refused` history row names its blocking
  * records, and the other factories start. A refusal never makes the daemon exit. Records that are
- * closed (a completed or cancelled ticket, or an acknowledged/closed message) never block,
- * whatever their history names. Each record kind has its own reference check (`ReferenceCheck`);
- * delegations (50c) add theirs to `START_REFERENCE_CHECKS`.
+ * closed (a completed or cancelled ticket, an acknowledged/closed message, or a resolved
+ * delegation) never block, whatever their history names. Each record kind has its own
+ * reference check (`ReferenceCheck`).
  */
 import { Effect } from "effect";
 import { slotIdOf } from "@foundry/protocol/slots-api";
@@ -91,8 +91,8 @@ interface OpenMessageRow {
   bound_slot: string | null;
 }
 
-/** Check current durable destinations and immutable bindings, never senders or delivery history. */
-export const messageReferenceCheck: ReferenceCheck = (query, factory) => {
+/** The station addresses and fixed slots present in this configuration load. */
+const configuredDestinations = (factory: StartingFactory) => {
   const stations = new Set<string>();
   const slots = new Set<string>();
 
@@ -105,6 +105,13 @@ export const messageReferenceCheck: ReferenceCheck = (query, factory) => {
       }
     }
   }
+
+  return { stations, slots };
+};
+
+/** Check current durable destinations and immutable bindings, never senders or delivery history. */
+export const messageReferenceCheck: ReferenceCheck = (query, factory) => {
+  const { stations, slots } = configuredDestinations(factory);
 
   return Effect.map(
     query<OpenMessageRow>(
@@ -129,8 +136,44 @@ export const messageReferenceCheck: ReferenceCheck = (query, factory) => {
   );
 };
 
+interface OpenDelegationRow {
+  id: string;
+  delegating_slot: string;
+  recipient: string;
+  recipient_slot: string | null;
+}
+
+/** An open obligation still needs its delegator and its recipient, even after notice acknowledgement. */
+export const delegationReferenceCheck: ReferenceCheck = (query, factory) => {
+  const { stations, slots } = configuredDestinations(factory);
+
+  return Effect.map(
+    query<OpenDelegationRow>(
+      `SELECT id, delegating_slot, recipient, recipient_slot FROM delegation
+       WHERE factory_id = ? AND status = 'open' ORDER BY accepted_at, id`,
+      [factory.factoryId],
+    ),
+    (rows) => rows.flatMap((row): Array<StartBlocker> => {
+      const record = { kind: "delegation", id: row.id };
+      const blockers: Array<StartBlocker> = [];
+
+      if (!stations.has(row.recipient)) {
+        blockers.push({ record, missing: { kind: "station", station: row.recipient } });
+      }
+
+      for (const slot of new Set([row.delegating_slot, row.recipient_slot])) {
+        if (slot !== null && !slots.has(slot)) {
+          blockers.push({ record, missing: { kind: "slot", slot } });
+        }
+      }
+
+      return blockers;
+    }),
+  );
+};
+
 /** The reference checks a start runs, one per record kind. */
-export const START_REFERENCE_CHECKS: ReadonlyArray<ReferenceCheck> = [ticketReferenceCheck, messageReferenceCheck];
+export const START_REFERENCE_CHECKS: ReadonlyArray<ReferenceCheck> = [ticketReferenceCheck, messageReferenceCheck, delegationReferenceCheck];
 
 export interface RefusedFactory {
   readonly factoryId: string;

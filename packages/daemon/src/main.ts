@@ -24,6 +24,7 @@ import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefus
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
 import { createTicketWorktrees } from "./worktrees.js";
+import { createWorktreeService } from "./worktree-cleanup.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Predicate, Schema, Scope } from "effect";
@@ -458,7 +459,9 @@ const main = async (): Promise<void> => {
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
             [AGENT_STATUS, agentStatusHandler(plannedSlots)],
             [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket })],
-            [AGENT_DELEGATE, agentDelegateHandler(plannedSlots)],
+            [AGENT_DELEGATE, agentDelegateHandler(plannedSlots, {
+              delegationDepthLimit: (factoryId) => expectDefined(factories.find((f) => f.factoryId === factoryId), `factory ${factoryId}`).config.delegation_depth_limit ?? 2,
+            })],
             [AGENT_REQUEST, agentRequestHandler(plannedSlots, { assignmentTicket })],
             [AGENT_REPLY, agentReplyHandler()],
             [TASK_TRANSITION, taskTransitionHandler({ factories: factories.map((f) => ({ factoryId: f.factoryId, config: f.config })), configLoad: (id) => loadIds.get(id) })],
@@ -575,6 +578,13 @@ const main = async (): Promise<void> => {
 
   const stopAssignments = watchAssignments({
     store, factories, slots: plannedSlots,
+    clonePath: (factoryId) => {
+      const clone = clones.get(factoryId);
+
+      if (clone === undefined) {throw new Error(`no factory clone for ${factoryId}`);}
+
+      return clone.path;
+    },
     prepareWorktree: createTicketWorktrees({
       store,
       target: (factoryId) => {
@@ -681,6 +691,14 @@ const main = async (): Promise<void> => {
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
       tickets: createTicketService(ticketOptions),
+      worktrees: createWorktreeService({ store, factories: () => factories.map((f) => f.factoryId),
+        target: (factoryId) => {
+          const factory = factories.find((f) => f.factoryId === factoryId);
+          const clone = clones.get(factoryId);
+
+          return factory === undefined || clone === undefined ? undefined : { factory, clonePath: clone.path };
+        },
+      }),
       messages: createOperatorMessages({ store, factories: () => ticketFactories.map((f) => f.name), slots: plannedSlots }),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,
