@@ -562,3 +562,34 @@ test("idle deaths stay separate from an assignment and reboot evidence parks wit
   ] } }]);
   expect(reboot.asked).toEqual([]);
 });
+
+test.each([true, false])("parking during an in-flight unfreeze wins over its check result=%s", async (fixed) => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const worker = fakeHost(inventory);
+  const checkStarted = latch();
+  const finishCheck = latch();
+
+  const checks: FreezeChecks = { tool_set_mismatch: async () => {
+    checkStarted.resolve();
+    await finishCheck.promise;
+
+    return fixed ? { fixed: true } : { fixed: false, evidence: { reason: "still mismatched" } };
+  } };
+
+  const freezer = await createSlotFreezer({ store, checks });
+  const slots = await scheduler(store, stateRoot, worker.host, "host-1", [station("lead", 1)], "boot-1", freezer, 1);
+  await slots.schedule();
+  await freezer.freeze({ factoryId: "alpha", slotId: "lead/1", cause: "tool_set_mismatch", evidence: {} });
+  const unfreezing = freezer.unfreeze({ factoryId: "alpha", slotId: "lead/1" });
+  await checkStarted.promise;
+  inventory[0] = failed("boot-1-launch-1");
+  await slots.launchExited(inventory[0]);
+  const parked = await recoveryState(store);
+  expect(parked.slots).toEqual([{ condition: "parked", recovery_count: 1 }]);
+  finishCheck.resolve();
+  expect(await unfreezing).toEqual({ outcome: "not_frozen" });
+  expect(await recoveryState(store)).toEqual(parked);
+  expect((await slots.schedule()).map((s) => s.outcome)).toEqual(["held"]);
+  expect(worker.asked).toHaveLength(1);
+});
