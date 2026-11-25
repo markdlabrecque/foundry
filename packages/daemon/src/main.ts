@@ -491,11 +491,14 @@ const main = async (): Promise<void> => {
           channelEvents.onAccepted(slot, hello, accepted);
           const lost = stuckWorkers.accepted(slot);
           void accepted.closed?.then(lost);
-          void reconciler.reconcile(slot, hello, accepted).then(async () => {
+          void reconciler.reconcile(slot, hello, accepted).then(async (comparison) => {
             const primed = primer.prime(slot, hello, accepted);
             const outcome = await primed.outcome;
 
-            if (Predicate.isTagged(outcome, "Sent") || Predicate.isTagged(outcome, "Reconnect")) {delivery.attach(slot, primed.connection);}
+            if (Predicate.isTagged(outcome, "Sent") || Predicate.isTagged(outcome, "Reconnect")) {
+              await reconciler.resumeAssignment(slot, primed.connection, comparison.interruptedAssignmentId);
+              delivery.attach(slot, primed.connection);
+            }
           }).catch((cause: unknown) => log.error("connection priming failed", { detail: { error: messageOf(cause) } }));
         },
         onFrame: (slot, frame) => {
