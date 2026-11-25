@@ -18,6 +18,8 @@ import {
   type ApiResponse,
   type StatusResult,
 } from "@foundry/protocol/management-api";
+import { decodeLogQuery, LOGS_PATH } from "@foundry/protocol/log-query";
+import { readLogs } from "@foundry/protocol/log-read";
 
 /** What the API reports, injected so the server is independent of where status comes from. */
 export interface ManagementApiInputs {
@@ -196,7 +198,9 @@ const clearStaleSocket = async (socketPath: string): Promise<void> => {
 
 const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse): void => {
   request.resume(); // No route reads a body; drain it so the connection stays usable.
-  const path = new URL(request.url ?? "/", "http://foundry").pathname;
+  const url = new URL(request.url ?? "/", "http://foundry");
+  const path = url.pathname;
+  if (path === LOGS_PATH) return handleLogs(inputs, request, response, url.searchParams);
   const route = routeFor(inputs, path);
   if (route === undefined) {
     return send(response, 404, failure("not_found", `no route for ${request.method} ${path}`));
@@ -209,6 +213,25 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
     ([status, body]) => send(response, status, body),
     (error: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${describeError(error)}`)),
   );
+};
+
+const handleLogs = (
+  inputs: ManagementApiInputs,
+  request: IncomingMessage,
+  response: ServerResponse,
+  params: URLSearchParams,
+): void => {
+  if (request.method !== "GET") {
+    response.setHeader("allow", "GET");
+    return send(response, 405, failure("method_not_allowed", `${LOGS_PATH} only accepts GET`));
+  }
+  const query = decodeLogQuery(params);
+  if (typeof query === "string") return send(response, 400, failure("bad_request", query));
+  try {
+    send(response, 200, { ok: true, result: readLogs(inputs.stateRoot, query) });
+  } catch (error) {
+    send(response, 500, failure("internal", `logs unavailable: ${(error as Error).message}`));
+  }
 };
 
 type Route = () => Promise<readonly [number, ApiResponse<unknown>]>;
