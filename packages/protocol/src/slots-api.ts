@@ -112,6 +112,11 @@ export const FreezeCause = Schema.Literals(FREEZE_CAUSES);
 
 export type FreezeCause = typeof FreezeCause.Type;
 
+/** Reset uses the same slot representation as show; force is a JSON boolean. */
+export const slotResetPath = (slotId: string, factory?: string): string => withFactory(`${SLOTS_PATH}/${slotId}/reset`, factory);
+const SLOT_RESET = new RegExp(`^${SLOTS_PATH}/([a-z][a-z0-9-]*/[1-9][0-9]{0,5})/reset$`);
+export const matchSlotResetPath = (path: string): string | undefined => SLOT_RESET.exec(path)?.[1];
+
 const SLOT_UNFREEZE = new RegExp(`^${SLOTS_PATH}/([a-z][a-z0-9-]*/[1-9][0-9]{0,5})/unfreeze$`);
 
 /** `POST`: unfreeze a slot once the daemon's re-run of its cause check passes (`foundry slot unfreeze`). */

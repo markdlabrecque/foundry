@@ -37,4 +37,4 @@ export { runFactoryStop, type FactoryStopOptions, type FactoryStopOutcome } from
 
 export { runShutdown, type ShutdownOptions, type ShutdownOutcome } from "./shutdown.js";
 
-export { runSlotInterrupt, runSlotList, runSlotShow, runSlotUnfreeze, type SlotOptions, type SlotOutcome } from "./slots.js";
+export { runSlotInterrupt, runSlotList, runSlotReset, runSlotShow, runSlotUnfreeze, type SlotOptions, type SlotOutcome } from "./slots.js";

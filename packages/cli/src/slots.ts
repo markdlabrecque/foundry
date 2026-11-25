@@ -14,6 +14,7 @@ import {
   SLOT_INTERRUPT_ACK_TIMEOUT_MS,
   slotInterruptPath,
   slotPath,
+  slotResetPath,
   slotsPath,
   slotUnfreezePath,
 } from "@foundry/protocol/slots-api";
@@ -134,6 +135,15 @@ const fetchAndRender = async <A>(
   if (!is(result)) {return refused("the daemon answered with an unexpected shape");}
 
   return { exitCode: EXIT_OK, stdout: render(result), stderr: "" };
+};
+
+/** Reset is destructive to the conversation; force explicitly accepts unknown old ownership. */
+export const runSlotReset = async (options: SlotOptions & { readonly slot: string; readonly force: boolean }): Promise<SlotOutcome> => {
+  if (parseSlotId(options.slot) === undefined) {return usage(`a slot is addressed as station/ordinal, not ${JSON.stringify(options.slot)}`);}
+
+  return fetchAndRender(options, slotResetPath(options.slot, options.factory), isSlotShowResult,
+    ({ slot }) => `slot ${slot.slotId} reset; fresh conversation started\n`,
+    (root, path) => postToDaemon(root, path, { force: options.force }, { timeoutMs: 60_000 }));
 };
 
 /** `foundry slot list`: every configured slot with its condition and latest launch. */

@@ -35,12 +35,12 @@ import type { FactoryStopErrorCode, FactoryStopper } from "./factory-stop.js";
 import { SHUTDOWN_PATH, ShutdownRequest } from "@foundry/protocol/shutdown-api";
 import { ShutdownError } from "./shutdown.js";
 import type { InstanceShutdown } from "./shutdown.js";
-import { matchSlotInterruptPath, matchSlotPath, matchSlotUnfreezePath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
+import { matchSlotInterruptPath, matchSlotPath, matchSlotResetPath, matchSlotUnfreezePath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
 import { MESSAGES_PATH, SendMessageRequest } from "@foundry/protocol/messages-api";
 import { OperatorMessageError } from "./operator-message.js";
 import type { OperatorMessages } from "./operator-message.js";
-import type { SlotControl, SlotInterrupter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
+import type { SlotControl, SlotInterrupter, SlotResetter, SlotsErrorCode, SlotsReader } from "./slots-error.js";
 
 /** What the API reports, injected so the server is independent of where status comes from. */
 export interface ManagementApiInputs {
@@ -67,6 +67,7 @@ export interface ManagementApiInputs {
   readonly slotInterrupter?: SlotInterrupter;
   /** The slot verbs (`foundry slot unfreeze`). Without it they answer 503. */
   readonly slotControl?: SlotControl;
+  readonly slotResetter?: SlotResetter;
   /** Stops one named factory (PRD §10.3). Without it the stop route answers 503. */
   readonly stopper?: FactoryStopper;
   /** Stops every factory and then the Worker Host (PRD §10.3). Without it the route answers 503. */
@@ -293,6 +294,10 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
   if (syncFactory !== undefined) {return handleSync(inputs, syncFactory, url, request, response);}
 
+  const resetting = matchSlotResetPath(path);
+
+  if (resetting !== undefined) {return handleReset(inputs, resetting, url.searchParams, request, response);}
+
   const unfreezing = matchSlotUnfreezePath(path);
 
   if (unfreezing !== undefined) {return handleUnfreeze(inputs, unfreezing, url.searchParams, request, response);}
@@ -493,6 +498,36 @@ const handleUnfreeze = (
   );
 };
 
+const handleReset = (inputs: ManagementApiInputs, slotId: string, params: URLSearchParams, request: IncomingMessage, response: ServerResponse): void => {
+  if (request.method !== "POST") {
+    request.resume();
+    response.setHeader("allow", "POST");
+
+    return send(response, 405, failure("method_not_allowed", "reset only accepts POST"));
+  }
+
+  void (async (): Promise<readonly [number, ApiResponse<unknown>]> => {
+    const body = await readSmallBody(request, STOP_BODY_LIMIT);
+
+    if (body === undefined) {return [413, failure("payload_too_large", "reset body too large")];}
+
+    const decoded = decodeShutdownRequest(body.trim() === "" ? "{}" : body);
+    const factory = params.get(SLOT_FACTORY_PARAM) ?? undefined;
+
+    if (Option.isNone(decoded) || factory === "") {return [400, failure("bad_request", "reset requires an optional boolean force and a nonempty factory")];}
+
+    if (inputs.slotResetter === undefined) {return [503, failure("unavailable", "slot reset is not served by this daemon")];}
+
+    try {return [200, { ok: true, result: await inputs.slotResetter.reset(slotId, factory, decoded.value.force ?? false) }];}
+    catch (cause) {
+      if (cause instanceof SlotsError) {return [SLOT_ERROR_STATUS[cause.code], failure(cause.code, cause.message)];}
+
+      throw cause;
+    }
+  })().then(([status, body]) => send(response, status, body),
+    (cause: unknown) => send(response, 500, failure("internal", `reset failed: ${messageOf(cause)}`)));
+};
+
 const decodeShutdownRequest = Schema.decodeUnknownOption(Schema.fromJsonString(ShutdownRequest));
 
 /** `POST /api/v1/shutdown`: answers once every group is confirmed gone and the host stopped, or failed to. */
@@ -616,6 +651,7 @@ type Route = () => Promise<readonly [number, ApiResponse<unknown>]>;
 const HOLD_ID = new RegExp(`^${HOLDS_PATH}/([1-9][0-9]{0,15})$`);
 
 const SLOT_ERROR_STATUS: Record<SlotsErrorCode, number> = {
+  reset_refused: 409,
   factory_required: 400,
   unknown_factory: 404,
   slot_not_found: 404,

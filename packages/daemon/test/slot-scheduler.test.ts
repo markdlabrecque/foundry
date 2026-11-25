@@ -9,7 +9,7 @@ import { Effect, Exit, Schema, Scope } from "effect";
 import { createAssignmentScheduler, createHostSlotClaim, createSlotFreezer, createSlotScheduler, createTicketService, listOpenHolds, openStore, planSlots, recordedCurrentLaunch, storeSlotControl, storeSlotsReader, ticketFactoryFrom } from "@foundry/daemon";
 import type { FreezeChecks, SlotClaimResult, SlotFreezer } from "@foundry/daemon";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
-import type { SlotHost, Store } from "@foundry/daemon";
+import type { SlotHost, SlotSchedulerOptions, Store } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import { HostRefusedError } from "@foundry/host";
 import type { LaunchRecord, LaunchSpec } from "@foundry/host";
@@ -84,6 +84,7 @@ const scheduler = async (
   bootId = "boot-1",
   freezer?: SlotFreezer,
   recoveryLimit = 3,
+  resetOptions: Pick<SlotSchedulerOptions, "terminate" | "revokeSlot"> = {},
 ) =>
   createSlotScheduler({
     store,
@@ -96,6 +97,7 @@ const scheduler = async (
     slots: planSlots("alpha", stations),
     recoveryLimit: () => recoveryLimit,
     configLoad: () => "load-1",
+    ...resetOptions,
     freezer: freezer ?? await createSlotFreezer({ store, checks: {} }),
   });
 
@@ -595,4 +597,118 @@ test.each([true, false])("parking during an in-flight unfreeze wins over its che
   expect(await recoveryState(store)).toEqual(parked);
   expect((await slots.schedule()).map((s) => s.outcome)).toEqual(["held"]);
   expect(worker.asked).toHaveLength(1);
+});
+
+const resetRef = { factoryId: "alpha", slotId: "lead/1" };
+
+test("reset refuses an unknown old group without writes; force starts a new conversation without changing an active assignment", async () => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const worker = fakeHost(inventory);
+  const freezer = await createSlotFreezer({ store, checks: {} });
+  const first = await scheduler(store, stateRoot, worker.host, "host-1", [station("lead", 1)], "boot-1", freezer);
+  await first.schedule();
+  await assignRecoveryTicket(store, stateRoot);
+  inventory.length = 0; // A new host on the same boot has lost the old group's registry.
+  const restarted = await scheduler(store, stateRoot, worker.host, "host-2", [station("lead", 1)], "boot-1", freezer);
+  await restarted.schedule();
+  const before = await recoveryState(store);
+  await expect(restarted.reset(resetRef)).rejects.toThrow("unconfirmed");
+  expect(await recoveryState(store)).toEqual(before);
+  expect(freezer.isFrozen(resetRef)).toBe(true);
+  const result = await restarted.reset(resetRef, true);
+  expect(result.launchId).toBe("boot-1-launch-2");
+  expect(sessionIdsOf(worker.asked)[1]).not.toBe(sessionIdsOf(worker.asked)[0]);
+  expect(freezer.isFrozen(resetRef)).toBe(false);
+  const after = await recoveryState(store);
+  expect(after.assignments).toEqual(before.assignments);
+  expect(after.tickets).toEqual(before.tickets);
+  expect(after.holds).toEqual([]);
+  expect(await Effect.runPromise(store.read(`SELECT status FROM conversation ORDER BY created_at, rowid`)))
+    .toEqual([{ status: "discarded" }, { status: "current" }]);
+});
+
+test.each([false, true])("reset unparks with assigned=%s, re-offers only bound unacknowledged messages and preserves assignment counters", async (assigned) => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const worker = fakeHost(inventory);
+  const freezer = await createSlotFreezer({ store, checks: {} });
+
+  const slots = await scheduler(store, stateRoot, worker.host, "host-1", [station("lead", 1)], "boot-1", freezer, 1, {
+    terminate: async (id) => ({ launch: inventory.find((l) => l.launchId === id)!, outcome: "gone", escalated: false }),
+  });
+
+  await slots.schedule();
+
+  if (assigned) {await assignRecoveryTicket(store, stateRoot);}
+
+  inventory[0] = failed("boot-1-launch-1");
+  await slots.launchExited(inventory[0]);
+
+  if (assigned) {
+    inventory[1] = failed("boot-1-launch-2");
+    await slots.launchExited(inventory[1]);
+  }
+
+  await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+    // Messages remain bound to the same slot, including the assignment context if present.
+    for (const [index, status] of ["sent", "acknowledged", "bound", "unbound", "indeterminate"].entries()) {
+      yield* change.query(`INSERT INTO message (id, factory_id, sequence, sender_kind, recipient, body, delivery, kind, status, bound_slot, accepted_at)
+        VALUES (?, 'alpha', ?, 'operator', 'eng.lead', 'reset fixture', 'after_turn', 'ordinary', ?, ?, 1)`,
+      [`reset-${index}`, 100 + index, status, status === "unbound" ? null : "lead/1"]);
+    }
+
+    yield* change.recordHistory({ factoryId: "alpha", kind: "test.messages", subject: "lead/1", detail: {} });
+  })));
+  const before = await recoveryState(store);
+  await slots.reset(resetRef);
+  const after = await recoveryState(store);
+  expect(after.slots).toEqual([{ condition: "normal", recovery_count: 0 }]);
+  expect(after.assignments).toEqual(before.assignments);
+  expect(after.tickets).toEqual(before.tickets);
+  expect(after.transitions).toEqual(before.transitions);
+  expect(after.holds).toEqual([]);
+  expect(sessionIdsOf(worker.asked).at(-1)).not.toBe(sessionIdsOf(worker.asked)[0]);
+  expect(await Effect.runPromise(store.read(`SELECT id, status, bound_slot FROM message WHERE id LIKE 'reset-%' ORDER BY id`)))
+    .toEqual([
+      { id: "reset-0", status: "bound", bound_slot: "lead/1" },
+      { id: "reset-1", status: "acknowledged", bound_slot: "lead/1" },
+      { id: "reset-2", status: "bound", bound_slot: "lead/1" },
+      { id: "reset-3", status: "unbound", bound_slot: null },
+      { id: "reset-4", status: "bound", bound_slot: "lead/1" },
+    ]);
+  expect((await slots.schedule()).map((s) => s.outcome)).toEqual(["running"]);
+});
+
+test("reset requires full-group confirmation even for a gone leader, and revokes the old channel before the replacement launch", async () => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const worker = fakeHost(inventory);
+  const freezer = await createSlotFreezer({ store, checks: {} });
+  let confirmed = false;
+  let revoked = false;
+
+  const slots = await scheduler(store, stateRoot, worker.host, "host-1", [station("lead", 1)], "boot-1", freezer, 3, {
+    terminate: async (id) => {
+      expect(freezer.isFrozen(resetRef)).toBe(true);
+
+      return { launch: inventory.find((l) => l.launchId === id)!, outcome: confirmed ? "gone" : "unconfirmed", escalated: true };
+    },
+    revokeSlot: () => { expect(worker.asked).toHaveLength(1); revoked = true; },
+  });
+
+  await slots.schedule();
+  await freezer.freeze({ ...resetRef, cause: "conversation_changed", evidence: {} });
+  inventory[0] = failed("boot-1-launch-1");
+  const before = await recoveryState(store);
+  await expect(slots.reset(resetRef)).rejects.toThrow("unconfirmed");
+  expect(await recoveryState(store)).toEqual(before);
+  expect(revoked).toBe(false);
+  confirmed = true;
+  await slots.reset(resetRef);
+  expect(revoked).toBe(true);
+  // A delayed unexpected exit is already ended by the operator and never counts or relaunches.
+  expect(await slots.launchExited(inventory[0])).toEqual({ ended: false });
+  expect((await recoveryState(store)).slots).toEqual([{ condition: "normal", recovery_count: 0 }]);
+  expect(worker.asked).toHaveLength(2);
 });

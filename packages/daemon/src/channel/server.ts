@@ -115,6 +115,8 @@ export interface ChannelServer {
    * Rejects with `ChannelUnavailableError` like `interrupt`. Callers bound the wait themselves.
    */
   drain(launchId: string): Promise<void>;
+  /** Revoke accepted channels before discarding a slot's conversation. */
+  revokeSlot(factoryId: string, slotId: string): void;
   close(): Promise<void>;
 }
 
@@ -129,6 +131,8 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
   interface Accepted {
     /** The one writer for this connection; `interrupt()` and the primer both write through it. */
     readonly connection: AcceptedConnection;
+    readonly slot: ClaimedSlot;
+    readonly end: () => void;
     readonly pending: Map<string, { resolve: (o: InterruptOutcome) => void; reject: (e: Error) => void }>;
     readonly drains: Map<string, { resolve: () => void; reject: (e: Error) => void }>;
   }
@@ -231,7 +235,7 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
         closed,
       };
 
-      accepted = { connection, pending: new Map(), drains: new Map() };
+      accepted = { connection, slot, end: () => end("server_closed"), pending: new Map(), drains: new Map() };
       byLaunch.set(slot.launchId, accepted);
       socket.write(encodeFrame({ type: "hello_accepted", protocolVersion: PROTOCOL_VERSION }));
       armLapse();
@@ -325,6 +329,11 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
 
   return {
     socketPath: options.socketPath,
+    revokeSlot: (factoryId, slotId) => {
+      for (const accepted of byLaunch.values()) {
+        if (accepted.slot.factoryId === factoryId && accepted.slot.slotId === slotId) {accepted.end();}
+      }
+    },
     interrupt: (launchId) =>
       new Promise<InterruptOutcome>((resolve, reject) => {
         const channel = byLaunch.get(launchId);
