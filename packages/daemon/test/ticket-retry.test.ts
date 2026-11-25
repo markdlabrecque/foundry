@@ -6,10 +6,13 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Schema } from "effect";
 import {
   agentDelegateHandler, agentRequestHandler, assignmentTicket, createAssignmentScheduler,
+  createMessageDelivery, createReconciler, openSlotGate,
   createTicketService, openStore, planSlots, serveManagementApi, SlotsError, StoreError, taskTransitionHandler, ticketFactoryFrom,
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
 import { runTicketRetry } from "@foundry/cli";
+import { PROTOCOL_VERSION } from "@foundry/protocol";
+import type { DaemonFrame, Hello } from "@foundry/protocol";
 import { FactoryConfig } from "../src/config/schema.js";
 
 const config = Schema.decodeUnknownSync(FactoryConfig)({
@@ -138,6 +141,79 @@ test("retry closes the whole obligation tree and blocked approval; restart queue
     expect(context?.body).toContain("Evidence:");
     expect(context?.body).toContain(`Assignment: ${fresh?.id}`);
   })));
+});
+
+test("attempted old work cannot rearm after retry and absent reconciliation; fresh context still delivers", async () => {
+  await fixture((store, id, root) => Effect.gen(function* () {
+    yield* obligations(store);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE message SET status = 'bound', bound_slot = CASE
+        WHEN kind = 'delegation_notice' AND delegation_id IN (SELECT id FROM delegation WHERE parent_id IS NOT NULL)
+          THEN 'worker/3' WHEN kind IN ('request_notice', 'delegation_notice') THEN 'worker/2' ELSE 'worker/1' END,
+        bound_at = 1 WHERE status = 'unbound'`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "selected" });
+    }));
+    const claimed = slots.map((slot) => ({ factoryId: "shop", slotId: slot.slotId, launchId: `launch-${slot.ordinal}` }));
+    const errors: Array<unknown> = [];
+    const pump = () => createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => errors.push(cause) });
+    const old = pump();
+    yield* Effect.promise(async () => {
+      try {
+        for (const slot of claimed) {old.attach(slot, { send: async () => {} });}
+
+        await old.idle();
+      } finally {await old.stop();}
+    });
+    const attempts = yield* store.read<{ message_id: string }>(`SELECT * FROM message_attempt ORDER BY rowid`);
+    expect(attempts).toHaveLength(4);
+    yield* block(store, id);
+    yield* service(store, root).retry("shop", 1);
+    const reconciler = createReconciler(store);
+    yield* Effect.promise(async () => {
+      for (const slot of claimed) {
+        const hello: Hello = { type: "hello", protocolVersion: PROTOCOL_VERSION, ...slot,
+          conversationRef: "fixture-conversation", hasRecoverableHistory: true, mode: "headless", tools: [] };
+
+        const result = await reconciler.reconcile(slot, hello, { send: async (frame) => {
+          if (frame.type !== "reconcile") {throw new Error("expected reconciliation");}
+
+          reconciler.receive(slot, { type: "reconciliation_answer", requestId: frame.requestId, lifecycle: "idle",
+            answers: frame.ids.map((messageId) => ({ id: messageId, status: "absent" })) });
+        } });
+
+        expect(result.absent.length).toBeGreaterThan(0);
+      }
+    });
+    expect(yield* store.read(`SELECT * FROM message_attempt ORDER BY rowid`)).toEqual(attempts);
+    expect(yield* store.read(`SELECT status FROM message WHERE id IN (SELECT message_id FROM message_attempt)`))
+      .toEqual(Array.from({ length: 4 }, () => ({ status: "sent" })));
+    const [fresh] = yield* scheduler(store).schedule();
+
+    if (fresh === undefined) {throw new Error("no fresh assignment");}
+
+    // Simulate an old version's rearmed copies to prove the attempt transaction independently
+    // checks obligations, not merely reconciliation's decision. Binding/attempt evidence stays.
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE message SET status = 'bound' WHERE id IN (SELECT message_id FROM message_attempt)`);
+      yield* change.query(`UPDATE message SET status = 'bound', bound_slot = 'worker/1', bound_at = 2 WHERE id = ?`, [fresh.contextMessage]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "rearmed" });
+    }));
+    const next = pump();
+    const delivered: Array<DaemonFrame> = [];
+    yield* Effect.promise(async () => {
+      try {
+        for (const slot of claimed) {next.attach(slot, { send: async (frame) => { delivered.push(frame); } });}
+
+        await next.idle();
+      } finally {await next.stop();}
+    });
+    const oldIds = new Set(attempts.map((attempt) => attempt.message_id));
+    expect(delivered.some((frame) => frame.type === "message" && oldIds.has(frame.id))).toBe(false);
+    expect(delivered).toContainEqual(expect.objectContaining({ type: "message", id: fresh.contextMessage }));
+    const afterAttempts = yield* store.read<{ message_id: string }>(`SELECT * FROM message_attempt ORDER BY rowid`);
+    expect(afterAttempts.filter((attempt) => oldIds.has(attempt.message_id))).toEqual(attempts);
+    expect(errors).toEqual([]);
+  }));
 });
 
 test("assigned retry waits for interrupt, serializes against pause, and refuses stale identity", async () => {
