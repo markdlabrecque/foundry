@@ -1,6 +1,6 @@
 /** Control-side seam: start a detached Worker Host and reach it over its socket. */
 import { spawn } from "node:child_process";
-import { mkdir, open } from "node:fs/promises";
+import { chmod, mkdir, open } from "node:fs/promises";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +13,14 @@ import {
   type HostRequest,
   type HostResponse,
 } from "./control.js";
-import type { LaunchRecord, LaunchSpec } from "./launches.js";
+import {
+  DEFAULT_TERMINATE_GRACE_MS,
+  DEFAULT_TERMINATE_KILL_WAIT_MS,
+  type LaunchRecord,
+  type LaunchSpec,
+  type TerminateOptions,
+  type Termination,
+} from "./launches.js";
 
 /** Path, relative to the state root, of the file that receives the host's stderr (PRD §15.2). */
 export const HOST_LOG_NAME = join("logs", "host.log");
@@ -38,6 +45,7 @@ export async function startHost(
 ): Promise<HostIdentity> {
   await mkdir(stateRoot, { recursive: true, mode: 0o700 });
   await mkdir(join(stateRoot, "logs"), { recursive: true, mode: 0o700 });
+  await chmod(join(stateRoot, "logs"), 0o700);
   const logPath = hostLogPath(stateRoot);
   const log = await open(logPath, "a", 0o600);
   try {
@@ -104,6 +112,12 @@ export interface HostConnection {
   launch(spec: LaunchSpec): Promise<LaunchRecord>;
   /** Every launch the host has started, with its liveness and, once gone, its exit. */
   inventory(): Promise<LaunchRecord[]>;
+  /**
+   * Has the host terminate the process group of a launch it owns. Resolves
+   * with `outcome: "gone"` only when the host confirmed the group gone; an
+   * `"unconfirmed"` outcome is not success. Rejects if the host refuses.
+   */
+  terminate(launchId: string, options?: TerminateOptions): Promise<Termination>;
   /** Called for each launch exit the host reports while this connection is open. */
   onLaunchExited(listener: (launch: LaunchRecord) => void): void;
   close(): void;
@@ -156,13 +170,17 @@ export async function connectHost(
     waiter.resolve(response);
   });
 
-  const request = (op: HostRequest["op"], fields: Record<string, unknown> = {}): Promise<HostResponse> => {
+  const request = (
+    op: HostRequest["op"],
+    fields: Record<string, unknown> = {},
+    extraTimeoutMs = 0,
+  ): Promise<HostResponse> => {
     const id = nextId++;
     return new Promise<HostResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`worker host did not answer ${op} in time`));
-      }, options.requestTimeoutMs ?? 5_000);
+      }, (options.requestTimeoutMs ?? 5_000) + extraTimeoutMs);
       pending.set(id, {
         resolve: (r) => {
           clearTimeout(timer);
@@ -200,6 +218,16 @@ export async function connectHost(
       if (!response.ok) throw new Error(`worker host refused inventory: ${response.error}`);
       if (!("launches" in response)) throw new Error("worker host answered inventory without launches");
       return [...response.launches];
+    },
+    async terminate(launchId, terminateOptions = {}) {
+      // The host may legitimately take the whole grace and kill wait to answer.
+      const bound =
+        (terminateOptions.graceMs ?? DEFAULT_TERMINATE_GRACE_MS) +
+        (terminateOptions.killWaitMs ?? DEFAULT_TERMINATE_KILL_WAIT_MS);
+      const response = await request("terminate", { ...terminateOptions, launchId }, bound);
+      if (!response.ok) throw new Error(`worker host refused terminate: ${response.error}`);
+      if (!("termination" in response)) throw new Error("worker host answered terminate without a termination");
+      return response.termination;
     },
     onLaunchExited(listener) {
       exitListeners.push(listener);

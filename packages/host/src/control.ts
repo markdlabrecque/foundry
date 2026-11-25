@@ -4,10 +4,10 @@
  */
 import { join } from "node:path";
 import type { Socket } from "node:net";
-import type { LaunchRecord, LaunchSpec } from "./launches.js";
+import type { LaunchRecord, LaunchSpec, Termination } from "./launches.js";
 
 /** Bumped on any incompatible change; a mismatch is rejected, not negotiated. */
-export const HOST_CONTROL_VERSION = 2 as const;
+export const HOST_CONTROL_VERSION = 3 as const;
 
 /** File name of the Worker Host's socket inside the state root. */
 export const HOST_SOCKET_NAME = "host.sock";
@@ -43,12 +43,25 @@ export interface InventoryRequest {
   readonly op: "inventory";
 }
 
-export type HostRequest = IdentifyRequest | LaunchRequest | InventoryRequest;
+/**
+ * Terminates one launch's process group: SIGTERM, `graceMs`, then SIGKILL and
+ * up to `killWaitMs` for the group to vanish. `graceMs: 0` kills at once.
+ */
+export interface TerminateRequest {
+  readonly id: number;
+  readonly op: "terminate";
+  readonly launchId: string;
+  readonly graceMs?: number;
+  readonly killWaitMs?: number;
+}
+
+export type HostRequest = IdentifyRequest | LaunchRequest | InventoryRequest | TerminateRequest;
 
 export type HostResponse =
   | { readonly id: number; readonly ok: true; readonly identity: HostIdentity }
   | { readonly id: number; readonly ok: true; readonly launch: LaunchRecord }
   | { readonly id: number; readonly ok: true; readonly launches: readonly LaunchRecord[] }
+  | { readonly id: number; readonly ok: true; readonly termination: Termination }
   | { readonly id: number | null; readonly ok: false; readonly error: string };
 
 /**
