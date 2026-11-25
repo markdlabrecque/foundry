@@ -1,0 +1,113 @@
+/**
+ * The Foundry extension as a launched worker loads it (PRD §3.2, §5.3): Pi calls the default
+ * export of `@foundry/extension`. It reads the launch identity the Worker Host set and the channel
+ * socket the daemon named, and at `session_start` dials the daemon with a `hello` carrying them.
+ *
+ * Daemon frames go to the existing handlers: a prime into the conversation adapter, an interrupt
+ * to the run interrupter. Receipts and compaction reports travel back on the attached channel.
+ *
+ * Out of scope here: redialling after the channel is lost or a retryable refusal (reconnect), and
+ * failing agent tools after a terminal refusal; those land with the agent tools and the RPC gates.
+ */
+import { existsSync } from "node:fs";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import { CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
+import type { Hello } from "@foundry/protocol";
+import { openChannel } from "./channel/client.js";
+import type { OpenChannel } from "./channel/client.js";
+import { CompactionReporter } from "./compaction.js";
+import { createConversationAdapter } from "./conversation/adapter.js";
+import { interruptRuns, RunInterrupter } from "./interrupt.js";
+import { ReceiptReporter, receiveDaemonFrames } from "./priming.js";
+import { registeredToolSet } from "./tool-set.js";
+
+/** What a launch tells its worker through the environment. */
+export interface WorkerLaunch {
+  readonly socketPath: string;
+  readonly factoryId: string;
+  readonly slotId: string;
+  readonly launchId: string;
+}
+
+/**
+ * The launch this process runs as, or `undefined` outside a Foundry launch (any variable unset or
+ * empty), so loading the extension elsewhere does nothing.
+ */
+export const workerLaunchFrom = (env: Readonly<Record<string, string | undefined>>): WorkerLaunch | undefined => {
+  const socketPath = env[CHANNEL_SOCKET_ENV];
+  const factoryId = env[LAUNCH_ENV.factoryId];
+  const slotId = env[LAUNCH_ENV.slotId];
+  const launchId = env[LAUNCH_ENV.launchId];
+
+  if (!socketPath || !factoryId || !slotId || !launchId) {return undefined;}
+
+  return { socketPath, factoryId, slotId, launchId };
+};
+
+/**
+ * The hello for the current session. The conversation reference is Pi's session ID. History is
+ * recoverable once Pi has written the session file, which a relaunch restores from.
+ */
+const helloFor = (pi: ExtensionAPI, launch: WorkerLaunch, ctx: ExtensionContext): Hello => {
+  const sessionFile = ctx.sessionManager.getSessionFile();
+
+  return {
+    type: "hello",
+    protocolVersion: PROTOCOL_VERSION,
+    factoryId: launch.factoryId,
+    slotId: launch.slotId,
+    launchId: launch.launchId,
+    conversationRef: ctx.sessionManager.getSessionId(),
+    hasRecoverableHistory: sessionFile !== undefined && existsSync(sessionFile),
+    mode: "headless",
+    tools: registeredToolSet(pi),
+  };
+};
+
+/** Register the worker's channel on `pi` for `launch`. */
+export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
+  const interrupter = new RunInterrupter();
+  interruptRuns(pi, interrupter);
+  const receipts = new ReceiptReporter();
+  const adapter = createConversationAdapter(pi, { onReceipt: receipts.record });
+  const compactions = new CompactionReporter();
+  pi.on("session_compact", () => compactions.record());
+
+  const onFrame = receiveDaemonFrames({ adapter, interrupter });
+  let channel: OpenChannel | undefined;
+  let dialling = false;
+
+  pi.on("session_start", async (_event, ctx) => {
+    if (channel !== undefined || dialling) {return;}
+
+    dialling = true;
+
+    try {
+      const opened = await openChannel({ socketPath: launch.socketPath, hello: helloFor(pi, launch, ctx), onFrame });
+
+      if (!opened.accepted) {return;}
+
+      channel = opened.channel;
+      receipts.attach(opened.channel);
+      compactions.attach(opened.channel);
+      void opened.channel.closed.then(() => {
+        if (channel === opened.channel) {channel = undefined;}
+      });
+    } catch {
+      // No daemon answered. Pi keeps running; reconnecting is not part of this extension yet.
+    } finally {
+      dialling = false;
+    }
+  });
+  pi.on("session_shutdown", () => {
+    channel?.close();
+    channel = undefined;
+  });
+};
+
+/** Pi's entry point: connect when running as a Foundry launch, otherwise do nothing. */
+export default function foundryWorker(pi: ExtensionAPI): void {
+  const launch = workerLaunchFrom(process.env);
+
+  if (launch !== undefined) {connectWorker(pi, launch);}
+}
