@@ -189,6 +189,33 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       ) STRICT`,
     ],
   },
+  {
+    id: 7,
+    name: "operation",
+    statements: [
+      // Operations (PRD §9.4): one record type for integration, sync, worktree creation, hook runs
+      // and cleanup. `intent` commits before the action starts; `result` after, with what it causes.
+      `CREATE TABLE operation (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        kind TEXT NOT NULL CHECK (kind IN ('integration', 'sync', 'worktree_create', 'hook', 'cleanup')),
+        status TEXT NOT NULL
+          CHECK (status IN ('queued', 'running', 'interrupted', 'complete', 'failed', 'indeterminate')),
+        ticket_number INTEGER,
+        intent TEXT NOT NULL,
+        result TEXT,
+        queued_at INTEGER NOT NULL,
+        started_at INTEGER,
+        finished_at INTEGER,
+        CHECK ((status = 'queued') = (started_at IS NULL)),
+        CHECK ((result IS NULL) = (finished_at IS NULL))
+      ) STRICT`,
+      // The integration and sync queue admits one running entry per factory (PRD §9.4).
+      `CREATE UNIQUE INDEX operation_one_running_per_factory ON operation (factory_id)
+       WHERE kind IN ('integration', 'sync') AND status = 'running'`,
+      `CREATE INDEX operation_queue ON operation (factory_id, status, id)`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */
