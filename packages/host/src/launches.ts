@@ -5,6 +5,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { LAUNCH_ENV } from "./launch-command.js";
+import { LAUNCH_STDERR_TAIL_BYTES, StderrTail } from "./log.js";
 import { terminateGroup, type GroupSignal, type GroupTermination } from "./terminate.js";
 
 /** What the daemon asks the host to start in a slot. */
@@ -48,7 +49,18 @@ export type LaunchRecord = {
   | { readonly liveness: "gone"; readonly exit: LaunchExit }
 );
 
-export class LaunchRefused extends Error {}
+/**
+ * A launch the host would not or could not start. `code` names why without
+ * echoing the command, which may hold credentials or a prompt.
+ */
+export class LaunchRefused extends Error {
+  constructor(
+    message: string,
+    readonly code: string,
+  ) {
+    super(message);
+  }
+}
 
 /** Refusal to terminate: the host does not own the named launch in this boot. */
 export class TerminateRefused extends Error {}
@@ -85,9 +97,14 @@ export interface LaunchRegistry {
   terminate(launchId: string, options?: TerminateOptions): Promise<Termination>;
 }
 
+/** How long an exited launch's stderr may take to drain before its tail is taken as is. */
+const STDERR_DRAIN_MS = 1_000;
+
 export function createLaunchRegistry(options: {
   readonly bootId: string;
-  readonly onExit: (record: LaunchRecord) => void;
+  /** Called once per exit with the bounded tail of the launch's stderr; stdout is discarded. */
+  readonly onExit: (record: LaunchRecord, stderrTail: Buffer) => void;
+  readonly stderrTailBytes?: number;
   /** Signals a process group; injected only by tests. Default `process.kill(-pgid, signal)`. */
   readonly signalGroup?: (pgid: number, signal: GroupSignal) => boolean;
   /** How often a group outliving its leader is probed until it empties. Default 200 ms. */
@@ -120,7 +137,7 @@ export function createLaunchRegistry(options: {
     async launch(spec) {
       const key = slotKey(spec.factoryId, spec.slotId);
       if (occupied.has(key)) {
-        throw new LaunchRefused(`slot ${spec.slotId} of factory ${spec.factoryId} already holds a live launch`);
+        throw new LaunchRefused(`slot ${spec.slotId} of factory ${spec.factoryId} already holds a live launch`, "slot_occupied");
       }
       occupied.add(key);
 
@@ -150,7 +167,10 @@ export function createLaunchRegistry(options: {
         });
       } catch (error) {
         occupied.delete(key);
-        throw new LaunchRefused(`launch failed to start: ${(error as Error).message}`);
+        throw new LaunchRefused(
+          `launch failed to start: ${(error as Error).message}`,
+          (error as NodeJS.ErrnoException).code ?? "spawn_failed",
+        );
       }
 
       // A later ChildProcess error (for example a failed kill) must not crash the host.
@@ -169,11 +189,16 @@ export function createLaunchRegistry(options: {
       };
       launches.set(launchId, started);
 
-      // Hold stdin open for the launch's lifetime; drain stdout and stderr
-      // without keeping them, so the launch never blocks on a full pipe.
+      // Hold stdin open for the launch's lifetime. Drain stdout without keeping
+      // it, and keep only a bounded tail of stderr, so the launch never blocks
+      // on a full pipe and the host's memory stays bounded.
       child.stdin.on("error", () => {});
       child.stdout.on("error", () => {}).resume();
-      child.stderr.on("error", () => {}).resume();
+      const tail = new StderrTail(options.stderrTailBytes ?? LAUNCH_STDERR_TAIL_BYTES);
+      const stderrEnded = new Promise<void>((resolve) => {
+        child.stderr.once("end", resolve).once("close", resolve);
+      });
+      child.stderr.on("error", () => {}).on("data", (chunk: Buffer) => tail.push(chunk));
 
       child.once("exit", (code, signal) => {
         child.stdin.destroy();
@@ -190,7 +215,16 @@ export function createLaunchRegistry(options: {
         if (!signalGroup(pid, 0)) emptyGroups.add(launchId);
         else watchUntilEmpty(launchId, pid);
         occupied.delete(key);
-        options.onExit(ended);
+        // Let the last stderr bytes arrive before reporting; a descendant
+        // still holding the pipe open must not delay the report for long.
+        let drainTimer: NodeJS.Timeout | undefined;
+        void Promise.race([
+          stderrEnded,
+          new Promise<void>((resolve) => (drainTimer = setTimeout(resolve, STDERR_DRAIN_MS))),
+        ]).then(() => {
+          clearTimeout(drainTimer);
+          options.onExit(ended, tail.contents());
+        });
       });
 
       return started;

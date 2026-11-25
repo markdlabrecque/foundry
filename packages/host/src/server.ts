@@ -15,13 +15,25 @@ import {
   LaunchRefused,
   TerminateRefused,
   createLaunchRegistry,
+  type LaunchRecord,
   type LaunchRegistry,
   type LaunchSpec,
   type TerminateOptions,
 } from "./launches.js";
+import { createHostLog, createLaunchStderrStore } from "./log.js";
 
 /** Upper bound on a terminate's grace and kill wait, each; keeps client timers in range. */
 const MAX_TERMINATE_WAIT_MS = 10 * 60_000;
+
+/**
+ * A launch ends unexpectedly unless it exits on its own with code 0 or the
+ * host ended it on request (`exit.requested`). Any other signal or non-zero
+ * code is unexpected.
+ */
+export function endedUnexpectedly(launch: LaunchRecord): boolean {
+  if (launch.exit === undefined || launch.exit.requested === true) return false;
+  return launch.exit.signal !== null || launch.exit.code !== 0;
+}
 
 export interface RunningHost {
   readonly identity: HostIdentity;
@@ -49,6 +61,8 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
     bootId,
   };
 
+  const log = createHostLog(identity.hostId);
+  const stderrStore = createLaunchStderrStore(stateRoot);
   const clients = new Set<Socket>();
   const send = (socket: Socket, message: HostResponse | HostEvent): void => {
     if (socket.writable) socket.write(`${JSON.stringify(message)}\n`);
@@ -57,8 +71,36 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
     bootId,
     // An exit is reported to whoever is connected now; a client that was not
     // connected learns it from the inventory when it asks.
-    onExit: (launch) => {
-      for (const client of clients) send(client, { event: "launch-exited", launch });
+    onExit: (launch, stderrTail) => {
+      const refs = { factoryId: launch.factoryId, slotId: launch.slotId, launchId: launch.launchId };
+      const exit = { code: launch.exit?.code ?? null, signal: launch.exit?.signal ?? null };
+      const report = (): void => {
+        for (const client of clients) send(client, { event: "launch-exited", launch });
+      };
+      if (launch.exit?.requested === true) {
+        // A host termination is an intended stop: no stderr file, no warning.
+        log("info", "launch ended as requested", refs, exit);
+        report();
+        return;
+      }
+      if (!endedUnexpectedly(launch)) {
+        log("info", "launch ended", refs, exit);
+        report();
+        return;
+      }
+      // The stderr file is written before the exit is reported, so a client
+      // told of the exit can already find it.
+      void stderrStore
+        .retain(launch.factoryId, launch.slotId, launch.launchId, stderrTail)
+        .then(
+          (path) => log("warn", "launch ended unexpectedly", refs, { ...exit, stderr: path }),
+          (error: unknown) =>
+            log("error", "launch ended unexpectedly; stderr not retained", refs, {
+              ...exit,
+              error: error instanceof Error ? error.message : String(error),
+            }),
+        )
+        .then(report);
     },
   });
 
@@ -69,7 +111,7 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
     socket.on("error", () => {});
     readLines(socket, (line) => {
       // An unexpected failure answers this request; it must not take the host down.
-      void answer(line, identity, registry)
+      void answer(line, identity, registry, log)
         .catch((error: unknown): HostResponse => ({
           id: requestId(line),
           ok: false,
@@ -101,7 +143,12 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
   };
 }
 
-async function answer(line: string, identity: HostIdentity, registry: LaunchRegistry): Promise<HostResponse> {
+async function answer(
+  line: string,
+  identity: HostIdentity,
+  registry: LaunchRegistry,
+  log: ReturnType<typeof createHostLog>,
+): Promise<HostResponse> {
   let request: unknown;
   try {
     request = JSON.parse(line);
@@ -123,10 +170,17 @@ async function answer(line: string, identity: HostIdentity, registry: LaunchRegi
     case "launch": {
       const problem = checkLaunchSpec(spec);
       if (problem !== undefined) return { id, ok: false, error: `malformed launch spec: ${problem}` };
+      const { factoryId, slotId } = spec as LaunchSpec;
       try {
-        return { id, ok: true, launch: await registry.launch(spec as LaunchSpec) };
+        const launch = await registry.launch(spec as LaunchSpec);
+        log("info", "launch started", { factoryId, slotId, launchId: launch.launchId }, { pid: launch.pid });
+        return { id, ok: true, launch };
       } catch (error) {
-        if (error instanceof LaunchRefused) return { id, ok: false, error: error.message };
+        if (error instanceof LaunchRefused) {
+          // The code only: a spawn error's message names the command.
+          log("warn", "launch refused", { factoryId, slotId }, { reason: error.code });
+          return { id, ok: false, error: error.message };
+        }
         throw error;
       }
     }

@@ -1,11 +1,11 @@
 // Integration tier: the claim is that real signals reach exactly one real
 // process group, including a non-detached child, while another group lives;
 // no in-process double can prove which kernel processes end.
-import { mkdir, mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { connectHost, startHost } from "@foundry/host";
+import { connectHost, launchStderrPath, startHost, type LaunchRecord } from "@foundry/host";
 
 const cleanups: Array<() => Promise<void>> = [];
 
@@ -108,6 +108,13 @@ test("terminating a launch ends its whole group, non-detached child included, wh
   // A launch the host never started is refused, and nothing is signalled.
   await expect(control.terminate("not-a-launch", { graceMs: 0 })).rejects.toThrow(/not owned by this host/);
 
+  // The host writes any stderr file before it reports the exit, so the report bounds the check below.
+  const targetExited = new Promise<LaunchRecord>((resolve) =>
+    control.onLaunchExited((l) => {
+      if (l.launchId === target.launchId) resolve(l);
+    }),
+  );
+
   // Both members ignore SIGTERM, so ending the group takes escalation.
   const termination = await control.terminate(target.launchId, { graceMs: 200, killWaitMs: 5_000 });
   expect(termination).toMatchObject({
@@ -117,6 +124,10 @@ test("terminating a launch ends its whole group, non-detached child included, wh
   });
   expect(isAlive(target.pid)).toBe(false);
   expect(isAlive(childPid)).toBe(false);
+
+  // A requested end is not an unexpected one: no stderr file is retained.
+  expect((await targetExited).exit).toMatchObject({ signal: "SIGKILL", requested: true });
+  await expect(stat(launchStderrPath(stateRoot, target.launchId))).rejects.toThrow(/ENOENT/);
 
   // The separate group is untouched.
   expect(isAlive(other.pid)).toBe(true);

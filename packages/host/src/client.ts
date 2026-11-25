@@ -1,6 +1,6 @@
 /** Control-side seam: start a detached Worker Host and reach it over its socket. */
 import { spawn } from "node:child_process";
-import { mkdir, open } from "node:fs/promises";
+import { chmod, mkdir, open } from "node:fs/promises";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -45,6 +45,7 @@ export async function startHost(
 ): Promise<HostIdentity> {
   await mkdir(stateRoot, { recursive: true, mode: 0o700 });
   await mkdir(join(stateRoot, "logs"), { recursive: true, mode: 0o700 });
+  await chmod(join(stateRoot, "logs"), 0o700);
   const logPath = hostLogPath(stateRoot);
   const log = await open(logPath, "a", 0o600);
   try {
