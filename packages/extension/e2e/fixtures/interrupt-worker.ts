@@ -47,7 +47,9 @@ export default function interruptWorker(pi: ExtensionAPI): void {
         mode: "headless",
         tools: [],
       },
-      onFrame: (frame, ch) => interrupter.handle(frame, ch),
+      onFrame: (frame, ch) => {
+        if (frame.type === "interrupt") interrupter.handle(frame, ch);
+      },
     });
     if (opened.accepted) channel = opened.channel;
   });

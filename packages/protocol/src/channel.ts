@@ -112,12 +112,34 @@ export const HelloRejected = Schema.Struct({
 });
 export type HelloRejected = typeof HelloRejected.Type;
 
+/**
+ * The worker's receipt for a prime or message (PRD §5.5, §6.3): the ID is now
+ * in the worker's recoverable conversation history. Arrival or injection alone
+ * never earns one.
+ */
+export const Receipt = Schema.Struct({
+  type: Schema.Literal("receipt"),
+  id: Id,
+});
+export type Receipt = typeof Receipt.Type;
+
 /** Frames a worker sends after its hello is accepted. */
-export const WorkerFrame = Schema.Union([Heartbeat, Compacted, InterruptAck]);
+export const WorkerFrame = Schema.Union([Heartbeat, Compacted, Receipt, InterruptAck]);
 export type WorkerFrame = typeof WorkerFrame.Type;
 
-/** Frames the daemon sends after accepting a hello. */
-export const DaemonFrame = Interrupt;
+/**
+ * A prime (PRD §5.5): the only path priming text takes to a worker. It is
+ * injected into the conversation as a message and never starts a turn.
+ */
+export const Prime = Schema.Struct({
+  type: Schema.Literal("prime"),
+  id: Id,
+  text: Schema.String,
+});
+export type Prime = typeof Prime.Type;
+
+/** Frames the daemon sends on an accepted connection, after `hello_accepted`. */
+export const DaemonFrame = Schema.Union([Prime, Interrupt]);
 export type DaemonFrame = typeof DaemonFrame.Type;
 
 /** Frames the daemon sends in reply to a hello. */

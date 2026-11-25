@@ -113,6 +113,11 @@ export interface TicketServiceOptions {
   readonly store: Store;
   /** The factories loaded now; read on every request. */
   readonly factories: () => ReadonlyArray<TicketFactory>;
+  /**
+   * The recorded configuration load a factory's transitions run under (PRD §8.2), by factory name.
+   * Omitted, or returning undefined, leaves a transition's `config_load` null.
+   */
+  readonly configLoad?: (factory: string) => string | undefined;
 }
 
 interface TicketRow {
@@ -284,9 +289,9 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
               ],
             );
             yield* query(
-              `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor, to_state)
-               VALUES (?, ?, ?, 'operator', ?)`,
-              [factory.name, number, submittedAt, BACKLOG.state],
+              `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor, to_state, config_load)
+               VALUES (?, ?, ?, 'operator', ?, ?)`,
+              [factory.name, number, submittedAt, BACKLOG.state, options.configLoad?.(factory.name) ?? null],
             );
             yield* recordHistory({
               factoryId: factory.name,

@@ -81,7 +81,9 @@ const connect = async (interrupter: RunInterrupter, frames: WorkerFrame[] = [], 
     socketPath: server.socketPath,
     hello,
     heartbeatIntervalMs: 60_000,
-    onFrame: (frame, channel) => interrupter.handle(frame, channel),
+    onFrame: (frame, channel) => {
+      if (frame.type === "interrupt") interrupter.handle(frame, channel);
+    },
   });
   if (!opened.accepted) throw new Error("hello was not accepted");
   channels.push(opened.channel);

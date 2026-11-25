@@ -126,6 +126,9 @@ const readState = (home: string) =>
           loads: store.read<{ id: number; run_id: string; factory_id: string; config: string; config_hash: string; knowledge_root: string }>(
             `SELECT id, run_id, factory_id, config, config_hash, knowledge_root FROM factory_config_load ORDER BY id`,
           ),
+          transitions: store.read<{ factory_id: string; ticket_number: number; config_load: string | null }>(
+            `SELECT factory_id, ticket_number, config_load FROM ticket_transition ORDER BY sequence`,
+          ),
           history: store.read<{ factory_id: string; kind: string; subject: string }>(
             `SELECT factory_id, kind, subject FROM history ORDER BY sequence`,
           ),
@@ -178,6 +181,8 @@ test("a valid start records the run and its load and creates the empty knowledge
   expect(first!.config_hash).toMatch(/^sha256:[0-9a-f]{64}$/);
   expect(second!.config_hash).toBe(first!.config_hash);
   expect(third!.config_hash).not.toBe(first!.config_hash);
+  // The ticket submitted in the first run carries that run's recorded configuration load.
+  expect(state.transitions).toEqual([{ factory_id: "alpha", ticket_number: 1, config_load: String(first!.id) }]);
   expect(JSON.parse(third!.config)).toMatchObject({ stations: [{ address: "eng.dev", model: "p/other" }, { address: "eng.rev" }] });
   expect(JSON.parse(first!.config)).toMatchObject({ config: { name: "alpha" }, stations: [{ address: "eng.dev" }, { address: "eng.rev" }] });
   expect(state.history).toEqual(

@@ -156,6 +156,8 @@ const main = async (): Promise<void> => {
   }
   // Configuration is read only at start (PRD §4), so the loaded set is fixed for this run.
   const ticketFactories = factories.map((f) => ticketFactoryFrom(f.config));
+  // Each factory's transitions carry this run's recorded configuration load.
+  const loadIds = new Map(loads.map((l) => [l.factoryId, String(l.loadId)]));
 
   // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
   // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
@@ -186,7 +188,12 @@ const main = async (): Promise<void> => {
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
-      tickets: makeTicketService({ stateRoot, store, factories: () => ticketFactories }),
+      tickets: makeTicketService({
+        stateRoot,
+        store,
+        factories: () => ticketFactories,
+        configLoad: (factory) => loadIds.get(factory),
+      }),
       events: storeEventSource(store),
     });
   } catch (error) {
