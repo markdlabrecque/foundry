@@ -40,7 +40,7 @@ import type { DaemonLogger, LogLevel, LogRefs } from "./log.js";
 import { ManagementSocketError, serveManagementApi } from "./management-api.js";
 import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
-import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, TASK_TRANSITION, channelSocketPath } from "@foundry/protocol";
+import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, TASK_TRANSITION, HUMAN_REQUEST, channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
 import { connectHost, resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
@@ -69,6 +69,7 @@ import { agentDelegateHandler } from "./agent-delegate.js";
 import { agentRequestHandler } from "./agent-request.js";
 import { agentReplyHandler } from "./agent-reply.js";
 import { taskTransitionHandler } from "./task-transition.js";
+import { humanRequestHandler } from "./human-request.js";
 import { startMessageRouting } from "./message-routing.js";
 import { startRequestExpiry } from "./request-expiry.js";
 
@@ -457,6 +458,7 @@ const main = async (): Promise<void> => {
         toolCalls: createSubmissions({
           store,
           handlers: new Map([
+            [HUMAN_REQUEST, humanRequestHandler],
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
             [AGENT_STATUS, agentStatusHandler(plannedSlots)],
             [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket })],
@@ -500,6 +502,8 @@ const main = async (): Promise<void> => {
         store,
         stateRoot,
         host,
+        terminate: (launchId) => connection.terminate(launchId),
+        revokeSlot: (factoryId, slotId) => channel?.revokeSlot(factoryId, slotId),
         hostId: identity.hostId,
         bootId: identity.bootId,
         pi: resolvePiExecutable(process.env),
@@ -721,6 +725,17 @@ const main = async (): Promise<void> => {
       },
       slots: slotsReader,
       slotControl: storeSlotControl(slotsReader, freezer),
+      slotResetter: {
+        reset: async (slotId, factory, force) => {
+          const { slot } = await slotsReader.show(slotId, factory);
+
+          if (scheduler === undefined) {throw new Error("slot scheduler unavailable");}
+
+          await scheduler.reset({ factoryId: slot.factoryId, slotId }, force);
+
+          return slotsReader.show(slotId, slot.factoryId);
+        },
+      },
     });
   } catch (error) {
     await stopAssignments();

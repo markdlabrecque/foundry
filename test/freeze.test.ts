@@ -26,6 +26,7 @@ import {
   startChannelServer,
   storeSlotControl,
   storeSlotsReader,
+  storedConversation,
 } from "@foundry/daemon";
 import type { AcceptedConnection, FreezeRequest, PrimedConnection, SlotClaim, SlotGate, SlotHost, SlotRef, Store } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
@@ -33,7 +34,7 @@ import type { LaunchRecord } from "@foundry/host";
 import { openChannel } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { DaemonFrame, Hello } from "@foundry/protocol";
-import { EXIT_OK, EXIT_REFUSED, runSlotList, runSlotUnfreeze } from "@foundry/cli";
+import { EXIT_OK, EXIT_REFUSED, runSlotList, runSlotReset, runSlotUnfreeze } from "@foundry/cli";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -117,6 +118,8 @@ const fixture = async () => {
     },
   };
 
+  const freezer = await createSlotFreezer({ store, checks: {} });
+
   const scheduler = createSlotScheduler({
     store,
     stateRoot: dir,
@@ -126,11 +129,71 @@ const fixture = async () => {
     pi: { command: "/opt/pi/bin/pi", args: [] },
     foundryExtension: "/opt/foundry/extension.js",
     slots,
-    freezer: await createSlotFreezer({ store, checks: {} }),
+    freezer,
   });
 
-  return { dir, store, slots, scheduler, launched };
+  return { dir, store, slots, scheduler, launched, freezer };
 };
+
+test("slot reset CLI refuses an unconfirmed group, force replaces the conversation and the new launch receives a fresh prime", async () => {
+  const { dir, store, slots, scheduler, freezer } = await fixture();
+  await scheduler.schedule();
+  const reader = storeSlotsReader(store, dir, ["f1"], slots);
+
+  const api = await serveManagementApi({
+    stateRoot: dir,
+    status: () => ({ instance: { stateRoot: dir, daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } }),
+    slots: reader,
+    slotResetter: {
+      reset: async (slotId, factory, force) => {
+        const { slot } = await reader.show(slotId, factory);
+        await scheduler.reset({ factoryId: slot.factoryId, slotId }, force);
+
+        return reader.show(slotId, slot.factoryId);
+      },
+    },
+  });
+
+  cleanups.push(() => api.close());
+  const ref = { factoryId: "f1", slotId: "builder/1" };
+  const conversation = storedConversation(store);
+  const oldConversation = await conversation(ref.factoryId, ref.slotId);
+
+  const primer = createPrimer({
+    store, gate: freezer,
+    primeRequest: () => ({ address: "eng.builder", slotId: ref.slotId, isolation: "none",
+      instructions: [join(dir, "factory", "builder.md")], knowledgeRoot: join(dir, "knowledge"), baseDir: join(dir, "factory") }),
+  });
+
+  const primeLaunch = async (launchId: string, conversationRef: string) => {
+    const frames: Array<DaemonFrame> = [];
+
+    const primed = primer.prime({ ...ref, launchId }, { type: "hello", protocolVersion: PROTOCOL_VERSION,
+      ...ref, launchId, conversationRef, hasRecoverableHistory: false, mode: "headless", tools: [] },
+    { send: async (frame) => { frames.push(frame); } });
+
+    expect(PrimingOutcome.$is("Sent")(await primed.outcome)).toBe(true);
+    expect(frames).toMatchObject([{ type: "prime" }]);
+    expect(await Effect.runPromise(primesForConversation(store, ref.factoryId, ref.slotId, conversationRef)))
+      .toMatchObject([{ situation: "fresh", launchId }]);
+
+    return frames[0]!;
+  };
+
+  const oldPrime = await primeLaunch("launch-1", oldConversation!);
+
+  if (oldPrime.type !== "prime") {throw new Error("expected prime");}
+
+  await primer.receipt({ ...ref, launchId: "launch-1" }, oldPrime.id);
+  await freezer.freeze({ ...ref, cause: "conversation_changed", evidence: {} });
+  const options = { json: false, home: dir, factory: "f1", slot: ref.slotId, env, force: false };
+  expect((await runSlotReset(options)).exitCode).toBe(EXIT_REFUSED);
+  expect(await conversation(ref.factoryId, ref.slotId)).toBe(oldConversation);
+  expect((await runSlotReset({ ...options, force: true })).exitCode).toBe(EXIT_OK);
+  const next = await conversation(ref.factoryId, ref.slotId);
+  expect(next).not.toBe(oldConversation);
+  await primeLaunch("launch-3", next!);
+});
 
 test("a frozen slot is sent nothing while the other slot carries on, and stays frozen while its cause persists", async () => {
   const { dir, store, slots, scheduler } = await fixture();

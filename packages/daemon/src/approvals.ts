@@ -1,4 +1,4 @@
-/** Durable approval reads. The originating immutable transition owns outcome, reason and evidence. */
+/** Durable approval reads. Blocked decisions use their transition; worker requests own their body. */
 import { Effect, Schema } from "effect";
 import { ApprovalRecord, approvalCommands } from "@foundry/protocol/approvals";
 import type { ApprovalListResult, ApprovalShowResult } from "@foundry/protocol/approvals";
@@ -9,21 +9,22 @@ interface ApprovalRow {
   readonly factory_id: string;
   readonly ticket_number: number;
   readonly assignment_id: string;
-  readonly transition_sequence: number;
+  readonly transition_sequence: number | null;
   readonly kind: string;
   readonly state: string;
   readonly raised_at: number;
   readonly closed_at: number | null;
   readonly from_stage: string;
-  readonly outcome: string;
+  readonly outcome: string | null;
   readonly reason: string;
   readonly evidence: string;
   readonly git_commit: string | null;
   readonly config_load: string | null;
 }
 
-const SELECT = `SELECT a.*, t.from_stage, t.outcome, t.reason, t.evidence, t.git_commit, t.config_load
-  FROM approval a JOIN ticket_transition t ON t.sequence = a.transition_sequence`;
+const SELECT = `SELECT a.*, COALESCE(t.from_stage, a.request_stage) AS from_stage, t.outcome,
+  COALESCE(t.reason, a.request_body) AS reason, COALESCE(t.evidence, '[]') AS evidence, t.git_commit, t.config_load
+  FROM approval a LEFT JOIN ticket_transition t ON t.sequence = a.transition_sequence`;
 
 const decode = Schema.decodeUnknownSync(ApprovalRecord);
 const decodeEvidence = Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.String)));
