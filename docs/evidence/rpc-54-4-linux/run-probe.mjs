@@ -165,26 +165,21 @@ const membersOf = (pgids) => {
   return ps().filter((m) => wanted.has(m.pgid));
 };
 
-/** PIDs of every live process carrying this run's marker: only processes this run started. */
-const runProcesses = () => {
-  const found = [];
-
-  for (const entry of readdirSync("/proc")) {
-    if (!/^\d+$/.test(entry)) {continue;}
-
-    let environ;
-
-    try {
-      environ = readFileSync(`/proc/${entry}/environ`, "utf8");
-    } catch {
-      continue;
-    }
-
-    if (environ.split("\0").includes(PROBE_MARKER)) {found.push(Number(entry));}
+/** True when the live process `pid` carries this run's marker. */
+const hasMarker = (pid) => {
+  try {
+    return readFileSync(`/proc/${pid}/environ`, "utf8").split("\0").includes(PROBE_MARKER);
+  } catch {
+    return false;
   }
-
-  return found;
 };
+
+/** PIDs of every live process carrying this run's marker: only processes this run started. */
+const runProcesses = () =>
+  readdirSync("/proc")
+    .filter((entry) => /^\d+$/.test(entry))
+    .map(Number)
+    .filter(hasMarker);
 
 /** SIGKILLs this run's processes, found by marker, until none is left; returns any that remain. */
 const sweep = async () => {
@@ -194,6 +189,9 @@ const sweep = async () => {
     if (left.length === 0) {return [];}
 
     for (const pid of left) {
+      // Re-checked immediately before the kill, so a PID reused since the scan is never signalled.
+      if (!hasMarker(pid)) {continue;}
+
       try {
         process.kill(pid, "SIGKILL");
       } catch {}
@@ -314,6 +312,8 @@ try {
     platform: `${process.platform} ${process.arch}`,
     kernel: execFileSync("uname", ["-r"], { encoding: "utf8" }).trim(),
     foundryCommit: execFileSync("git", ["rev-parse", "--short", "HEAD"], { cwd: repo, encoding: "utf8" }).trim(),
+    // Uncommitted changes anywhere in the repo, so a run never cites a commit that is not what ran.
+    uncommitted: execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" }).split("\n").filter(Boolean),
   });
 
   daemon = spawn(process.execPath, [DAEMON, "--home", home, ...files], { env, stdio: ["ignore", "pipe", "pipe"] });
@@ -359,11 +359,13 @@ try {
   const alphaChildren = alpha.map(childOf).filter((pid) => pid !== undefined);
   const betaChildren = beta.map(childOf).filter((pid) => pid !== undefined);
 
+  // One snapshot, used both for the record and for the group-membership check below.
+  const membersBefore = membersOf(pgids);
   note("before stop", {
     hostPid,
     launches: before.map(({ launchId, factoryId, slotId, pid, pgid, liveness }) => ({ launchId, factoryId, slotId, pid, pgid, liveness })),
     holds: holdsBefore,
-    groupMembers: membersOf(pgids),
+    groupMembers: membersBefore,
   });
 
   // Two alpha workers and one beta worker, each with its recorded child: no check below can pass on an empty set.
@@ -374,7 +376,7 @@ try {
     holdsBefore.length === 3 &&
     holdsBefore.every((h) => {
       const launch = before.find((l) => l.launchId === h.launchId);
-      return launch !== undefined && membersOf([launch.pgid]).some((m) => m.pid === h.childPid);
+      return launch !== undefined && membersBefore.some((m) => m.pgid === launch.pgid && m.pid === h.childPid);
     });
 
   const stop = await cli(["factory", "stop", "alpha"], pgids);
