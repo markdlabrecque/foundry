@@ -45,6 +45,11 @@ export type FreezeChecks = Partial<Record<FreezeCause, CauseCheck>>;
 export interface FreezeRequest extends SlotRef {
   readonly cause: FreezeCause;
   readonly evidence: HoldEvidence;
+  /**
+   * The configured slot's station address and ordinal, to create its record in the freeze's own
+   * transaction when it has none yet (a slot first seen holding an unproven launch).
+   */
+  readonly create?: { readonly station: string; readonly ordinal: number };
 }
 
 /**
@@ -153,7 +158,7 @@ export const createSlotFreezer = async (options: SlotFreezerOptions): Promise<Sl
   const freeze = async (request: FreezeRequest): Promise<FreezeOutcome> => {
     const slot: SlotRef = { factoryId: request.factoryId, slotId: request.slotId };
 
-    if ((await run(readSlot(slot))) === undefined) {return "unknown_slot";}
+    if (request.create === undefined && (await run(readSlot(slot))) === undefined) {return "unknown_slot";}
 
     // Gated before the commit, so no frame slips out while the freeze is being written.
     const key = keyOf(slot);
@@ -164,6 +169,14 @@ export const createSlotFreezer = async (options: SlotFreezerOptions): Promise<Sl
       await run(
         store.change((change) =>
           Effect.gen(function* () {
+            if (request.create !== undefined) {
+              yield* change.query(
+                `INSERT INTO slot (factory_id, slot_id, station, ordinal, condition) VALUES (?, ?, ?, ?, 'normal')
+                 ON CONFLICT (factory_id, slot_id) DO NOTHING`,
+                [slot.factoryId, slot.slotId, request.create.station, request.create.ordinal],
+              );
+            }
+
             yield* change.query(`UPDATE slot SET condition = 'frozen', freeze_cause = ? WHERE factory_id = ? AND slot_id = ?`, [
               request.cause,
               slot.factoryId,

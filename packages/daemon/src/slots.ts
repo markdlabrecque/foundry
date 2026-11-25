@@ -3,10 +3,12 @@
  *
  * Each started factory's configured capacity becomes slots: a persistent station has one, a
  * pooled station `instances` of them, written `station/ordinal`. Scheduling asks the Worker Host
- * which launch holds each slot and launches only into a slot the host confirms vacant and that
- * has never had a launch, so repeated or concurrent scheduling never starts a second launch in a
- * slot. A live launch the daemon has no record of (the daemon died before saving the start reply)
- * is adopted, not duplicated.
+ * which launch holds each slot (`ownership.ts`, PRD §10.2 step 2) and launches only into a slot the
+ * host confirms vacant, so repeated or concurrent scheduling never starts a second launch in a
+ * slot. A proven launch is kept, never replaced: the slot's recorded current launch, or one this
+ * same host started for a request whose reply the daemon lost. Unproven ownership (an unrecorded
+ * live launch, several live launches, or a recorded launch or request a new host on the same boot
+ * does not know) freezes the slot rather than adopting an orphan.
  *
  * The `slot` and `launch` tables are current state; every change writes its `launch.*` history
  * row in the same transaction (ADR 0001). Where host and database disagree, the host wins on
@@ -23,8 +25,8 @@
  * causes a relaunch; only the host's exit report does.
  *
  * Out of scope here: the recovery limit and parking (FOU-67), the recovery prime (FOU-54), the
- * resume notice, recovering slots vacated by a machine restart (FOU-89), and deciding to freeze a
- * slot whose ownership the host cannot confirm (FOU-80). Such slots are reported and left alone.
+ * resume notice, and recovering slots vacated by a machine restart (FOU-89). Such slots are
+ * reported and left alone.
  */
 import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
@@ -42,6 +44,9 @@ import { ChannelUnavailableError } from "./channel/server.js";
 import type { ChannelServer } from "./channel/server.js";
 import type { EffectiveStation } from "./config/index.js";
 import { slotRecord } from "./history-records.js";
+import { classifyOwnership } from "./ownership.js";
+import type { RecordedSlot, SlotOwnership } from "./ownership.js";
+import type { CauseCheck, SlotFreezer, SlotRef } from "./freeze.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Change, Store, StoreError } from "./store.js";
 
@@ -97,6 +102,7 @@ interface LaunchRow {
   readonly boot_id: string;
   readonly pid: number;
   readonly started_at: number;
+  /** `adopted` appears only on rows written before FOU-80; unproven launches are no longer adopted. */
   readonly origin: "started" | "adopted";
   readonly ended_at: number | null;
   readonly end_reason: LaunchEndReason | null;
@@ -203,19 +209,14 @@ const recordRefused = (store: Store, slot: PlannedSlot, reason: string): Effect.
  * `adopted`. A launch already recorded is not inserted again; it only becomes current. Clears any
  * pending request.
  */
-const recordLaunch = (
-  store: Store,
-  slot: PlannedSlot,
-  launch: LaunchRecord,
-  origin: "started" | "adopted",
-): Effect.Effect<void, StoreError> =>
+const recordLaunch = (store: Store, slot: PlannedSlot, launch: LaunchRecord): Effect.Effect<void, StoreError> =>
   store.change((change) =>
     Effect.gen(function* () {
       yield* insertSlot(change, slot);
       yield* change.query(
         `INSERT INTO launch (launch_id, factory_id, slot_id, boot_id, pid, started_at, origin) VALUES (?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT (launch_id) DO NOTHING`,
-        [launch.launchId, launch.factoryId, launch.slotId, launch.bootId, launch.pid, Date.parse(launch.startedAt), origin],
+        [launch.launchId, launch.factoryId, launch.slotId, launch.bootId, launch.pid, Date.parse(launch.startedAt), "started"],
       );
       yield* change.query(`UPDATE slot SET current_launch = ?, pending_host = NULL, pending_boot = NULL WHERE factory_id = ? AND slot_id = ?`, [
         launch.launchId,
@@ -224,13 +225,100 @@ const recordLaunch = (
       ]);
       yield* change.recordHistory({
         factoryId: slot.factoryId,
-        kind: origin === "started" ? "launch.started" : "launch.adopted",
+        kind: "launch.started",
         subject: launch.launchId,
         detail: { slotId: slot.slotId, pid: launch.pid, bootId: launch.bootId },
         records: [slotRecord(slot.slotId)],
       });
     }),
   );
+
+/** The host answering now and its whole inventory. */
+interface HostView {
+  readonly hostId: string;
+  readonly bootId: string;
+  readonly inventory: ReadonlyArray<LaunchRecord>;
+}
+
+/** Reads the slot's records and asks `classifyOwnership` who holds it. */
+const classifySlot = (store: Store, slot: SlotRef, host: HostView): Effect.Effect<SlotOwnership, StoreError> =>
+  Effect.gen(function* () {
+    const row = yield* readSlot(store, slot.factoryId, slot.slotId);
+
+    const launchIds = yield* store.read<{ launch_id: string }>(`SELECT launch_id FROM launch WHERE factory_id = ? AND slot_id = ?`, [
+      slot.factoryId,
+      slot.slotId,
+    ]);
+
+    const currentId = row?.current_launch ?? null;
+    const current = currentId === null ? undefined : yield* readLaunch(store, currentId);
+
+    const recorded: RecordedSlot = {
+      current:
+        currentId === null
+          ? null
+          : { launchId: currentId, bootId: current?.boot_id ?? null, ended: current === undefined || current.ended_at !== null },
+      pending:
+        row?.pending_host === null || row?.pending_host === undefined || row.pending_boot === null
+          ? null
+          : { hostId: row.pending_host, bootId: row.pending_boot },
+      recorded: new Set(launchIds.map((l) => l.launch_id)),
+    };
+
+    return classifyOwnership(recorded, {
+      hostId: host.hostId,
+      bootId: host.bootId,
+      launches: host.inventory.filter((launch) => launch.factoryId === slot.factoryId && launch.slotId === slot.slotId),
+    });
+  });
+
+/**
+ * Records what a classification proves, so the store agrees with the host (ADR 0001): a launch from
+ * an earlier boot ended by the machine restart, or a launch this same host started for a pending
+ * request, with its end if it is already gone. Other classifications need no write.
+ */
+const applyOwnership = async (store: Store, slot: PlannedSlot, ownership: SlotOwnership): Promise<void> => {
+  if (ownership.kind === "rebooted") {
+    const endedAt = await Effect.runPromise(Clock.currentTimeMillis);
+    await Effect.runPromise(recordEnd(store, ownership.launchId, { reason: "machine_restarted", endedAt, code: null, signal: null }));
+
+    return;
+  }
+
+  if (ownership.kind !== "claimed") {return;}
+
+  await Effect.runPromise(recordLaunch(store, slot, ownership.launch));
+  const end = endOf(ownership.launch);
+
+  if (end !== undefined) {await Effect.runPromise(recordEnd(store, ownership.launch.launchId, end));}
+};
+
+/**
+ * The unfreeze check for `host_lost` and `unknown_ownership` (PRD §5.3): asks the host again and
+ * passes only when ownership is now proven or the slot is provably vacant, recording what that
+ * proves before the slot is unfrozen.
+ */
+export const ownershipCheck =
+  (
+    store: Store,
+    host: Pick<SlotHost, "inventory">,
+    identity: { readonly hostId: string; readonly bootId: string },
+    slots: ReadonlyArray<PlannedSlot>,
+  ): CauseCheck =>
+  async (ref) => {
+    const slot = slots.find((s) => s.factoryId === ref.factoryId && s.slotId === ref.slotId);
+
+    if (slot === undefined) {return { fixed: false, evidence: { reason: "slot_not_configured" } };}
+
+    const inventory = await host.inventory();
+    const ownership = await Effect.runPromise(classifySlot(store, slot, { ...identity, inventory }));
+
+    if (ownership.kind === "frozen") {return { fixed: false, evidence: ownership.evidence };}
+
+    await applyOwnership(store, slot, ownership);
+
+    return { fixed: true };
+  };
 
 interface LaunchEnd {
   readonly reason: LaunchEndReason;
@@ -296,13 +384,10 @@ const endOf = (launch: LaunchRecord): LaunchEnd | undefined =>
  * - `started`: the host started its first launch.
  * - `relaunched`: its launch ended unexpectedly (a signal or non-zero code, unasked); the host
  *   started a new one in the same conversation.
- * - `adopted`: the host reports a live launch the daemon had not recorded; it is now the current one.
  * - `running`: its recorded launch is still live, whether or not its worker's channel is connected.
  * - `ended`: its launch exited cleanly, was stopped on request or ended with a machine restart; it
  *   is not relaunched here.
- * - `unconfirmed`: ownership is unknown: the host does not know the slot's recorded launch, or a
- *   launch was requested of an earlier host in this boot, which may have left it running.
- * - `duplicate`: the host reports more than one live launch in the slot; nothing is picked or started.
+ * - `frozen`: ownership is unproven (`ownership.ts`); the slot is now frozen and nothing is adopted or started.
  * - `held`: its condition is not normal; nothing is launched into it.
  * - `stopped`: its factory is stopping or stopped (PRD §10.3); the slot is not touched.
  * - `refused`: the launch could not be built or the host would not start it; the next daemon start tries again.
@@ -310,11 +395,9 @@ const endOf = (launch: LaunchRecord): LaunchEnd | undefined =>
 export type SlotScheduleOutcome =
   | "started"
   | "relaunched"
-  | "adopted"
   | "running"
   | "ended"
-  | "unconfirmed"
-  | "duplicate"
+  | "frozen"
   | "held"
   | "stopped"
   | "refused";
@@ -342,6 +425,8 @@ export interface SlotSchedulerOptions {
   readonly foundryExtension: string;
   /** The configured slots of the started factories. */
   readonly slots: ReadonlyArray<PlannedSlot>;
+  /** Freezes a slot whose ownership is unproven (PRD §10.2), under a frozen-slot hold. */
+  readonly freezer: Pick<SlotFreezer, "freeze">;
   /**
    * Whether a factory may still be assigned new launches; checked per slot, so a factory stop
    * begun mid-schedule launches nothing more in its scope. Default: every factory.
@@ -407,75 +492,51 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
     if (row !== undefined && row.condition !== "normal") {return result("held");}
 
-    const mine = inventory.filter((launch) => launch.factoryId === slot.factoryId && launch.slotId === slot.slotId);
-    const live = mine.filter((launch) => launch.liveness === "live");
+    const ownership = await Effect.runPromise(
+      classifySlot(store, slot, { hostId: options.hostId, bootId: options.bootId, inventory }),
+    );
 
-    // Never pick one of several: whichever is kept, the other would still be a second worker.
-    if (live.length > 1) {return result("duplicate");}
+    /** The host saw the launch exit unasked: positive death evidence, so the slot continues its conversation. */
+    const relaunchIfUnexpected = async (launchId: string): Promise<SlotScheduleResult> => {
+      const recorded = await Effect.runPromise(readLaunch(store, launchId));
 
-    const [only] = live;
+      return recorded !== undefined && unexpectedEnd(recorded.end_reason, recorded.exit_code, recorded.exit_signal)
+        ? launchInto(slot, "relaunched")
+        : result("ended", launchId);
+    };
 
-    if (only !== undefined) {
-      if (row?.current_launch === only.launchId) {return result("running", only.launchId);}
+    switch (ownership.kind) {
+      case "running":
+        return result("running", ownership.launchId);
+      case "ended":
+        return relaunchIfUnexpected(ownership.launchId);
+      case "rebooted":
+        // Not live on the host, from an earlier boot: the machine restart proves it gone.
+        await applyOwnership(store, slot, ownership);
 
-      // A request pending on this same host whose reply was lost: the live launch is the one we started.
-      if (row?.pending_host === options.hostId) {
-        await Effect.runPromise(recordLaunch(store, slot, only, "started"));
+        return result("ended", ownership.launchId);
+      case "claimed":
+        // This same host started it for the daemon's pending request; record it, and its end if gone.
+        await applyOwnership(store, slot, ownership);
 
-        return result("started", only.launchId);
-      }
+        return ownership.launch.liveness === "live"
+          ? result("started", ownership.launch.launchId)
+          : relaunchIfUnexpected(ownership.launch.launchId);
+      case "frozen":
+        // The freeze creates a first-seen slot's record in its own transaction; nothing is adopted.
+        await options.freezer.freeze({
+          factoryId: slot.factoryId,
+          slotId: slot.slotId,
+          cause: ownership.cause,
+          evidence: ownership.evidence,
+          create: { station: slot.station.address, ordinal: slot.ordinal },
+        });
 
-      await Effect.runPromise(recordLaunch(store, slot, only, "adopted"));
-
-      return result("adopted", only.launchId);
+        return ownership.launchId === null ? result("frozen") : result("frozen", ownership.launchId);
+      case "unlaunched":
+        // Host-confirmed vacant and never launched: the slot's first launch.
+        return launchInto(slot, "started");
     }
-
-    const current = row?.current_launch ?? null;
-
-    if (current !== null) {
-      const recorded = await Effect.runPromise(readLaunch(store, current));
-
-      if (recorded === undefined || recorded.ended_at !== null) {
-        // The host saw it exit unasked: positive death evidence, so the slot continues its conversation.
-        return recorded !== undefined && unexpectedEnd(recorded.end_reason, recorded.exit_code, recorded.exit_signal)
-          ? launchInto(slot, "relaunched")
-          : result("ended", current);
-      }
-
-      // Not live on the host, and not reported gone (that was recorded above).
-      if (recorded.boot_id !== options.bootId) {
-        const endedAt = await Effect.runPromise(Clock.currentTimeMillis);
-        await Effect.runPromise(recordEnd(store, current, { reason: "machine_restarted", endedAt, code: null, signal: null }));
-
-        return result("ended", current);
-      }
-
-      return result("unconfirmed", current);
-    }
-
-    // A launch was requested but never recorded: the daemon stopped between the request and its record.
-    if (row !== undefined && row.pending_host !== null) {
-      if (row.pending_host === options.hostId) {
-        // The same host process knows every launch it started; one that has since ended was ours.
-        for (const gone of mine) {
-          const end = endOf(gone);
-
-          if (end === undefined || (await Effect.runPromise(readLaunch(store, gone.launchId))) !== undefined) {continue;}
-
-          await Effect.runPromise(recordLaunch(store, slot, gone, "started"));
-          await Effect.runPromise(recordEnd(store, gone.launchId, end));
-
-          return unexpectedEnd(end.reason, end.code, end.signal) ? launchInto(slot, "relaunched") : result("ended", gone.launchId);
-        }
-      } else if (row.pending_boot === options.bootId) {
-        // An earlier host in this boot may have started it, and its process group may still run.
-        return result("unconfirmed");
-      }
-      // Otherwise the machine restarted since the request, which proves any launch gone (PRD §10.2).
-    }
-
-    // Host-confirmed vacant and never launched: the slot's first launch.
-    return launchInto(slot, "started");
   };
 
   /**
@@ -531,7 +592,7 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
       return { ...result("refused"), error: messageOf(cause) };
     }
 
-    await Effect.runPromise(recordLaunch(store, slot, launched, "started"));
+    await Effect.runPromise(recordLaunch(store, slot, launched));
 
     return result(outcome, launched.launchId);
   };
@@ -697,6 +758,31 @@ const findSlot = (
 
   return slot;
 };
+
+/**
+ * The launch the store records as the slot's current, unended one, or `null`. The slot claim
+ * accepts a hello only from this launch (PRD §3.2).
+ */
+export const recordedCurrentLaunch =
+  (store: Store) =>
+  async (factoryId: string, slotId: string): Promise<string | null> => {
+    const current = (await Effect.runPromise(readSlot(store, factoryId, slotId)))?.current_launch ?? null;
+
+    if (current === null) {return null;}
+
+    const launch = await Effect.runPromise(readLaunch(store, current));
+
+    return launch !== undefined && launch.ended_at === null ? current : null;
+  };
+
+/**
+ * The slot's current conversation as the daemon issued it (PRD §10.1), read afresh, so a changed
+ * conversation is still recognized after a daemon restart.
+ */
+export const storedConversation =
+  (store: Store) =>
+  (factoryId: string, slotId: string): Promise<string | undefined> =>
+    Effect.runPromise(readConversation(store, factoryId, slotId));
 
 /**
  * Serves the configured slots of the started factories from the store, read afresh on each

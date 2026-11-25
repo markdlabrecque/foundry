@@ -123,6 +123,9 @@ const fixture = async () => {
   const slots = planSlots("f1", [station]);
   const fake = fakeHost();
 
+  const checks: Parameters<typeof createSlotFreezer>[0]["checks"] = {};
+  const freezer = await createSlotFreezer({ store, checks });
+
   const scheduler = createSlotScheduler({
     store,
     stateRoot: dir,
@@ -132,10 +135,8 @@ const fixture = async () => {
     pi: { command: "/opt/pi/bin/pi", args: [] },
     foundryExtension: FOUNDRY,
     slots,
+    freezer,
   });
-
-  const checks: Parameters<typeof createSlotFreezer>[0]["checks"] = {};
-  const freezer = await createSlotFreezer({ store, checks });
 
   const guard = createToolSetGuard({
     claim: createHostSlotClaim({ host: fake.host }),

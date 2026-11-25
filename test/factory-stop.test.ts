@@ -11,6 +11,7 @@ import { Effect, Exit, Scope } from "effect";
 import {
   createFactoryStates,
   createFactoryStopper,
+  createSlotFreezer,
   createSlotScheduler,
   openStore,
   planSlots,
@@ -111,6 +112,7 @@ const fixture = async (): Promise<Fixture> => {
     pi,
     foundryExtension: "/opt/foundry/extension.js",
     slots,
+    freezer: await createSlotFreezer({ store, checks: {} }),
     inScope: (factoryId) => states.isRunning(factoryId),
   });
 

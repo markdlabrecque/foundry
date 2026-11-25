@@ -131,7 +131,10 @@ export {
 export {
   connectOrStartHost,
   createSlotScheduler,
+  ownershipCheck,
   planSlots,
+  recordedCurrentLaunch,
+  storedConversation,
   slotDirectory,
   SlotsError,
   SLOTS_DIR_NAME,
@@ -176,6 +179,15 @@ export {
 } from "./instruction-freeze.js";
 
 export type { SlotControl } from "./slots-error.js";
+
+export {
+  classifyOwnership,
+  type HostReport,
+  type RecordedLaunch,
+  type RecordedSlot,
+  type SlotOwnership,
+  type UnprovenReason,
+} from "./ownership.js";
 
 export {
   canonicalSource,
