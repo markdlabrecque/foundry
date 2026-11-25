@@ -17,11 +17,13 @@ import { join } from "node:path";
 import { createKnowledgeLayout, LoadFactoriesResult, loadFactoryFiles, recordRun } from "./factory-loads.js";
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
 import { createTicketService, ticketFactoryFrom } from "./tickets.js";
+import type { TicketServiceOptions } from "./tickets.js";
 import { createOperatorMessages } from "./operator-message.js";
 import { assignedSlot, assignmentContextSlot, assignmentTicket, watchAssignments } from "./assignments.js";
 import { clearCloneStaging, cloneRefusalOf, ensureFactoryClone, recordCloneRefusals } from "./factory-clone.js";
 import type { CloneRefusal, EnsuredClone } from "./factory-clone.js";
 import { createFactorySyncer } from "./factory-sync.js";
+import { createTicketWorktrees } from "./worktrees.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
 import { Effect, Exit, Predicate, Schema, Scope } from "effect";
@@ -36,11 +38,11 @@ import type { DaemonLogger, LogLevel, LogRefs } from "./log.js";
 import { ManagementSocketError, serveManagementApi } from "./management-api.js";
 import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
-import { AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, channelSocketPath } from "@foundry/protocol";
+import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
 import { connectHost, resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
-import { connectOrStartHost, createSlotScheduler, planSlots, recordedCurrentLaunch, storedConversation, storeSlotsReader } from "./slots.js";
+import { connectOrStartHost, createSlotScheduler, planSlots, recordedCurrentLaunch, storedConversation, storeSlotInterrupter, storeSlotsReader } from "./slots.js";
 import { startChannelServer } from "./channel/server.js";
 import type { ChannelServer } from "./channel/server.js";
 import { createHostSlotClaim } from "./channel/slot-claim.js";
@@ -60,9 +62,11 @@ import { createSubmissions } from "./submissions.js";
 import { agentDiscoverHandler } from "./agent-discover.js";
 import { agentStatusHandler } from "./agent-status.js";
 import { agentMessageHandler } from "./agent-message.js";
+import { agentDelegateHandler } from "./agent-delegate.js";
 import { agentRequestHandler } from "./agent-request.js";
 import { agentReplyHandler } from "./agent-reply.js";
 import { startMessageRouting } from "./message-routing.js";
+import { startRequestExpiry } from "./request-expiry.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -177,10 +181,12 @@ const main = async (): Promise<void> => {
   const storeScope = Effect.runSync(Scope.make());
   let stopRouting: (() => Promise<void>) | undefined;
   let stopDelivery: (() => Promise<void>) | undefined;
+  let stopExpiry: (() => Promise<void>) | undefined;
 
   const closeStore = async (): Promise<void> => {
     await stopRouting?.();
     await stopDelivery?.();
+    await stopExpiry?.();
     await Effect.runPromise(Scope.close(storeScope, Exit.void));
   };
 
@@ -190,6 +196,7 @@ const main = async (): Promise<void> => {
   try {
     const { openStore } = await importStoreQuietly();
     store = await Effect.runPromise(Scope.provide(storeScope)(openStore({ filename: databaseFile })));
+    stopExpiry = await startRequestExpiry(store, (cause) => log.error("request expiry failed", { detail: { error: messageOf(cause) } }));
   } catch (error) {
     log.error("database open failed", { detail: { file: databaseFile, error: messageOf(error) } });
     await closeStore();
@@ -447,6 +454,7 @@ const main = async (): Promise<void> => {
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
             [AGENT_STATUS, agentStatusHandler(plannedSlots)],
             [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket })],
+            [AGENT_DELEGATE, agentDelegateHandler(plannedSlots)],
             [AGENT_REQUEST, agentRequestHandler(plannedSlots, { assignmentTicket })],
             [AGENT_REPLY, agentReplyHandler()],
           ]),
@@ -556,6 +564,15 @@ const main = async (): Promise<void> => {
 
   const stopAssignments = watchAssignments({
     store, factories, slots: plannedSlots,
+    prepareWorktree: createTicketWorktrees({
+      store,
+      target: (factoryId) => {
+        const factory = factories.find((f) => f.factoryId === factoryId);
+        const clone = clones.get(factoryId);
+
+        return factory === undefined || clone === undefined ? undefined : { factory, clonePath: clone.path };
+      },
+    }),
     configLoad: (factoryId) => loadIds.get(factoryId),
     inScope: (factoryId) => !stopping && factoryStates.isRunning(factoryId),
   }, (error) => log.error("tickets not assigned", { detail: { error: messageOf(error) } }));
@@ -637,17 +654,22 @@ const main = async (): Promise<void> => {
     }
   };
 
+  let ticketOptions: TicketServiceOptions = {
+    stateRoot, store, factories: () => ticketFactories, configLoad: (factory) => loadIds.get(factory),
+  };
+
+  if (channel !== undefined) {
+    ticketOptions = { ...ticketOptions, interrupter: storeSlotInterrupter({
+      store, factories: decision.started, slots: plannedSlots, channel,
+    }) };
+  }
+
   try {
     api = await serveManagementApi({
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
-      tickets: createTicketService({
-        stateRoot,
-        store,
-        factories: () => ticketFactories,
-        configLoad: (factory) => loadIds.get(factory),
-      }),
+      tickets: createTicketService(ticketOptions),
       messages: createOperatorMessages({ store, factories: () => ticketFactories.map((f) => f.name), slots: plannedSlots }),
       events: storeEventSource(store),
       clonePath: (factory) => clones.get(factory)?.path,

@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Cause, Clock, Data, Effect, Exit } from "effect";
 import { acceptMessage } from "./agent-message.js";
+import { eligibleAssignmentSlots } from "./assignment-slots.js";
+import type { AssignmentSlot } from "./assignment-slots.js";
 import type { FactoryConfig } from "./config/schema.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import type { PlannedSlot } from "./slots.js";
@@ -51,12 +53,15 @@ export interface AssignmentSchedulerOptions {
   readonly inScope?: (factoryId: string) => boolean;
   /** Worktree creation is separate; false leaves this ticket queued, without reserving capacity. */
   readonly ready?: (ticket: QueuedTicket, slot: PlannedSlot) => boolean;
+  /** Runs outside the assignment transaction, only for an eligible isolated assignment. */
+  readonly prepareWorktree?: (ticket: QueuedTicket) => Effect.Effect<void, StoreError>;
 }
 
 export interface QueuedTicket {
   readonly factory_id: string;
   readonly number: number;
   readonly title: string;
+  readonly slug: string;
   readonly production_line: string;
   readonly directory: string;
   readonly state: string;
@@ -66,11 +71,13 @@ export interface QueuedTicket {
 }
 
 // A scan with no writes is deliberately rolled back, not recorded as a fictitious change.
-class NoAssignments extends Data.TaggedError("NoAssignments") {}
+class NoAssignments extends Data.TaggedError("NoAssignments")<{
+  readonly pending: ReadonlyArray<QueuedTicket>;
+}> {}
 
 /** One transaction chooses capacity and persists assignments, transitions and context together. */
-export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) => ({
-  schedule: (): Effect.Effect<ReadonlyArray<Assignment>, StoreError> => options.store.change((change) =>
+export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) => {
+  const scan = () => options.store.change((change) =>
     Effect.gen(function* () {
       const queued = yield* change.query<QueuedTicket>(
         `SELECT * FROM ticket t WHERE (state = 'backlog' OR (state = 'stage' AND status = 'queued'))
@@ -80,6 +87,8 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
       );
 
       const assigned: Array<Assignment> = [];
+      const pending: Array<QueuedTicket> = [];
+      const preparingSlots = new Set<string>();
 
       for (const ticket of queued) {
         if (options.inScope?.(ticket.factory_id) === false) {continue;}
@@ -90,21 +99,51 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
 
         if (factory === undefined || stage === undefined) {continue;}
 
-        for (const slot of options.slots) {
-          if (slot.factoryId !== ticket.factory_id || slot.station.address !== stage.station) {continue;}
+        const previous = yield* change.query<{ slot_id: string }>(
+          `SELECT slot_id FROM assignment WHERE factory_id = ? AND ticket_number = ? AND stage = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+          [ticket.factory_id, ticket.number, stage.id],
+        );
 
-          const capacity = yield* change.query(
-            `SELECT 1 FROM slot s WHERE factory_id = ? AND slot_id = ? AND condition = 'normal'
-             AND NOT EXISTS (SELECT 1 FROM assignment a WHERE a.factory_id = s.factory_id
-               AND a.slot_id = s.slot_id AND a.status = 'active')`,
-            [slot.factoryId, slot.slotId],
-          );
+        const current = yield* change.query<AssignmentSlot>(
+          `SELECT s.slot_id, s.condition, EXISTS (
+             SELECT 1 FROM assignment a WHERE a.factory_id = s.factory_id
+               AND a.slot_id = s.slot_id AND a.status = 'active'
+           ) AS busy FROM slot s WHERE s.factory_id = ?`,
+          [ticket.factory_id],
+        );
 
-          if (capacity.length === 0 || options.ready?.(ticket, slot) === false) {continue;}
+        const stationSlots = options.slots.filter((slot) =>
+          slot.factoryId === ticket.factory_id && slot.station.address === stage.station);
 
-          // Until the worktree ticket wires its readiness seam, never assign an isolation:worktree
-          // station a ticket without a materialized worktree.
-          if (slot.station.isolation === 'worktree' && ticket.worktree_path === null) {continue;}
+        const candidates = eligibleAssignmentSlots(stationSlots.flatMap((slot) =>
+          current.filter((state) => state.slot_id === slot.slotId)), previous[0]?.slot_id ?? null);
+
+        for (const candidate of candidates) {
+          const slot = stationSlots.find((planned) => planned.slotId === candidate.slot_id);
+
+          if (slot === undefined || options.ready?.(ticket, slot) === false) {continue;}
+
+          const slotKey = JSON.stringify([slot.factoryId, slot.slotId]);
+
+          if (preparingSlots.has(slotKey)) {continue;}
+
+          if (slot.station.isolation === 'worktree' && ticket.worktree_path === null) {
+            if (options.prepareWorktree === undefined) {continue;}
+
+            const attempted = yield* change.query(
+              `SELECT 1 FROM operation WHERE factory_id = ? AND ticket_number = ? AND kind = 'worktree_create'`,
+              [ticket.factory_id, ticket.number],
+            );
+
+            // Failed or interrupted creation needs explicit recovery, not capacity. Other tickets
+            // must still be considered, even when the oldest ticket cannot be prepared.
+            if (attempted.length > 0) {continue;}
+
+            pending.push(ticket);
+            preparingSlots.add(slotKey);
+            break;
+          }
 
           const id = randomUUID();
           const now = yield* Clock.currentTimeMillis;
@@ -142,12 +181,29 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
         }
       }
 
-      if (assigned.length === 0) {return yield* new NoAssignments();}
+      if (assigned.length === 0) {return yield* new NoAssignments({ pending });}
 
-      return assigned;
+      return { assigned, pending };
     }),
-  ).pipe(Effect.catchTag("NoAssignments", () => Effect.succeed([]))),
-});
+  ).pipe(Effect.catchTag("NoAssignments", ({ pending }) => Effect.succeed({ assigned: [], pending })));
+
+  return {
+    schedule: (): Effect.Effect<ReadonlyArray<Assignment>, StoreError> => Effect.gen(function* () {
+      const first = yield* scan();
+
+      if (options.prepareWorktree === undefined || first.pending.length === 0) {return first.assigned;}
+
+      for (const ticket of first.pending) {
+        if (options.inScope?.(ticket.factory_id) !== false) {yield* options.prepareWorktree(ticket);}
+      }
+
+      // Recheck capacity, lifecycle and readiness after Git, before committing any assignment.
+      const second = yield* scan();
+
+      return [...first.assigned, ...second.assigned];
+    }),
+  };
+};
 
 /** Coalesced commit wakeups: no polling, no scheduling inside outcome/submission transactions. */
 export const watchAssignments = (

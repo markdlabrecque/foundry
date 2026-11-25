@@ -26,6 +26,11 @@ const STATUS_OF: Record<TicketErrorCode, number> = {
   unknown_factory: 404,
   unknown_line: 400,
   ticket_not_found: 404,
+  invalid_state: 409,
+  unavailable: 503,
+  no_live_launch: 409,
+  channel_unavailable: 503,
+  interrupt_unacknowledged: 504,
   internal: 500,
 };
 
@@ -158,6 +163,16 @@ export const handleTickets = async (tickets: TicketService, request: IncomingMes
   }
 
   request.resume();
+  const pause = /^\/([1-9][0-9]{0,8})\/pause$/.exec(rest);
+
+  if (pause !== null) {
+    if (request.method !== "POST") {
+      return { ...fail(405, "method_not_allowed", `${url.pathname} only accepts POST`), allow: "POST" };
+    }
+
+    return run(tickets.pause(factory, Number(pause[1])), 200);
+  }
+
   const match = /^\/([1-9][0-9]{0,8})$/.exec(rest);
 
   if (match === null) {return fail(404, "not_found", `no route for ${request.method} ${url.pathname}`);}

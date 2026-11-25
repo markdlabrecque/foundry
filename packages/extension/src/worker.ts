@@ -11,7 +11,7 @@
  */
 import { existsSync } from "node:fs";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
+import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello, ToolCallOutcome } from "@foundry/protocol";
 import { Type } from "typebox";
 import { openChannel } from "./channel/client.js";
@@ -135,6 +135,29 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
     }, { additionalProperties: false }),
     async execute(callId, args): Promise<AgentToolResult<ToolCallOutcome>> {
       const outcome = await toolCalls.call(callId, AGENT_REQUEST, args);
+
+      if (outcome.status === "committed") {
+        return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
+      }
+
+      const code = outcome.status === "refused" ? outcome.code : outcome.status;
+
+      return { content: [{ type: "text", text: `${code}: ${outcome.detail}` }], details: outcome, isError: true };
+    },
+  });
+
+  pi.registerTool({
+    name: AGENT_DELEGATE,
+    label: "Delegate within the current ticket",
+    description: "Create a tracked obligation and notice in the current ticket. For a child, provide the open parentDelegationId selected for your slot. Returns after durable acceptance, not completion.",
+    parameters: Type.Object({
+      recipient: Type.String({ minLength: 1 }),
+      body: Type.String(),
+      parentDelegationId: Type.Optional(Type.String({ minLength: 1 })),
+      delivery: Type.Optional(Type.Union([Type.Literal("after_turn"), Type.Literal("when_idle")])),
+    }, { additionalProperties: false }),
+    async execute(callId, args): Promise<AgentToolResult<ToolCallOutcome>> {
+      const outcome = await toolCalls.call(callId, AGENT_DELEGATE, args);
 
       if (outcome.status === "committed") {
         return { content: [{ type: "text", text: JSON.stringify(outcome.value) }], details: outcome };
