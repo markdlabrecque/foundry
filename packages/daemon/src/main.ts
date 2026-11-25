@@ -72,6 +72,7 @@ import { taskTransitionHandler } from "./task-transition.js";
 import { humanRequestHandler } from "./human-request.js";
 import { startMessageRouting } from "./message-routing.js";
 import { startRequestExpiry } from "./request-expiry.js";
+import { recordMessageInjection, startStuckWorkerDetection } from "./stuck-workers.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -187,11 +188,13 @@ const main = async (): Promise<void> => {
   let stopRouting: (() => Promise<void>) | undefined;
   let stopDelivery: (() => Promise<void>) | undefined;
   let stopExpiry: (() => Promise<void>) | undefined;
+  let stopStuckWorkers: (() => Promise<void>) | undefined;
 
   const closeStore = async (): Promise<void> => {
     await stopRouting?.();
     await stopDelivery?.();
     await stopExpiry?.();
+    await stopStuckWorkers?.();
     await Effect.runPromise(Scope.close(storeScope, Exit.void));
   };
 
@@ -452,6 +455,11 @@ const main = async (): Promise<void> => {
       stopDelivery = () => delivery.stop();
       const channelEvents = channelLogEvents(log);
 
+      const stuckWorkers = startStuckWorkerDetection(store,
+        (cause) => log.error("stuck worker detection failed", { detail: { error: messageOf(cause) } }));
+
+      stopStuckWorkers = () => stuckWorkers.stop();
+
       channel = await startChannelServer({
         socketPath: channelSocketPath(stateRoot),
         slotClaim: guard,
@@ -475,6 +483,8 @@ const main = async (): Promise<void> => {
         ...channelEvents,
         onAccepted: (slot, hello, accepted) => {
           channelEvents.onAccepted(slot, hello, accepted);
+          const lost = stuckWorkers.accepted(slot);
+          void accepted.closed?.then(lost);
           void reconciler.reconcile(slot, hello, accepted).then(async () => {
             const primed = primer.prime(slot, hello, accepted);
             const outcome = await primed.outcome;
@@ -493,6 +503,9 @@ const main = async (): Promise<void> => {
                 await Effect.runPromise(acknowledgeMessage(store, slot, frame.id));
               }
             })().catch((cause: unknown) => log.error("receipt not recorded", { detail: { error: messageOf(cause) } }));
+          } else if (frame.type === "message_injected") {
+            void Effect.runPromise(recordMessageInjection(store, slot, frame.id, frame.injectedAt))
+              .catch((cause: unknown) => log.error("message injection not recorded", { detail: { error: messageOf(cause) } }));
           } else if (frame.type === "compacted") {
             void primer.compacted(slot).catch((cause: unknown) => log.error("compaction prime failed", { detail: { error: messageOf(cause) } }));
           }
