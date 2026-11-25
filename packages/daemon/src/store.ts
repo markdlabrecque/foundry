@@ -523,6 +523,35 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
   },
   {
     id: 22,
+    name: "worker_request_approvals",
+    statements: [
+      `ALTER TABLE approval RENAME TO approval_old`,
+      `CREATE TABLE approval (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        assignment_id TEXT NOT NULL REFERENCES assignment(id),
+        transition_sequence INTEGER UNIQUE REFERENCES ticket_transition(sequence),
+        kind TEXT NOT NULL CHECK (kind IN ('blocked', 'worker_request')),
+        state TEXT NOT NULL CHECK (state IN ('open', 'resolved')),
+        raised_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        request_body TEXT,
+        request_stage TEXT,
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket(factory_id, number),
+        CHECK ((state = 'open') = (closed_at IS NULL)),
+        CHECK ((kind = 'blocked' AND transition_sequence IS NOT NULL AND request_body IS NULL AND request_stage IS NULL)
+          OR (kind = 'worker_request' AND transition_sequence IS NULL AND request_body IS NOT NULL AND request_stage IS NOT NULL))
+      ) STRICT`,
+      `INSERT INTO approval (id, factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at, closed_at)
+       SELECT id, factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at, closed_at FROM approval_old`,
+      `DROP TABLE approval_old`,
+      `CREATE UNIQUE INDEX approval_one_open_blocked ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'blocked'`,
+    ],
+  },
+  {
+    id: 23,
     name: "abandoned_requests",
     statements: [
       `CREATE TABLE agent_request_with_abandoned (

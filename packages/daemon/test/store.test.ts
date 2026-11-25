@@ -56,7 +56,11 @@ const freeze = (store: Store, id: string) =>
   );
 
 test("request abandonment migration preserves populated request records and their message foreign keys", async () => {
-  const beforeAbandonment = foundryMigrations.filter((migration) => migration.id < 22);
+  const abandonment = foundryMigrations.find((migration) => migration.name === "abandoned_requests");
+
+  if (abandonment === undefined) {throw new Error("missing abandonment migration");}
+
+  const beforeAbandonment = foundryMigrations.filter((migration) => migration.id < abandonment.id);
 
   const original = await withStore(beforeAbandonment, (store) => Effect.gen(function* () {
     yield* store.change((change) => Effect.gen(function* () {
