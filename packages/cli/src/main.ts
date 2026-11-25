@@ -10,7 +10,7 @@ import { EXIT_USAGE, runStatus } from "./status.js";
 import { runLogs } from "./logs.js";
 import { runMessageSend } from "./messages.js";
 import { validateFactoryFile } from "./validate.js";
-import { runTicketList, runTicketShow, runTicketSubmit } from "./tickets.js";
+import { runTicketList, runTicketPause, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow } from "./holds.js";
 import type { HoldOutcome } from "./holds.js";
@@ -249,9 +249,13 @@ const ticketShow = Command.make("show", { ...ticketFlags, number: Argument.Int("
   ),
 ).pipe(Command.withDescription("Show one ticket with its transitions and paths"));
 
+const ticketPause = Command.make("pause", { ...ticketFlags, number: Argument.Int("n") }, ({ json, home, factory, number }) =>
+  report(() => runTicketPause({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), number, env: process.env })),
+).pipe(Command.withDescription("Pause an assigned ticket, preserving its assignment"));
+
 const ticket = Command.make("ticket").pipe(
   Command.withDescription("Submit and inspect tickets"),
-  Command.withSubcommands([ticketSubmit, ticketList, ticketShow]),
+  Command.withSubcommands([ticketSubmit, ticketList, ticketShow, ticketPause]),
 );
 
 const factoryList = Command.make("list", commonFlags, ({ json, home }) =>

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { startChannelServer } from "@foundry/daemon";
 import { connectWorker } from "@foundry/extension";
-import { AGENT_REPLY, AGENT_REQUEST } from "@foundry/protocol";
+import { AGENT_DELEGATE, AGENT_REPLY, AGENT_REQUEST } from "@foundry/protocol";
 import type { ToolCall } from "@foundry/protocol";
 import { startFauxSession } from "@foundry/testkit";
 
@@ -17,6 +17,8 @@ afterEach(async () => {
 });
 
 test.each([
+  { tool: AGENT_DELEGATE, args: { recipient: "eng.reviewer", body: "Review please", parentDelegationId: "parent-1" },
+    value: { delegationId: "delegation-1", rootAssignment: "assignment-1", parentDelegationId: "parent-1", depth: 2, noticeId: "notice-1" } },
   { tool: AGENT_REQUEST, args: { recipient: "eng.reviewer", body: "Review please", timeoutMs: 60_000, delivery: "when_idle" },
     value: { requestId: "request-1", deadline: 1_800_000_060_000 } },
   { tool: AGENT_REPLY, args: { requestId: "request-1", body: "Reviewed" },

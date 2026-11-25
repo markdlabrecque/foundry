@@ -53,12 +53,15 @@ export interface AssignmentSchedulerOptions {
   readonly inScope?: (factoryId: string) => boolean;
   /** Worktree creation is separate; false leaves this ticket queued, without reserving capacity. */
   readonly ready?: (ticket: QueuedTicket, slot: PlannedSlot) => boolean;
+  /** Runs outside the assignment transaction, only for an eligible isolated assignment. */
+  readonly prepareWorktree?: (ticket: QueuedTicket) => Effect.Effect<void, StoreError>;
 }
 
 export interface QueuedTicket {
   readonly factory_id: string;
   readonly number: number;
   readonly title: string;
+  readonly slug: string;
   readonly production_line: string;
   readonly directory: string;
   readonly state: string;
@@ -68,11 +71,13 @@ export interface QueuedTicket {
 }
 
 // A scan with no writes is deliberately rolled back, not recorded as a fictitious change.
-class NoAssignments extends Data.TaggedError("NoAssignments") {}
+class NoAssignments extends Data.TaggedError("NoAssignments")<{
+  readonly pending: ReadonlyArray<QueuedTicket>;
+}> {}
 
 /** One transaction chooses capacity and persists assignments, transitions and context together. */
-export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) => ({
-  schedule: (): Effect.Effect<ReadonlyArray<Assignment>, StoreError> => options.store.change((change) =>
+export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) => {
+  const scan = () => options.store.change((change) =>
     Effect.gen(function* () {
       const queued = yield* change.query<QueuedTicket>(
         `SELECT * FROM ticket t WHERE (state = 'backlog' OR (state = 'stage' AND status = 'queued'))
@@ -82,6 +87,8 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
       );
 
       const assigned: Array<Assignment> = [];
+      const pending: Array<QueuedTicket> = [];
+      const preparingSlots = new Set<string>();
 
       for (const ticket of queued) {
         if (options.inScope?.(ticket.factory_id) === false) {continue;}
@@ -117,9 +124,26 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
 
           if (slot === undefined || options.ready?.(ticket, slot) === false) {continue;}
 
-          // Until the worktree ticket wires its readiness seam, never assign an isolation:worktree
-          // station a ticket without a materialized worktree.
-          if (slot.station.isolation === 'worktree' && ticket.worktree_path === null) {continue;}
+          const slotKey = JSON.stringify([slot.factoryId, slot.slotId]);
+
+          if (preparingSlots.has(slotKey)) {continue;}
+
+          if (slot.station.isolation === 'worktree' && ticket.worktree_path === null) {
+            if (options.prepareWorktree === undefined) {continue;}
+
+            const attempted = yield* change.query(
+              `SELECT 1 FROM operation WHERE factory_id = ? AND ticket_number = ? AND kind = 'worktree_create'`,
+              [ticket.factory_id, ticket.number],
+            );
+
+            // Failed or interrupted creation needs explicit recovery, not capacity. Other tickets
+            // must still be considered, even when the oldest ticket cannot be prepared.
+            if (attempted.length > 0) {continue;}
+
+            pending.push(ticket);
+            preparingSlots.add(slotKey);
+            break;
+          }
 
           const id = randomUUID();
           const now = yield* Clock.currentTimeMillis;
@@ -157,12 +181,29 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
         }
       }
 
-      if (assigned.length === 0) {return yield* new NoAssignments();}
+      if (assigned.length === 0) {return yield* new NoAssignments({ pending });}
 
-      return assigned;
+      return { assigned, pending };
     }),
-  ).pipe(Effect.catchTag("NoAssignments", () => Effect.succeed([]))),
-});
+  ).pipe(Effect.catchTag("NoAssignments", ({ pending }) => Effect.succeed({ assigned: [], pending })));
+
+  return {
+    schedule: (): Effect.Effect<ReadonlyArray<Assignment>, StoreError> => Effect.gen(function* () {
+      const first = yield* scan();
+
+      if (options.prepareWorktree === undefined || first.pending.length === 0) {return first.assigned;}
+
+      for (const ticket of first.pending) {
+        if (options.inScope?.(ticket.factory_id) !== false) {yield* options.prepareWorktree(ticket);}
+      }
+
+      // Recheck capacity, lifecycle and readiness after Git, before committing any assignment.
+      const second = yield* scan();
+
+      return [...first.assigned, ...second.assigned];
+    }),
+  };
+};
 
 /** Coalesced commit wakeups: no polling, no scheduling inside outcome/submission transactions. */
 export const watchAssignments = (

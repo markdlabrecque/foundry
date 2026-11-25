@@ -23,7 +23,9 @@ import type {
   TicketTransition,
 } from "@foundry/protocol/tickets-api";
 import type { FactoryConfig } from "./config/schema.js";
-import { ticketRecord } from "./history-records.js";
+import { ticketRecord, slotRecord } from "./history-records.js";
+import { SlotsError } from "./slots-error.js";
+import type { SlotInterrupter } from "./slots-error.js";
 import type { Store, StoreError } from "./store.js";
 
 /** What submission needs to know about a loaded factory's production line. */
@@ -62,6 +64,11 @@ export type TicketErrorCode =
   | "unknown_factory"
   | "unknown_line"
   | "ticket_not_found"
+  | "invalid_state"
+  | "unavailable"
+  | "no_live_launch"
+  | "channel_unavailable"
+  | "interrupt_unacknowledged"
   | "internal";
 
 /** A ticket request refused before anything was written. */
@@ -105,6 +112,7 @@ export const slugify = (title: string): string => {
 };
 
 export interface TicketService {
+  readonly pause: (factory: string | undefined, number: number) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   readonly submit: (request: SubmitTicketRequest) => Effect.Effect<TicketDetail, TicketError | StoreError>;
   /** Without a factory, lists every factory's tickets. Oldest first within each factory. */
   readonly list: (factory: string | undefined) => Effect.Effect<TicketListResult, StoreError>;
@@ -112,6 +120,7 @@ export interface TicketService {
 }
 
 export interface TicketServiceOptions {
+  readonly interrupter?: SlotInterrupter;
   readonly stateRoot: string;
   readonly store: Store;
   /** The factories loaded now; read on every request. */
@@ -260,6 +269,80 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       return { ticket: ticket(row), transitions: transitions.map(transition) };
     });
 
+  // A duplicate action must not retain a stale assignment and later interrupt its successor.
+  // Reserve the ticket before the first read, through acknowledgement and durable suspension.
+  const pausing = new Set<string>();
+
+  const pause: TicketService["pause"] = (name, number) => Effect.gen(function* () {
+    const factory = (yield* loadedFactory(name)).name;
+    const key = JSON.stringify([factory, number]);
+
+    return yield* Effect.suspend(() => {
+      if (pausing.has(key)) {return refuse("invalid_state", "The ticket is already being paused");}
+
+      pausing.add(key);
+
+      return pauseAssigned(factory, number).pipe(Effect.ensuring(Effect.sync(() => { pausing.delete(key); })));
+    }).pipe(Effect.uninterruptible);
+  });
+
+  // Keep capacity reserved until the authenticated worker acknowledges settlement. Do not hold
+  // a database transaction across channel I/O; recheck the assignment identity before committing.
+  const pauseAssigned = (factory: string, number: number) => Effect.gen(function* () {
+    const current = yield* show(factory, number);
+
+    if (current.ticket.state !== "stage" || current.ticket.status !== "assigned") {
+      return yield* refuse("invalid_state", "Only an assigned ticket can be paused");
+    }
+
+    const [assignment] = yield* store.read<{ id: string; slot_id: string }>(
+      `SELECT id, slot_id FROM assignment WHERE factory_id = ? AND ticket_number = ? AND status = 'active'`,
+      [factory, number],
+    );
+
+    if (assignment === undefined) {return yield* refuse("invalid_state", "The ticket has no active assignment");}
+
+    const interrupter = options.interrupter;
+
+    if (interrupter === undefined) {return yield* refuse("unavailable", "Worker interrupts are unavailable");}
+
+    yield* Effect.tryPromise({
+      try: () => interrupter.interrupt(assignment.slot_id, factory),
+      catch: (error) => new TicketError({
+        code: error instanceof SlotsError && (error.code === "no_live_launch" || error.code === "channel_unavailable" || error.code === "interrupt_unacknowledged") ? error.code : "internal",
+        message: error instanceof Error ? error.message : String(error),
+      }),
+    });
+    yield* store.change((change) => Effect.gen(function* () {
+      const rows = yield* change.query<{ stage: string }>(
+        `SELECT t.stage FROM ticket t JOIN assignment a ON a.factory_id = t.factory_id AND a.ticket_number = t.number
+         WHERE t.factory_id = ? AND t.number = ? AND t.state = 'stage' AND t.status = 'assigned'
+         AND a.id = ? AND a.status = 'active' AND a.stage = t.stage`,
+        [factory, number, assignment.id],
+      );
+
+      const row = rows[0];
+
+      if (row === undefined) {return yield* refuse("invalid_state", "The assignment changed while the worker was interrupted");}
+
+      const now = yield* Clock.currentTimeMillis;
+      yield* change.query(`UPDATE assignment SET status = 'suspended' WHERE id = ?`, [assignment.id]);
+      yield* change.query(`UPDATE ticket SET status = 'paused' WHERE factory_id = ? AND number = ?`, [factory, number]);
+      yield* change.query(
+        `INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
+          from_state, from_stage, from_status, to_state, to_stage, to_status, config_load)
+         VALUES (?, ?, ?, 'operator', 'stage', ?, 'assigned', 'stage', ?, 'paused', ?)`,
+        [factory, number, now, row.stage, row.stage, options.configLoad?.(factory) ?? null],
+      );
+      yield* change.recordHistory({ factoryId: factory, kind: "ticket.paused", subject: String(number),
+        detail: { assignment: assignment.id, slotId: assignment.slot_id },
+        records: [ticketRecord(number), slotRecord(assignment.slot_id)],
+      });
+    }));
+
+    return yield* show(factory, number);
+  });
+
   const submit: TicketService["submit"] = (request) =>
     Effect.gen(function* () {
       const factory = yield* loadedFactory(request.factory);
@@ -350,5 +433,5 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       (rows) => ({ tickets: rows.map(summary) }),
     );
 
-  return { submit, list, show };
+  return { submit, list, show, pause };
 };
