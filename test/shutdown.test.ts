@@ -185,6 +185,8 @@ test("a group that cannot be confirmed gone fails the shutdown and keeps the Wor
   await expect(f.host.shutdown()).rejects.toThrow(/shutdown refused/);
 
   // The real host, except it reports one of alpha's groups as not confirmed gone.
+  const shutdownAsks: Array<true> = [];
+
   const unconfirming: ShutdownHost = {
     inventory: () => f.host.inventory(),
     terminate: async (launchId, options) => {
@@ -192,7 +194,11 @@ test("a group that cannot be confirmed gone fails the shutdown and keeps the Wor
 
       return { outcome: "unconfirmed", escalated: true, launch: stubborn };
     },
-    shutdown: () => f.host.shutdown(),
+    shutdown: () => {
+      shutdownAsks.push(true);
+
+      return f.host.shutdown();
+    },
   };
 
   await serve(f, unconfirming);
@@ -201,7 +207,9 @@ test("a group that cannot be confirmed gone fails the shutdown and keeps the Wor
   expect(outcome.exitCode).toBe(EXIT_REFUSED);
   expect(JSON.parse(outcome.stdout)).toMatchObject({ ok: false, error: { code: "shutdown_unconfirmed" } });
 
-  // Not success: the host still runs, alpha is still stopping and its slot keeps the launch.
+  // Not success: the daemon never asked the host to stop, the host still runs, alpha is still
+  // stopping and its slot keeps the launch.
+  expect(shutdownAsks).toEqual([]);
   expect(isAlive(f.hostPid)).toBe(true);
   expect(f.states.get("alpha")).toBe("stopping");
   expect(await historyKinds(f.store, "alpha")).not.toContain("factory.stopped");

@@ -9,7 +9,7 @@ import type { Socket } from "node:net";
 import type { LaunchRecord, LaunchSpec, Termination } from "./launches.js";
 
 /** Bumped on any incompatible change; a mismatch is rejected, not negotiated. */
-export const HOST_CONTROL_VERSION = 3 as const;
+export const HOST_CONTROL_VERSION = 4 as const;
 
 /** File name of the Worker Host's socket inside the state root. */
 export const HOST_SOCKET_NAME = "host.sock";
