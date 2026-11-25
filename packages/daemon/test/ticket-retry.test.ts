@@ -6,7 +6,7 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Schema } from "effect";
 import {
   agentDelegateHandler, agentRequestHandler, assignmentTicket, createAssignmentScheduler,
-  createMessageDelivery, createReconciler, openSlotGate,
+  createMessageDelivery, createReconciler, detectStuckWorkers, openSlotGate,
   createTicketService, openStore, planSlots, serveManagementApi, SlotsError, StoreError, taskTransitionHandler, ticketFactoryFrom,
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
@@ -164,6 +164,10 @@ test("attempted old work cannot rearm after retry and absent reconciliation; fre
         await old.idle();
       } finally {await old.stop();}
     });
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE message_attempt SET injected_at = 1`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "injected" });
+    }));
     const attempts = yield* store.read<{ message_id: string }>(`SELECT * FROM message_attempt ORDER BY rowid`);
     expect(attempts).toHaveLength(4);
     yield* block(store, id);
@@ -173,6 +177,18 @@ test("attempted old work cannot rearm after retry and absent reconciliation; fre
       for (const slot of claimed) {
         const hello: Hello = { type: "hello", protocolVersion: PROTOCOL_VERSION, ...slot,
           conversationRef: "fixture-conversation", hasRecoverableHistory: true, mode: "headless", tools: [] };
+
+        for (const uncertain of ["pending", "absent"] as const) {
+          await reconciler.reconcile(slot, hello, { send: async (frame) => {
+            if (frame.type !== "reconcile") {throw new Error("expected reconciliation");}
+
+            reconciler.receive(slot, { type: "reconciliation_answer", requestId: frame.requestId, lifecycle: "unknown",
+              answers: frame.ids.map((messageId) => ({ id: messageId, status: uncertain })) });
+          } });
+        }
+
+        expect(await Effect.runPromise(store.read(`SELECT retired_at FROM message_attempt WHERE slot_id = ?`, [slot.slotId])))
+          .toEqual(expect.arrayContaining([{ retired_at: null }]));
 
         const result = await reconciler.reconcile(slot, hello, { send: async (frame) => {
           if (frame.type !== "reconcile") {throw new Error("expected reconciliation");}
@@ -184,7 +200,10 @@ test("attempted old work cannot rearm after retry and absent reconciliation; fre
         expect(result.absent.length).toBeGreaterThan(0);
       }
     });
-    expect(yield* store.read(`SELECT * FROM message_attempt ORDER BY rowid`)).toEqual(attempts);
+    const retiredAttempts = yield* store.read<{ message_id: string }>(`SELECT * FROM message_attempt ORDER BY rowid`);
+    expect(retiredAttempts).toEqual(attempts.map((attempt) => ({ ...attempt, retired_at: expect.any(Number) })));
+    expect(yield* detectStuckWorkers(store, () => true)).toBe(0);
+    expect(yield* store.read(`SELECT * FROM operator_hold`)).toEqual([]);
     expect(yield* store.read(`SELECT status FROM message WHERE id IN (SELECT message_id FROM message_attempt)`))
       .toEqual(Array.from({ length: 4 }, () => ({ status: "sent" })));
     const [fresh] = yield* scheduler(store).schedule();
@@ -211,7 +230,7 @@ test("attempted old work cannot rearm after retry and absent reconciliation; fre
     expect(delivered.some((frame) => frame.type === "message" && oldIds.has(frame.id))).toBe(false);
     expect(delivered).toContainEqual(expect.objectContaining({ type: "message", id: fresh.contextMessage }));
     const afterAttempts = yield* store.read<{ message_id: string }>(`SELECT * FROM message_attempt ORDER BY rowid`);
-    expect(afterAttempts.filter((attempt) => oldIds.has(attempt.message_id))).toEqual(attempts);
+    expect(afterAttempts.filter((attempt) => oldIds.has(attempt.message_id))).toEqual(retiredAttempts);
     expect(errors).toEqual([]);
   }));
 });
