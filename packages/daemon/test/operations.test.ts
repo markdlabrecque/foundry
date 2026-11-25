@@ -19,6 +19,7 @@ import {
   startNextOperation,
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
+import { expectDefined } from "@foundry/protocol/errors";
 
 let dir: string;
 let filename: string;
@@ -59,7 +60,7 @@ test("an operation's intent is committed as running before its action starts, an
       const started = yield* startNextOperation(store, "f1");
       let duringAction: ReadonlyArray<unknown> = [];
 
-      const finished = yield* runOperation(store, started!, () =>
+      const finished = yield* runOperation(store, expectDefined(started, "the admitted operation"), () =>
         Effect.sync(() => {
           duringAction = committedOperations();
 
@@ -110,7 +111,9 @@ test("one factory never has two integration or sync operations running at once",
       yield* enqueueOperation(store, { factoryId: "f1", kind: "sync", intent: {} });
       yield* enqueueOperation(store, integration("f2", 1));
 
-      // Many admissions race for the same factories.
+      // Many admissions race for the same factories. The daemon is the only writer and runs every
+      // change on one serialized connection, so this proves each admission is atomic, not a
+      // cross-process race.
       const admitted = yield* Effect.all(
         Array.from({ length: 10 }, (_, i) => startNextOperation(store, i % 2 === 0 ? "f1" : "f2")),
         { concurrency: "unbounded" },
@@ -157,7 +160,7 @@ test("an action that fails leaves its operation running, so the queue stays clos
       yield* enqueueOperation(store, integration("f1", 1));
       yield* enqueueOperation(store, integration("f1", 2));
       const started = yield* startNextOperation(store, "f1");
-      const failed = yield* Effect.exit(runOperation(store, started!, () => Effect.fail("git died" as const)));
+      const failed = yield* Effect.exit(runOperation(store, expectDefined(started, "the admitted operation"), () => Effect.fail("git died" as const)));
 
       return { failed, first: yield* getOperation(store, 1), next: yield* startNextOperation(store, "f1") };
     }),

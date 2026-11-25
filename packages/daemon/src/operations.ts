@@ -218,7 +218,7 @@ export const startNextOperation = (store: Store, factoryId: string): Effect.Effe
 
 /**
  * Commits a running operation's result inside `change`, so it lands together with everything the
- * operation causes. Fails if the operation is not running.
+ * operation causes. Dies if the operation is not running: a result for anything else is a bug.
  */
 export const recordOperationResult = (
   change: Change,
@@ -248,9 +248,14 @@ export const recordOperationResult = (
   });
 
 /**
- * Runs `action` for an operation already committed as running, then commits its result. If the
- * action fails or is interrupted, the operation stays running, exactly as after a crash: what it
- * did is unknown until recovery reconciles it (PRD §10.2), and the factory's queue stays closed.
+ * Runs `action` for an operation already committed as running, then commits its result in a
+ * change of its own. An operation whose result must commit together with other records it causes
+ * calls `recordOperationResult` inside that change instead.
+ *
+ * If the action fails or is interrupted, the operation stays running, exactly as after a crash:
+ * what it did is unknown until recovery reconciles it (PRD §10.2), and the factory's queue stays
+ * closed until then. Dies, running nothing, if `operation` is not running: an operation is
+ * admitted by `startNextOperation` or recorded by `beginOperation` before its action may start.
  */
 export const runOperation = <E, R>(
   store: Store,
@@ -258,6 +263,10 @@ export const runOperation = <E, R>(
   action: (operation: Operation) => Effect.Effect<OperationOutcome, E, R>,
 ): Effect.Effect<Operation, E | StoreError, R> =>
   Effect.gen(function* () {
+    if (operation.status !== "running") {
+      return yield* Effect.die(new Error(`operation ${operation.id} is ${operation.status}, not running; its action must not start`));
+    }
+
     const outcome = yield* action(operation);
 
     return yield* store.change((change) => recordOperationResult(change, operation.id, outcome));
