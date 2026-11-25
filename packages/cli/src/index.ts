@@ -29,6 +29,8 @@ export { runMessageSend, type MessageSendOptions } from "./messages.js";
 
 export { runHoldList, runHoldShow, type HoldOptions, type HoldOutcome } from "./holds.js";
 
+export { runApprovalList, runApprovalShow } from "./approvals.js";
+
 export { runFactoryList, type FactoryListOptions, type FactoryOutcome } from "./factories.js";
 
 export { renderEvent, runEvents, sseParser, type EventsOptions, type EventsOutcome } from "./events.js";

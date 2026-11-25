@@ -316,6 +316,66 @@ test("a failed channel write leaves a recorded unacknowledged attempt and never 
   expect(await state()).toMatchObject([{ status: "sent", acknowledged_at: null }, { status: "bound" }]);
 });
 
+test.each([
+  { name: "same launch settled absent", replacement: false, old: "missing", lifecycle: "idle", restored: true, final: "absent", retry: true, recheck: false },
+  { name: "same launch unknown lifecycle", replacement: false, old: "missing", lifecycle: "unknown", restored: true, final: "absent", retry: false, recheck: false },
+  { name: "working then idle absent", replacement: false, old: "missing", lifecycle: "working", restored: true, final: "absent", retry: true, recheck: true },
+  { name: "working then history", replacement: false, old: "missing", lifecycle: "working", restored: true, final: "history", retry: false, recheck: true },
+  { name: "working then pending", replacement: false, old: "missing", lifecycle: "working", restored: true, final: "pending", retry: false, recheck: true },
+  { name: "replacement confirmed gone", replacement: true, old: "ended", lifecycle: "working", restored: true, final: "absent", retry: true, recheck: false },
+  { name: "replacement old still live", replacement: true, old: "live", lifecycle: "idle", restored: true, final: "absent", retry: false, recheck: false },
+  { name: "replacement old unknown", replacement: true, old: "missing", lifecycle: "idle", restored: true, final: "absent", retry: false, recheck: false },
+  { name: "replacement history not restored", replacement: true, old: "ended", lifecycle: "idle", restored: false, final: "absent", retry: false, recheck: false },
+] as const)("retry gate: $name", async ({ replacement, old, lifecycle, restored, final, retry, recheck }) => {
+  await seed(1);
+  delivery.attach(slot, { send: async () => {} });
+  await delivery.idle();
+  await delivery.stop();
+
+  if (old !== "missing") {
+    await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+      yield* change.query(`INSERT INTO slot (factory_id, slot_id, station, ordinal, condition) VALUES (?, ?, 'eng.builder', 1, 'normal')`, [slot.factoryId, slot.slotId]);
+      yield* change.query(`INSERT INTO launch (launch_id, factory_id, slot_id, boot_id, pid, started_at, origin, ended_at, end_reason)
+        VALUES (?, ?, ?, 'boot', 42, 1, 'started', ?, ?)`, [slot.launchId, slot.factoryId, slot.slotId, old === "ended" ? 2 : null, old === "ended" ? "exited" : null]);
+      yield* change.recordHistory({ factoryId: slot.factoryId, kind: "fixture.launch", subject: slot.launchId });
+    })));
+  }
+
+  const claimed = replacement ? { ...slot, launchId: "replacement" } : slot;
+  const reconciler = createReconciler(store);
+  const requests: Array<DaemonFrame> = [];
+
+  const result = await reconciler.reconcile(claimed, { ...hello, launchId: claimed.launchId, hasRecoverableHistory: restored }, { send: async (frame) => {
+    requests.push(frame);
+
+    if (frame.type !== "reconcile") {throw new Error("expected comparison");}
+
+    reconciler.receive(claimed, { type: "reconciliation_answer", requestId: frame.requestId,
+      lifecycle: frame.whenIdle ? "idle" : lifecycle,
+      answers: [{ id: "m1", status: frame.whenIdle ? final : "absent" }] });
+  } });
+
+  expect(requests).toHaveLength(recheck ? 2 : 1);
+
+  if (recheck) {expect(requests[1]).toMatchObject({ whenIdle: true, ids: ["m1"] });}
+
+  expect(result[recheck ? final : "absent"]).toEqual(["m1"]);
+  expect(await state()).toMatchObject([{ status: retry ? "bound" : final === "history" ? "acknowledged" : "sent" }]);
+  expect(await attempts()).toHaveLength(1);
+
+  if (retry) {
+    delivery = createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => errors.push(cause) });
+    const frames: Array<DaemonFrame> = [];
+    delivery.attach(claimed, { send: async (frame) => { frames.push(frame); } });
+    await delivery.idle();
+    expect(frames).toEqual([{ type: "message", id: "m1", body: "body 1", delivery: "after_turn" }]);
+    expect(await attempts()).toHaveLength(2);
+    expect(await state()).toMatchObject([{ status: "sent" }]);
+  }
+
+  expect(errors).toEqual([]);
+});
+
 test("receipt, attempt and stuck-worker hold clear together, and roll back together on failure", async () => {
   await seed(1);
   delivery.attach(slot, { send: async () => {} });

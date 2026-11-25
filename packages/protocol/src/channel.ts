@@ -215,6 +215,8 @@ export type ToolResult = typeof ToolResult.Type;
 export const ReconciliationAnswer = Schema.Struct({
   type: Schema.Literal("reconciliation_answer"),
   requestId: Id,
+  /** Missing evidence from an older peer fails closed. */
+  lifecycle: Schema.optionalKey(Schema.Literals(["idle", "working", "unknown"])),
   answers: Schema.Array(Schema.Struct({ id: Id, status: Schema.Literals(["history", "pending", "absent"]) })),
 });
 
@@ -224,6 +226,8 @@ export const Reconcile = Schema.Struct({
   type: Schema.Literal("reconcile"),
   requestId: Id,
   ids: Schema.Array(Id),
+  /** Take a fresh history/pending snapshot only after Pi settles. */
+  whenIdle: Schema.optionalKey(Schema.Boolean),
 });
 
 /** Frames a worker sends after its hello is accepted. */

@@ -200,10 +200,10 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   pi.registerTool({
     name: TASK_TRANSITION,
     label: "Report an assignment outcome",
-    description: "Report done for your active assignment with reason and evidence references. The daemon selects the configured next stage; you cannot choose a destination. Approval, code-stage and final outcomes are not supported yet.",
+    description: "Report done, blocked or rejected for your active assignment with reason and evidence references. Blocked and rejected without a configured rejection route pause for an operator decision. The daemon chooses routing; you cannot choose a destination. Routed rejection and done at approval, code or final stages are not supported yet.",
     parameters: Type.Object({
       assignmentId: Type.String({ minLength: 1 }),
-      outcome: Type.Literal("done"),
+      outcome: Type.Union([Type.Literal("done"), Type.Literal("blocked"), Type.Literal("rejected")]),
       reason: Type.String({ minLength: 1 }),
       evidence: Type.Array(Type.String({ minLength: 1 })),
       gitCommit: Type.Optional(Type.String({ minLength: 1 })),
