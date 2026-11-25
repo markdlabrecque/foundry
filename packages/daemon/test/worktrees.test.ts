@@ -2,6 +2,8 @@
 import { closeSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync, writeSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
+import { createServer } from "node:net";
+import type { Socket } from "node:net";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { Effect } from "effect";
@@ -15,6 +17,7 @@ import { CompactionPrimingOutcome, createPrimer, startChannelServer } from "@fou
 import { openChannel } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import { createTicketWorktrees } from "../src/worktrees.js";
+import { watchAssignments } from "../src/assignments.js";
 import { createWorktreeService } from "../src/worktree-cleanup.js";
 import type { WorktreeService } from "../src/worktree-cleanup.js";
 import type { HookLogIo } from "../src/before-remove.js";
@@ -30,6 +33,7 @@ const fixture = async <A, E>(use: (f: {
   slots: ReturnType<typeof planSlots>;
   scheduler: ReturnType<typeof createAssignmentScheduler>;
   newScheduler: (overrides?: Partial<AssignmentSchedulerOptions>) => ReturnType<typeof createAssignmentScheduler>;
+  watch: (onError: (error: Error) => void) => () => Promise<void>;
 }) => Effect.Effect<A, E>, settings = "root: ./worktrees", isolation = "worktree", hookLogIo?: HookLogIo) => {
   const root = mkdtempSync(join(tmpdir(), "foundry-worktrees-"));
   roots.push(root);
@@ -71,16 +75,18 @@ ${isolation === "none" ? "      - { id: implement, station: floor.final, writing
     const tickets = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(factory.config)] });
     yield* tickets.submit({ title: "Build widget", spec: "Implement widget" }).pipe(Effect.orDie);
 
-    const newScheduler = (overrides: Partial<AssignmentSchedulerOptions> = {}) => createAssignmentScheduler({
+    const schedulerOptions = {
       store, slots, factories: [factory],
       prepareWorktree: createTicketWorktrees({ store, target: () => ({ factory, clonePath: clone.path }), env: isolatedGitEnv(), home: root }),
-      ...overrides,
-    });
+    };
+
+    const newScheduler = (overrides: Partial<AssignmentSchedulerOptions> = {}) => createAssignmentScheduler({ ...schedulerOptions, ...overrides });
 
     const worktrees = createWorktreeService({ store, stateRoot: root, hookLogIo, target: () => ({ factory, clonePath: clone.path }),
       factories: () => ["shop"], env: isolatedGitEnv() });
 
-    return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler, worktrees });
+    return yield* use({ store, root, clone: clone.path, slots, scheduler: newScheduler(), newScheduler, worktrees,
+      watch: (onError) => watchAssignments(schedulerOptions, onError) });
   })));
 };
 
@@ -794,6 +800,117 @@ test("signal-terminated before_remove keeps its signal and raises a failure hold
       { state: "open", evidence: expect.stringContaining('"signal":"SIGTERM"') },
     ]);
   }), `root: ./worktrees, before_remove: [${JSON.stringify(process.execPath)}, -e, "process.kill(process.pid, 'SIGTERM')"]`);
+});
+
+test("after_create executes literal argv in the worktree, persists intent and logs, and runs once", async () => {
+  const literal = "$(touch injected); * > injected";
+  const command = [process.execPath, "-e", `console.log(JSON.stringify({cwd:process.cwd(), args:process.argv.slice(1)})); console.error('setup stderr')`, literal];
+  await fixture(({ store, root, scheduler, newScheduler }) => Effect.gen(function* () {
+    const scans: Array<Promise<ReadonlyArray<unknown>>> = [];
+    let seen = false;
+    const observer = new DatabaseSync(join(root, "foundry.db"), { readOnly: true });
+
+    const unsubscribe = store.onCommit(() => {
+      if (!seen && observer.prepare(`SELECT 1 FROM operation WHERE kind = 'hook' AND status = 'running'`).get() !== undefined) {
+        seen = true;
+        scans.push(Effect.runPromise(newScheduler().schedule()));
+        expect(observer.prepare(`SELECT count(*) AS n FROM assignment`).get()?.["n"]).toBe(0);
+      }
+    });
+
+    try {
+      const assignments = yield* scheduler.schedule();
+      const concurrent = yield* Effect.promise(() => Promise.all(scans));
+      expect([...assignments, ...concurrent.flat()]).toHaveLength(1);
+      expect(seen).toBe(true);
+    } finally {unsubscribe(); observer.close();}
+
+    const hooks = (yield* listOperations(store, "shop")).filter((op) => op.kind === "hook");
+    expect(hooks).toMatchObject([{ status: "complete", intent: { hook: "after_create", argv: command }, result: { exitStatus: 0, signal: null } }]);
+    const logPath = String(hooks[0]?.intent["logPath"]);
+    const path = join(root, "worktrees/shop/1-build-widget");
+    const log = readFileSync(logPath, "utf8");
+    expect(log).toContain(JSON.stringify({ cwd: path, args: [literal] }));
+    expect(log).toContain("setup stderr");
+    expect(existsSync(join(path, "injected"))).toBe(false);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1`);
+      yield* change.query(`UPDATE ticket SET stage = 'review', status = 'queued'`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "next stage" });
+    }));
+    expect(yield* newScheduler().schedule()).toMatchObject([{ stage: "review" }]);
+    expect((yield* listOperations(store, "shop")).filter((op) => op.kind === "hook")).toEqual(hooks);
+  }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+});
+
+test.each([
+  { name: "failed exit", command: [process.execPath, "-e", "console.log('setup failed'); console.error('diagnostic'); process.exit(17)"], exitStatus: 17 },
+  { name: "spawn error", command: ["./missing-setup-command"], exitStatus: null },
+])("after_create $name pauses without assignment and exposes durable hook-failure evidence", async ({ command, exitStatus }) => {
+  await fixture(({ store, scheduler, newScheduler }) => Effect.gen(function* () {
+    expect(yield* scheduler.schedule()).toEqual([]);
+    expect(yield* newScheduler().schedule()).toEqual([]);
+    expect(yield* store.read(`SELECT state, stage, status FROM ticket`)).toEqual([{ state: "stage", stage: "develop", status: "paused" }]);
+    expect(yield* store.read(`SELECT * FROM assignment`)).toEqual([]);
+    expect(yield* store.read(`SELECT * FROM message`)).toEqual([]);
+    const hooks = (yield* listOperations(store, "shop")).filter((op) => op.kind === "hook");
+    expect(hooks).toMatchObject([{ status: "failed", result: { exitStatus } }]);
+    const logPath = String(hooks[0]?.intent["logPath"]);
+    expect(readFileSync(logPath, "utf8")).toContain(exitStatus === null ? "ENOENT" : "diagnostic");
+    const holds = yield* store.read<{ evidence: string }>(`SELECT evidence FROM operator_hold WHERE kind = 'hook_failure' AND subject = '1' AND state = 'open'`);
+    expect(holds).toHaveLength(1);
+    expect(JSON.parse(holds[0]?.evidence ?? "{}")).toMatchObject({ hook: "after_create", operationId: hooks[0]?.id, exitStatus, logPath });
+    expect(yield* store.read(`SELECT to_state, to_status, reason FROM ticket_transition ORDER BY sequence DESC LIMIT 1`))
+      .toEqual([{ to_state: "stage", to_status: "paused", reason: "after_create failed" }]);
+  }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+});
+
+test("a waiting after_create does not block later tickets, and watcher shutdown terminates it", async () => {
+  const root = mkdtempSync(join(tmpdir(), "foundry-hook-listener-"));
+  roots.push(root);
+  const socketPath = join(root, "hook.sock");
+  const server = createServer();
+  await new Promise<void>((resolve) => { server.listen(socketPath, resolve); });
+  const connected = new Promise<Socket>((resolve) => { server.once("connection", resolve); });
+  const command = [process.execPath, "-e", `if (!process.cwd().endsWith('2-next')) { const c = require('node:net').connect(${JSON.stringify(socketPath)}); c.on('data', () => {}); }`];
+
+  try {
+    await fixture(({ store, watch }) => Effect.gen(function* () {
+      const errors: Array<Error> = [];
+      const stop = watch((error) => errors.push(error));
+      const socket = yield* Effect.promise(() => connected);
+      const closed = new Promise<void>((resolve) => { socket.once("close", () => resolve()); });
+      let unsubscribe: (() => void) | undefined;
+
+      const assigned = new Promise<void>((resolve) => {
+        unsubscribe = store.onCommit(() => {
+          // This read is scheduled after the committing transaction releases its connection.
+          void Effect.runPromise(store.read(`SELECT 1 FROM assignment WHERE ticket_number = 2`)).then((rows) => {
+            if (rows.length > 0) {resolve();}
+          });
+        });
+      });
+
+      try {
+        yield* store.change((change) => Effect.gen(function* () {
+          yield* change.query(`INSERT INTO ticket (factory_id, number, title, slug, production_line, directory, state,
+            rejection_ceiling, message_ceiling, submitted_at)
+            SELECT factory_id, 2, 'Next', 'next', production_line, directory, 'backlog',
+              rejection_ceiling, message_ceiling, submitted_at + 1 FROM ticket WHERE number = 1`);
+          yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "next ticket" });
+        }));
+        yield* Effect.promise(() => assigned);
+        expect(yield* store.read(`SELECT ticket_number FROM assignment`)).toEqual([{ ticket_number: 2 }]);
+        expect((yield* listOperations(store, "shop")).filter((op) => op.kind === "hook"))
+          .toMatchObject([{ ticket: 1, status: "running" }, { ticket: 2, status: "complete" }]);
+      } finally {unsubscribe?.(); yield* Effect.promise(stop);}
+
+      yield* Effect.promise(() => closed);
+      expect(errors).toEqual([]);
+      // Interrupted setup remains durable for recovery; shutdown must not fabricate success/failure.
+      expect((yield* listOperations(store, "shop")).find((op) => op.kind === "hook" && op.ticket === 1)?.status).toBe("running");
+    }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+  } finally {await new Promise<void>((resolve) => { server.close(() => resolve()); });}
 });
 
 test("configured tilde root and branch pattern are used", async () => {
