@@ -37,6 +37,11 @@ import { fileURLToPath } from "node:url";
 import { resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
 import { connectOrStartHost, createSlotScheduler, planSlots, storeSlotsReader } from "./slots.js";
+import { startChannelServer } from "./channel/server.js";
+import type { ChannelServer } from "./channel/server.js";
+import { createHostSlotClaim } from "./channel/slot-claim.js";
+import { channelLogEvents } from "./channel/log-events.js";
+import { channelSocketPath } from "@foundry/protocol";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -307,11 +312,20 @@ const main = async (): Promise<void> => {
   // Ask the Worker Host which launch holds each slot, then launch into each vacant one (PRD §10.2
   // step 2), before serving. The host is started only when there is a slot to run.
   let host: HostConnection | undefined;
+  let channel: ChannelServer | undefined;
 
   if (plannedSlots.length > 0) {
     try {
       host = await connectOrStartHost(stateRoot);
       const identity = await host.identify();
+
+      // Served before any launch, so a worker dialling at its session start finds the daemon. A hello
+      // is accepted only for the launch the host reports current in that slot (PRD §3.2).
+      channel = await startChannelServer({
+        socketPath: channelSocketPath(stateRoot),
+        slotClaim: createHostSlotClaim({ host }),
+        ...channelLogEvents(log),
+      });
 
       const scheduler = createSlotScheduler({
         store,
@@ -345,6 +359,7 @@ const main = async (): Promise<void> => {
       }
     } catch (error) {
       log.error("slots not scheduled", { detail: { error: messageOf(error) } });
+      await channel?.close().catch(() => {});
       host?.close();
       await closeStore();
       log.close();
@@ -375,7 +390,8 @@ const main = async (): Promise<void> => {
     void (async () => {
       try {
         try {
-          // Closing the connection leaves the host and its launches running (PRD §3.2).
+          // Closing the connections leaves the host and its launches running (PRD §3.2).
+          await channel?.close().catch(() => {});
           host?.close();
           await served.close();
         } finally {
@@ -410,6 +426,7 @@ const main = async (): Promise<void> => {
       slots: storeSlotsReader(store, stateRoot, decision.started, plannedSlots),
     });
   } catch (error) {
+    await channel?.close().catch(() => {});
     host?.close();
 
     if (error instanceof ManagementSocketError) {
