@@ -58,6 +58,7 @@ const matching: ReadonlyArray<ReportedTool> = [
   { name: "agent_request", source: FOUNDRY },
   { name: "agent_reply", source: FOUNDRY },
   { name: "agent_delegate", source: FOUNDRY },
+  { name: "task_transition", source: FOUNDRY },
   { name: "web_fetch", source: PROJECT },
 ];
 

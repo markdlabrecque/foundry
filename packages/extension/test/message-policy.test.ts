@@ -270,7 +270,7 @@ test("drain prevents a scheduled settled flush and acknowledges without starting
   const channel = { send: async (frame: { type: string }) => { acknowledgements.push(frame.type); },
     close: () => {}, closed: new Promise<void>(() => {}) };
 
-  const dispatch = receiveDaemonFrames({ adapter: { inject: () => {}, pending: () => [] }, messages: receiver, interrupter });
+  const dispatch = receiveDaemonFrames({ adapter: { inject: () => {}, pending: () => [], classify: () => [] }, messages: receiver, interrupter });
 
   receive("held");
   dispatch({ type: "drain", requestId: "drain-1" }, channel);

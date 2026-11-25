@@ -18,6 +18,8 @@ export interface ConversationAdapter {
   inject(injection: FoundryInjection, options?: InjectOptions): void;
   /** Issue receipts for injected IDs now recoverable; returns the IDs receipted. */
   check(): ReadonlyArray<string>;
+  /** Compare recoverable history first, then copies still held by this worker. */
+  classify(ids: ReadonlyArray<string>): ReadonlyArray<{ readonly id: string; readonly status: "history" | "pending" | "absent" }>;
   /** Injected IDs whose receipt has not been issued yet. */
   pending(): ReadonlyArray<string>;
 }
@@ -38,10 +40,8 @@ const noSessionFile = (): string | undefined => undefined;
 export const createConversationAdapter = (pi: ExtensionAPI, options: ConversationAdapterOptions): ConversationAdapter => {
   let sessionFile: () => string | undefined = noSessionFile;
 
-  const issuer = new ReceiptIssuer(
-    sessionFileHistory(() => sessionFile()),
-    options.onReceipt,
-  );
+  const history = sessionFileHistory(() => sessionFile());
+  const issuer = new ReceiptIssuer(history, options.onReceipt);
 
   pi.on("session_start", (_event, ctx) => {
     sessionFile = () => ctx.sessionManager.getSessionFile();
@@ -64,6 +64,12 @@ export const createConversationAdapter = (pi: ExtensionAPI, options: Conversatio
       );
       // An idle session appends at once; if its file already exists the entry is now recoverable.
       issuer.check();
+    },
+    classify(ids) {
+      const found = history.recoverable(ids);
+      const pending = new Set(issuer.pending());
+
+      return ids.map((id) => ({ id, status: found.has(id) ? "history" : pending.has(id) ? "pending" : "absent" }));
     },
     check: () => issuer.check(),
     pending: () => issuer.pending(),
