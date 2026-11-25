@@ -12,6 +12,7 @@ import { validateFactoryFile } from "./validate.js";
 import { runTicketList, runTicketShow, runTicketSubmit, type TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow, type HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
+import { runFactoryList } from "./factories.js";
 
 const validate = Command.make(
   "validate",
@@ -214,7 +215,21 @@ const ticket = Command.make("ticket").pipe(
   Command.withSubcommands([ticketSubmit, ticketList, ticketShow]),
 );
 
-const foundry = Command.make("foundry").pipe(Command.withSubcommands([validate, status, hold, logs, ticket, events]));
+const factoryList = Command.make("list", commonFlags, ({ json, home }) =>
+  Effect.flatMap(
+    Effect.promise(() => runFactoryList({ json, home: Option.getOrUndefined(home), env: process.env })),
+    print,
+  ),
+).pipe(Command.withDescription("List the loaded factories and their recorded configuration loads"));
+
+const factory = Command.make("factory").pipe(
+  Command.withDescription("Factories loaded by the daemon"),
+  Command.withSubcommands([factoryList]),
+);
+
+const foundry = Command.make("foundry").pipe(
+  Command.withSubcommands([validate, status, hold, logs, ticket, events, factory]),
+);
 
 Command.run(foundry, { version: "0.0.0" }).pipe(
   // effect/cli has already printed the problem and the help; PRD §11.5 makes a usage error exit 2.

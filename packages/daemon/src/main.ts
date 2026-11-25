@@ -17,6 +17,7 @@ import { makeTicketService, ticketFactoryFrom } from "./tickets.js";
 import { Effect, Exit, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
+import { storeFactoriesReader } from "./factories.js";
 import { importStoreQuietly } from "./quiet-store.js";
 import type { Store } from "./store.js";
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
@@ -195,6 +196,8 @@ const main = async (): Promise<void> => {
         configLoad: (factory) => loadIds.get(factory),
       }),
       events: storeEventSource(store),
+      // Read from the recorded run and its configuration loads, not from memory.
+      factories: storeFactoriesReader(store, log.runId),
     });
   } catch (error) {
     if (error instanceof ManagementSocketError) {

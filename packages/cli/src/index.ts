@@ -20,4 +20,5 @@ export {
 } from "./tickets.js";
 export { runLogs, type LogsOptions, type LogsOutcome } from "./logs.js";
 export { runHoldList, runHoldShow, type HoldOptions, type HoldOutcome } from "./holds.js";
+export { runFactoryList, type FactoryListOptions, type FactoryOutcome } from "./factories.js";
 export { renderEvent, runEvents, sseParser, type EventsOptions, type EventsOutcome } from "./events.js";
