@@ -16,6 +16,7 @@ import { Clock, Data, Effect } from "effect";
 import type { Scope } from "effect";
 import { Reactivity } from "effect/reactivity";
 import { SqlClient, SqlError } from "effect/sql";
+import type { HistoryRecordRef } from "./history-records.js";
 
 /** Table the migrator records applied migrations in. */
 const MIGRATIONS_TABLE = "foundry_migrations";
@@ -72,7 +73,83 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
        WHERE state = 'open'`,
     ],
   },
+  {
+    id: 3,
+    name: "tickets",
+    statements: [
+      // PRD §7.3. The ticket directory holds the specification and evidence; only its path is here.
+      `CREATE TABLE ticket (
+        factory_id TEXT NOT NULL,
+        number INTEGER NOT NULL CHECK (number > 0),
+        title TEXT NOT NULL,
+        slug TEXT NOT NULL,
+        production_line TEXT NOT NULL,
+        directory TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('backlog', 'stage', 'completed', 'cancelled')),
+        stage TEXT,
+        status TEXT CHECK (status IS NULL OR status IN ('queued', 'assigned', 'awaiting_approval', 'paused')),
+        rejections INTEGER NOT NULL DEFAULT 0,
+        rejection_ceiling INTEGER NOT NULL,
+        messages_spent INTEGER NOT NULL DEFAULT 0,
+        message_ceiling INTEGER NOT NULL,
+        worktree_path TEXT,
+        branch TEXT,
+        start_commit TEXT,
+        submitted_at INTEGER NOT NULL,
+        PRIMARY KEY (factory_id, number),
+        CHECK ((state = 'stage') = (stage IS NOT NULL AND status IS NOT NULL))
+      ) STRICT`,
+      // PRD §8.2: one row per change to a ticket's stage or status, never updated or deleted.
+      `CREATE TABLE ticket_transition (
+        sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        recorded_at INTEGER NOT NULL,
+        actor TEXT NOT NULL,
+        from_state TEXT,
+        from_stage TEXT,
+        from_status TEXT,
+        to_state TEXT NOT NULL,
+        to_stage TEXT,
+        to_status TEXT,
+        outcome TEXT,
+        reason TEXT,
+        git_commit TEXT,
+        evidence TEXT NOT NULL DEFAULT '[]',
+        config_load TEXT,
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket (factory_id, number)
+      ) STRICT`,
+      `CREATE INDEX ticket_transition_by_ticket ON ticket_transition (factory_id, ticket_number, sequence)`,
+      `CREATE TRIGGER ticket_transition_no_update BEFORE UPDATE ON ticket_transition
+       BEGIN SELECT RAISE(ABORT, 'transitions are append-only'); END`,
+      `CREATE TRIGGER ticket_transition_no_delete BEFORE DELETE ON ticket_transition
+       BEGIN SELECT RAISE(ABORT, 'transitions are append-only'); END`,
+    ],
+  },
+  {
+    id: 4,
+    name: "history_records",
+    statements: [
+      // The records a history row concerns beyond its subject (PRD §15.1), so events can be
+      // filtered by ticket, slot and the like. Append-only, like the row it belongs to.
+      `CREATE TABLE history_record (
+        sequence INTEGER NOT NULL REFERENCES history (sequence),
+        record_kind TEXT NOT NULL,
+        record_id TEXT NOT NULL,
+        PRIMARY KEY (sequence, record_kind, record_id)
+      ) STRICT, WITHOUT ROWID`,
+      `CREATE INDEX history_record_by_record ON history_record (record_kind, record_id, sequence)`,
+      `CREATE INDEX history_by_factory ON history (factory_id, sequence)`,
+      `CREATE TRIGGER history_record_no_update BEFORE UPDATE ON history_record
+       BEGIN SELECT RAISE(ABORT, 'history is append-only'); END`,
+      `CREATE TRIGGER history_record_no_delete BEFORE DELETE ON history_record
+       BEGIN SELECT RAISE(ABORT, 'history is append-only'); END`,
+    ],
+  },
 ];
+
+/** File name of the database inside the state root. */
+export const DATABASE_FILE_NAME = "foundry.db";
 
 /** Values that can be bound to a statement parameter. */
 export type SqlValue = string | number | bigint | Uint8Array | null;
@@ -104,7 +181,15 @@ export interface HistoryEntry {
   readonly subject: string;
   /** JSON-serialisable detail. */
   readonly detail?: unknown;
+  /**
+   * Other records the row concerns, e.g. `{ kind: "ticket", id: "42" }`, so events can be
+   * filtered by them. Ticket IDs are their numbers in decimal.
+   */
+  readonly records?: ReadonlyArray<HistoryRecordRef>;
 }
+
+// Record refs live in their own module so readers can use them without loading `node:sqlite`.
+export * from "./history-records.js";
 
 /** Runs one statement and returns its rows (empty for writes without `RETURNING`). */
 export type Query = <Row extends object = Record<string, unknown>>(
@@ -133,6 +218,11 @@ export interface Store {
   readonly change: <A, E, R>(
     body: (change: Change) => Effect.Effect<A, E, R>,
   ) => Effect.Effect<A, E | StoreError, R>;
+  /**
+   * Calls `listener` after each change commits, so readers can look for new history rows.
+   * Returns a function that removes it. A listener that throws is ignored; it never fails the change.
+   */
+  readonly onCommit: (listener: () => void) => () => void;
 }
 
 export interface OpenStoreOptions {
@@ -198,6 +288,7 @@ export const openStore = (
       Effect.mapError(sqlFailure("Migration", `Could not migrate ${options.filename}`)),
     );
 
+    const commitListeners = new Set<() => void>();
     const change: Store["change"] = (body) =>
       Effect.gen(function* () {
         let historyRows = 0;
@@ -209,8 +300,15 @@ export const openStore = (
                VALUES (?, ?, ?, ?, ?) RETURNING sequence`,
               [entry.factoryId, recordedAt, entry.kind, entry.subject, JSON.stringify(entry.detail ?? null)],
             );
+            const sequence = rows[0]!.sequence;
+            for (const record of entry.records ?? []) {
+              yield* query(
+                `INSERT OR IGNORE INTO history_record (sequence, record_kind, record_id) VALUES (?, ?, ?)`,
+                [sequence, record.kind, record.id],
+              );
+            }
             historyRows += 1;
-            return rows[0]!.sequence;
+            return sequence;
           });
         const result = yield* body({ query, recordHistory });
         if (historyRows === 0) {
@@ -223,6 +321,19 @@ export const openStore = (
       }).pipe(
         sql.withTransaction,
         Effect.mapError((e) => (SqlError.isSqlError(e) ? sqlFailure("Sql", "Transaction failed")(e) : e)),
+        Effect.tap(() =>
+          Effect.sync(() => {
+            // The change has committed. A listener must never turn that into a reported failure,
+            // or the caller would think it lost and might retry, writing duplicates (ADR 0001).
+            for (const listener of [...commitListeners]) {
+              try {
+                listener();
+              } catch {
+                // Ignored: the listener only signals readers; history is already durable.
+              }
+            }
+          }),
+        ),
       ) as never;
 
     return {
@@ -230,6 +341,11 @@ export const openStore = (
       schemaVersion: Math.max(applied, known),
       read: query,
       change,
+      onCommit: (listener) => {
+        const registered = () => listener();
+        commitListeners.add(registered);
+        return () => void commitListeners.delete(registered);
+      },
     } satisfies Store;
   });
 

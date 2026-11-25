@@ -5,11 +5,12 @@
  * releases the lock and exits 0; a held lock or a socket in use exits 1 (PRD §11.6).
  * Once the root is claimed, diagnostics go to `logs/daemon.log` as well as stderr (PRD §15.2).
  * The database (`foundry.db` in the state root) is opened after the log and before serving; it
- * serves operator holds. Stop order: API close, store close, log close, lock release.
+ * serves operator holds and the event stream. Stop order: API close, store close, log close, lock release.
  * Factory loading arrives in later tickets.
  */
 import { join } from "node:path";
 import { Effect, Exit, Scope } from "effect";
+import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
 import { importStoreQuietly } from "./quiet-store.js";
 import type { Store } from "./store.js";
@@ -134,6 +135,7 @@ const main = async (): Promise<void> => {
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
+      events: storeEventSource(store),
     });
   } catch (error) {
     if (error instanceof ManagementSocketError) {

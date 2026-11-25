@@ -5,4 +5,5 @@ export * from "./channel/client.js";
 export * from "./compaction.js";
 export * from "./conversation/adapter.js";
 export * from "./conversation/receipts.js";
+export * from "./interrupt.js";
 export * from "./tool-set.js";

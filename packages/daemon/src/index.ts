@@ -21,6 +21,7 @@ export {
   type SkillHeader,
 } from "./repository-context.js";
 export * from "./store.js";
+export * from "./tickets.js";
 export * from "./prime.js";
 export {
   DAEMON_LOG_KEEP_FILES,
@@ -57,3 +58,5 @@ export {
   type RaiseOutcome,
   type RaiseResult,
 } from "./holds.js";
+export { readEvents, storeEventSource, type EventPageQuery, type EventSource } from "./events.js";
+export { formatEvent } from "./events-stream.js";
