@@ -12,7 +12,7 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Predicate, Schema } from "effect";
 import { clearCloneStaging, CLONE_MARKER_FILE_NAME, DATABASE_FILE_NAME, ensureFactoryClone, factoryClonePath, FactoryCloneError, loadFactoryFiles, openStore } from "@foundry/daemon";
 import type { LoadedFactory } from "@foundry/daemon";
-import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
+import { git, isolatedGitEnv, makeGitSource, stopHost, writeStubPi } from "@foundry/testkit";
 
 const isNumber = Schema.is(Schema.Number);
 
@@ -22,8 +22,13 @@ const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli")))
 const roots: Array<string> = [];
 const children: Array<ChildProcess> = [];
 
-afterEach(() => {
+/** State roots a daemon ran in: each may have left a detached Worker Host behind. */
+const homes: Array<string> = [];
+
+afterEach(async () => {
   for (const child of children.splice(0)) {if (child.exitCode === null && child.signalCode === null) {child.kill("SIGKILL");}}
+
+  for (const home of homes.splice(0)) {await stopHost(home);}
 
   for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });}
 });
@@ -199,8 +204,13 @@ const foundry = (args: ReadonlyArray<string>, home: string): Promise<{ code: num
   });
 
 const startDaemon = (home: string, ...files: Array<string>): Promise<ChildProcess> => {
+  homes.push(home);
+  // Slots launch through the host; a stub stands in for Pi so no real worker starts.
+  const stubDir = mkdtempSync(join(tmpdir(), "foundry-stub-pi-"));
+  roots.push(stubDir);
+
   const child = spawn(process.execPath, [daemonMain, "--home", home, ...files], {
-    env: { ...isolatedGitEnv(), FOUNDRY_HOME: join(home, "not-this-one") },
+    env: { ...isolatedGitEnv(), FOUNDRY_HOME: join(home, "not-this-one"), FOUNDRY_PI_BIN: writeStubPi(stubDir) },
     stdio: ["ignore", "pipe", "pipe"],
   });
 
@@ -271,7 +281,8 @@ test("a factory whose clone path is not Foundry's is refused alone; the daemon s
     Effect.scoped(
       Effect.flatMap(openStore({ filename: join(alpha.home, DATABASE_FILE_NAME) }), (store) =>
         store.read<{ factory_id: string; kind: string; subject: string; detail: string }>(
-          `SELECT factory_id, kind, subject, detail FROM history ORDER BY sequence`,
+          // Slot launches are proved by the slots test; this one is about loads and refusals.
+          `SELECT factory_id, kind, subject, detail FROM history WHERE kind NOT LIKE 'launch.%' ORDER BY sequence`,
         ),
       ),
     ),

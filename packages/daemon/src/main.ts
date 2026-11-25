@@ -29,10 +29,17 @@ import { importStoreQuietly } from "./quiet-store.js";
 import type { Store } from "./store.js";
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
 import { isLogLevel, LOG_LEVELS, openDaemonLog } from "./log.js";
-import type { DaemonLogger, LogLevel } from "./log.js";
+import type { DaemonLogger, LogLevel, LogRefs } from "./log.js";
 import { ManagementSocketError, serveManagementApi } from "./management-api.js";
 import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
+import { fileURLToPath } from "node:url";
+import { resolvePiExecutable } from "@foundry/host";
+import type { HostConnection } from "@foundry/host";
+import { connectOrStartHost, createSlotScheduler, planSlots, storeSlotsReader } from "./slots.js";
+
+/** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
+const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
 
 const EXIT_USAGE = 2;
 const EXIT_INSTANCE_FAILURE = 1;
@@ -292,6 +299,62 @@ const main = async (): Promise<void> => {
 
   void refusedFactories;
 
+  // The configured slots of the started factories (PRD §5.2), fixed for this run like the configuration.
+  const plannedSlots = factories.flatMap((f) =>
+    decision.started.includes(f.factoryId) ? planSlots(f.factoryId, f.stations) : [],
+  );
+
+  // Ask the Worker Host which launch holds each slot, then launch into each vacant one (PRD §10.2
+  // step 2), before serving. The host is started only when there is a slot to run.
+  let host: HostConnection | undefined;
+
+  if (plannedSlots.length > 0) {
+    try {
+      host = await connectOrStartHost(stateRoot);
+      const identity = await host.identify();
+
+      const scheduler = createSlotScheduler({
+        store,
+        stateRoot,
+        host,
+        hostId: identity.hostId,
+        bootId: identity.bootId,
+        pi: resolvePiExecutable(process.env),
+        foundryExtension: foundryExtensionPath(),
+        slots: plannedSlots,
+      });
+
+      host.onLaunchExited((launch) => {
+        void scheduler.recordExit(launch).then(
+          (ended) => {
+            if (ended) {log.info("launch ended", { factoryId: launch.factoryId, slotId: launch.slotId, launchId: launch.launchId });}
+          },
+          (cause: unknown) =>
+            log.error("launch end not recorded", { factoryId: launch.factoryId, launchId: launch.launchId, detail: { error: messageOf(cause) } }),
+        );
+      });
+
+      for (const result of await scheduler.schedule()) {
+        const refs: LogRefs =
+          result.launchId === undefined
+            ? { factoryId: result.factoryId, slotId: result.slotId }
+            : { factoryId: result.factoryId, slotId: result.slotId, launchId: result.launchId };
+
+        if (result.outcome === "refused") {log.warn("slot launch refused", { ...refs, detail: { error: result.error ?? "" } });}
+        else {log.info(`slot ${result.outcome}`, refs);}
+      }
+    } catch (error) {
+      log.error("slots not scheduled", { detail: { error: messageOf(error) } });
+      host?.close();
+      await closeStore();
+      log.close();
+      claim.release();
+      fail(`cannot start the slots in ${stateRoot}: ${messageOf(error)}`);
+
+      return;
+    }
+  }
+
   // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
   // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
   let api: ManagementApi | undefined;
@@ -312,6 +375,8 @@ const main = async (): Promise<void> => {
     void (async () => {
       try {
         try {
+          // Closing the connection leaves the host and its launches running (PRD §3.2).
+          host?.close();
           await served.close();
         } finally {
           await closeStore();
@@ -342,8 +407,11 @@ const main = async (): Promise<void> => {
       clonePath: (factory) => clones.get(factory)?.path,
       // Read from the recorded run and its configuration loads, not from memory.
       factories: storeFactoriesReader(store, log.runId),
+      slots: storeSlotsReader(store, stateRoot, decision.started, plannedSlots),
     });
   } catch (error) {
+    host?.close();
+
     if (error instanceof ManagementSocketError) {
       log.error("management API refused", { detail: { reason: error.reason, socket: error.socketPath } });
     } else {

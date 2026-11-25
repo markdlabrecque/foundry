@@ -78,11 +78,21 @@ export interface PiExecutable {
   readonly args: ReadonlyArray<string>;
 }
 
-/** Everything `child_process.spawn` needs for one worker launch. */
-export interface LaunchCommand {
+/**
+ * The inputs for a slot's launch before the host issues its launch ID. The host sets the
+ * identity variables itself (`LAUNCH_ENV`), so the daemon builds a launch spec from these.
+ */
+export type SlotLaunchInputs = Omit<LaunchInputs, "launchId">;
+
+/** The executable, argv and cwd of a slot's launch; identity travels in the environment. */
+export interface LaunchArgs {
   readonly command: string;
   readonly args: ReadonlyArray<string>;
   readonly cwd: string;
+}
+
+/** Everything `child_process.spawn` needs for one worker launch. */
+export interface LaunchCommand extends LaunchArgs {
   readonly env: Readonly<Record<string, string>>;
 }
 
@@ -114,6 +124,29 @@ export function buildLaunchCommand(
   pi: PiExecutable,
   hostEnv: Readonly<Record<string, string | undefined>>,
 ): LaunchCommand {
+  const launch = buildLaunchArgs(inputs, pi);
+  requireValue("launchId", inputs.launchId);
+
+  // The host's full environment, unfiltered (an allowlist is P1); identity always wins
+  // over any inherited value, e.g. when the host itself was started from a worker.
+  const env: Record<string, string> = {};
+
+  for (const [name, value] of Object.entries(hostEnv)) {
+    if (value !== undefined) {env[name] = value;}
+  }
+
+  env[LAUNCH_ENV.factoryId] = inputs.factoryId;
+  env[LAUNCH_ENV.slotId] = inputs.slotId;
+  env[LAUNCH_ENV.launchId] = inputs.launchId;
+
+  return { ...launch, env };
+}
+
+/**
+ * Builds a slot launch's executable, argv and cwd, which do not depend on the launch ID.
+ * Throws on inputs that cannot map to argv safely.
+ */
+export function buildLaunchArgs(inputs: SlotLaunchInputs, pi: PiExecutable): LaunchArgs {
   requireValue("model", inputs.model);
   requireAbsolute("slotDir", inputs.slotDir);
   requireAbsolute("foundryExtension", inputs.foundryExtension);
@@ -128,7 +161,6 @@ export function buildLaunchCommand(
 
   requireValue("factoryId", inputs.factoryId);
   requireValue("slotId", inputs.slotId);
-  requireValue("launchId", inputs.launchId);
 
   const tools = [...FIXED_TOOLS, ...inputs.extensions.flatMap((extension) => extension.tools)];
 
@@ -149,19 +181,7 @@ export function buildLaunchCommand(
     ...inputs.skills.flatMap((skill) => ["--skill", skill]),
   ];
 
-  // The host's full environment, unfiltered (an allowlist is P1); identity always wins
-  // over any inherited value, e.g. when the host itself was started from a worker.
-  const env: Record<string, string> = {};
-
-  for (const [name, value] of Object.entries(hostEnv)) {
-    if (value !== undefined) {env[name] = value;}
-  }
-
-  env[LAUNCH_ENV.factoryId] = inputs.factoryId;
-  env[LAUNCH_ENV.slotId] = inputs.slotId;
-  env[LAUNCH_ENV.launchId] = inputs.launchId;
-
-  return { command: pi.command, args, cwd: inputs.slotDir, env };
+  return { command: pi.command, args, cwd: inputs.slotDir };
 }
 
 function requireValue(field: string, value: string): void {

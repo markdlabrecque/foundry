@@ -216,6 +216,46 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `CREATE INDEX operation_queue ON operation (factory_id, status, id)`,
     ],
   },
+  {
+    id: 8,
+    name: "slots_and_launches",
+    statements: [
+      // PRD §5.2, §10.1: one row per configured slot (`station/ordinal`), with its condition and
+      // current launch. Freezing and parking (§5.3) add their causes with their own tickets.
+      `CREATE TABLE slot (
+        factory_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        station TEXT NOT NULL,
+        ordinal INTEGER NOT NULL CHECK (ordinal > 0),
+        condition TEXT NOT NULL CHECK (condition IN ('normal', 'frozen', 'parked')),
+        current_launch TEXT,
+        -- A launch requested of the host but not yet recorded: which host process and boot it was
+        -- asked of, so a daemon that died mid-request never launches into the slot twice.
+        pending_host TEXT,
+        pending_boot TEXT,
+        PRIMARY KEY (factory_id, slot_id),
+        CHECK ((pending_host IS NULL) = (pending_boot IS NULL))
+      ) STRICT`,
+      // Launch history: the daemon's copy of what the Worker Host reported. The host wins on
+      // liveness, the database on everything else.
+      `CREATE TABLE launch (
+        launch_id TEXT PRIMARY KEY,
+        factory_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        boot_id TEXT NOT NULL,
+        pid INTEGER NOT NULL,
+        started_at INTEGER NOT NULL,
+        origin TEXT NOT NULL CHECK (origin IN ('started', 'adopted')),
+        ended_at INTEGER,
+        end_reason TEXT CHECK (end_reason IS NULL OR end_reason IN ('exited', 'requested', 'machine_restarted')),
+        exit_code INTEGER,
+        exit_signal TEXT,
+        CHECK ((ended_at IS NULL) = (end_reason IS NULL)),
+        FOREIGN KEY (factory_id, slot_id) REFERENCES slot (factory_id, slot_id)
+      ) STRICT`,
+      `CREATE INDEX launch_by_slot ON launch (factory_id, slot_id, started_at)`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

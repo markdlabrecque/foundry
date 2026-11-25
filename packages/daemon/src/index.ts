@@ -101,3 +101,21 @@ export * from "./start-refusal.js";
 export * from "./operations.js";
 
 export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";
+
+export {
+  connectOrStartHost,
+  createSlotScheduler,
+  planSlots,
+  slotDirectory,
+  SlotsError,
+  SLOTS_DIR_NAME,
+  storeSlotsReader,
+  type PlannedSlot,
+  type SlotHost,
+  type SlotScheduleOutcome,
+  type SlotScheduleResult,
+  type SlotScheduler,
+  type SlotSchedulerOptions,
+  type SlotsErrorCode,
+  type SlotsReader,
+} from "./slots.js";

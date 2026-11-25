@@ -10,6 +10,20 @@ import type { HostIdentity, HostRequest, HostResponse } from "./control.js";
 import { DEFAULT_TERMINATE_GRACE_MS, DEFAULT_TERMINATE_KILL_WAIT_MS } from "./launches.js";
 import type { LaunchRecord, LaunchSpec, TerminateOptions, Termination } from "./launches.js";
 
+/**
+ * The host answered and refused the request. Unlike a timeout or a closed connection, this is
+ * positive proof that the request had no effect, e.g. that a refused launch never started.
+ */
+export class HostRefusedError extends Error {
+  override readonly name = "HostRefusedError";
+  constructor(
+    readonly op: string,
+    readonly reason: string,
+  ) {
+    super(`worker host refused ${op}: ${reason}`);
+  }
+}
+
 /** Path, relative to the state root, of the file that receives the host's stderr (PRD §15.2). */
 export const HOST_LOG_NAME = join("logs", "host.log");
 
@@ -223,7 +237,7 @@ export async function connectHost(
     async launch(spec) {
       const response = await request("launch", { spec });
 
-      if (!response.ok) {throw new Error(`worker host refused launch: ${response.error}`);}
+      if (!response.ok) {throw new HostRefusedError("launch", response.error);}
 
       if (!("launch" in response)) {throw new Error("worker host answered launch without a launch");}
 
