@@ -162,6 +162,35 @@ export const handleTickets = async (tickets: TicketService, request: IncomingMes
     return { ...fail(405, "method_not_allowed", `${TICKETS_PATH} only accepts GET and POST`), allow: "GET, POST" };
   }
 
+  const cancellation = /^\/([1-9][0-9]{0,8})\/cancel$/.exec(rest);
+
+  if (cancellation !== null) {
+    const number = Number(cancellation[1]);
+
+    if (request.method === "GET") {
+      request.resume();
+
+      return run(tickets.inspectCancellation(factory, number), 200);
+    }
+
+    if (request.method === "POST") {
+      try {
+        const parsed: unknown = JSON.parse(await readBody(request));
+        const isConfirmation = Schema.is(Schema.Struct({ confirmation: Schema.NonEmptyString }));
+
+        if (!isConfirmation(parsed)) {return fail(400, "invalid_request", "cancellation needs the inspected confirmation");}
+
+        return await run(tickets.cancel(factory, number, parsed.confirmation), 200);
+      } catch (error) {
+        return fail(error instanceof BodyError ? 413 : 400, "invalid_request", "invalid cancellation body");
+      }
+    }
+
+    request.resume();
+
+    return { ...fail(405, "method_not_allowed", `${url.pathname} only accepts GET and POST`), allow: "GET, POST" };
+  }
+
   request.resume();
   const pause = /^\/([1-9][0-9]{0,8})\/pause$/.exec(rest);
 
