@@ -12,7 +12,7 @@
  * fetched) after (PRD §9.1), and the run and each configuration load are recorded in it.
  */
 import { readFileSync } from "node:fs";
-import { messageOf } from "@foundry/protocol/errors";
+import { expectDefined, messageOf } from "@foundry/protocol/errors";
 import { join } from "node:path";
 import { createKnowledgeLayout, LoadFactoriesResult, loadFactoryFiles, recordRun } from "./factory-loads.js";
 import type { LoadedFactory, RecordedLoad } from "./factory-loads.js";
@@ -59,7 +59,9 @@ const parseFlags = (args: ReadonlyArray<string>): Flags => {
   };
 
   for (let i = 0; i < args.length; i++) {
-    const arg = args[i]!;
+    const arg = args[i];
+
+    if (arg === undefined) {break;}
 
     if (arg === "--home" || arg.startsWith("--home=")) {
       [flags.home, i] = value("--home", arg, i);
@@ -244,7 +246,7 @@ const main = async (): Promise<void> => {
     decision = await Effect.runPromise(
       decideFactoryStarts(
         store,
-        loads.filter((l) => !cloneRefused.has(l.factoryId)).map((l) => ({ factoryId: l.factoryId, loadId: l.loadId, config: factories.find((f) => f.factoryId === l.factoryId)!.config })),
+        loads.filter((l) => !cloneRefused.has(l.factoryId)).map((l) => ({ factoryId: l.factoryId, loadId: l.loadId, config: expectDefined(factories.find((f) => f.factoryId === l.factoryId), `factory ${l.factoryId}`).config })),
       ),
     );
   } catch (error) {
@@ -267,7 +269,7 @@ const main = async (): Promise<void> => {
   for (const refused of decision.refused) {
     log.warn("factory start refused", {
       factoryId: refused.factoryId,
-      detail: { blockers: refused.blockers.length, first: describeBlocker(refused.blockers[0]!) },
+      detail: { blockers: refused.blockers.length, first: describeBlocker(expectDefined(refused.blockers[0], "a blocker on a refused factory")) },
     });
   }
 

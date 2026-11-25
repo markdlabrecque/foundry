@@ -11,7 +11,7 @@
  * state root is claimed. Nothing here clones, contacts a remote, runs a command or launches a worker.
  */
 import { createHash } from "node:crypto";
-import { messageOf } from "@foundry/protocol/errors";
+import { expectDefined, messageOf } from "@foundry/protocol/errors";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Data, Effect } from "effect";
@@ -77,7 +77,7 @@ const describe = (file: string, problem: ConfigProblem): string => {
 const refuseProblems = (file: string, problems: ReadonlyArray<ConfigProblem>): LoadFactoriesResult => {
   const more = problems.length > 1 ? ` (${problems.length - 1} more; run foundry validate ${file})` : "";
 
-  return LoadFactoriesResult.Refused({ message: `${describe(file, problems[0]!)}${more}` });
+  return LoadFactoriesResult.Refused({ message: `${describe(file, expectDefined(problems[0], "a problem to refuse with"))}${more}` });
 };
 
 /** The flat layout of §5.4.3: the root, `<root>/<room>/` and `<root>/<station>/`. */
@@ -186,7 +186,7 @@ export const recordRun = (store: Store, run: RunRecord): Effect.Effect<ReadonlyA
           [run.runId, factory.factoryId, factory.yamlFile, factory.configJson, factory.configHash, factory.knowledge.root],
         );
 
-        const loadId = rows[0]!.id;
+        const loadId = expectDefined(rows[0], "the recorded load's id").id;
         yield* recordHistory({
           factoryId: factory.factoryId,
           kind: "factory.config_loaded",

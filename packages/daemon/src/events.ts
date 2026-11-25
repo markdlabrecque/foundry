@@ -72,14 +72,17 @@ export const readEvents = (store: Store, query: EventPageQuery): Effect.Effect<R
       params,
     );
 
-    if (rows.length === 0) {return [];}
+    const first = rows[0];
+    const last = rows.at(-1);
+
+    if (first === undefined || last === undefined) {return [];}
 
     const records = new Map<number, Array<EventRecordRef>>();
 
     const refs = yield* store.read<RecordRow>(
       `SELECT sequence, record_kind, record_id FROM history_record
        WHERE sequence BETWEEN ? AND ? ORDER BY sequence, record_kind, record_id`,
-      [rows[0]!.sequence, rows.at(-1)!.sequence],
+      [first.sequence, last.sequence],
     );
 
     for (const ref of refs) {

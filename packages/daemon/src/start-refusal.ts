@@ -68,11 +68,13 @@ export const ticketReferenceCheck: ReferenceCheck = (query, factory) =>
         const record = ticketRecord(row.number);
         const lines = factory.config.production_lines;
 
-        if (!Object.hasOwn(lines, row.production_line)) {
+        const line = Object.hasOwn(lines, row.production_line) ? lines[row.production_line] : undefined;
+
+        if (line === undefined) {
           return [{ record, missing: { kind: "production_line", line: row.production_line } }];
         }
 
-        if (row.stage !== null && !lines[row.production_line]!.stages.some((s) => s.id === row.stage)) {
+        if (row.stage !== null && !line.stages.some((s) => s.id === row.stage)) {
           return [{ record, missing: { kind: "stage", line: row.production_line, stage: row.stage } }];
         }
 

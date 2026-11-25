@@ -13,3 +13,10 @@ const hasCode = Schema.is(Schema.Struct({ code: Schema.String }));
 
 /** The `code` of a thrown value, such as a Node filesystem error's `ENOENT`, when it has one. */
 export const codeOf = (cause: unknown): string | undefined => (hasCode(cause) ? cause.code : undefined);
+
+/** `value`, which an invariant says is present; throws naming `what` when it is not. */
+export const expectDefined = <A>(value: A | undefined, what: string): A => {
+  if (value === undefined) {throw new Error(`expected ${what}`);}
+
+  return value;
+};

@@ -51,18 +51,16 @@ export const checkProductionLines = (config: FactoryConfig): LineCheck => {
 const stationIsolation = (config: FactoryConfig, reference: string): "none" | "worktree" | undefined => {
   const parts = reference.split(".");
 
-  if (parts.length !== 2) {return undefined;}
+  const [room, station] = parts;
 
-  const [room, station] = parts as [string, string];
+  if (parts.length !== 2 || room === undefined || station === undefined) {return undefined;}
+
   const rooms = config.rooms;
+  const stations = Object.hasOwn(rooms, room) ? rooms[room]?.stations : undefined;
 
-  if (!Object.hasOwn(rooms, room)) {return undefined;}
+  if (stations === undefined || !Object.hasOwn(stations, station)) {return undefined;}
 
-  const stations = rooms[room]!.stations;
-
-  if (!Object.hasOwn(stations, station)) {return undefined;}
-
-  return stations[station]!.isolation;
+  return stations[station]?.isolation;
 };
 
 const checkLine = (
@@ -132,7 +130,9 @@ const checkLine = (
   } else {
     const target = firstIndex.get(final.on_rejection);
 
-    if (target !== undefined && target < last && !line.stages[target]!.writing) {
+    const targetStage = target !== undefined && target < last ? line.stages[target] : undefined;
+
+    if (targetStage !== undefined && !targetStage.writing) {
       contract("on_rejection", `must route rejection to a writing stage; "${final.on_rejection}" is not writing`);
     }
   }

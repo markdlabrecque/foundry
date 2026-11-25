@@ -8,6 +8,7 @@
  * backlog belongs to scheduling (21b).
  */
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { expectDefined } from "@foundry/protocol/errors";
 import { join } from "node:path";
 import { Clock, Data, Effect, Schema } from "effect";
 import type {
@@ -228,7 +229,9 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
       return found === undefined ? refuse("unknown_factory", `No factory "${name}" is loaded`) : Effect.succeed(found);
     }
 
-    if (loaded.length === 1) {return Effect.succeed(loaded[0]!);}
+    const [only] = loaded;
+
+    if (loaded.length === 1 && only !== undefined) {return Effect.succeed(only);}
 
     return refuse(
       "factory_required",
@@ -268,7 +271,9 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
 
       const lineName = request.line ?? factory.defaultLine;
 
-      if (!Object.hasOwn(factory.lines, lineName)) {
+      const line = Object.hasOwn(factory.lines, lineName) ? factory.lines[lineName] : undefined;
+
+      if (line === undefined) {
         const known = Object.keys(factory.lines).join(", ");
 
         return yield* refuse(
@@ -277,7 +282,6 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
         );
       }
 
-      const line = factory.lines[lineName]!;
       const submittedAt = yield* Clock.currentTimeMillis;
 
       let written: string | undefined;
@@ -290,7 +294,7 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
               [factory.name],
             );
 
-            const number = next[0]!.next;
+            const number = expectDefined(next[0], "the next ticket number").next;
             const directory = ticketDirectory(stateRoot, factory.name, number);
             yield* query(
               `INSERT INTO ticket (factory_id, number, title, slug, production_line, directory, state,

@@ -11,6 +11,7 @@
  * state writes and their history rows in one transaction, or neither.
  */
 import * as SqliteClient from "@effect/sql-sqlite-node/SqliteClient";
+import { expectDefined } from "@foundry/protocol/errors";
 import * as SqliteMigrator from "@effect/sql-sqlite-node/SqliteMigrator";
 import { Clock, Data, Effect } from "effect";
 import type { Scope } from "effect";
@@ -349,7 +350,7 @@ export const openStore = (
               [entry.factoryId, recordedAt, entry.kind, entry.subject, JSON.stringify(entry.detail ?? null)],
             );
 
-            const sequence = rows[0]!.sequence;
+            const sequence = expectDefined(rows[0], "the recorded history sequence").sequence;
 
             for (const record of entry.records ?? []) {
               yield* query(

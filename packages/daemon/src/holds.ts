@@ -7,6 +7,7 @@
  * nothing, and new evidence refreshes the open hold (as a repeated sync conflict does).
  */
 import { Clock, Effect, Schema } from "effect";
+import { expectDefined } from "@foundry/protocol/errors";
 import { HoldEvidence, HoldKind, HoldState, holdCommands } from "@foundry/protocol/holds";
 import type { HoldListResult, HoldRecord, HoldShowResult } from "@foundry/protocol/holds";
 import type { Query, Store, StoreError } from "./store.js";
@@ -93,7 +94,7 @@ export const raiseHold = (store: Store, hold: RaiseHold): Effect.Effect<RaiseRes
                 `INSERT INTO operator_hold (factory_id, kind, subject, state, evidence, raised_at, updated_at)
                  VALUES (?, ?, ?, 'open', ?, ?, ?) RETURNING id`,
                 [hold.factoryId, hold.kind, hold.subject, evidence, now, now],
-              ))[0]!.id
+              ).pipe(Effect.map((rows) => expectDefined(rows[0], "the inserted hold's id").id)))
             : (yield* query(`UPDATE operator_hold SET evidence = ?, updated_at = ? WHERE id = ?`, [
                 evidence,
                 now,
@@ -108,7 +109,7 @@ export const raiseHold = (store: Store, hold: RaiseHold): Effect.Effect<RaiseRes
           detail: { holdId: id, kind: hold.kind, refreshed: existing !== undefined, evidence: hold.evidence },
         });
 
-        return { outcome: existing === undefined ? "raised" : "refreshed", hold: (yield* byId(query, id))! } as const;
+        return { outcome: existing === undefined ? "raised" : "refreshed", hold: expectDefined(yield* byId(query, id), `hold ${id}`) } as const;
       }),
     );
   });
@@ -143,7 +144,7 @@ export const closeHold = (
           detail: { holdId: id, kind: current.kind },
         });
 
-        return (yield* byId(query, id))!;
+        return expectDefined(yield* byId(query, id), `hold ${id}`);
       }),
     );
   });
