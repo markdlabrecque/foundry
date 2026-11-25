@@ -46,3 +46,4 @@ export {
   type ManagementApiInputs,
   type ManagementSocketRefusal,
 } from "./management-api.js";
+export * from "./factory-loads.js";

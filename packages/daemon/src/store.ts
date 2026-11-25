@@ -50,6 +50,29 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
        BEGIN SELECT RAISE(ABORT, 'history is append-only'); END`,
     ],
   },
+  {
+    id: 2,
+    name: "run_and_config_loads",
+    statements: [
+      // One run per daemon start (PRD §10.1). `id` is the run ID the daemon log carries.
+      `CREATE TABLE run (
+        id TEXT PRIMARY KEY,
+        started_at INTEGER NOT NULL,
+        version TEXT NOT NULL
+      ) STRICT`,
+      // One row per factory per run: the validated configuration and its hash.
+      `CREATE TABLE factory_config_load (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_id TEXT NOT NULL REFERENCES run (id),
+        factory_id TEXT NOT NULL,
+        yaml_file TEXT NOT NULL,
+        config TEXT NOT NULL,
+        config_hash TEXT NOT NULL,
+        knowledge_root TEXT NOT NULL,
+        UNIQUE (run_id, factory_id)
+      ) STRICT`,
+    ],
+  },
 ];
 
 /** Values that can be bound to a statement parameter. */
