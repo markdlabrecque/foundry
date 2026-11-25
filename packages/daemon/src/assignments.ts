@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { Cause, Clock, Data, Effect, Exit } from "effect";
 import { acceptMessage } from "./agent-message.js";
+import { eligibleAssignmentSlots } from "./assignment-slots.js";
+import type { AssignmentSlot } from "./assignment-slots.js";
 import type { FactoryConfig } from "./config/schema.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import type { PlannedSlot } from "./slots.js";
@@ -97,19 +99,34 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
 
         if (factory === undefined || stage === undefined) {continue;}
 
-        for (const slot of options.slots) {
+        const previous = yield* change.query<{ slot_id: string }>(
+          `SELECT slot_id FROM assignment WHERE factory_id = ? AND ticket_number = ? AND stage = ?
+           ORDER BY created_at DESC, rowid DESC LIMIT 1`,
+          [ticket.factory_id, ticket.number, stage.id],
+        );
+
+        const current = yield* change.query<AssignmentSlot>(
+          `SELECT s.slot_id, s.condition, EXISTS (
+             SELECT 1 FROM assignment a WHERE a.factory_id = s.factory_id
+               AND a.slot_id = s.slot_id AND a.status = 'active'
+           ) AS busy FROM slot s WHERE s.factory_id = ?`,
+          [ticket.factory_id],
+        );
+
+        const stationSlots = options.slots.filter((slot) =>
+          slot.factoryId === ticket.factory_id && slot.station.address === stage.station);
+
+        const candidates = eligibleAssignmentSlots(stationSlots.flatMap((slot) =>
+          current.filter((state) => state.slot_id === slot.slotId)), previous[0]?.slot_id ?? null);
+
+        for (const candidate of candidates) {
+          const slot = stationSlots.find((planned) => planned.slotId === candidate.slot_id);
+
+          if (slot === undefined || options.ready?.(ticket, slot) === false) {continue;}
+
           const slotKey = JSON.stringify([slot.factoryId, slot.slotId]);
 
-          if (slot.factoryId !== ticket.factory_id || slot.station.address !== stage.station || preparingSlots.has(slotKey)) {continue;}
-
-          const capacity = yield* change.query(
-            `SELECT 1 FROM slot s WHERE factory_id = ? AND slot_id = ? AND condition = 'normal'
-             AND NOT EXISTS (SELECT 1 FROM assignment a WHERE a.factory_id = s.factory_id
-               AND a.slot_id = s.slot_id AND a.status = 'active')`,
-            [slot.factoryId, slot.slotId],
-          );
-
-          if (capacity.length === 0 || options.ready?.(ticket, slot) === false) {continue;}
+          if (preparingSlots.has(slotKey)) {continue;}
 
           if (slot.station.isolation === 'worktree' && ticket.worktree_path === null) {
             if (options.prepareWorktree === undefined) {continue;}
@@ -132,7 +149,7 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
           const now = yield* Clock.currentTimeMillis;
 
           const message = yield* acceptMessage(change, {
-            factoryId: ticket.factory_id, senderSlot: "", recipient: slot.station.address,
+            factoryId: ticket.factory_id, senderKind: "daemon", senderSlot: null, recipient: slot.station.address,
             kind: "ordinary", delivery: "after_turn", correlation: { ticket: ticket.number },
             body: `Ticket ${ticket.number}: ${ticket.title}\nProduction line: ${ticket.production_line}\nStage: ${stage.id}\nAssignment: ${id}\nSlot: ${slot.slotId}\nSpecification: ${join(ticket.directory, 'spec.md')}\nEvidence: ${join(ticket.directory, 'evidence')}\nWorktree: ${ticket.worktree_path ?? 'none (write only in the ticket directory)'}`,
           }).pipe(Effect.catchTag("ToolRefusal", Effect.die)); // No agent guards: daemon context cannot be refused.
