@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Schema, Scope } from "effect";
-import { createSlotScheduler, openStore, planSlots, slotDirectory, storeSlotsReader } from "@foundry/daemon";
+import { createSlotFreezer, createSlotScheduler, listOpenHolds, openStore, planSlots, slotDirectory, storeSlotsReader } from "@foundry/daemon";
 import type { PlannedSlot, SlotScheduler, Store } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import { connectHost, PI_BIN_ENV, resolvePiExecutable, startHost } from "@foundry/host";
@@ -64,8 +64,10 @@ const fixture = async (): Promise<Fixture> => {
   // One persistent station (one slot) and one pooled station (three slots).
   const slots = planSlots("alpha", [station("lead", 1), station("dev", 3)]);
 
+  const freezer = await createSlotFreezer({ store, checks: {} });
+
   const scheduler = () =>
-    createSlotScheduler({ store, stateRoot, host, hostId, bootId, pi, foundryExtension: "/opt/foundry/extension.js", slots });
+    createSlotScheduler({ store, stateRoot, host, hostId, bootId, pi, foundryExtension: "/opt/foundry/extension.js", slots, freezer });
 
   return { stateRoot, store, host, hostId, bootId, slots, scheduler };
 };
@@ -122,15 +124,18 @@ test("a persistent and a pooled station get one launch per slot, however often s
   ]);
 });
 
-test("a live launch the daemon never recorded is adopted, not duplicated; an ended one is not relaunched", async () => {
+test("a live launch nobody requested is frozen, never adopted nor joined; an ended one is not relaunched", async () => {
   const f = await fixture();
-  // The daemon died before saving the start reply: the host has dev/2 live, the store nothing.
+  // A live launch in dev/2 that the daemon never requested of this host: an orphan.
   const orphan = await f.host.launch({ factoryId: "alpha", slotId: "dev/2", command: process.execPath, args: ["-e", "setInterval(() => {}, 60000)"], cwd: f.stateRoot });
 
   const scheduler = f.scheduler();
   const results = await scheduler.schedule();
-  expect(results.find((r) => r.slotId === "dev/2")).toMatchObject({ outcome: "adopted", launchId: orphan.launchId });
+  expect(results.find((r) => r.slotId === "dev/2")).toMatchObject({ outcome: "frozen", launchId: orphan.launchId });
   expect(await f.host.inventory()).toHaveLength(4);
+  expect(await Effect.runPromise(listOpenHolds(f.store))).toMatchObject([
+    { kind: "frozen_slot", subject: "dev/2", evidence: { cause: "unknown_ownership", reason: "unrecorded_live_launch", launchId: orphan.launchId } },
+  ]);
 
   // The host ends lead/1's launch; the reported exit is recorded and scheduling leaves the slot alone.
   const lead = results.find((r) => r.slotId === "lead/1")!;
@@ -142,7 +147,7 @@ test("a live launch the daemon never recorded is adopted, not duplicated; an end
   expect(later.map((r) => [r.slotId, r.outcome])).toEqual([
     ["lead/1", "ended"],
     ["dev/1", "running"],
-    ["dev/2", "running"],
+    ["dev/2", "held"],
     ["dev/3", "running"],
   ]);
   expect(await f.host.inventory()).toHaveLength(4);

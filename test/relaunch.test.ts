@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Schema, Scope } from "effect";
-import { createSlotScheduler, openStore, planSlots, slotDirectory, storeSlotsReader } from "@foundry/daemon";
+import { createSlotFreezer, createSlotScheduler, openStore, planSlots, slotDirectory, storeSlotsReader } from "@foundry/daemon";
 import type { LaunchExitResult } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import { connectHost, PI_BIN_ENV, resolvePiExecutable, startHost } from "@foundry/host";
@@ -68,6 +68,7 @@ const fixture = async (stations: ReadonlyArray<EffectiveStation>) => {
     pi: resolvePiExecutable({ [PI_BIN_ENV]: writeStubPi(stubDir) }),
     foundryExtension: "/opt/foundry/extension.js",
     slots,
+    freezer: await createSlotFreezer({ store, checks: {} }),
   });
 
   return { stateRoot, host, store, slots, scheduler };

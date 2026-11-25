@@ -11,6 +11,7 @@ import { Effect, Exit, Scope } from "effect";
 import {
   ChannelUnavailableError,
   createHostSlotClaim,
+  createSlotFreezer,
   createSlotScheduler,
   inMemorySlotConversations,
   openStore,
@@ -95,6 +96,7 @@ const daemonWithWorker = async () => {
     pi: { command: "/opt/pi/bin/pi", args: [] },
     foundryExtension: "/opt/foundry/extension.js",
     slots,
+    freezer: await createSlotFreezer({ store, checks: {} }),
   }).schedule();
 
   const conversations = inMemorySlotConversations();

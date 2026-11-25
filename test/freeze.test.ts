@@ -126,6 +126,7 @@ const fixture = async () => {
     pi: { command: "/opt/pi/bin/pi", args: [] },
     foundryExtension: "/opt/foundry/extension.js",
     slots,
+    freezer: await createSlotFreezer({ store, checks: {} }),
   });
 
   return { dir, store, slots, scheduler, launched };

@@ -9,7 +9,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import { createSlotScheduler, openStore, planSlots, serveManagementApi, storeSlotsReader } from "@foundry/daemon";
+import { createSlotFreezer, createSlotScheduler, openStore, planSlots, serveManagementApi, storeSlotsReader } from "@foundry/daemon";
 import type { SlotHost } from "@foundry/daemon";
 import type { EffectiveStation } from "@foundry/daemon/config";
 import type { LaunchRecord } from "@foundry/host";
@@ -84,6 +84,7 @@ const serveSlots = async (): Promise<string> => {
     pi: { command: "/opt/pi/bin/pi", args: [] },
     foundryExtension: "/opt/foundry/extension.js",
     slots,
+    freezer: await createSlotFreezer({ store, checks: {} }),
   });
 
   await scheduler.schedule();

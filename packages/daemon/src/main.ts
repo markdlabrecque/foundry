@@ -37,7 +37,7 @@ import { channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
 import { connectHost, resolvePiExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
-import { connectOrStartHost, createSlotScheduler, planSlots, storeSlotsReader } from "./slots.js";
+import { connectOrStartHost, createSlotScheduler, ownershipCheck, planSlots, recordedCurrentLaunch, storedConversation, storeSlotsReader } from "./slots.js";
 import { startChannelServer } from "./channel/server.js";
 import type { ChannelServer } from "./channel/server.js";
 import { createHostSlotClaim } from "./channel/slot-claim.js";
@@ -319,11 +319,18 @@ const main = async (): Promise<void> => {
     decision.started.includes(f.factoryId) ? planSlots(f.factoryId, f.stations) : [],
   );
 
-  // Ask the Worker Host which launch holds each slot, then launch into each vacant one (PRD §10.2
-  // step 2), before serving. The host is started only when there is a slot to run.
+  // Ask the Worker Host which launch holds each slot: keep proven launches, freeze unproven
+  // ownership, and launch into each vacant one (PRD §10.2 step 2), before serving. The host is
+  // started only when there is a slot to run.
   let host: HostConnection | undefined;
   let channel: ChannelServer | undefined;
   let scheduler: SlotScheduler | undefined;
+  let markSchedulerReady!: (ready: SlotScheduler) => void;
+
+  const schedulerReady = new Promise<SlotScheduler>((resolve) => {
+    markSchedulerReady = resolve;
+  });
+
   let stopHost: FactoryStopperOptions["host"];
   // Each started factory's state for this run (PRD §10.3); a stopped one returns on the next start.
   const factoryStates = createFactoryStates(decision.started);
@@ -360,6 +367,10 @@ const main = async (): Promise<void> => {
       host = await connectOrStartHost(stateRoot);
       const identity = await host.identify();
       stopHost = { connection: host, hostId: identity.hostId, bootId: identity.bootId };
+      // PRD §10.2 step 2: unfreezing a lost host or unknown ownership re-runs the ownership classification.
+      const checkOwnership = ownershipCheck(store, host, { hostId: identity.hostId, bootId: identity.bootId }, plannedSlots);
+      freezeChecks.host_lost = checkOwnership;
+      freezeChecks.unknown_ownership = checkOwnership;
 
       // Served before any launch, so a worker dialling at its session start finds the daemon. A hello
       // is accepted only for the launch the host reports current in that slot (PRD §3.2).
@@ -370,7 +381,29 @@ const main = async (): Promise<void> => {
       const expected = new Map(plannedSlots.map((s) => [JSON.stringify([s.factoryId, s.slotId]), expectedToolSet(s.station, foundryExtension)]));
 
       const guard = createToolSetGuard({
-        claim: createHostSlotClaim({ host }),
+        // Only the recorded current launch speaks for a slot, in the conversation the daemon issued it;
+        // a changed conversation freezes the slot (PRD §3.2). Both are read from the store, so they
+        // survive a restart.
+        claim: createHostSlotClaim({
+          host,
+          storedConversation: storedConversation(store),
+          currentLaunch: recordedCurrentLaunch(store),
+          // The channel is served before the scheduler exists; a hello waits for it, then for its queue.
+          settled: async () => (await schedulerReady).idle(),
+          onConversationChanged: async (changed) => {
+            const outcome = await freezer.freeze({
+              factoryId: changed.factoryId,
+              slotId: changed.slotId,
+              cause: "conversation_changed",
+              evidence: { launchId: changed.launchId, conversationRef: changed.boundRef, presentedRef: changed.presentedRef },
+            });
+
+            const refs = { factoryId: changed.factoryId, slotId: changed.slotId, launchId: changed.launchId };
+
+            if (outcome === "frozen") {log.warn("slot frozen: conversation changed", refs);}
+            else {log.error("conversation changed on a slot with no record; not frozen", refs);}
+          },
+        }),
         expected: (slot) => expected.get(JSON.stringify([slot.factoryId, slot.slotId])),
         freezer,
         stop: async (launchId) => {
@@ -398,9 +431,11 @@ const main = async (): Promise<void> => {
         pi: resolvePiExecutable(process.env),
         foundryExtension: foundryExtensionPath(),
         slots: plannedSlots,
+        freezer,
         inScope: (factoryId) => factoryStates.isRunning(factoryId),
       });
       const recorder = scheduler;
+      markSchedulerReady(scheduler);
 
       freezeChecks.tool_set_mismatch = createToolSetRecheck({
         guard,
