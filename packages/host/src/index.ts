@@ -45,8 +45,16 @@ export {
   PI_BIN_ENV,
   PI_BUILTIN_TOOLS,
   SUPPRESSION_FLAGS,
+  buildLaunchArgs,
   buildLaunchCommand,
   resolvePiExecutable,
 } from "./launch-command.js";
 
-export type { ConfiguredExtension, LaunchCommand, LaunchInputs, PiExecutable } from "./launch-command.js";
+export type {
+  ConfiguredExtension,
+  LaunchArgs,
+  LaunchCommand,
+  LaunchInputs,
+  PiExecutable,
+  SlotLaunchInputs,
+} from "./launch-command.js";

@@ -37,6 +37,10 @@
       "types": "./dist/state-root.d.ts",
       "default": "./dist/state-root.js"
     },
+    "./slots-api": {
+      "types": "./dist/slots-api.d.ts",
+      "default": "./dist/slots-api.js"
+    },
     "./factory-path": {
       "types": "./dist/factory-path.d.ts",
       "default": "./dist/factory-path.js"

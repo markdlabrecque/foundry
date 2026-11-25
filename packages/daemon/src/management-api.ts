@@ -27,6 +27,9 @@ import { readLogs } from "@foundry/protocol/log-read";
 import { matchFactoryPathPath } from "@foundry/protocol/factory-path";
 import { FACTORIES_PATH } from "@foundry/protocol/factories-api";
 import type { FactoriesReader } from "./factories.js";
+import { matchSlotPath, SLOT_FACTORY_PARAM, SLOTS_PATH } from "@foundry/protocol/slots-api";
+import { SlotsError } from "./slots-error.js";
+import type { SlotsErrorCode, SlotsReader } from "./slots-error.js";
 
 /** What the API reports, injected so the server is independent of where status comes from. */
 export interface ManagementApiInputs {
@@ -43,6 +46,8 @@ export interface ManagementApiInputs {
   readonly clonePath?: (factory: string) => string | undefined;
   /** The loaded factories, read from daemon state. Without it the route answers 503. */
   readonly factories?: FactoriesReader;
+  /** The configured slots and their launches. Without it the slot routes answer 503. */
+  readonly slots?: SlotsReader;
 }
 
 export interface ManagementApi {
@@ -251,7 +256,7 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 
   if (path === EVENTS_PATH) {return handleEvents(inputs, url, request, response);}
 
-  const route = routeFor(inputs, path);
+  const route = routeFor(inputs, path, url.searchParams);
 
   if (route === undefined) {
     return send(response, 404, failure("not_found", `no route for ${request.method} ${path}`));
@@ -313,8 +318,45 @@ type Route = () => Promise<readonly [number, ApiResponse<unknown>]>;
 
 const HOLD_ID = new RegExp(`^${HOLDS_PATH}/([1-9][0-9]{0,15})$`);
 
-const routeFor = (inputs: ManagementApiInputs, path: string): Route | undefined => {
+const SLOT_ERROR_STATUS: Record<SlotsErrorCode, number> = {
+  factory_required: 400,
+  unknown_factory: 404,
+  slot_not_found: 404,
+};
+
+const slotRoute = (inputs: ManagementApiInputs, path: string, params: URLSearchParams): Route | undefined => {
+  const slotId = path === SLOTS_PATH ? undefined : matchSlotPath(path);
+
+  if (path !== SLOTS_PATH && slotId === undefined) {return undefined;}
+
+  if (slotId === null) {return async () => [400, failure("bad_request", `a slot is addressed as station/ordinal, not ${path}`)];}
+
+  const slots = inputs.slots;
+  const factory = params.get(SLOT_FACTORY_PARAM) ?? undefined;
+
+  return async () => {
+    if (slots === undefined) {return [503, failure("unavailable", "slots are not served by this daemon")];}
+
+    if (factory === "") {return [400, failure("bad_request", "factory must not be empty")];}
+
+    try {
+      const result = slotId === undefined ? await slots.list(factory) : await slots.show(slotId, factory);
+
+      return [200, { ok: true, result }];
+    } catch (error) {
+      if (error instanceof SlotsError) {return [SLOT_ERROR_STATUS[error.code], failure(error.code, error.message)];}
+
+      throw error;
+    }
+  };
+};
+
+const routeFor = (inputs: ManagementApiInputs, path: string, params: URLSearchParams): Route | undefined => {
   if (path === STATUS_PATH) {return async () => [200, { ok: true, result: inputs.status() }];}
+
+  const slots = slotRoute(inputs, path, params);
+
+  if (slots !== undefined) {return slots;}
 
   if (path === FACTORIES_PATH) {
     const factories = inputs.factories;

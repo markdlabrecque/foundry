@@ -16,6 +16,7 @@ import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath } from "./factory.js";
 import { runFactoryList } from "./factories.js";
+import { runSlotList, runSlotShow } from "./slots.js";
 
 const validate = Command.make(
   "validate",
@@ -253,8 +254,34 @@ const factory = Command.make("factory").pipe(
   Command.withSubcommands([factoryList, factoryPath]),
 );
 
+const slotList = Command.make("list", ticketFlags, ({ json, home, factory }) =>
+  Effect.flatMap(
+    Effect.promise(() =>
+      runSlotList({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), env: process.env }),
+    ),
+    print,
+  ),
+).pipe(Command.withDescription("List the configured slots with their condition and latest launch"));
+
+const slotShow = Command.make(
+  "show",
+  { ...ticketFlags, slot: Argument.String("station/ordinal") },
+  ({ json, home, factory, slot }) =>
+    Effect.flatMap(
+      Effect.promise(() =>
+        runSlotShow({ json, home: Option.getOrUndefined(home), factory: Option.getOrUndefined(factory), slot, env: process.env }),
+      ),
+      print,
+    ),
+).pipe(Command.withDescription("Show one slot and its launch history"));
+
+const slot = Command.make("slot").pipe(
+  Command.withDescription("Slots: each station's fixed worker positions and their launches"),
+  Command.withSubcommands([slotList, slotShow]),
+);
+
 const foundry = Command.make("foundry").pipe(
-  Command.withSubcommands([validate, status, hold, logs, ticket, events, factory]),
+  Command.withSubcommands([validate, status, hold, logs, ticket, events, factory, slot]),
 );
 
 Command.run(foundry, { version: "0.0.0" }).pipe(
