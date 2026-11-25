@@ -458,7 +458,9 @@ const main = async (): Promise<void> => {
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
             [AGENT_STATUS, agentStatusHandler(plannedSlots)],
             [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket })],
-            [AGENT_DELEGATE, agentDelegateHandler(plannedSlots)],
+            [AGENT_DELEGATE, agentDelegateHandler(plannedSlots, {
+              delegationDepthLimit: (factoryId) => expectDefined(factories.find((f) => f.factoryId === factoryId), `factory ${factoryId}`).config.delegation_depth_limit ?? 2,
+            })],
             [AGENT_REQUEST, agentRequestHandler(plannedSlots, { assignmentTicket })],
             [AGENT_REPLY, agentReplyHandler()],
             [TASK_TRANSITION, taskTransitionHandler({ factories: factories.map((f) => ({ factoryId: f.factoryId, config: f.config })), configLoad: (id) => loadIds.get(id) })],
