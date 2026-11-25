@@ -6,8 +6,8 @@
  * Daemon frames go to the existing handlers: a prime into the conversation adapter, an interrupt
  * to the run interrupter. Receipts and compaction reports travel back on the attached channel.
  *
- * Out of scope here: redialling after the channel is lost or a retryable refusal (reconnect), and
- * failing agent tools after a terminal refusal; those land with the agent tools and the RPC gates.
+ * Terminal hello refusals disable this launch's channel and tools. A general reconnect/backoff
+ * loop after a lost channel or retryable refusal remains out of scope.
  */
 import { existsSync } from "node:fs";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
@@ -102,7 +102,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   pi.on("session_start", async (_event, ctx) => {
     // One dial per launch for now: a later `session_start` (`/new`, `/resume`, `/reload`) on a live
     // channel is not re-announced. Conversation-change handling belongs to the reconnect work.
-    if (channel !== undefined || dialling) {return;}
+    if (toolCalls.terminallyRefused || channel !== undefined || dialling) {return;}
 
     dialling = true;
 
@@ -110,6 +110,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
       const opened = await openChannel({ socketPath: launch.socketPath, hello: helloFor(pi, launch, ctx), onFrame });
 
       if (!opened.accepted) {
+        toolCalls.refuse(opened.reason);
         // The host keeps the launch's stderr, so a worker that never connects can be diagnosed.
         process.stderr.write(`foundry: channel hello refused (${opened.reason.kind} ${opened.reason.code})\n`);
 
