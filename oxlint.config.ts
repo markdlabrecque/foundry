@@ -42,6 +42,10 @@ export default defineConfig({
     "quality/no-unsafe-dictionary-type": "off",
     "quality/no-widen-then-assert": "off",
 
+    // Cloudflare types rejection callbacks `unknown`, and anti-slop allows an `unknown` parameter
+    // only when it is named `cause`. Let unicorn accept `cause` too, so the three rules agree.
+    "unicorn/catch-error-name": ["error", { ignore: ["^cause$"] }],
+
     "oxc/no-accumulating-spread": "error",
     "anti-slop/no-array-filter-map": "error",
     "anti-slop/no-reduce-accumulator-copy": "error",
