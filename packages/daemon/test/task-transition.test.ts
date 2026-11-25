@@ -7,12 +7,13 @@ import { afterEach, expect, test, vi } from "vitest";
 import { Effect, Exit, Match, Schema } from "effect";
 import {
   agentDelegateHandler, agentRequestHandler, assignmentTicket, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
+  createFactorySyncer, listOperations,
   createApprovalAnswers, humanRequestHandler, createApprovalDecisions, createOperatorMessages, foundryMigrations, messageBudget, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
 } from "@foundry/daemon";
 import type { Migration, Store } from "@foundry/daemon";
 import { HUMAN_REQUEST, TASK_TRANSITION } from "@foundry/protocol";
 import { runApprovalAnswer, runApprovalDecision, runApprovalList, runApprovalShow, runTicketCancel } from "@foundry/cli";
-import { git as fixtureGit, makeGitSource } from "@foundry/testkit";
+import { git as fixtureGit, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { FactoryConfig } from "../src/config/schema.js";
 import { getFromDaemon, postToDaemon } from "../../cli/src/management-client.js";
 import { approvalAnswerPath } from "@foundry/protocol/approvals";
@@ -1105,6 +1106,86 @@ const gateFixture = <A, E>(final: boolean, routed: boolean,
 
     return yield* use(store, id, root, head, gatedConfig);
   }), migrations);
+
+// Reuse the gate fixture: this boundary test includes worker outcome, operator approval,
+// durable queue reopen and real Git; no daemon, HTTP or production state is needed.
+test.each(["complete", "moved", "dirty", "cancelled"] as const)("approved integration: %s", async (scenario) => {
+  const saved = await gateFixture(true, true, (store, id, root, base, gatedConfig) => Effect.gen(function* () {
+    const repository = join(root, "repository");
+    const path = join(root, "worktree");
+    const source = join(root, "source.git");
+    git(root, "clone", "--quiet", "--bare", repository, source);
+    git(repository, "remote", "add", "origin", source);
+    const sourceRefs = git(source, "for-each-ref", "--format=%(refname) %(objectname)");
+    writeFileSync(join(path, "reviewed.txt"), "reviewed\n");
+    git(path, "add", ".");
+    git(path, "commit", "--quiet", "-m", "reviewed");
+    const approved = git(path, "rev-parse", "HEAD");
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
+        from_state, from_stage, to_state, to_stage, to_status, git_commit)
+        VALUES ('shop', 1, 1, 'fixture-writer', 'stage', 'revise', 'stage', 'plan', 'assigned', ?)`, [approved]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "writing complete" });
+    }));
+    const factories = [{ factoryId: "shop", config: gatedConfig }];
+    const submissions = createSubmissions({ store, handlers: new Map([[TASK_TRANSITION, taskTransitionHandler({ factories })]]) });
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, gitCommit: approved } })))
+      .toMatchObject({ status: "committed" });
+    yield* createApprovalDecisions({ store, factories }).resolve(1, "approved");
+    expect(yield* listOperations(store, "shop")).toMatchObject([{ kind: "integration", status: "queued", intent: { approvedCommit: approved } }]);
+    expect(yield* store.read(`SELECT state, status FROM ticket`)).toEqual([{ state: "stage", status: "awaiting_approval" }]);
+
+    // An integration must use the reviewed SHA even if the branch later has another commit.
+    writeFileSync(join(path, "later.txt"), "not reviewed\n");
+    git(path, "add", ".");
+    git(path, "commit", "--quiet", "-m", "later");
+    const branchHead = git(path, "rev-parse", "HEAD");
+
+    if (scenario === "moved") {
+      writeFileSync(join(repository, "default.txt"), "concurrent\n");
+      git(repository, "add", ".");
+      git(repository, "commit", "--quiet", "-m", "default advanced");
+    } else if (scenario === "dirty") {
+      writeFileSync(join(repository, "untracked.txt"), "preserve me\n");
+    } else if (scenario === "cancelled") {
+      const service = createTicketService({ store, stateRoot: root, factories: () => [ticketFactoryFrom(gatedConfig)] });
+      const inspection = yield* service.inspectCancellation("shop", 1);
+      yield* service.cancel("shop", 1, inspection.confirmation);
+    }
+
+    return { root, repository, path, source, sourceRefs, base, approved, branchHead, previousHead: git(repository, "rev-parse", "main") };
+  }));
+
+  // Reopen before consuming: approved integration is not an in-memory callback.
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    const queue = createFactorySyncer({ store, env: isolatedGitEnv(), target: () => ({ clonePath: saved.repository, defaultBranch: "main" }) });
+    yield* Effect.promise(() => queue.resumeQueued("shop"));
+    const complete = scenario === "complete";
+    expect(yield* listOperations(store, "shop")).toMatchObject([{ kind: "integration", status: complete ? "complete" : "failed",
+      result: complete ? { head: saved.approved, cleanup: "pending" } : { reason: expect.any(String) } }]);
+    expect(yield* store.read(`SELECT state, status, worktree_path, branch FROM ticket`)).toEqual([{
+      state: complete ? "completed" : scenario === "cancelled" ? "cancelled" : "stage",
+      status: complete || scenario === "cancelled" ? null : "paused", worktree_path: saved.path, branch: "ticket/1",
+    }]);
+    expect(git(saved.repository, "rev-parse", "main")).toBe(complete ? saved.approved : saved.previousHead);
+    expect(git(saved.path, "rev-parse", "HEAD")).toBe(saved.branchHead);
+    expect(git(saved.source, "for-each-ref", "--format=%(refname) %(objectname)")).toBe(saved.sourceRefs);
+
+    if (complete) {
+      expect(git(saved.repository, "merge-base", "--is-ancestor", saved.approved, "main")).toBe("");
+      expect(git(saved.repository, "show", "main:reviewed.txt")).toBe("reviewed");
+      expect(yield* store.read(`SELECT git_commit, to_state FROM ticket_transition ORDER BY sequence DESC LIMIT 1`))
+        .toEqual([{ git_commit: saved.approved, to_state: "completed" }]);
+      yield* Effect.promise(() => queue.resumeQueued("shop"));
+      expect(yield* listOperations(store, "shop")).toHaveLength(1);
+    } else if (scenario === "dirty") {
+      expect(readFileSync(join(saved.repository, "untracked.txt"), "utf8")).toBe("preserve me\n");
+    }
+
+    expect(yield* store.read(`PRAGMA foreign_key_check`)).toEqual([]);
+  })));
+});
 
 test("cancel resolves a stage gate to its cancellation transition without approving or rejecting the commit", async () => {
   await gateFixture(false, true, (store, id, root, head, gatedConfig) => Effect.gen(function* () {

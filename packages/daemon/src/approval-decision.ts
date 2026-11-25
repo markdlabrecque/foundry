@@ -4,6 +4,7 @@ import type { ApprovalDecisionResult } from "@foundry/protocol/approvals";
 import { expectDefined } from "@foundry/protocol/errors";
 import type { AssignmentFactory } from "./assignments.js";
 import { ticketRecord } from "./history-records.js";
+import { enqueueOperationIn } from "./operations.js";
 import { outcomeRoute } from "./outcome-route.js";
 import type { Store, StoreError } from "./store.js";
 
@@ -37,6 +38,8 @@ export interface ApprovalDecisionOptions {
   readonly store: Store;
   readonly factories: ReadonlyArray<AssignmentFactory>;
   readonly configLoad?: (factory: string) => string | undefined;
+  /** Wake the durable queue only after the approval transaction commits. */
+  readonly onIntegrationQueued?: () => void;
 }
 
 export const createApprovalDecisions = (options: ApprovalDecisionOptions): ApprovalDecisions => ({
@@ -111,6 +114,8 @@ export const createApprovalDecisions = (options: ApprovalDecisionOptions): Appro
     if (integrationRequested) {
       yield* change.query(`INSERT INTO integration_intent (approval_id, factory_id, ticket_number, approved_commit, transition_sequence, requested_at)
         VALUES (?, ?, ?, ?, ?, ?)`, [id, gate.factory_id, gate.ticket_number, gate.git_commit, transition, now]);
+      yield* enqueueOperationIn(change, { factoryId: gate.factory_id, kind: "integration", ticket: gate.ticket_number,
+        intent: { approvalId: id, approvedCommit: gate.git_commit, transition } });
       yield* change.recordHistory({ factoryId: gate.factory_id, kind: "integration.requested", subject: String(gate.ticket_number),
         detail: { approvalId: id, approvedCommit: gate.git_commit, transition }, records: [ticketRecord(gate.ticket_number)] });
     }
@@ -121,5 +126,7 @@ export const createApprovalDecisions = (options: ApprovalDecisionOptions): Appro
       detail: { fromStage: gate.stage, stage: nextStage, status, approvalId: id }, records: [ticketRecord(gate.ticket_number)] });
 
     return { approvalId: id, decision, transition, commit: gate.git_commit, integrationRequested };
-  })),
+  })).pipe(Effect.tap((result) => Effect.sync(() => {
+    if (result.integrationRequested) {options.onIntegrationQueued?.();}
+  }))),
 });

@@ -242,6 +242,13 @@ const cancellationSnapshot = (query: Query, factory: string, number: number) => 
     return yield* refuse("invalid_state", "Only an unfinished ticket can be cancelled");
   }
 
+  const integrating = yield* query(`SELECT 1 FROM operation WHERE factory_id = ? AND ticket_number = ?
+    AND kind = 'integration' AND status IN ('running', 'interrupted', 'indeterminate')`, [factory, number]);
+
+  if (integrating.length > 0) {
+    return yield* refuse("invalid_state", "Integration has started; reconcile its result before cancelling");
+  }
+
   const assignments = yield* query<{ id: string; slot_id: string; status: string }>(
     `SELECT id, slot_id, status FROM assignment WHERE factory_id = ? AND ticket_number = ? AND status != 'ended'`, [factory, number]);
 
