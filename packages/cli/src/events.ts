@@ -25,6 +25,8 @@ export interface EventsOptions {
   readonly env: Readonly<Record<string, string | undefined>>;
   /** Called with each line to print on stdout, as soon as it arrives. */
   readonly write: (line: string) => void;
+  /** Called with a short note for stderr, e.g. when a followed stream is reconnecting. */
+  readonly notice?: (line: string) => void;
   /** Aborting ends a followed stream; the command then exits 0. */
   readonly signal?: AbortSignal;
 }
@@ -92,6 +94,7 @@ export const runEvents = async (options: EventsOptions): Promise<EventsOutcome> 
   const socketPath = managementSocketPath(selectStateRoot({ home: options.home, env: options.env }));
   let cursor = options.since ?? 0;
   let connectedOnce = false;
+  let reconnecting = false;
 
   const attempt = (): Promise<Attempt> =>
     new Promise((resolve) => {
@@ -129,6 +132,7 @@ export const runEvents = async (options: EventsOptions): Promise<EventsOutcome> 
             return;
           }
           connectedOnce = true;
+          reconnecting = false;
           const parse = sseParser();
           res.on("data", (chunk: string) => {
             for (const message of parse(chunk)) {
@@ -150,8 +154,9 @@ export const runEvents = async (options: EventsOptions): Promise<EventsOutcome> 
               cursor = event.id;
             }
           });
-          res.on("end", () => done(options.follow ? { kind: "dropped" } : { kind: "ended" }));
-          res.on("error", () => done({ kind: "dropped" }));
+          // `close` covers both ends: a complete one-shot response has ended; anything else dropped.
+          res.on("error", () => {});
+          res.on("close", () => done(res.complete && !options.follow ? { kind: "ended" } : { kind: "dropped" }));
         },
       );
       const onAbort = (): void => {
@@ -179,13 +184,23 @@ export const runEvents = async (options: EventsOptions): Promise<EventsOutcome> 
       case "refused":
         return { exitCode: EXIT_REFUSED, stderr: `foundry: ${result.message}\n` };
       case "unreachable":
-        // Only before the first connection: a followed stream keeps retrying a restarting daemon.
-        if (!connectedOnce) return { exitCode: EXIT_UNREACHABLE, stderr: `foundry: daemon unreachable: ${result.message}\n` };
+        // Only a followed stream that has connected keeps retrying a restarting daemon.
+        if (!connectedOnce || !options.follow) {
+          return { exitCode: EXIT_UNREACHABLE, stderr: `foundry: daemon unreachable: ${result.message}\n` };
+        }
         break;
       case "dropped":
+        // A one-shot read never retries: it reports the drop and exits.
+        if (!options.follow) {
+          return { exitCode: EXIT_UNREACHABLE, stderr: "foundry: daemon unreachable: the event stream dropped before it ended\n" };
+        }
         break;
     }
     if (options.signal?.aborted) return { exitCode: EXIT_OK, stderr: "" };
+    if (!reconnecting) {
+      reconnecting = true;
+      options.notice?.(`foundry: event stream dropped; reconnecting after event ${cursor}`);
+    }
     await new Promise<void>((resolve) => setTimeout(resolve, RECONNECT_DELAY_MS));
   }
 };

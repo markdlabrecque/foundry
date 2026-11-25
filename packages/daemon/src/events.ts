@@ -5,6 +5,7 @@
  */
 import { Effect } from "effect";
 import type { EventRecordRef, FactoryEvent } from "@foundry/protocol/management-api";
+import { TICKET_RECORD_KIND } from "./history-records.js";
 import type { SqlValue, Store } from "./store.js";
 
 export interface EventPageQuery {
@@ -53,9 +54,9 @@ export const readEvents = (store: Store, query: EventPageQuery): Effect.Effect<R
     if (query.ticket !== undefined) {
       where.push(
         `EXISTS (SELECT 1 FROM history_record r
-                 WHERE r.sequence = h.sequence AND r.record_kind = 'ticket' AND r.record_id = ?)`,
+                 WHERE r.sequence = h.sequence AND r.record_kind = ? AND r.record_id = ?)`,
       );
-      params.push(String(query.ticket));
+      params.push(TICKET_RECORD_KIND, String(query.ticket));
     }
     params.push(query.limit);
     const rows = yield* store.read<HistoryRow>(

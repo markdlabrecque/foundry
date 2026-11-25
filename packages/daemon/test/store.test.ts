@@ -123,6 +123,26 @@ test("a change that records no history is refused and rolled back", async () => 
   expect(result.state).toEqual({ slots: [], history: [] });
 });
 
+test("migration IDs are unique and contiguous from 1", () => {
+  expect(foundryMigrations.map((m) => m.id)).toEqual(foundryMigrations.map((_, i) => i + 1));
+});
+
+test("a commit listener that throws cannot turn a committed change into a failure", async () => {
+  const result = await withStore(withSlots, (store) =>
+    Effect.gen(function* () {
+      store.onCommit(() => {
+        throw new Error("listener bug");
+      });
+      const exit = yield* Effect.exit(freeze(store, "s1"));
+      return { exit, state: yield* snapshot(store) };
+    }),
+  );
+
+  expect(Exit.isSuccess(result.exit)).toBe(true);
+  expect(result.state.slots).toEqual([{ id: "s1", condition: "frozen" }]);
+  expect(result.state.history).toMatchObject([{ kind: "slot.frozen", subject: "s1" }]);
+});
+
 test("history rows cannot be updated or deleted", async () => {
   const outcomes = await withStore(withSlots, (store) =>
     Effect.gen(function* () {

@@ -71,6 +71,7 @@ const events = Command.make(
           home: Option.getOrUndefined(home),
           env: process.env,
           write: (line) => void process.stdout.write(`${line}\n`),
+          notice: (line) => void process.stderr.write(`${line}\n`),
           signal,
         }),
       );

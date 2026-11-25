@@ -16,6 +16,7 @@ import { Clock, Data, Effect } from "effect";
 import type { Scope } from "effect";
 import { Reactivity } from "effect/reactivity";
 import { SqlClient, SqlError } from "effect/sql";
+import type { HistoryRecordRef } from "./history-records.js";
 
 /** Table the migrator records applied migrations in. */
 const MIGRATIONS_TABLE = "foundry_migrations";
@@ -131,11 +132,8 @@ export interface HistoryEntry {
   readonly records?: ReadonlyArray<HistoryRecordRef>;
 }
 
-/** A record a history row concerns. */
-export interface HistoryRecordRef {
-  readonly kind: string;
-  readonly id: string;
-}
+// Record refs live in their own module so readers can use them without loading `node:sqlite`.
+export * from "./history-records.js";
 
 /** Runs one statement and returns its rows (empty for writes without `RETURNING`). */
 export type Query = <Row extends object = Record<string, unknown>>(
@@ -166,7 +164,7 @@ export interface Store {
   ) => Effect.Effect<A, E | StoreError, R>;
   /**
    * Calls `listener` after each change commits, so readers can look for new history rows.
-   * Returns a function that removes it. A listener must not throw.
+   * Returns a function that removes it. A listener that throws is ignored; it never fails the change.
    */
   readonly onCommit: (listener: () => void) => () => void;
 }
@@ -269,7 +267,15 @@ export const openStore = (
         Effect.mapError((e) => (SqlError.isSqlError(e) ? sqlFailure("Sql", "Transaction failed")(e) : e)),
         Effect.tap(() =>
           Effect.sync(() => {
-            for (const listener of [...commitListeners]) listener();
+            // The change has committed. A listener must never turn that into a reported failure,
+            // or the caller would think it lost and might retry, writing duplicates (ADR 0001).
+            for (const listener of [...commitListeners]) {
+              try {
+                listener();
+              } catch {
+                // Ignored: the listener only signals readers; history is already durable.
+              }
+            }
           }),
         ),
       ) as never;

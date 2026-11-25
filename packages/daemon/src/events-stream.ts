@@ -4,6 +4,9 @@
  * Replays history after the cursor in sequence order, then, when following, sends each newly
  * committed row as it appears. The cursor only advances past rows actually sent, so a client that
  * reconnects with its last `id` as `Last-Event-ID` misses nothing and sees nothing twice.
+ *
+ * The no-gap guarantee relies on the store having a single writer connection and `history.sequence`
+ * being AUTOINCREMENT: a row with a lower ID can never commit after a higher one has been read.
  */
 import type { IncomingMessage, ServerResponse } from "node:http";
 import type { EventsQuery, FactoryEvent } from "@foundry/protocol/management-api";
@@ -11,6 +14,18 @@ import type { EventSource } from "./events.js";
 
 /** Rows read per page, so a long replay never loads all of history at once. */
 const PAGE_SIZE = 500;
+
+/** Resolves once the response can take more data, or has closed. */
+const drained = (response: ServerResponse): Promise<void> =>
+  new Promise((resolve) => {
+    const done = (): void => {
+      response.off("drain", done);
+      response.off("close", done);
+      resolve();
+    };
+    response.on("drain", done);
+    response.on("close", done);
+  });
 
 /** One SSE message: the event ID as `id`, the event as one line of JSON as `data`. */
 export const formatEvent = (event: FactoryEvent): string => `id: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`;
@@ -53,10 +68,14 @@ export const streamEvents = (
         for (;;) {
           const page = await source.page({ after: cursor, factory: query.factory, ticket: query.ticket, limit: PAGE_SIZE });
           if (closed) return;
+          let full = false;
           for (const event of page) {
-            response.write(formatEvent(event));
+            if (!response.write(formatEvent(event))) full = true;
             cursor = event.id;
           }
+          // Backpressure: a slow client holds the next page back instead of buffering history.
+          if (full && !closed) await drained(response);
+          if (closed) return;
           if (page.length < PAGE_SIZE) break;
         }
       } while (pending && !closed);
