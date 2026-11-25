@@ -86,7 +86,7 @@ test("opening a schema newer than this build knows is refused and leaves the fil
 });
 
 test("request cancellation migration preserves existing requests, notice references and deadline index", async () => {
-  const previous = foundryMigrations.filter((migration) => migration.id < 23);
+  const previous = foundryMigrations.filter((migration) => migration.id < 25);
 
   const before = await withStore(previous, (store) => Effect.gen(function* () {
     yield* store.change((change) => Effect.gen(function* () {

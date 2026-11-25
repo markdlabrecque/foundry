@@ -31,6 +31,7 @@ import { Effect, Exit, Predicate, Schema, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
 import { storeApprovalsReader } from "./approvals.js";
+import { createApprovalAnswers } from "./approval-answer.js";
 import { storeFactoriesReader } from "./factories.js";
 import { importStoreQuietly } from "./quiet-store.js";
 import type { Store } from "./store.js";
@@ -65,6 +66,7 @@ import { createSubmissions } from "./submissions.js";
 import { agentDiscoverHandler } from "./agent-discover.js";
 import { agentStatusHandler } from "./agent-status.js";
 import { agentMessageHandler } from "./agent-message.js";
+import { messageBudget } from "./message-budget.js";
 import { agentDelegateHandler } from "./agent-delegate.js";
 import { agentRequestHandler } from "./agent-request.js";
 import { agentReplyHandler } from "./agent-reply.js";
@@ -72,6 +74,7 @@ import { taskTransitionHandler } from "./task-transition.js";
 import { humanRequestHandler } from "./human-request.js";
 import { startMessageRouting } from "./message-routing.js";
 import { startRequestExpiry } from "./request-expiry.js";
+import { recordMessageInjection, startStuckWorkerDetection } from "./stuck-workers.js";
 
 /** The Foundry Pi extension's entry point, passed to every launch as an absolute path. */
 const foundryExtensionPath = (): string => fileURLToPath(import.meta.resolve("@foundry/extension"));
@@ -187,11 +190,13 @@ const main = async (): Promise<void> => {
   let stopRouting: (() => Promise<void>) | undefined;
   let stopDelivery: (() => Promise<void>) | undefined;
   let stopExpiry: (() => Promise<void>) | undefined;
+  let stopStuckWorkers: (() => Promise<void>) | undefined;
 
   const closeStore = async (): Promise<void> => {
     await stopRouting?.();
     await stopDelivery?.();
     await stopExpiry?.();
+    await stopStuckWorkers?.();
     await Effect.runPromise(Scope.close(storeScope, Exit.void));
   };
 
@@ -441,7 +446,10 @@ const main = async (): Promise<void> => {
       });
 
       const primer = createPrimer({ store, gate: freezer, freeze: (request) => freezer.freeze(request),
+        clonePath: (factoryId) => expectDefined(clones.get(factoryId), `factory clone ${factoryId}`).path,
         primeRequest: plannedPrimeRequests(factories, plannedSlots) });
+
+      freezeChecks.prime_without_history = primer.recheckHistory;
 
       const delivery = createMessageDelivery({ store, gate: freezer,
         inScope: (factoryId) => factoryStates.isRunning(factoryId),
@@ -450,6 +458,11 @@ const main = async (): Promise<void> => {
       const reconciler = createReconciler(store);
       stopDelivery = () => delivery.stop();
       const channelEvents = channelLogEvents(log);
+
+      const stuckWorkers = startStuckWorkerDetection(store,
+        (cause) => log.error("stuck worker detection failed", { detail: { error: messageOf(cause) } }));
+
+      stopStuckWorkers = () => stuckWorkers.stop();
 
       channel = await startChannelServer({
         socketPath: channelSocketPath(stateRoot),
@@ -461,12 +474,13 @@ const main = async (): Promise<void> => {
             [HUMAN_REQUEST, humanRequestHandler],
             [AGENT_DISCOVER, agentDiscoverHandler(plannedSlots)],
             [AGENT_STATUS, agentStatusHandler(plannedSlots)],
-            [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket })],
+            [AGENT_MESSAGE, agentMessageHandler(plannedSlots, { assignmentTicket, budget: messageBudget((id) => loadIds.get(id)) })],
             [AGENT_DELEGATE, agentDelegateHandler(plannedSlots, {
+              budget: messageBudget((id) => loadIds.get(id)),
               delegationDepthLimit: (factoryId) => expectDefined(factories.find((f) => f.factoryId === factoryId), `factory ${factoryId}`).config.delegation_depth_limit ?? 2,
             })],
-            [AGENT_REQUEST, agentRequestHandler(plannedSlots, { assignmentTicket })],
-            [AGENT_REPLY, agentReplyHandler()],
+            [AGENT_REQUEST, agentRequestHandler(plannedSlots, { assignmentTicket, budget: messageBudget((id) => loadIds.get(id)) })],
+            [AGENT_REPLY, agentReplyHandler({ budget: messageBudget((id) => loadIds.get(id)) })],
             [TASK_TRANSITION, taskTransitionHandler({ factories: factories.map((f) => ({ factoryId: f.factoryId, config: f.config })), configLoad: (id) => loadIds.get(id) })],
           ]),
           gate: freezer,
@@ -474,6 +488,8 @@ const main = async (): Promise<void> => {
         ...channelEvents,
         onAccepted: (slot, hello, accepted) => {
           channelEvents.onAccepted(slot, hello, accepted);
+          const lost = stuckWorkers.accepted(slot);
+          void accepted.closed?.then(lost);
           void reconciler.reconcile(slot, hello, accepted).then(async () => {
             const primed = primer.prime(slot, hello, accepted);
             const outcome = await primed.outcome;
@@ -492,6 +508,9 @@ const main = async (): Promise<void> => {
                 await Effect.runPromise(acknowledgeMessage(store, slot, frame.id));
               }
             })().catch((cause: unknown) => log.error("receipt not recorded", { detail: { error: messageOf(cause) } }));
+          } else if (frame.type === "message_injected") {
+            void Effect.runPromise(recordMessageInjection(store, slot, frame.id, frame.injectedAt))
+              .catch((cause: unknown) => log.error("message injection not recorded", { detail: { error: messageOf(cause) } }));
           } else if (frame.type === "compacted") {
             void primer.compacted(slot).catch((cause: unknown) => log.error("compaction prime failed", { detail: { error: messageOf(cause) } }));
           }
@@ -696,6 +715,7 @@ const main = async (): Promise<void> => {
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
       holds: storeHoldsReader(store),
       approvals: storeApprovalsReader(store),
+      approvalAnswers: createApprovalAnswers(store, plannedSlots),
       tickets: createTicketService(ticketOptions),
       worktrees: createWorktreeService({ store, factories: () => factories.map((f) => f.factoryId),
         target: (factoryId) => {

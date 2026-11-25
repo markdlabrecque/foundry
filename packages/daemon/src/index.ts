@@ -3,6 +3,8 @@ export const packageName = "@foundry/daemon" as const;
 
 export * from "./message-delivery.js";
 
+export * from "./stuck-workers.js";
+
 export * from "./channel/server.js";
 
 export { channelLogEvents } from "./channel/log-events.js";
@@ -12,6 +14,8 @@ export * from "./channel/slot-claim.js";
 export * from "./submissions.js";
 
 export * from "./agent-message.js";
+
+export * from "./message-budget.js";
 
 export * from "./operator-message.js";
 
@@ -26,6 +30,8 @@ export * from "./agent-reply.js";
 export * from "./task-transition.js";
 
 export * from "./approvals.js";
+
+export * from "./approval-answer.js";
 
 export * from "./human-request.js";
 

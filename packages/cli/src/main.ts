@@ -13,7 +13,7 @@ import { validateFactoryFile } from "./validate.js";
 import { runTicketCancel, runTicketList, runTicketPause, runTicketShow, runTicketSubmit } from "./tickets.js";
 import type { TicketOutcome } from "./tickets.js";
 import { runHoldList, runHoldShow } from "./holds.js";
-import { runApprovalList, runApprovalShow } from "./approvals.js";
+import { runApprovalAnswer, runApprovalList, runApprovalShow } from "./approvals.js";
 import type { HoldOutcome } from "./holds.js";
 import { runEvents } from "./events.js";
 import { runFactoryPath, runFactorySync } from "./factory.js";
@@ -128,9 +128,13 @@ const approvalShow = Command.make("show", { ...commonFlags, id: Argument.String(
   Effect.flatMap(Effect.promise(() => runApprovalShow({ json, home: Option.getOrUndefined(home), env: process.env, id })), print),
 );
 
+const approvalAnswer = Command.make("answer", { ...commonFlags, id: Argument.String("id"), body: Argument.String("text") }, ({ json, home, id, body }) =>
+  Effect.flatMap(Effect.promise(() => runApprovalAnswer({ json, home: Option.getOrUndefined(home), env: process.env, id, body })), print),
+);
+
 const approval = Command.make("approval").pipe(
   Command.withDescription("Operator decisions about work"),
-  Command.withSubcommands([approvalList, approvalShow]),
+  Command.withSubcommands([approvalList, approvalShow, approvalAnswer]),
 );
 
 const holdList = Command.make("list", commonFlags, ({ json, home }) =>

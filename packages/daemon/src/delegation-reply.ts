@@ -1,6 +1,7 @@
 /** Delegation resolution is independent of request deadlines (PRD §6.5). */
 import { Clock, Effect, Schema } from "effect";
 import { acceptMessage } from "./agent-message.js";
+import type { MessageAcceptanceGuards } from "./agent-message.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import { ToolRefusal } from "./submissions.js";
 import type { Change } from "./store.js";
@@ -20,7 +21,7 @@ interface DelegationRow {
   readonly status: string;
 }
 
-export const resolveDelegation = (change: Change, call: ToolCallContext, args: typeof DelegationReplyArgs.Type) => Effect.gen(function* () {
+export const resolveDelegation = (change: Change, call: ToolCallContext, args: typeof DelegationReplyArgs.Type, guards: MessageAcceptanceGuards = {}) => Effect.gen(function* () {
   const rows = yield* change.query<DelegationRow>(
     `SELECT d.delegating_slot, d.recipient_slot, d.status, a.ticket_number FROM delegation d
      JOIN assignment a ON a.id = d.root_assignment AND a.factory_id = d.factory_id
@@ -49,7 +50,7 @@ export const resolveDelegation = (change: Change, call: ToolCallContext, args: t
     factoryId: call.factoryId, senderSlot: call.slotId, recipient: delegation.delegating_slot,
     body: JSON.stringify({ outcome: args.outcome, evidence: args.evidence }), delivery: "after_turn", kind: "reply",
     correlation: { delegationId: args.delegationId, ticket: delegation.ticket_number },
-  });
+  }, guards);
 
   yield* change.query(`UPDATE message SET status = 'bound', bound_slot = ?, bound_at = ? WHERE id = ?`,
     [delegation.delegating_slot, now, reply.id]);
