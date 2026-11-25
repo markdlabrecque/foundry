@@ -90,6 +90,43 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
+test("reconnecting the same launch closes its earlier channel and reset revokes the remaining one", async () => {
+  const frames: Array<WorkerFrame> = [];
+  server = await startChannelServer({ socketPath: join(dir, "channel.sock"), slotClaim: acceptAll,
+    onFrame: (_slot, frame) => { frames.push(frame); } });
+  const first = await openChannel({ socketPath: server.socketPath, hello, heartbeatIntervalMs: 60_000 });
+  const second = await openChannel({ socketPath: server.socketPath, hello, heartbeatIntervalMs: 60_000 });
+
+  if (!first.accepted || !second.accepted) {throw new Error("expected accepted channels");}
+
+  await first.channel.closed;
+  server.revokeSlot(hello.factoryId, hello.slotId);
+  await second.channel.closed;
+  await expect(first.channel.send({ type: "receipt", id: "stale" })).rejects.toThrow();
+  await expect(second.channel.send({ type: "receipt", id: "stale" })).rejects.toThrow();
+  expect(frames).toEqual([]);
+});
+
+test("reset revocation invalidates a hello claim already in flight", async () => {
+  let claimed!: () => void;
+  const started = waitFor<void>((resolve) => { claimed = resolve; });
+  let finish!: () => void;
+  const continueClaim = waitFor<void>((resolve) => { finish = resolve; });
+  server = await startChannelServer({ socketPath: join(dir, "channel.sock"), slotClaim: {
+    claim: async (h) => {
+      claimed();
+      await continueClaim;
+
+      return { accepted: true, slot: { factoryId: h.factoryId, slotId: h.slotId, launchId: h.launchId } };
+    },
+  } });
+  const opening = openChannel({ socketPath: server.socketPath, hello, heartbeatIntervalMs: 60_000 });
+  await started;
+  server.revokeSlot(hello.factoryId, hello.slotId);
+  finish();
+  expect(await opening).toMatchObject({ accepted: false, reason: { kind: "terminal", code: "launch_not_current" } });
+});
+
 test("a valid hello is accepted, and heartbeats arrive attributed to the claimed slot", async () => {
   const frames: Array<[ClaimedSlot, WorkerFrame]> = [];
   let gotHeartbeat!: () => void;

@@ -38,7 +38,7 @@ import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Clock, Data, Effect, Schema } from "effect";
 import { buildLaunchArgs, connectHost, exitWasUnexpected, HostRefusedError, launchStderrPath, startHost } from "@foundry/host";
-import type { HostConnection, LaunchRecord, LaunchSpec, PiExecutable } from "@foundry/host";
+import type { HostConnection, LaunchRecord, LaunchSpec, PiExecutable, Termination } from "@foundry/host";
 import { CHANNEL_SOCKET_ENV, channelSocketPath } from "@foundry/protocol";
 import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { FreezeCause, SLOT_INTERRUPT_ACK_TIMEOUT_MS, SlotCondition, slotIdOf } from "@foundry/protocol/slots-api";
@@ -49,6 +49,7 @@ import { ChannelUnavailableError } from "./channel/server.js";
 import type { ChannelServer } from "./channel/server.js";
 import type { EffectiveStation } from "./config/index.js";
 import { slotRecord } from "./history-records.js";
+import { closeOpenHoldIn } from "./holds.js";
 import { classifyOwnership } from "./ownership.js";
 import { countUnexpectedEndIn } from "./recovery.js";
 import type { RecordedSlot, SlotOwnership } from "./ownership.js";
@@ -413,7 +414,10 @@ export interface SlotSchedulerOptions {
   /** The configured slots of the started factories. */
   readonly slots: ReadonlyArray<PlannedSlot>;
   /** Freezes a slot whose ownership is unproven (PRD §10.2), under a frozen-slot hold. */
-  readonly freezer: Pick<SlotFreezer, "freeze">;
+  readonly freezer: Pick<SlotFreezer, "freeze"> & Partial<Pick<SlotFreezer, "reset">>;
+  /** Reset requires positive process-group evidence, not just a reaped leader. */
+  readonly terminate?: (launchId: string) => Promise<Termination>;
+  readonly revokeSlot?: (factoryId: string, slotId: string) => void;
   /**
    * Whether a factory may still be assigned new launches; checked per slot, so a factory stop
    * begun mid-schedule launches nothing more in its scope. Default: every factory.
@@ -456,6 +460,8 @@ export interface SlotScheduler {
    * slot's conversation has changed, or if the launch is refused.
    */
   relaunch(slot: { readonly factoryId: string; readonly slotId: string }, conversationRef: string): Promise<{ readonly launchId: string }>;
+  /** Discards a held slot's conversation only after proving old groups gone, unless forced. */
+  reset(slot: SlotRef, force?: boolean): Promise<{ readonly launchId: string }>;
   /** Resolves once scheduling and exit reports queued so far have finished. */
   idle(): Promise<void>;
 }
@@ -730,6 +736,96 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
         return { launchId: started.launchId };
       }),
+    reset: (ref, force = false) => {
+      if (options.freezer.reset === undefined) {return Promise.reject(new Error("reset gate is not configured"));}
+
+      return options.freezer.reset(ref, () => serial(async () => {
+        const slot = options.slots.find((s) => s.factoryId === ref.factoryId && s.slotId === ref.slotId);
+
+        if (slot === undefined) {throw new SlotsError("slot_not_found", `slot ${ref.slotId} is not configured`);}
+
+        if (options.inScope?.(ref.factoryId) === false) {throw new SlotsError("reset_refused", `factory ${ref.factoryId} is not running`);}
+
+        if (pendingFreezes.has(slot)) {throw new SlotsError("reset_refused", `slot ${ref.slotId} is being frozen; retry reset`);}
+
+        const row = await Effect.runPromise(readSlot(store, ref.factoryId, ref.slotId));
+
+        if (row === undefined || (row.condition !== "frozen" && row.condition !== "parked")) {
+          throw new SlotsError("reset_refused", `slot ${ref.slotId} is not frozen or parked`);
+        }
+
+        let confirmed = true;
+        let inventory: ReadonlyArray<LaunchRecord> = [];
+
+        try { inventory = (await host.inventory()).filter((l) => l.factoryId === ref.factoryId && l.slotId === ref.slotId); }
+        catch { confirmed = false; }
+
+        // Even a reaped leader may have surviving descendants. Ask the owning host to prove the
+        // entire group gone, including for inventory entries already marked gone.
+        for (const launch of inventory) {
+          try {
+            if (options.terminate === undefined || (await options.terminate(launch.launchId)).outcome !== "gone") {confirmed = false;}
+          } catch { confirmed = false; }
+        }
+
+        if (row.current_launch !== null) {
+          const current = await Effect.runPromise(readLaunch(store, row.current_launch));
+
+          if (current === undefined || (current.boot_id === options.bootId && !inventory.some((l) => l.launchId === row.current_launch))) {
+            confirmed = false;
+          }
+        }
+
+        if (row.pending_boot === options.bootId && row.pending_host !== null && row.pending_host !== options.hostId) {confirmed = false;}
+
+        if (!confirmed && !force) {throw new SlotsError("reset_refused", `old process group for slot ${ref.slotId} is unconfirmed; use --force to reset`);}
+
+        await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+          const now = yield* Clock.currentTimeMillis;
+
+          const ended = yield* change.query<{ launch_id: string }>(`UPDATE launch SET ended_at = ?, end_reason = 'requested'
+            WHERE factory_id = ? AND slot_id = ? AND ended_at IS NULL RETURNING launch_id`, [now, ref.factoryId, ref.slotId]);
+
+          for (const launch of ended) {
+            yield* change.recordHistory({ factoryId: ref.factoryId, kind: "launch.ended", subject: launch.launch_id,
+              detail: { slotId: ref.slotId, reason: "requested", unexpected: false, reset: true, groupsConfirmedGone: confirmed },
+              records: [slotRecord(ref.slotId)] });
+          }
+
+          yield* change.query(`UPDATE conversation SET status = 'discarded' WHERE factory_id = ? AND slot_id = ? AND status = 'current'`,
+            [ref.factoryId, ref.slotId]);
+          // Keep the existing condition and hold until a replacement is durably recorded. A
+          // refused/uncertain launch remains gated and can be reset again using host evidence.
+          yield* change.query(`UPDATE slot SET current_launch = NULL, pending_host = NULL, pending_boot = NULL
+            WHERE factory_id = ? AND slot_id = ?`, [ref.factoryId, ref.slotId]);
+          // Preserve binding, IDs and attempts. Only unacknowledged sent messages need re-offering.
+          yield* change.query(`UPDATE message SET status = 'bound' WHERE factory_id = ? AND bound_slot = ? AND status IN ('sent', 'indeterminate')`,
+            [ref.factoryId, ref.slotId]);
+
+          yield* change.recordHistory({ factoryId: ref.factoryId, kind: "slot.reset_requested", subject: ref.slotId,
+            detail: { force, groupsConfirmedGone: confirmed }, records: [slotRecord(ref.slotId)] });
+        })));
+        // Current launch is now cleared: new claims refuse, and in-flight claims are invalidated.
+        options.revokeSlot?.(ref.factoryId, ref.slotId);
+        const started = await launchInto(slot, "started");
+
+        if (started.launchId === undefined) {throw new SlotsError("reset_refused", started.error ?? `slot ${ref.slotId} was not launched`);}
+
+        await Effect.runPromise(store.change((change) => Effect.gen(function* () {
+          yield* change.query(`UPDATE slot SET condition = 'normal', freeze_cause = NULL, recovery_count = 0
+            WHERE factory_id = ? AND slot_id = ?`, [ref.factoryId, ref.slotId]);
+
+          for (const kind of ["parked_slot", "frozen_slot"] as const) {
+            yield* closeOpenHoldIn(change, { factoryId: ref.factoryId, kind, subject: ref.slotId }, "resolved");
+          }
+
+          yield* change.recordHistory({ factoryId: ref.factoryId, kind: "slot.reset", subject: ref.slotId,
+            detail: { force, groupsConfirmedGone: confirmed, launchId: started.launchId }, records: [slotRecord(ref.slotId)] });
+        })));
+
+        return { launchId: started.launchId };
+      }));
+    },
     idle: () => serial(async () => {}),
   };
 };
