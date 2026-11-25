@@ -153,6 +153,9 @@ const insert = (change: Change, request: OperationRequest<OperationKind>, status
   });
 
 /** Puts an integration or a sync on its factory's queue. It runs when `startNextOperation` admits it. */
+export const enqueueOperationIn = (change: Change, request: OperationRequest<QueuedOperationKind>): Effect.Effect<Operation, StoreError> =>
+  insert(change, request, "queued");
+
 export const enqueueOperation = (
   store: Store,
   request: OperationRequest<QueuedOperationKind>,

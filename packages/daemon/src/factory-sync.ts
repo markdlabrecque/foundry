@@ -15,6 +15,7 @@
 import { Data, Effect } from "effect";
 import { messageOf } from "@foundry/protocol/errors";
 import { runCloneGit } from "./factory-clone.js";
+import { integrateApprovedCommit } from "./integration.js";
 import { closeOpenHoldIn, raiseHoldIn } from "./holds.js";
 import { enqueueOperation, extendOperationIntent, getOperation, recordOperationResult, startNextOperation } from "./operations.js";
 import type { Operation, OperationDetail, OperationOutcome } from "./operations.js";
@@ -159,8 +160,7 @@ export interface FactorySyncerOptions {
 }
 
 /**
- * Runs a factory's queue until nothing more is admitted. Only syncs run here: nothing queues an
- * integration yet, and one admitted without a runner dies, leaving the queue closed for recovery.
+ * Runs the durable shared queue one operation at a time, including exact-SHA integrations.
  */
 const drainQueue = (store: Store, factory: string, target: SyncTarget, env: NodeJS.ProcessEnv): Effect.Effect<void, StoreError> =>
   Effect.gen(function* () {
@@ -168,6 +168,11 @@ const drainQueue = (store: Store, factory: string, target: SyncTarget, env: Node
       const next = yield* startNextOperation(store, factory);
 
       if (next === undefined) {return;}
+
+      if (next.kind === "integration") {
+        yield* integrateApprovedCommit(store, next, target, env);
+        continue;
+      }
 
       if (next.kind !== "sync") {return yield* Effect.die(new Error(`no runner for ${next.kind} operation ${next.id}`));}
 
