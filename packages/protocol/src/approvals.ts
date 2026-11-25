@@ -5,17 +5,17 @@ import { MANAGEMENT_API_PREFIX } from "./management-api.js";
 export const APPROVALS_PATH = `${MANAGEMENT_API_PREFIX}/approvals`;
 export const approvalPath = (id: number): string => `${APPROVALS_PATH}/${id}`;
 
-/** Only blocked approvals are currently implemented. Other kinds have their own workflows. */
+/** Worker requests have no originating transition or outcome: they do not move the ticket. */
 export const ApprovalRecord = Schema.Struct({
   id: Schema.Number,
   factoryId: Schema.String,
   ticket: Schema.Number,
   assignmentId: Schema.String,
-  transition: Schema.Number,
+  transition: Schema.NullOr(Schema.Number),
   stage: Schema.String,
-  kind: Schema.Literal("blocked"),
+  kind: Schema.Literals(["blocked", "worker_request"]),
   state: Schema.Literals(["open", "resolved"]),
-  outcome: Schema.Literals(["blocked", "rejected"]),
+  outcome: Schema.NullOr(Schema.Literals(["blocked", "rejected"])),
   reason: Schema.String,
   evidence: Schema.Array(Schema.String),
   commit: Schema.NullOr(Schema.String),
@@ -38,8 +38,8 @@ export const isApprovalListResult = Schema.is(ApprovalListResult);
 export const isApprovalShowResult = Schema.is(ApprovalShowResult);
 
 /** Include the factory even with multiple loaded factories; quote shell metacharacters safely. */
-export const approvalCommands = (approval: Pick<ApprovalRecord, "factoryId" | "ticket" | "state">): ReadonlyArray<string> => {
-  if (approval.state !== "open") {return [];}
+export const approvalCommands = (approval: Pick<ApprovalRecord, "factoryId" | "ticket" | "state" | "kind">): ReadonlyArray<string> => {
+  if (approval.state !== "open" || approval.kind !== "blocked") {return [];}
 
   const factory = `'${approval.factoryId.replaceAll("'", String.raw`'\''`)}'`;
 

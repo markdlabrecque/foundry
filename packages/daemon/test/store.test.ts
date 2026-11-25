@@ -85,6 +85,37 @@ test("opening a schema newer than this build knows is refused and leaves the fil
   expect(after.history).toHaveLength(1);
 });
 
+test("request cancellation migration preserves existing requests, notice references and deadline index", async () => {
+  const previous = foundryMigrations.filter((migration) => migration.id < 23);
+
+  const before = await withStore(previous, (store) => Effect.gen(function* () {
+    yield* store.change((change) => Effect.gen(function* () {
+      for (const status of ["open", "completed", "expired", "failed"]) {
+        const notice = yield* acceptMessage(change, { factoryId: "shop", senderSlot: "worker/1", recipient: "floor.worker",
+          body: "Disposable request", delivery: "after_turn", kind: "request_notice", correlation: { requestId: status, ticket: null } });
+
+        yield* change.query(`INSERT INTO agent_request (id, factory_id, requester_slot, recipient, recipient_slot,
+          ticket_number, notice_id, status, accepted_at, deadline) VALUES (?, 'shop', 'worker/1', 'floor.worker', 'worker/2', NULL, ?, ?, 100, 200)`,
+        [status, notice.id, status]);
+      }
+    }));
+
+    return yield* store.read(`SELECT * FROM agent_request ORDER BY id`);
+  }));
+
+  await withStore(foundryMigrations, (store) => Effect.gen(function* () {
+    expect(yield* store.read(`SELECT * FROM agent_request ORDER BY id`)).toEqual(before);
+    expect(yield* store.read(`PRAGMA foreign_key_check`)).toEqual([]);
+    expect(yield* store.read(`SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'agent_request_deadline'`))
+      .toEqual([{ name: "agent_request_deadline" }]);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE agent_request SET status = 'cancelled' WHERE id = 'open'`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "request.failed", subject: "open", detail: { reason: "cancelled" } });
+    }));
+    expect(yield* store.read(`SELECT status FROM agent_request WHERE id = 'open'`)).toEqual([{ status: "cancelled" }]);
+  }));
+});
+
 test("an older database is migrated forward on open, keeping its history", async () => {
   await withStore(foundryMigrations, (store) =>
     store.change(({ recordHistory }) => recordHistory({ factoryId: "f1", kind: "run.started", subject: "r1" })),

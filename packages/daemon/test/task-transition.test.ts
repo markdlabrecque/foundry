@@ -7,10 +7,10 @@ import { afterEach, expect, test, vi } from "vitest";
 import { Effect, Exit, Match, Schema } from "effect";
 import {
   agentDelegateHandler, agentRequestHandler, assignmentTicket, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
-  StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
+  humanRequestHandler, StoreError, taskTransitionHandler, ticketFactoryFrom, serveManagementApi, storeApprovalsReader,
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
-import { TASK_TRANSITION } from "@foundry/protocol";
+import { HUMAN_REQUEST, TASK_TRANSITION } from "@foundry/protocol";
 import { runApprovalList, runApprovalShow, runTicketCancel } from "@foundry/cli";
 import { git as fixtureGit, makeGitSource } from "@foundry/testkit";
 import { FactoryConfig } from "../src/config/schema.js";
@@ -264,6 +264,67 @@ test("ticket cancel CLI discloses, refuses nonterminal use without --yes, and ca
       expect((yield* tickets.show("shop", 1)).ticket.status).toBe("assigned");
     } finally {yield* Effect.promise(() => api.close());}
   }));
+});
+
+test("human_request records one approval per submission, survives restart and never gates done", async () => {
+  const saved = await fixture((store, id, root) => Effect.gen(function* () {
+    const requestHandlers = new Map([...handlers, [HUMAN_REQUEST, humanRequestHandler]]);
+    const submissions = createSubmissions({ store, handlers: requestHandlers });
+    const call = { type: "tool_call", tool: HUMAN_REQUEST, callId: "decision-1", args: { assignmentId: id, body: "Which option?" } } as const;
+    const before = yield* snapshot(store);
+
+    const failing: Store = { ...store, change: (body) => store.change((change) =>
+      Effect.flatMap(body(change), () => Effect.fail(new StoreError({ reason: "Sql", message: "commit failure" })))),
+    };
+
+    expect(yield* Effect.promise(() => createSubmissions({ store: failing, handlers: requestHandlers }).submit(owner, call)))
+      .toMatchObject({ status: "refused", code: "not_committed" });
+
+    for (const identity of [{ ...owner, slotId: "worker/2" }, { ...owner, factoryId: "other" }]) {
+      expect(yield* Effect.promise(() => submissions.submit(identity, call)))
+        .toMatchObject({ status: "refused", code: "not_assignment_owner" });
+    }
+
+    for (const args of [{ assignmentId: "missing", body: "Help" }, { assignmentId: id, body: "" },
+      { assignmentId: id, body: "Help", stage: "review" }]) {
+      expect(yield* Effect.promise(() => submissions.submit(owner, { ...call, args }))).toMatchObject({ status: "refused" });
+    }
+
+    expect(yield* snapshot(store)).toEqual(before);
+    const result = yield* Effect.promise(() => submissions.submit(owner, call));
+    expect(result).toEqual({ status: "committed", value: { approvalId: 1, assignmentId: id, ticket: 1 } });
+    const after = yield* snapshot(store);
+    expect(after.tickets).toEqual(before.tickets);
+    expect(after.assignments).toEqual(before.assignments);
+    expect(after.transitions).toEqual(before.transitions);
+    expect(after.approvals).toMatchObject([{ kind: "worker_request", state: "open", transition_sequence: null,
+      request_body: "Which option?", request_stage: "plan", assignment_id: id }]);
+    expect(after.history.slice(before.history.length)).toMatchObject([{ kind: "approval.requested" }, { kind: "submission.recorded" }]);
+    expect(yield* Effect.promise(() => submissions.submit(owner, call))).toEqual(result);
+    expect(yield* snapshot(store)).toEqual(after);
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...call, callId: "decision-2" })))
+      .toMatchObject({ status: "committed", value: { approvalId: 2 } });
+    expect(yield* store.read(`SELECT * FROM approval`)).toHaveLength(2);
+    const reader = storeApprovalsReader(store);
+    expect(yield* Effect.promise(() => reader.list())).toMatchObject({ approvals: [
+      { kind: "worker_request", reason: "Which option?", stage: "plan", transition: null, outcome: null },
+      { kind: "worker_request" },
+    ] });
+    expect(yield* Effect.promise(() => reader.show(1))).toMatchObject({ commands: [] });
+    expect(yield* Effect.promise(() => submissions.submit(owner, frame(id)))).toMatchObject({ status: "committed" });
+    expect(yield* Effect.promise(() => submissions.submit(owner, { ...call, callId: "stale" })))
+      .toMatchObject({ status: "refused", code: "not_assignment_owner" });
+
+    return { root, after: yield* snapshot(store), call, result };
+  }));
+
+  await Effect.runPromise(Effect.scoped(Effect.gen(function* () {
+    const store = yield* openStore({ filename: join(saved.root, "foundry.db") });
+    expect(yield* snapshot(store)).toEqual(saved.after);
+    expect(yield* Effect.promise(() => createSubmissions({ store, handlers: new Map([[HUMAN_REQUEST, humanRequestHandler]]) }).submit(owner, saved.call)))
+      .toEqual(saved.result);
+    expect(yield* snapshot(store)).toEqual(saved.after);
+  })));
 });
 
 test("done commits evidence, ended assignment and queued next stage; replay and restart preserve it", async () => {
