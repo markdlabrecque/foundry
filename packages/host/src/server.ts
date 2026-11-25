@@ -9,7 +9,7 @@ import { readBootId } from "./boot.js";
 import { HOST_CONTROL_VERSION, hostSocketPath, readLines } from "./control.js";
 import type { HostEvent, HostIdentity, HostResponse } from "./control.js";
 import { LaunchRefusedError, TerminateRefusedError, createLaunchRegistry } from "./launches.js";
-import type { LaunchRecord, LaunchRegistry, TerminateOptions } from "./launches.js";
+import type { LaunchExit, LaunchRecord, LaunchRegistry, TerminateOptions } from "./launches.js";
 import { createHostLog, createLaunchStderrStore } from "./log.js";
 
 /** Upper bound on a terminate's grace and kill wait, each; keeps client timers in range. */
@@ -70,9 +70,17 @@ const isLaunchSpec = Schema.is(
  * code is unexpected.
  */
 export function endedUnexpectedly(launch: LaunchRecord): boolean {
-  if (launch.exit === undefined || launch.exit.requested === true) {return false;}
+  return launch.exit !== undefined && exitWasUnexpected(launch.exit);
+}
 
-  return launch.exit.signal !== null || launch.exit.code !== 0;
+/**
+ * The rule behind `endedUnexpectedly`, for an exit alone: one the host was not asked for, by a
+ * signal or with a non-zero code. The daemon applies the same rule to the exits it records.
+ */
+export function exitWasUnexpected(exit: Pick<LaunchExit, "code" | "signal" | "requested">): boolean {
+  if (exit.requested === true) {return false;}
+
+  return exit.signal !== null || exit.code !== 0;
 }
 
 export interface RunningHost {

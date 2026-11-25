@@ -135,6 +135,7 @@ export {
   SLOTS_DIR_NAME,
   storeSlotInterrupter,
   storeSlotsReader,
+  type LaunchExitResult,
   type SlotChannel,
   type SlotInterrupter,
   type SlotInterrupterOptions,

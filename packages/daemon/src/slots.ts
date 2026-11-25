@@ -14,14 +14,23 @@
  *
  * A frozen slot (`freeze.ts`) is never launched into: scheduling reports it `held`.
  *
- * Out of scope here: relaunching a slot whose launch ended (recovery, the recovery limit and the
- * recovery prime), and deciding to freeze a slot whose ownership the host cannot confirm (FOU-80).
- * Such slots are reported and left alone.
+ * Each slot has one current conversation, issued by the daemon at its first launch request and
+ * opened by every launch of the slot (PRD §10.1). A launch the host positively reports as having
+ * exited unasked, by a signal or with a non-zero code (the host's own `exitWasUnexpected` rule),
+ * ended unexpectedly: the slot is relaunched in the same conversation, and its `launch.ended` row
+ * is marked `unexpected` for recovery accounting (PRD §5.3, §10.2). A clean, unasked exit (code 0)
+ * is recorded but neither counted nor relaunched. A lost channel is not death evidence and never
+ * causes a relaunch; only the host's exit report does.
+ *
+ * Out of scope here: the recovery limit and parking (FOU-67), the recovery prime (FOU-54), the
+ * resume notice, recovering slots vacated by a machine restart (FOU-89), and deciding to freeze a
+ * slot whose ownership the host cannot confirm (FOU-80). Such slots are reported and left alone.
  */
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { Clock, Effect, Schema } from "effect";
-import { buildLaunchArgs, connectHost, HostRefusedError, launchStderrPath, startHost } from "@foundry/host";
+import { buildLaunchArgs, connectHost, exitWasUnexpected, HostRefusedError, launchStderrPath, startHost } from "@foundry/host";
 import type { HostConnection, LaunchRecord, LaunchSpec, PiExecutable } from "@foundry/host";
 import { CHANNEL_SOCKET_ENV, channelSocketPath } from "@foundry/protocol";
 import { codeOf, messageOf } from "@foundry/protocol/errors";
@@ -107,6 +116,16 @@ const readSlot = (store: Store, factoryId: string, slotId: string) =>
 const readLaunch = (store: Store, launchId: string) =>
   Effect.map(store.read<LaunchRow>(`SELECT ${LAUNCH_COLUMNS} FROM launch WHERE launch_id = ?`, [launchId]), (rows) => rows[0]);
 
+/** The slot's current conversation reference, if it has one. */
+const readConversation = (store: Store, factoryId: string, slotId: string) =>
+  Effect.map(
+    store.read<{ readonly ref: string }>(
+      `SELECT ref FROM conversation WHERE factory_id = ? AND slot_id = ? AND status = 'current'`,
+      [factoryId, slotId],
+    ),
+    (rows) => rows[0]?.ref,
+  );
+
 const insertSlot = (change: Change, slot: PlannedSlot) =>
   change.query(
     `INSERT OR IGNORE INTO slot (factory_id, slot_id, station, ordinal, condition) VALUES (?, ?, ?, ?, 'normal')`,
@@ -123,22 +142,36 @@ interface HostRef {
  * Records that the daemon is about to ask the host for a launch, creating the slot record if new.
  * The slot keeps the request pending until the launch is recorded, so a daemon that dies between
  * the host's spawn and its record can tell, after restarting, whether a launch may already exist.
+ * The slot's conversation becomes current with the first request; later requests keep it.
  * Its history row's subject is the slot: no launch ID exists yet.
  */
-const recordRequested = (store: Store, slot: PlannedSlot, host: HostRef): Effect.Effect<void, StoreError> =>
+const recordRequested = (
+  store: Store,
+  slot: PlannedSlot,
+  host: HostRef,
+  conversationRef: string,
+): Effect.Effect<void, StoreError> =>
   store.change((change) =>
     Effect.gen(function* () {
+      const now = yield* Clock.currentTimeMillis;
       yield* change.query(
         `INSERT INTO slot (factory_id, slot_id, station, ordinal, condition, pending_host, pending_boot)
          VALUES (?, ?, ?, ?, 'normal', ?, ?)
          ON CONFLICT (factory_id, slot_id) DO UPDATE SET pending_host = excluded.pending_host, pending_boot = excluded.pending_boot`,
         [slot.factoryId, slot.slotId, slot.station.address, slot.ordinal, host.hostId, host.bootId],
       );
+      // A no-op when the slot already has a current conversation (`conversation_one_current`);
+      // the caller read that conversation and passes its ref, so the history row matches it.
+      yield* change.query(
+        `INSERT INTO conversation (factory_id, slot_id, ref, status, created_at) VALUES (?, ?, ?, 'current', ?)
+         ON CONFLICT (factory_id, slot_id) WHERE status = 'current' DO NOTHING`,
+        [slot.factoryId, slot.slotId, conversationRef, now],
+      );
       yield* change.recordHistory({
         factoryId: slot.factoryId,
         kind: "launch.requested",
         subject: slot.slotId,
-        detail: { station: slot.station.address, hostId: host.hostId },
+        detail: { station: slot.station.address, hostId: host.hostId, conversationRef },
         records: [slotRecord(slot.slotId)],
       });
     }),
@@ -207,7 +240,11 @@ interface LaunchEnd {
   readonly signal: string | null;
 }
 
-/** Records the end of a recorded launch once; a launch already ended or never recorded is left alone. */
+/**
+ * Records the end of a recorded launch once; a launch already ended or never recorded is left alone.
+ * An unasked exit by a signal or a non-zero code is marked `unexpected`: the event recovery
+ * accounting counts (PRD §5.3). A clean exit, a requested stop or a machine restart is not.
+ */
 const recordEnd = (store: Store, launchId: string, end: LaunchEnd): Effect.Effect<boolean, StoreError> =>
   Effect.gen(function* () {
     const known = yield* readLaunch(store, launchId);
@@ -224,7 +261,13 @@ const recordEnd = (store: Store, launchId: string, end: LaunchEnd): Effect.Effec
           factoryId: known.factory_id,
           kind: "launch.ended",
           subject: launchId,
-          detail: { slotId: known.slot_id, reason: end.reason, code: end.code, signal: end.signal },
+          detail: {
+            slotId: known.slot_id,
+            reason: end.reason,
+            unexpected: unexpectedEnd(end.reason, end.code, end.signal),
+            code: end.code,
+            signal: end.signal,
+          },
           records: [slotRecord(known.slot_id)],
         });
       }),
@@ -232,6 +275,10 @@ const recordEnd = (store: Store, launchId: string, end: LaunchEnd): Effect.Effec
 
     return true;
   });
+
+/** Whether a recorded end counts as unexpected: the host's rule, for exits it saw unasked. */
+const unexpectedEnd = (reason: LaunchEndReason | null, code: number | null, signal: string | null): boolean =>
+  reason === "exited" && exitWasUnexpected({ code, signal });
 
 const endOf = (launch: LaunchRecord): LaunchEnd | undefined =>
   launch.exit === undefined
@@ -247,9 +294,12 @@ const endOf = (launch: LaunchRecord): LaunchEnd | undefined =>
  * What scheduling did with one slot.
  *
  * - `started`: the host started its first launch.
+ * - `relaunched`: its launch ended unexpectedly (a signal or non-zero code, unasked); the host
+ *   started a new one in the same conversation.
  * - `adopted`: the host reports a live launch the daemon had not recorded; it is now the current one.
- * - `running`: its recorded launch is still live.
- * - `ended`: its launch has ended; relaunching is recovery, not scheduling.
+ * - `running`: its recorded launch is still live, whether or not its worker's channel is connected.
+ * - `ended`: its launch exited cleanly, was stopped on request or ended with a machine restart; it
+ *   is not relaunched here.
  * - `unconfirmed`: ownership is unknown: the host does not know the slot's recorded launch, or a
  *   launch was requested of an earlier host in this boot, which may have left it running.
  * - `duplicate`: the host reports more than one live launch in the slot; nothing is picked or started.
@@ -259,6 +309,7 @@ const endOf = (launch: LaunchRecord): LaunchEnd | undefined =>
  */
 export type SlotScheduleOutcome =
   | "started"
+  | "relaunched"
   | "adopted"
   | "running"
   | "ended"
@@ -298,11 +349,29 @@ export interface SlotSchedulerOptions {
   readonly inScope?: (factoryId: string) => boolean;
 }
 
+/** What handling a host-reported launch exit did. */
+export interface LaunchExitResult {
+  /** True when it ended a recorded launch. */
+  readonly ended: boolean;
+  /** How the slot was rescheduled after an unexpected end, if it was. */
+  readonly recovery?: SlotScheduleResult;
+}
+
 export interface SlotScheduler {
-  /** Reconciles every slot with the host and launches into each vacant, never-launched one. */
+  /**
+   * Reconciles every slot with the host, launches into each vacant, never-launched one, and
+   * relaunches each whose launch ended unexpectedly.
+   */
   schedule(): Promise<ReadonlyArray<SlotScheduleResult>>;
-  /** Records a launch exit the host reported; true when it ended a recorded launch. */
+  /** Records a launch exit the host reported, without relaunching; true when it ended a recorded launch. */
   recordExit(launch: LaunchRecord): Promise<boolean>;
+  /**
+   * Records a launch exit the host reported and, when the launch ended unexpectedly, reschedules its
+   * slot through the same checks as `schedule`, which relaunch it in the same conversation only if
+   * the ended launch is still the slot's current one. A host that cannot be asked is reported as a
+   * `refused` recovery; the end stays recorded.
+   */
+  launchExited(launch: LaunchRecord): Promise<LaunchExitResult>;
   /** Resolves once scheduling and exit reports queued so far have finished. */
   idle(): Promise<void>;
 }
@@ -359,7 +428,12 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
     if (current !== null) {
       const recorded = await Effect.runPromise(readLaunch(store, current));
 
-      if (recorded === undefined || recorded.ended_at !== null) {return result("ended", current);}
+      if (recorded === undefined || recorded.ended_at !== null) {
+        // The host saw it exit unasked: positive death evidence, so the slot continues its conversation.
+        return recorded !== undefined && unexpectedEnd(recorded.end_reason, recorded.exit_code, recorded.exit_signal)
+          ? launchInto(slot, "relaunched")
+          : result("ended", current);
+      }
 
       // Not live on the host, and not reported gone (that was recorded above).
       if (recorded.boot_id !== options.bootId) {
@@ -384,7 +458,7 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
           await Effect.runPromise(recordLaunch(store, slot, gone, "started"));
           await Effect.runPromise(recordEnd(store, gone.launchId, end));
 
-          return result("ended", gone.launchId);
+          return unexpectedEnd(end.reason, end.code, end.signal) ? launchInto(slot, "relaunched") : result("ended", gone.launchId);
         }
       } else if (row.pending_boot === options.bootId) {
         // An earlier host in this boot may have started it, and its process group may still run.
@@ -394,6 +468,20 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
     }
 
     // Host-confirmed vacant and never launched: the slot's first launch.
+    return launchInto(slot, "started");
+  };
+
+  /**
+   * Starts a launch in a slot the host has confirmed vacant, opening the slot's current
+   * conversation, or a new one if it has none yet.
+   */
+  const launchInto = async (slot: PlannedSlot, outcome: "started" | "relaunched"): Promise<SlotScheduleResult> => {
+    const result = (o: SlotScheduleOutcome, launchId?: string): SlotScheduleResult =>
+      launchId === undefined
+        ? { factoryId: slot.factoryId, slotId: slot.slotId, outcome: o }
+        : { factoryId: slot.factoryId, slotId: slot.slotId, outcome: o, launchId };
+
+    const conversationRef = (await Effect.runPromise(readConversation(store, slot.factoryId, slot.slotId))) ?? randomUUID();
     let args;
 
     try {
@@ -409,6 +497,7 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
           slotDir,
           factoryId: slot.factoryId,
           slotId: slot.slotId,
+          conversationRef,
         },
         options.pi,
       );
@@ -416,7 +505,7 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
       return { ...result("refused"), error: messageOf(cause) };
     }
 
-    await Effect.runPromise(recordRequested(store, slot, { hostId: options.hostId, bootId: options.bootId }));
+    await Effect.runPromise(recordRequested(store, slot, { hostId: options.hostId, bootId: options.bootId }, conversationRef));
     let launched: LaunchRecord;
 
     try {
@@ -437,7 +526,7 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
     await Effect.runPromise(recordLaunch(store, slot, launched, "started"));
 
-    return result("started", launched.launchId);
+    return result(outcome, launched.launchId);
   };
 
   const recordGone = async (launch: LaunchRecord): Promise<boolean> => {
@@ -463,6 +552,21 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
         return results;
       }),
     recordExit: (launch) => serial(() => recordGone(launch)),
+    launchExited: (launch) =>
+      serial(async (): Promise<LaunchExitResult> => {
+        const ended = await recordGone(launch);
+        const slot = options.slots.find((s) => s.factoryId === launch.factoryId && s.slotId === launch.slotId);
+
+        if (!ended || launch.exit === undefined || !exitWasUnexpected(launch.exit) || slot === undefined) {return { ended };}
+
+        // The same checks as scheduling: a frozen slot, a stopping factory or a newer live launch
+        // is left alone; only an unexpectedly ended current launch is relaunched.
+        try {
+          return { ended, recovery: await scheduleSlot(slot, await host.inventory()) };
+        } catch (cause) {
+          return { ended, recovery: { factoryId: slot.factoryId, slotId: slot.slotId, outcome: "refused", error: messageOf(cause) } };
+        }
+      }),
     idle: () => serial(async () => {}),
   };
 };

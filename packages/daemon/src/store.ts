@@ -267,6 +267,27 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
         'instruction_missing', 'tool_set_mismatch'))`,
     ],
   },
+  {
+    id: 10,
+    name: "conversation",
+    statements: [
+      // PRD §10.1: a slot's conversation, with its opaque reference and a status of current or
+      // discarded. It outlives a launch: every launch of the slot opens the current one, so a
+      // relaunch after an unexpected end continues it (§10.2). Reset (later) discards it. A slot
+      // launched before this migration gets its conversation at its next launch, so that launch
+      // starts a new Pi session: acceptable before any release, with no operator state to keep.
+      `CREATE TABLE conversation (
+        factory_id TEXT NOT NULL,
+        slot_id TEXT NOT NULL,
+        ref TEXT NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('current', 'discarded')),
+        created_at INTEGER NOT NULL,
+        PRIMARY KEY (factory_id, slot_id, ref),
+        FOREIGN KEY (factory_id, slot_id) REFERENCES slot (factory_id, slot_id)
+      ) STRICT`,
+      `CREATE UNIQUE INDEX conversation_one_current ON conversation (factory_id, slot_id) WHERE status = 'current'`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */

@@ -133,3 +133,26 @@ test("a slot whose launch cannot be built is refused alone; the other slots star
   expect(results[0]?.error).toContain("absolute path");
   expect(asked.map((spec) => spec.slotId)).toEqual(["dev/1"]);
 });
+
+test.each<[string, number | null, string | null, string]>([
+  ["a clean exit (code 0) is recorded and not relaunched", 0, null, "ended"],
+  ["a non-zero exit is relaunched in the same conversation", 7, null, "relaunched"],
+  ["a death by signal is relaunched in the same conversation", null, "SIGKILL", "relaunched"],
+])("%s", async (_name, code, signal, outcome) => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const { host, asked } = fakeHost(inventory);
+  const slots = scheduler(store, stateRoot, host, "host-1", [station("lead", 1)]);
+  await slots.schedule();
+
+  const gone: LaunchRecord = { ...live("launch-1", "lead/1"), liveness: "gone", exit: { code, signal, endedAt: "2026-01-01T00:05:00.000Z" } };
+  inventory[0] = gone;
+  const exited = await slots.launchExited(gone);
+
+  expect(exited.ended).toBe(true);
+  expect(exited.recovery?.outcome ?? "ended").toBe(outcome);
+
+  const sessionIds = asked.map((spec) => spec.args[spec.args.indexOf("--session-id") + 1]);
+  expect(sessionIds).toHaveLength(outcome === "relaunched" ? 2 : 1);
+  expect(new Set(sessionIds).size).toBe(1);
+});

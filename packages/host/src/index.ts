@@ -17,7 +17,7 @@ export type { LaunchExit, LaunchRecord, LaunchSpec, TerminateOptions, Terminatio
 
 export { createLaunchRegistry, type LaunchRegistry } from "./launches.js";
 
-export { endedUnexpectedly, serveHost, type RunningHost } from "./server.js";
+export { endedUnexpectedly, exitWasUnexpected, serveHost, type RunningHost } from "./server.js";
 
 export { terminateGroup, type GroupSignal, type GroupTermination, type TerminateGroupDeps } from "./terminate.js";
 
