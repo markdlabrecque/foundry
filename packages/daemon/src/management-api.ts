@@ -9,6 +9,8 @@ import { chmodSync, linkSync, lstatSync, mkdtempSync, rmdirSync, unlinkSync, typ
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { join } from "node:path";
+import type { HoldsReader } from "./holds.js";
+import { HOLDS_PATH } from "@foundry/protocol/holds";
 import {
   EVENTS_PATH,
   managementSocketPath,
@@ -28,6 +30,8 @@ export interface ManagementApiInputs {
   readonly status: () => StatusResult;
   /** Durable history for `GET /api/v1/events`; without it the route answers 503. */
   readonly events?: EventSource;
+  /** Operator holds (PRD §10.2). Without it the hold routes answer 503. */
+  readonly holds?: HoldsReader;
 }
 
 export interface ManagementApi {
@@ -201,20 +205,18 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
   const url = new URL(request.url ?? "/", "http://foundry");
   const path = url.pathname;
   if (path === EVENTS_PATH) return handleEvents(inputs, url, request, response);
-  if (path !== STATUS_PATH) {
+  const route = routeFor(inputs, path);
+  if (route === undefined) {
     return send(response, 404, failure("not_found", `no route for ${request.method} ${path}`));
   }
   if (request.method !== "GET") {
     response.setHeader("allow", "GET");
     return send(response, 405, failure("method_not_allowed", `${path} only accepts GET`));
   }
-  let result: StatusResult;
-  try {
-    result = inputs.status();
-  } catch (error) {
-    return send(response, 500, failure("internal", `status unavailable: ${(error as Error).message}`));
-  }
-  send(response, 200, { ok: true, result });
+  route().then(
+    ([status, body]) => send(response, status, body),
+    (error: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${describeError(error)}`)),
+  );
 };
 
 const handleEvents = (inputs: ManagementApiInputs, url: URL, request: IncomingMessage, response: ServerResponse): void => {
@@ -228,6 +230,30 @@ const handleEvents = (inputs: ManagementApiInputs, url: URL, request: IncomingMe
   if (!parsed.ok) return send(response, 400, { ok: false, error: parsed.error });
   streamEvents(inputs.events, parsed.query, request, response);
 };
+
+type Route = () => Promise<readonly [number, ApiResponse<unknown>]>;
+
+const HOLD_ID = new RegExp(`^${HOLDS_PATH}/([1-9][0-9]{0,15})$`);
+
+const routeFor = (inputs: ManagementApiInputs, path: string): Route | undefined => {
+  if (path === STATUS_PATH) return async () => [200, { ok: true, result: inputs.status() }];
+  if (path === HOLDS_PATH) return withHolds(inputs, async (holds) => [200, { ok: true, result: await holds.list() }]);
+  const id = HOLD_ID.exec(path)?.[1];
+  if (id === undefined) return undefined;
+  return withHolds(inputs, async (holds) => {
+    const shown = await holds.show(Number(id));
+    return shown === undefined
+      ? [404, failure("not_found", `no hold ${id}`)]
+      : [200, { ok: true, result: shown }];
+  });
+};
+
+const withHolds =
+  (inputs: ManagementApiInputs, use: (holds: HoldsReader) => ReturnType<Route>): Route =>
+  async () =>
+    inputs.holds === undefined ? [503, failure("unavailable", "holds are not served by this daemon")] : use(inputs.holds);
+
+const describeError = (error: unknown): string => (error instanceof Error ? error.message : String(error));
 
 const failure = (code: string, message: string): ApiResponse<never> => ({ ok: false, error: { code, message } satisfies ApiError });
 

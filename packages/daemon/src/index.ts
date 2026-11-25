@@ -46,5 +46,16 @@ export {
   type ManagementApiInputs,
   type ManagementSocketRefusal,
 } from "./management-api.js";
+export {
+  closeHold,
+  getHold,
+  listOpenHolds,
+  raiseHold,
+  storeHoldsReader,
+  type HoldsReader,
+  type RaiseHold,
+  type RaiseOutcome,
+  type RaiseResult,
+} from "./holds.js";
 export { readEvents, storeEventSource, type EventPageQuery, type EventSource } from "./events.js";
 export { formatEvent } from "./events-stream.js";

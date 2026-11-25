@@ -52,6 +52,28 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
   },
   {
     id: 2,
+    name: "operator_hold",
+    statements: [
+      // Operator holds (PRD §10.2): a record type of their own, separate from approvals. A closed
+      // hold is kept; the partial index allows at most one open per factory, kind and subject.
+      `CREATE TABLE operator_hold (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        state TEXT NOT NULL CHECK (state IN ('open', 'resolved', 'cleared')),
+        evidence TEXT NOT NULL,
+        raised_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        CHECK ((state = 'open') = (closed_at IS NULL))
+      ) STRICT`,
+      `CREATE UNIQUE INDEX operator_hold_one_open ON operator_hold (factory_id, kind, subject)
+       WHERE state = 'open'`,
+    ],
+  },
+  {
+    id: 3,
     name: "history_records",
     statements: [
       // The records a history row concerns beyond its subject (PRD §15.1), so events can be
@@ -71,9 +93,6 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
     ],
   },
 ];
-
-/** Conventional file name of the store inside the state root. */
-export const DATABASE_FILE_NAME = "foundry.db";
 
 /** Values that can be bound to a statement parameter. */
 export type SqlValue = string | number | bigint | Uint8Array | null;

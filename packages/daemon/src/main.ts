@@ -4,22 +4,24 @@
  * management API, and hold both until SIGINT or SIGTERM. A clean stop closes the socket,
  * releases the lock and exits 0; a held lock or a socket in use exits 1 (PRD §11.6).
  * Once the root is claimed, diagnostics go to `logs/daemon.log` as well as stderr (PRD §15.2).
- * It opens the database in the state root and streams its history as events. Factory loading
- * arrives in a later ticket.
+ * The database (`foundry.db` in the state root) is opened after the log and before serving; it
+ * serves operator holds and the event stream. Stop order: API close, store close, log close, lock release.
+ * Factory loading arrives in later tickets.
  */
-// First, so it is in place before anything loads `node:sqlite`.
-import "./quiet-sqlite-warning.js";
 import { join } from "node:path";
 import { Effect, Exit, Scope } from "effect";
 import { storeEventSource } from "./events.js";
+import { storeHoldsReader } from "./holds.js";
+import { importStoreQuietly } from "./quiet-store.js";
+import type { Store } from "./store.js";
 import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
 import { isLogLevel, LOG_LEVELS, openDaemonLog, type DaemonLogger, type LogLevel } from "./log.js";
 import { ManagementSocketError, serveManagementApi, type ManagementApi } from "./management-api.js";
-import { DATABASE_FILE_NAME, openStore, type Store } from "./store.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
 
 const EXIT_USAGE = 2;
 const EXIT_INSTANCE_FAILURE = 1;
+const DATABASE_FILE_NAME = "foundry.db";
 
 class UsageError extends Error {}
 
@@ -86,10 +88,22 @@ const main = async (): Promise<void> => {
     return;
   }
 
-  // The store lives as long as the process; WAL keeps a killed daemon's commits. Closing an
-  // unused or already-closed scope is a no-op, so every exit path may call `closeStore`.
+  // One store for the daemon's lifetime, closed with its scope.
   const storeScope = Effect.runSync(Scope.make());
   const closeStore = (): Promise<void> => Effect.runPromise(Scope.close(storeScope, Exit.void));
+  const databaseFile = join(stateRoot, DATABASE_FILE_NAME);
+  let store: Store;
+  try {
+    const { openStore } = await importStoreQuietly();
+    store = await Effect.runPromise(Scope.provide(storeScope)(openStore({ filename: databaseFile })));
+  } catch (error) {
+    log.error("database open failed", { detail: { file: databaseFile, error: (error as Error).message } });
+    await closeStore();
+    log.close();
+    claim.release();
+    fail(`cannot open the database: ${(error as Error).message}`);
+    return;
+  }
 
   // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
   // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
@@ -102,11 +116,10 @@ const main = async (): Promise<void> => {
     // Before the API is up, the code after `serveManagementApi` sees `stopping` and finishes the stop.
     if (api !== undefined) finish(api);
   };
-  // Order: API close, store close, log close, lock release.
   const finish = (served: ManagementApi): void => {
     void served
       .close()
-      .then(closeStore)
+      .finally(closeStore)
       .finally(() => {
         log.close();
         claim.release();
@@ -116,24 +129,12 @@ const main = async (): Promise<void> => {
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
-  const databasePath = join(stateRoot, DATABASE_FILE_NAME);
-  let store: Store;
-  try {
-    store = await Effect.runPromise(openStore({ filename: databasePath }).pipe(Scope.provide(storeScope)));
-  } catch (error) {
-    log.error("database open failed", { detail: { database: databasePath, error: (error as Error).message } });
-    await closeStore();
-    log.close();
-    claim.release();
-    fail(`cannot open the database ${databasePath}: ${(error as Error).message}`);
-    return;
-  }
-
   const startedAt = new Date().toISOString();
   try {
     api = await serveManagementApi({
       stateRoot,
       status: () => ({ instance: { stateRoot, daemonPid: process.pid, startedAt } }),
+      holds: storeHoldsReader(store),
       events: storeEventSource(store),
     });
   } catch (error) {
@@ -155,7 +156,7 @@ const main = async (): Promise<void> => {
     return;
   }
   log.info("daemon started", {
-    detail: { pid: process.pid, stateRoot, socket: api.socketPath, database: databasePath, logLevel: log.level },
+    detail: { pid: process.pid, stateRoot, socket: api.socketPath, logLevel: log.level },
   });
   process.stdout.write(`foundry daemon: state root ${stateRoot} claimed (pid ${process.pid})\n`);
   process.stdout.write(`foundry daemon: management API on ${api.socketPath}\n`);

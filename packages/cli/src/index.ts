@@ -9,4 +9,5 @@ export {
   type StatusOptions,
   type StatusOutcome,
 } from "./status.js";
+export { runHoldList, runHoldShow, type HoldOptions, type HoldOutcome } from "./holds.js";
 export { renderEvent, runEvents, sseParser, type EventsOptions, type EventsOutcome } from "./events.js";
