@@ -1,12 +1,16 @@
-/** Request replies (PRD §6.5, §10.1). Delegation resolution is a separate arm. */
+/** Request replies (PRD §6.5, §10.1), dispatching delegation IDs to their own handler. */
 import { Clock, Effect, Schema } from "effect";
 import { acceptMessage } from "./agent-message.js";
 import type { MessageAcceptanceGuards } from "./agent-message.js";
+import { DelegationReplyArgs, resolveDelegation } from "./delegation-reply.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import { ToolRefusal } from "./submissions.js";
 import type { ToolHandler } from "./submissions.js";
 
-const ReplyArgs = Schema.Struct({ requestId: Schema.NonEmptyString, body: Schema.String });
+const ReplyArgs = Schema.Union([
+  Schema.Struct({ requestId: Schema.NonEmptyString, delegationId: Schema.optional(Schema.Never), body: Schema.String }),
+  DelegationReplyArgs,
+]);
 
 interface RequestRow {
   readonly requester_slot: string;
@@ -20,8 +24,12 @@ interface RequestRow {
  * the reply destination: the logical requester slot survives replacement launches. */
 export const agentReplyHandler = (guards: MessageAcceptanceGuards = {}): ToolHandler => (change, call) => Effect.gen(function* () {
   const args = yield* Schema.decodeUnknownEffect(ReplyArgs)(call.args).pipe(
-    Effect.mapError(() => new ToolRefusal({ code: "invalid_arguments", detail: "agent_reply needs requestId and body" })),
+    Effect.mapError(() => new ToolRefusal({ code: "invalid_arguments", detail: "agent_reply needs requestId and body, or delegationId with outcome and evidence" })),
   );
+
+  if ("delegationId" in args && args.delegationId !== undefined) {
+    return yield* resolveDelegation(change, call, args, guards);
+  }
 
   const rows = yield* change.query<RequestRow>(
     `SELECT requester_slot, recipient_slot, ticket_number, status, deadline FROM agent_request WHERE id = ? AND factory_id = ?`,
