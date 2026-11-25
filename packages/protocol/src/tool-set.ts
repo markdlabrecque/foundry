@@ -1,0 +1,56 @@
+/**
+ * The fixed part of every worker's Tool Set and the tool-name rules (PRD §3.2 "Tool Set", §4
+ * "Extension tools"). Defined once here: the daemon validates and resolves Tool Sets, the
+ * Worker Host puts them on the launch command, and the extension reports them in `hello`.
+ */
+
+/** Pi's four built-in tools every worker has, in launch order. */
+export const PI_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
+
+/** The eight P0 agent tools the Foundry extension registers (PRD §6.1). */
+export const AGENT_TOOLS = [
+  "agent_discover",
+  "agent_status",
+  "agent_message",
+  "agent_request",
+  "agent_reply",
+  "agent_delegate",
+  "task_transition",
+  "human_request",
+] as const;
+
+/** The twelve fixed tools of every worker's Tool Set, in launch order. */
+export const FIXED_TOOLS: readonly string[] = [...PI_BUILTIN_TOOLS, ...AGENT_TOOLS];
+
+/**
+ * Every tool Pi 1.6.0 builds in, enabled or not. All are reserved, not only the four a
+ * worker gets. The host's tests pin this against the installed Pi's own list.
+ */
+export const PI_ALL_BUILTIN_TOOLS: readonly string[] = [
+  "read",
+  "bash",
+  "powershell",
+  "edit",
+  "write",
+  "grep",
+  "find",
+  "ls",
+];
+
+/** Exact names no configured extension may contribute, besides the `mcp__` prefix. */
+export const RESERVED_TOOL_NAMES: ReadonlySet<string> = new Set([
+  ...PI_ALL_BUILTIN_TOOLS,
+  ...AGENT_TOOLS,
+  "codemode",
+  "tool_search",
+]);
+
+/** Prefix of MCP tool names; every name with it is reserved. */
+export const RESERVED_TOOL_PREFIX = "mcp__";
+
+/** A plain, exact tool name: no patterns, and nothing that could split Pi's `--tools` list. */
+export const isPlainToolName = (name: string): boolean => /^[A-Za-z0-9_-]+$/.test(name);
+
+/** Whether an extension may not contribute this tool name (PRD §4). */
+export const isReservedToolName = (name: string): boolean =>
+  RESERVED_TOOL_NAMES.has(name) || name.startsWith(RESERVED_TOOL_PREFIX);

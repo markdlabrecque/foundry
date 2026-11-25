@@ -10,9 +10,18 @@ export {
   type HostRequest,
   type HostResponse,
   type LaunchExitedEvent,
+  type TerminateRequest,
 } from "./control.js";
-export type { LaunchExit, LaunchRecord, LaunchSpec } from "./launches.js";
-export { serveHost, type RunningHost } from "./server.js";
+export type { LaunchExit, LaunchRecord, LaunchSpec, TerminateOptions, Termination } from "./launches.js";
+export { createLaunchRegistry, type LaunchRegistry } from "./launches.js";
+export { endedUnexpectedly, serveHost, type RunningHost } from "./server.js";
+export { terminateGroup, type GroupSignal, type GroupTermination, type TerminateGroupDeps } from "./terminate.js";
+export {
+  LAUNCH_LOGS_DIR,
+  LAUNCH_STDERR_KEEP_PER_SLOT,
+  LAUNCH_STDERR_TAIL_BYTES,
+  launchStderrPath,
+} from "./log.js";
 export {
   HOST_LOG_NAME,
   connectHost,
