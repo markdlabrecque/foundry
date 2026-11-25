@@ -3,7 +3,6 @@ import { createHash } from "node:crypto";
 import { Effect } from "effect";
 import { slotRecord, ticketRecord } from "./history-records.js";
 import { discoverRepositoryContext } from "./repository-context.js";
-import { StoreError } from "./store.js";
 import type { Change } from "./store.js";
 
 interface ContextPart {
@@ -30,6 +29,10 @@ interface AssignmentRepositoryContext extends ContextSource {
 
 /** Read afresh; bundle changed context with the assignment before its first turn can start. */
 export const composeAssignmentRepositoryContext = (change: Change, input: ContextSource) => Effect.gen(function* () {
+  // main imports the store through quiet-store before assigning. A static import here
+  // would load node:sqlite too early and leak its warning into the daemon log stream.
+  const { StoreError } = yield* Effect.promise(() => import("./store.js"));
+
   const context = yield* Effect.tryPromise({
     try: () => discoverRepositoryContext(input.root),
     catch: (cause) => new StoreError({ reason: "Sql", message: `cannot discover repository context at ${input.root}`, cause }),
