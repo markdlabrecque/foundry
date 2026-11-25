@@ -446,14 +446,18 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       // obligation notices must not start stale work after the assignment releases capacity.
       yield* change.query(`UPDATE message SET status = 'dropped' WHERE factory_id = ? AND ticket_number = ?
         AND status IN ('unbound', 'bound') AND NOT EXISTS (SELECT 1 FROM message_attempt WHERE message_id = message.id)`, [factory, number]);
-      yield* change.query(`UPDATE approval SET state = 'resolved', closed_at = ?
-        WHERE factory_id = ? AND ticket_number = ? AND state = 'open'`, [now, factory, number]);
       yield* closeOpenHoldIn(change, { factoryId: factory, kind: "hook_failure", subject: String(number) }, "resolved");
       yield* change.query(`UPDATE ticket SET state = 'cancelled', stage = NULL, status = NULL WHERE factory_id = ? AND number = ?`, [factory, number]);
-      yield* change.query(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
+
+      const transitions = yield* change.query<{ sequence: number }>(`INSERT INTO ticket_transition (factory_id, ticket_number, recorded_at, actor,
         from_state, from_stage, from_status, to_state, config_load)
-        VALUES (?, ?, ?, 'operator', ?, ?, ?, 'cancelled', ?)`,
+        VALUES (?, ?, ?, 'operator', ?, ?, ?, 'cancelled', ?) RETURNING sequence`,
       [factory, number, now, current.row.state, current.row.stage, current.row.status, options.configLoad?.(factory) ?? null]);
+
+      const transition = expectDefined(transitions[0], "the cancellation transition").sequence;
+      yield* change.query(`UPDATE approval SET state = 'resolved', closed_at = ?,
+        resolution_transition = CASE WHEN kind = 'stage_gate' THEN ? ELSE resolution_transition END
+        WHERE factory_id = ? AND ticket_number = ? AND state = 'open'`, [now, transition, factory, number]);
       yield* change.recordHistory({ factoryId: factory, kind: "ticket.transitioned", subject: String(number),
         detail: { from: { state: current.row.state, stage: current.row.stage, status: current.row.status },
           to: { state: "cancelled", stage: null, status: null }, outcome: null, actor: "operator", reason: null,

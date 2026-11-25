@@ -80,8 +80,8 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
   const room = config?.rooms[stage.station.split(".")[0] ?? ""];
   const station = room?.stations[stage.station.split(".")[1] ?? ""];
 
-  if (args.outcome === "done" && (stages?.[index + 1] === undefined || stage.approval)) {
-    return yield* new ToolRefusal({ code: "unsupported_transition", detail: "approval, completion and integration are not supported yet" });
+  if (args.outcome === "done" && stages?.[index + 1] === undefined && !stage.approval) {
+    return yield* new ToolRefusal({ code: "unsupported_transition", detail: "a final stage must require operator approval" });
   }
 
   if ((args.outcome === "done" && station?.isolation === "worktree") || assignment.worktree_path !== null) {
@@ -144,13 +144,18 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
     return { assignmentId: args.assignmentId, ticket: assignment.ticket_number, stage: assignment.stage, status: "paused", approvalId };
   }
 
-  const target = outcomeRoute(stages ?? [], assignment.stage, args.outcome);
+  const gated = args.outcome === "done" && stage.approval;
+  const target = gated ? assignment.stage : outcomeRoute(stages ?? [], assignment.stage, args.outcome);
+
+  if (gated && observation === undefined) {
+    return yield* new ToolRefusal({ code: "commit_required", detail: "a stage gate requires an inspected evaluated commit" });
+  }
 
   if (target === undefined) {
     return yield* new ToolRefusal({ code: "unsupported_transition", detail: "no configured route; completion and integration are not supported yet" });
   }
 
-  if ((args.outcome === "done" && stage.approval) || station === undefined || (stage.writing && station.isolation !== "worktree")) {
+  if (station === undefined || (stage.writing && station.isolation !== "worktree")) {
     return yield* new ToolRefusal({ code: "unsupported_transition", detail: "approval and invalid stage configurations are not supported" });
   }
 
@@ -170,7 +175,7 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
   }
 
   const limitReached = args.outcome === "rejected" && assignment.rejections + 1 >= assignment.rejection_ceiling;
-  const status = limitReached ? "paused" : "queued";
+  const status = gated ? "awaiting_approval" : limitReached ? "paused" : "queued";
   const now = yield* Clock.currentTimeMillis;
   yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = ?, end_reason = ? WHERE id = ?`,
     [now, args.outcome, args.assignmentId]);
@@ -187,13 +192,13 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
 
   let approvalId: number | undefined;
 
-  if (limitReached) {
-    const transition = expectDefined(transitions[0], "the rejection limit transition").sequence;
+  if (gated || limitReached) {
+    const transition = expectDefined(transitions[0], "the gate or rejection limit transition").sequence;
 
     const approvals = yield* change.query<{ id: number }>(
       `INSERT INTO approval (factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at)
-       VALUES (?, ?, ?, ?, 'limit_reached', 'open', ?) RETURNING id`,
-      [call.factoryId, assignment.ticket_number, args.assignmentId, transition, now],
+       VALUES (?, ?, ?, ?, ?, 'open', ?) RETURNING id`,
+      [call.factoryId, assignment.ticket_number, args.assignmentId, transition, gated ? "stage_gate" : "limit_reached", now],
     );
 
     approvalId = expectDefined(approvals[0], "the rejection limit approval").id;
@@ -208,7 +213,7 @@ const transitionHandler = (options: TaskTransitionOptions, observation?: CodeObs
   if (approvalId !== undefined) {
     yield* change.recordHistory({
       factoryId: call.factoryId, kind: "approval.requested", subject: String(approvalId),
-      detail: { kind: "limit_reached", ticket: assignment.ticket_number,
+      detail: { kind: gated ? "stage_gate" : "limit_reached", ticket: assignment.ticket_number,
         transition: expectDefined(transitions[0], "the rejection limit transition").sequence },
       records: [ticketRecord(assignment.ticket_number), slotRecord(call.slotId)],
     });

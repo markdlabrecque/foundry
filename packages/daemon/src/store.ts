@@ -590,6 +590,53 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
   },
   {
     id: 25,
+    name: "stage_gate_approvals",
+    statements: [
+      `ALTER TABLE approval RENAME TO approval_old`,
+      `CREATE TABLE approval (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        assignment_id TEXT NOT NULL REFERENCES assignment(id),
+        transition_sequence INTEGER UNIQUE REFERENCES ticket_transition(sequence),
+        kind TEXT NOT NULL CHECK (kind IN ('blocked', 'worker_request', 'limit_reached', 'stage_gate')),
+        state TEXT NOT NULL CHECK (state IN ('open', 'resolved')),
+        raised_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        request_body TEXT,
+        request_stage TEXT,
+        decision TEXT CHECK (decision IN ('approved', 'rejected')),
+        resolution_transition INTEGER UNIQUE REFERENCES ticket_transition(sequence),
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket(factory_id, number),
+        CHECK ((state = 'open') = (closed_at IS NULL)),
+        CHECK ((kind IN ('blocked', 'limit_reached', 'stage_gate') AND transition_sequence IS NOT NULL AND request_body IS NULL AND request_stage IS NULL)
+          OR (kind = 'worker_request' AND transition_sequence IS NULL AND request_body IS NOT NULL AND request_stage IS NOT NULL)),
+        CHECK ((kind = 'stage_gate' AND state = 'resolved' AND decision IS NOT NULL AND resolution_transition IS NOT NULL)
+          OR (decision IS NULL AND resolution_transition IS NULL AND (kind != 'stage_gate' OR state = 'open')))
+      ) STRICT`,
+      `INSERT INTO approval (id, factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at, closed_at, request_body, request_stage)
+       SELECT id, factory_id, ticket_number, assignment_id, transition_sequence, kind, state, raised_at, closed_at, request_body, request_stage FROM approval_old`,
+      `DROP TABLE approval_old`,
+      `CREATE UNIQUE INDEX approval_one_open_blocked ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'blocked'`,
+      `CREATE UNIQUE INDEX approval_one_open_limit ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'limit_reached'`,
+      `CREATE UNIQUE INDEX approval_one_open_gate ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'stage_gate'`,
+      // Durable handoff only: integration consumes the exact approved commit, never a branch head.
+      `CREATE TABLE integration_intent (
+        approval_id INTEGER PRIMARY KEY REFERENCES approval(id),
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        approved_commit TEXT NOT NULL,
+        transition_sequence INTEGER NOT NULL UNIQUE REFERENCES ticket_transition(sequence),
+        requested_at INTEGER NOT NULL,
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket(factory_id, number)
+      ) STRICT`,
+    ],
+  },
+  {
+    id: 26,
     name: "cancelled_requests",
     statements: [
       `CREATE TABLE agent_request_cancel (
@@ -608,6 +655,51 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
       `DROP TABLE agent_request`,
       `ALTER TABLE agent_request_cancel RENAME TO agent_request`,
       `CREATE INDEX agent_request_deadline ON agent_request (deadline) WHERE status = 'open'`,
+      // A cancelled gate resolves to the cancellation transition without pretending the
+      // operator approved or rejected its commit. Preserve references from integration intents.
+      `CREATE TEMP TABLE saved_integration_intent AS SELECT * FROM integration_intent`,
+      `DROP TABLE integration_intent`,
+      `CREATE TABLE approval_cancel (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        assignment_id TEXT NOT NULL REFERENCES assignment(id),
+        transition_sequence INTEGER UNIQUE REFERENCES ticket_transition(sequence),
+        kind TEXT NOT NULL CHECK (kind IN ('blocked', 'worker_request', 'limit_reached', 'stage_gate')),
+        state TEXT NOT NULL CHECK (state IN ('open', 'resolved')),
+        raised_at INTEGER NOT NULL,
+        closed_at INTEGER,
+        request_body TEXT,
+        request_stage TEXT,
+        decision TEXT CHECK (decision IN ('approved', 'rejected')),
+        resolution_transition INTEGER UNIQUE REFERENCES ticket_transition(sequence),
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket(factory_id, number),
+        CHECK ((state = 'open') = (closed_at IS NULL)),
+        CHECK ((kind IN ('blocked', 'limit_reached', 'stage_gate') AND transition_sequence IS NOT NULL AND request_body IS NULL AND request_stage IS NULL)
+          OR (kind = 'worker_request' AND transition_sequence IS NULL AND request_body IS NOT NULL AND request_stage IS NOT NULL)),
+        CHECK ((kind = 'stage_gate' AND state = 'resolved' AND resolution_transition IS NOT NULL)
+          OR (decision IS NULL AND resolution_transition IS NULL AND (kind != 'stage_gate' OR state = 'open')))
+      ) STRICT`,
+      `INSERT INTO approval_cancel SELECT * FROM approval`,
+      `DROP TABLE approval`,
+      `ALTER TABLE approval_cancel RENAME TO approval`,
+      `CREATE TABLE integration_intent (
+        approval_id INTEGER PRIMARY KEY REFERENCES approval(id),
+        factory_id TEXT NOT NULL,
+        ticket_number INTEGER NOT NULL,
+        approved_commit TEXT NOT NULL,
+        transition_sequence INTEGER NOT NULL UNIQUE REFERENCES ticket_transition(sequence),
+        requested_at INTEGER NOT NULL,
+        FOREIGN KEY (factory_id, ticket_number) REFERENCES ticket(factory_id, number)
+      ) STRICT`,
+      `INSERT INTO integration_intent SELECT * FROM saved_integration_intent`,
+      `DROP TABLE saved_integration_intent`,
+      `CREATE UNIQUE INDEX approval_one_open_blocked ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'blocked'`,
+      `CREATE UNIQUE INDEX approval_one_open_limit ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'limit_reached'`,
+      `CREATE UNIQUE INDEX approval_one_open_gate ON approval(factory_id, ticket_number)
+       WHERE state = 'open' AND kind = 'stage_gate'`,
     ],
   },
 ];

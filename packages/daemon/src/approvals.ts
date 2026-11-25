@@ -20,6 +20,8 @@ interface ApprovalRow {
   readonly evidence: string;
   readonly git_commit: string | null;
   readonly config_load: string | null;
+  readonly decision: "approved" | "rejected" | null;
+  readonly resolution_transition: number | null;
 }
 
 const SELECT = `SELECT a.*, COALESCE(t.from_stage, a.request_stage) AS from_stage, t.outcome,
@@ -33,6 +35,7 @@ const toRecord = (row: ApprovalRow): ApprovalRecord => decode({
   id: row.id, factoryId: row.factory_id, ticket: row.ticket_number, assignmentId: row.assignment_id,
   transition: row.transition_sequence, stage: row.from_stage, kind: row.kind, state: row.state,
   outcome: row.outcome, reason: row.reason, evidence: decodeEvidence(row.evidence), commit: row.git_commit,
+  decision: row.decision, resolutionTransition: row.resolution_transition,
   configLoad: row.config_load, raisedAt: new Date(row.raised_at).toISOString(),
   closedAt: row.closed_at === null ? null : new Date(row.closed_at).toISOString(),
 });
