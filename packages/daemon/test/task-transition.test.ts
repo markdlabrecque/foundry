@@ -1224,7 +1224,7 @@ test("final approval wakes the durable integration queue after commit", async ()
 
 // Reuse the gate fixture: this boundary test includes worker outcome, operator approval,
 // durable queue reopen and real Git; no daemon, HTTP or production state is needed.
-test.each(["complete", "merge", "cleanup-dirty", "cleanup-hook-failed", "moved", "conflict", "conflict-limit", "dirty", "cancelled", "merge-error", "stale"] as const)("approved integration: %s", async (scenario) => {
+test.each(["complete", "merge", "cleanup-dirty", "cleanup-hook-failed", "moved", "verify-pass", "verify-fail", "verify-limit", "verify-spawn-error", "setup-fail", "conflict", "conflict-limit", "dirty", "cancelled", "merge-error", "stale"] as const)("approved integration: %s", async (scenario) => {
   const saved = await gateFixture(true, true, (store, id, root, base, gatedConfig) => Effect.gen(function* () {
     const repository = join(root, "repository");
     const path = join(root, "worktree");
@@ -1272,15 +1272,15 @@ test.each(["complete", "merge", "cleanup-dirty", "cleanup-hook-failed", "moved",
 
     const branchHead = git(path, "rev-parse", "HEAD");
 
-    if (scenario === "conflict-limit") {
+    if (scenario === "conflict-limit" || scenario === "verify-limit") {
       yield* store.change((change) => Effect.gen(function* () {
         yield* change.query(`UPDATE ticket SET rejections = rejection_ceiling - 1`);
         yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "near limit" });
       }));
     }
 
-    if (scenario === "moved" || scenario === "conflict" || scenario === "conflict-limit") {
-      writeFileSync(join(repository, scenario === "moved" ? "default.txt" : "reviewed.txt"), "concurrent\n");
+    if (scenario === "moved" || scenario.startsWith("verify-") || scenario === "setup-fail" || scenario === "conflict" || scenario === "conflict-limit") {
+      writeFileSync(join(repository, scenario === "conflict" || scenario === "conflict-limit" ? "reviewed.txt" : "default.txt"), "concurrent\n");
       git(repository, "add", ".");
       git(repository, "commit", "--quiet", "-m", "default advanced");
     } else if (scenario === "dirty") {
@@ -1304,7 +1304,26 @@ test.each(["complete", "merge", "cleanup-dirty", "cleanup-hook-failed", "moved",
       worktrees: { before_remove: scenario === "cleanup-hook-failed" ? ["sh", "-c", "exit 19"] : undefined },
     }));
 
-    return { root, repository, path, source, sourceRefs, base, approved, branchHead, yamlFile, gatedConfig, previousHead: git(repository, "rev-parse", "main") };
+    const verify = scenario === "verify-spawn-error" ? [join(root, "missing-command")] : scenario.startsWith("verify-") ? [process.execPath, "-e", `
+      const fs = require('node:fs');
+      const cp = require('node:child_process');
+      const assert = require('node:assert/strict');
+      assert.equal(fs.readFileSync('reviewed.txt', 'utf8'), 'reviewed\\n');
+      assert.equal(fs.readFileSync('default.txt', 'utf8'), 'concurrent\\n');
+      assert.equal(fs.readFileSync('setup-marker', 'utf8'), 'ready');
+      const head = cp.execFileSync('git', ['rev-list', '--parents', '-n', '1', 'HEAD'], {encoding: 'utf8'}).trim().split(' ');
+      assert.equal(head[2], ${JSON.stringify(approved)});
+      assert.equal(cp.execFileSync('git', ['rev-parse', 'main'], {encoding: 'utf8'}).trim(), head[1]);
+      fs.writeFileSync('verify-artifact', 'must not land');
+      fs.writeFileSync('reviewed.txt', 'verification edits must not land');
+      console.log('verified proposed merge');
+      process.exit(${scenario === "verify-pass" ? 0 : 23});
+    `] : undefined;
+
+    const line = expectDefined(gatedConfig.production_lines["standard"], "line");
+    const integrationConfig = { ...gatedConfig, production_lines: { standard: verify === undefined ? line : { ...line, verify } } };
+
+    return { root, repository, path, source, sourceRefs, base, approved, branchHead, yamlFile, gatedConfig: integrationConfig, previousHead: git(repository, "rev-parse", "main") };
   }));
 
   // Reopen before consuming: approved integration is not an in-memory callback.
@@ -1347,7 +1366,20 @@ exit "$status"
     const worktrees = createWorktreeService({ store, stateRoot: saved.root, env, factories: () => ["shop"],
       target: () => ({ factory, clonePath: saved.repository }) });
 
-    const queue = createFactorySyncer({ store, env, worktrees, target: () => ({ clonePath: saved.repository, defaultBranch: "main", config: saved.gatedConfig }),
+    let setupPath: string | undefined;
+
+    const queue = createFactorySyncer({ store, env, worktrees,
+      beforeVerify: ({ path }) => Effect.sync(() => {
+        setupPath = path;
+        expect(path).not.toBe(saved.repository);
+        expect(path).not.toBe(saved.path);
+        expect(readFileSync(join(path, "default.txt"), "utf8")).toBe("concurrent\n");
+        expect(git(saved.repository, "rev-parse", "main")).toBe(saved.previousHead);
+        writeFileSync(join(path, "setup-marker"), "ready");
+
+        return scenario !== "setup-fail";
+      }),
+      target: () => ({ clonePath: saved.repository, defaultBranch: "main", config: saved.gatedConfig }),
       onError: (_factory, cause) => { queueError = String(cause); } });
 
     yield* Effect.promise(() => queue.resumeQueued("shop"));
@@ -1367,24 +1399,53 @@ exit "$status"
       return;
     }
 
-    const removed = scenario === "complete" || scenario === "merge";
+    const removed = scenario === "complete" || scenario === "merge" || scenario === "moved" || scenario === "verify-pass";
     const complete = removed || scenario === "cleanup-dirty" || scenario === "cleanup-hook-failed";
+    const verifyRejected = scenario === "verify-fail" || scenario === "verify-limit" || scenario === "verify-spawn-error";
+    const movedMerge = scenario === "moved" || scenario === "verify-pass";
     const landed = git(saved.repository, "rev-parse", "main");
     const operations = yield* listOperations(store, "shop");
     expect(operations).toMatchObject([{ kind: "integration", status: complete ? "complete" : "failed",
-      result: complete ? { head: landed, fastForward: scenario !== "merge", cleanup: "pending" } : { reason: expect.any(String) } },
+      result: complete ? { head: landed, fastForward: scenario !== "merge" && !movedMerge, cleanup: "pending" } : { reason: expect.any(String) } },
     ...(complete ? [{ kind: "cleanup", status: removed ? "complete" : "failed" }] : []),
     ...(scenario === "cleanup-hook-failed" ? [{ kind: "hook", status: "failed" }] : [])]);
     expect(yield* store.read(`SELECT state, status, worktree_path, branch FROM ticket`)).toEqual([{
       state: complete ? "completed" : scenario === "cancelled" ? "cancelled" : "stage",
-      status: complete || scenario === "cancelled" ? null : scenario === "conflict" ? "queued" : "paused", worktree_path: removed ? null : saved.path, branch: removed ? null : "ticket/1",
+      status: complete || scenario === "cancelled" ? null : scenario === "conflict" || scenario === "verify-fail" || scenario === "verify-spawn-error" ? "queued" : "paused", worktree_path: removed ? null : saved.path, branch: removed ? null : "ticket/1",
     }]);
 
     if (!complete) {expect(landed).toBe(saved.previousHead);}
 
     const service = createTicketService({ store, stateRoot: saved.root, factories: () => [ticketFactoryFrom(saved.gatedConfig)] });
     const detail = yield* service.show("shop", 1);
-    expect(detail.transitions.at(-1)?.evidence).toEqual(scenario === "conflict" || scenario === "conflict-limit" ? ["reviewed.txt"] : []);
+    expect(detail.transitions.at(-1)?.evidence).toEqual(scenario === "conflict" || scenario === "conflict-limit" ? ["reviewed.txt"] : verifyRejected ? [expect.stringContaining("Verification failed:")] : []);
+
+    if (scenario.startsWith("verify-")) {
+      expect(operations[0]?.result).toMatchObject({ verification: { status: scenario === "verify-pass" ? "passed" : "failed", logPath: expect.any(String) } });
+      const verification = Schema.decodeUnknownSync(Schema.Struct({ logPath: Schema.String }))(operations[0]?.result?.["verification"]);
+      expect(existsSync(verification.logPath)).toBe(true);
+
+      if (scenario !== "verify-spawn-error") {expect(readFileSync(verification.logPath, "utf8")).toContain("verified proposed merge");}
+
+      if (verifyRejected) {
+        expect(yield* store.read(`SELECT stage, rejections FROM ticket`)).toEqual([{ stage: "revise", rejections: scenario === "verify-limit" ? 3 : 1 }]);
+        expect(yield* store.read(`SELECT * FROM integration_intent`)).toEqual([]);
+        expect(yield* store.read(`SELECT outcome FROM ticket_transition ORDER BY sequence DESC LIMIT 1`)).toEqual([{ outcome: "rejected" }]);
+
+        if (scenario === "verify-limit") {expect((yield* Effect.promise(() => storeApprovalsReader(store).list())).approvals).toMatchObject([{ kind: "limit_reached", state: "open" }]);}
+      }
+    }
+
+    if (scenario === "moved") {expect(operations[0]?.result).toMatchObject({ verification: { status: "unchecked" } });}
+
+    if (scenario === "setup-fail") {
+      expect(yield* store.read(`SELECT rejections FROM ticket`)).toEqual([{ rejections: 0 }]);
+      expect(yield* store.read(`SELECT approved_commit FROM integration_intent`)).toEqual([{ approved_commit: saved.approved }]);
+    }
+
+    if (setupPath !== undefined) {expect(existsSync(setupPath)).toBe(false);}
+
+    expect(git(saved.repository, "worktree", "list", "--porcelain").match(/^worktree /gm)).toHaveLength(removed ? 1 : 2);
 
     if (scenario === "conflict" || scenario === "conflict-limit") {
       expect(yield* listOperations(store, "shop")).toMatchObject([{ status: "failed", result: {
@@ -1420,10 +1481,14 @@ exit "$status"
     expect(git(saved.source, "for-each-ref", "--format=%(refname) %(objectname)")).toBe(saved.sourceRefs);
 
     if (complete) {
-      if (scenario === "merge") {
+      if (scenario === "merge" || movedMerge) {
         expect(git(saved.repository, "rev-list", "--parents", "-n", "1", "main").split(" "))
           .toEqual([landed, saved.previousHead, saved.approved]);
-        expect(git(saved.repository, "show", "main:default-base.txt")).toBe("preserve default");
+
+        if (movedMerge) {
+          expect(git(saved.repository, "show", "main:default.txt")).toBe("concurrent");
+          expect(git(saved.repository, "ls-tree", "--name-only", "main")).not.toMatch(/setup-marker|verify-artifact/);
+        } else {expect(git(saved.repository, "show", "main:default-base.txt")).toBe("preserve default");}
       } else {
         expect(landed).toBe(saved.approved);
       }
