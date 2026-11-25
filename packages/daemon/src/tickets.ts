@@ -32,6 +32,7 @@ import type { Query, Store, StoreError } from "./store.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { reserveAssignmentSlot } from "./assignment-reservation.js";
 import { resumeFirstAfterCreate } from "./after-create-resume.js";
+import { restoreRejectionAllowance } from "./rejection-allowance.js";
 import { restoreMessageAllowance } from "./message-allowance.js";
 
 /** What submission needs to know about a loaded factory's production line. */
@@ -45,6 +46,7 @@ export interface TicketFactory {
   readonly defaultLine: string;
   readonly lines: Readonly<Record<string, TicketLine>>;
   readonly messageBudget: number;
+  readonly recoveryLimit?: number;
 }
 
 /** Schema defaults (PRD §4); decoding applies them, but the decoded type still marks the keys optional. */
@@ -56,6 +58,7 @@ export const ticketFactoryFrom = (config: FactoryConfig): TicketFactory => ({
   name: config.name,
   defaultLine: config.default_production_line,
   messageBudget: config.message_budget ?? DEFAULT_MESSAGE_BUDGET,
+  recoveryLimit: config.recovery_limit ?? 3,
   lines: Object.fromEntries(
     Object.entries(config.production_lines).map(([name, line]) => [
       name,
@@ -178,6 +181,7 @@ interface TransitionRow {
   git_commit: string | null;
   evidence: string;
   config_load: string | null;
+  voided_transitions: string;
 }
 
 const iso = (ms: number): string => new Date(ms).toISOString();
@@ -219,6 +223,7 @@ const transition = (row: TransitionRow): TicketTransition => ({
   commit: row.git_commit,
   evidence: decodeEvidence(row.evidence),
   configLoad: row.config_load,
+  voidedTransitions: Schema.decodeUnknownSync(Schema.fromJsonString(Schema.Array(Schema.Number)))(row.voided_transitions ?? "[]"),
 });
 
 const refuse = (code: TicketErrorCode, message: string) => Effect.fail(new TicketError({ code, message }));
@@ -568,6 +573,8 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
     if (yield* resumeFirstAfterCreate(store, factory, number, options.configLoad?.(factory))) {return yield* show(factory, number);}
 
     yield* store.change((change) => Effect.gen(function* () {
+      if (yield* restoreRejectionAllowance(change, options, factory, number, "resume")) {return;}
+
       const [row] = yield* change.query<{ id: string; stage: string; status: string }>(
         `SELECT a.id, t.stage, t.status FROM ticket t JOIN assignment a ON a.factory_id = t.factory_id AND a.ticket_number = t.number
          WHERE t.factory_id = ? AND t.number = ? AND t.state = 'stage'
@@ -584,6 +591,12 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       const limit = yield* change.query(`SELECT id FROM approval WHERE factory_id = ? AND ticket_number = ? AND kind = 'limit_reached' AND state = 'open'`, [factory, number]);
 
       if (limit.length > 0) {return yield* refuse("invalid_state", "Resuming this limit-reached ticket requires an allowance grant");}
+
+      // Grant once on the paused -> queued transition, not when queued abandonment consent changes.
+      if (row.status === 'paused') {
+        yield* change.query(`UPDATE assignment SET recovery_ceiling = recovery_ceiling + ?
+          WHERE id = ? AND recovery_count >= recovery_ceiling`, [loaded.recoveryLimit ?? 3, row.id]);
+      }
 
       yield* change.query(`INSERT INTO assignment_resume (assignment_id, operator_message, allow_abandon) VALUES (?, ?, ?)
         ON CONFLICT(assignment_id) DO UPDATE SET operator_message = excluded.operator_message, allow_abandon = excluded.allow_abandon`, [row.id, message ?? null, allowAbandon ? 1 : 0]);
