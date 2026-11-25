@@ -521,6 +521,22 @@ export const foundryMigrations: ReadonlyArray<Migration> = [
        WHERE state = 'open' AND kind = 'blocked'`,
     ],
   },
+  {
+    id: 22,
+    name: "ticket_resume",
+    statements: [
+      `CREATE TABLE assignment_resume (
+        assignment_id TEXT PRIMARY KEY REFERENCES assignment(id),
+        operator_message TEXT,
+        allow_abandon INTEGER NOT NULL CHECK (allow_abandon IN (0, 1))
+      ) STRICT`,
+      `CREATE TABLE resume_notice (
+        message_id TEXT PRIMARY KEY REFERENCES message(id),
+        assignment_id TEXT NOT NULL REFERENCES assignment(id)
+      ) STRICT`,
+      `CREATE INDEX resume_notice_assignment ON resume_notice(assignment_id)`,
+    ],
+  },
 ];
 
 /** File name of the database inside the state root. */
