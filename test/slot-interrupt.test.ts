@@ -222,6 +222,9 @@ test("pausing an assigned ticket waits for settlement, suspends without abandoni
   // An abort request alone is not enough: the worker must acknowledge a settled run.
   expect(await Effect.runPromise(pauseSnapshot(d.store))).toEqual(before);
   expect(await Effect.runPromise(d.assignments.schedule())).toEqual([]);
+  const duplicate = await runTicketPause({ json: true, home: d.home, factory: "alpha", number: 1, env });
+  expect(JSON.parse(duplicate.stdout)).toMatchObject({ ok: false, error: { code: "invalid_state" } });
+  expect(d.aborts()).toBe(1);
   d.settle();
   const paused = await pending;
   expect(paused.exitCode).toBe(EXIT_OK);
@@ -288,6 +291,32 @@ test("pause refusals and a failed commit preserve all durable state", async () =
   expect(Exit.isFailure(await Effect.runPromise(Effect.exit(service.pause(undefined, 1))))).toBe(true);
   expect(await Effect.runPromise(pauseSnapshot(d.store))).toEqual(before);
   expect(d.aborts()).toBe(1);
+});
+
+test("an assignment replaced during interruption is not suspended and gets no pause transition", async () => {
+  const d = await daemonWithWorker();
+  await Effect.runPromise(d.tickets.submit({ title: "First", spec: "Spec" }));
+  await Effect.runPromise(d.assignments.schedule());
+  let successor: unknown;
+
+  const service = createTicketService({ ...d.ticketOptions, interrupter: {
+    interrupt: async (slot, factory) => {
+      const result = await d.ticketOptions.interrupter.interrupt(slot, factory);
+      await Effect.runPromise(d.store.change((change) => Effect.gen(function* () {
+        yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1, end_reason = 'abandoned'`);
+        yield* change.query(`INSERT INTO assignment (id, factory_id, ticket_number, stage, slot_id, status, recovery_ceiling, created_at, context_message)
+          SELECT 'replacement', factory_id, ticket_number, stage, slot_id, 'active', recovery_ceiling, 2, context_message FROM assignment`);
+        yield* change.recordHistory({ factoryId: "alpha", kind: "fixture.replaced", subject: "1" });
+      })));
+      successor = await Effect.runPromise(pauseSnapshot(d.store));
+
+      return result;
+    },
+  } });
+
+  const result = await Effect.runPromise(Effect.exit(service.pause(undefined, 1)));
+  expect(Exit.isFailure(result) && Cause.squash(result.cause)).toMatchObject({ code: "invalid_state" });
+  expect(await Effect.runPromise(pauseSnapshot(d.store))).toEqual(successor);
 });
 
 test("interrupting a slot aborts its run and keeps the same slot, launch and conversation", async () => {

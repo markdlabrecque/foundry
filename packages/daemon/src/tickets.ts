@@ -269,10 +269,26 @@ export const createTicketService = (options: TicketServiceOptions): TicketServic
       return { ticket: ticket(row), transitions: transitions.map(transition) };
     });
 
-  // Keep capacity reserved until the authenticated worker acknowledges settlement. Do not hold
-  // a database transaction across channel I/O; recheck the assignment identity before committing.
+  // A duplicate action must not retain a stale assignment and later interrupt its successor.
+  // Reserve the ticket before the first read, through acknowledgement and durable suspension.
+  const pausing = new Set<string>();
+
   const pause: TicketService["pause"] = (name, number) => Effect.gen(function* () {
     const factory = (yield* loadedFactory(name)).name;
+    const key = JSON.stringify([factory, number]);
+
+    return yield* Effect.suspend(() => {
+      if (pausing.has(key)) {return refuse("invalid_state", "The ticket is already being paused");}
+
+      pausing.add(key);
+
+      return pauseAssigned(factory, number).pipe(Effect.ensuring(Effect.sync(() => { pausing.delete(key); })));
+    }).pipe(Effect.uninterruptible);
+  });
+
+  // Keep capacity reserved until the authenticated worker acknowledges settlement. Do not hold
+  // a database transaction across channel I/O; recheck the assignment identity before committing.
+  const pauseAssigned = (factory: string, number: number) => Effect.gen(function* () {
     const current = yield* show(factory, number);
 
     if (current.ticket.state !== "stage" || current.ticket.status !== "assigned") {
