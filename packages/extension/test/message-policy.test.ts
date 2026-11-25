@@ -1,8 +1,11 @@
 // Tier: unit. Fake Pi lifecycle and injection outcomes prove policy without sessions or sockets.
-import { expect, test } from "vitest";
+import { afterEach, expect, test, vi } from "vitest";
+
 import { deliverMessages, interruptRuns, MessageReceiver, receiveDaemonFrames, RunInterrupter } from "@foundry/extension";
 import type { ConversationAdapter } from "@foundry/extension";
 import type { Message } from "@foundry/protocol";
+
+afterEach(() => vi.useRealTimers());
 
 // Like the interrupt fixture, handlers accept the event/context supplied by each test.
 type PiHandler = (...args: Array<any>) => any;
@@ -73,7 +76,15 @@ const fixture = (busy = true, deferSettledInjections = false) => {
     for (const action of deferred.splice(0)) {await action();}
   };
 
-  return { pi, state, receiver, receive, injected, settle,
+  const compact = async () => {
+    state.busy = true;
+
+    for (const handler of handlers.get("session_compact") ?? []) {await handler({}, {});}
+
+    state.busy = false;
+  };
+
+  return { pi, state, receiver, receive, injected, settle, compact,
     duringRun: (action: () => void) => { duringRun = action; } };
 };
 
@@ -121,6 +132,25 @@ test("successful standalone compaction releases held messages only after Pi clea
   state.busy = false;
   await tick();
   expect(injected).toEqual(["held"]);
+});
+
+test("standalone compaction delivers after a later async handler finishes, without another event", async () => {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+  const { pi, receive, injected, compact } = fixture();
+  let release!: () => void;
+  const blocked = new Promise<void>((resolve) => { release = resolve; });
+
+  pi.on("session_compact", () => blocked);
+  receive("held");
+  const compacting = compact();
+  await tick();
+  expect(injected).toEqual([]);
+  expect(vi.getTimerCount()).toBe(1);
+  release();
+  await compacting;
+  await vi.advanceTimersByTimeAsync(25);
+  expect(injected).toEqual(["held"]);
+  expect(vi.getTimerCount()).toBe(0);
 });
 
 test("compaction inside a run cannot release messages; failed or aborted standalone compaction can", async () => {
