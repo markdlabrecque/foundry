@@ -1,7 +1,8 @@
 /**
  * Worker Host process entry: `node main.js <state-root>`.
  * Started detached by `startHost`; prints one ready line with its identity on
- * stdout, then closes stdout so it holds nothing of its starter.
+ * stdout, then closes stdout so the starter's pipe reaches EOF. Stdin is
+ * /dev/null and stderr is the host log, so no fd ties the host to its starter.
  */
 import { serveHost } from "./server.js";
 

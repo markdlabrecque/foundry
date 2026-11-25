@@ -83,18 +83,27 @@ function answer(line: string, identity: HostIdentity): HostResponse {
   return { id, ok: false, error: `unknown op: ${String(op)}` };
 }
 
-/** Refuses if a host already answers; removes a socket file nobody answers on. */
+/**
+ * Refuses if a host already answers; removes a socket file nobody answers on.
+ * Probe-then-unlink is racy between two concurrent starters, so callers must
+ * hold the state-root instance lock while starting a host.
+ */
 async function clearStaleSocket(socketPath: string): Promise<void> {
-  const answered = await new Promise<boolean>((resolve) => {
-    const probe = connect(socketPath);
-    probe.once("connect", () => {
-      probe.destroy();
-      resolve(true);
+  const probe = await new Promise<"answered" | "stale" | Error>((resolve) => {
+    const socket = connect(socketPath);
+    socket.once("connect", () => {
+      socket.destroy();
+      resolve("answered");
     });
-    probe.once("error", () => resolve(false));
+    socket.once("error", (error: NodeJS.ErrnoException) => {
+      resolve(error.code === "ECONNREFUSED" || error.code === "ENOENT" ? "stale" : error);
+    });
   });
-  if (answered) {
+  if (probe === "answered") {
     throw new Error(`a Worker Host already answers on ${socketPath}`);
+  }
+  if (probe instanceof Error) {
+    throw new Error(`cannot tell whether a Worker Host answers on ${socketPath}: ${probe.message}`);
   }
   await unlink(socketPath).catch((error: NodeJS.ErrnoException) => {
     if (error.code !== "ENOENT") throw error;

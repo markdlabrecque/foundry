@@ -15,8 +15,20 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
 });
 
+/** Stops whatever host answers on `stateRoot`; does nothing if none answers. */
+async function stopHostIfRunning(stateRoot: string): Promise<void> {
+  try {
+    const control = await connectHost(stateRoot, { requestTimeoutMs: 2_000 });
+    const { pid } = await control.identify();
+    control.close();
+    process.kill(pid, "SIGTERM");
+  } catch {
+    // Nothing answers: no host to stop.
+  }
+}
+
 /** Starts a host from a separate starter process that also dials it, then exits. */
-function startHostFromStarterProcess(stateRoot: string): HostIdentity {
+function startHostFromStarterProcess(stateRoot: string): { starterPid: number; started: HostIdentity } {
   const starter = `
     import { connectHost, startHost } from "@foundry/host";
     const root = process.env.FOUNDRY_TEST_STATE_ROOT;
@@ -24,7 +36,7 @@ function startHostFromStarterProcess(stateRoot: string): HostIdentity {
     const control = await connectHost(root);
     await control.identify();
     control.close();
-    process.stdout.write(JSON.stringify(started));
+    process.stdout.write(JSON.stringify({ starterPid: process.pid, started }));
   `;
   const result = spawnSync(process.execPath, ["--input-type=module", "-e", starter], {
     cwd: repoRoot,
@@ -32,21 +44,18 @@ function startHostFromStarterProcess(stateRoot: string): HostIdentity {
     encoding: "utf8",
     timeout: 20_000,
   });
-  expect(result.stderr).toBe("");
-  expect(result.status).toBe(0);
-  return JSON.parse(result.stdout) as HostIdentity;
+  expect(result.status, result.stderr).toBe(0);
+  return JSON.parse(result.stdout) as { starterPid: number; started: HostIdentity };
 }
 
 test("a detached Worker Host survives its starter and control client and can be reached again", async () => {
   const stateRoot = await mkdtemp(join(tmpdir(), "foundry-host-"));
   cleanups.push(() => rm(stateRoot, { recursive: true, force: true }));
+  // Registered before the start, so a failed check below still stops the host.
+  cleanups.push(() => stopHostIfRunning(stateRoot));
 
-  const started = startHostFromStarterProcess(stateRoot);
-  cleanups.push(async () => {
-    try {
-      process.kill(started.pid, "SIGTERM");
-    } catch {}
-  });
+  const { starterPid, started } = startHostFromStarterProcess(stateRoot);
+  expect(started.pid).not.toBe(starterPid);
 
   // The starter process has exited and its control connection is closed.
   const first = await connectHost(stateRoot);

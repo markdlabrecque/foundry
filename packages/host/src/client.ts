@@ -12,8 +12,12 @@ import {
   type HostResponse,
 } from "./control.js";
 
-/** File in the state root that receives the host's stderr. */
-export const HOST_LOG_NAME = "host.log";
+/** Path, relative to the state root, of the file that receives the host's stderr (PRD §15.2). */
+export const HOST_LOG_NAME = join("logs", "host.log");
+
+export function hostLogPath(stateRoot: string): string {
+  return join(stateRoot, HOST_LOG_NAME);
+}
 
 export interface StartHostOptions {
   /** How long to wait for the host's ready line. Default 10 s. */
@@ -30,7 +34,8 @@ export async function startHost(
   options: StartHostOptions = {},
 ): Promise<HostIdentity> {
   await mkdir(stateRoot, { recursive: true, mode: 0o700 });
-  const logPath = join(stateRoot, HOST_LOG_NAME);
+  await mkdir(join(stateRoot, "logs"), { recursive: true, mode: 0o700 });
+  const logPath = hostLogPath(stateRoot);
   const log = await open(logPath, "a", 0o600);
   try {
     const mainPath = fileURLToPath(new URL("./main.js", import.meta.url));
@@ -41,9 +46,8 @@ export async function startHost(
     const stdout = child.stdout;
     if (stdout === null) throw new Error("worker host spawned without a stdout pipe");
 
-    const identity = await new Promise<HostIdentity>((resolve, reject) => {
+    const ready = new Promise<HostIdentity>((resolve, reject) => {
       const timer = setTimeout(() => {
-        child.kill("SIGKILL");
         reject(new Error(`worker host did not become ready; see ${logPath}`));
       }, options.readyTimeoutMs ?? 10_000);
       const settle = (): void => {
@@ -67,17 +71,24 @@ export async function startHost(
         if (newline === -1) return;
         settle();
         try {
-          const ready = JSON.parse(buffered.slice(0, newline)) as { identity: HostIdentity };
-          resolve(ready.identity);
+          const line = JSON.parse(buffered.slice(0, newline)) as { identity: HostIdentity };
+          resolve(line.identity);
         } catch (error) {
           reject(error);
         }
       });
     });
 
-    stdout.destroy();
-    child.unref();
-    return identity;
+    try {
+      return await ready;
+    } catch (error) {
+      // A failed start must neither leave a host behind nor hold the starter open.
+      child.kill("SIGKILL");
+      throw error;
+    } finally {
+      stdout.destroy();
+      child.unref();
+    }
   } finally {
     await log.close();
   }

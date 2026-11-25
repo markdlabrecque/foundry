@@ -13,6 +13,7 @@ export { serveHost, type RunningHost } from "./server.js";
 export {
   HOST_LOG_NAME,
   connectHost,
+  hostLogPath,
   startHost,
   type ConnectHostOptions,
   type HostConnection,
