@@ -3,38 +3,53 @@
  * Foreground daemon entry point: select the state root, claim it exclusively, serve the
  * management API, and hold both until SIGINT or SIGTERM. A clean stop closes the socket,
  * releases the lock and exits 0; a held lock or a socket in use exits 1 (PRD §11.6).
+ * Once the root is claimed, diagnostics go to `logs/daemon.log` as well as stderr (PRD §15.2).
  * It opens the database in the state root and streams its history as events. Factory loading
  * arrives in a later ticket.
  */
-import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
-import { ManagementSocketError, serveManagementApi, type ManagementApi } from "./management-api.js";
-import { selectStateRoot } from "@foundry/protocol/state-root";
+// First, so it is in place before anything loads `node:sqlite`.
+import "./quiet-sqlite-warning.js";
 import { join } from "node:path";
 import { Effect, Exit, Scope } from "effect";
 import { storeEventSource } from "./events.js";
-import { DATABASE_FILE_NAME, openStore } from "./store.js";
+import { claimStateRoot, StateRootLockedError } from "./instance-lock.js";
+import { isLogLevel, LOG_LEVELS, openDaemonLog, type DaemonLogger, type LogLevel } from "./log.js";
+import { ManagementSocketError, serveManagementApi, type ManagementApi } from "./management-api.js";
+import { DATABASE_FILE_NAME, openStore, type Store } from "./store.js";
+import { selectStateRoot } from "@foundry/protocol/state-root";
 
 const EXIT_USAGE = 2;
 const EXIT_INSTANCE_FAILURE = 1;
 
-const parseHome = (args: readonly string[]): string | undefined => {
-  let home: string | undefined;
+class UsageError extends Error {}
+
+interface Flags {
+  home?: string;
+  logLevel?: LogLevel;
+}
+
+const parseFlags = (args: readonly string[]): Flags => {
+  const flags: Flags = {};
+  const value = (name: string, arg: string, i: number): [string, number] => {
+    const inline = arg.startsWith(`${name}=`) ? arg.slice(name.length + 1) : undefined;
+    const given = inline ?? args[i + 1];
+    if (given === undefined || given === "") throw new UsageError(`${name} needs a value`);
+    return [given, inline === undefined ? i + 1 : i];
+  };
   for (let i = 0; i < args.length; i++) {
     const arg = args[i]!;
-    if (arg === "--home") {
-      const value = args[++i];
-      if (value === undefined || value === "") throw new UsageError("--home needs a directory");
-      home = value;
-    } else if (arg.startsWith("--home=")) {
-      home = arg.slice("--home=".length);
-      if (home === "") throw new UsageError("--home needs a directory");
+    if (arg === "--home" || arg.startsWith("--home=")) {
+      [flags.home, i] = value("--home", arg, i);
+    } else if (arg === "--log-level" || arg.startsWith("--log-level=")) {
+      let level: string;
+      [level, i] = value("--log-level", arg, i);
+      if (!isLogLevel(level)) throw new UsageError(`--log-level must be one of ${LOG_LEVELS.join(", ")}`);
+      flags.logLevel = level;
     }
     // Other arguments (factory files) are left for later tickets.
   }
-  return home;
+  return flags;
 };
-
-class UsageError extends Error {}
 
 const fail = (message: string): never => {
   process.stderr.write(`foundry daemon: ${message}\n`);
@@ -42,59 +57,79 @@ const fail = (message: string): never => {
 };
 
 const main = async (): Promise<void> => {
-  let home: string | undefined;
+  let flags: Flags;
   try {
-    home = parseHome(process.argv.slice(2));
+    flags = parseFlags(process.argv.slice(2));
   } catch (error) {
     process.stderr.write(`foundry daemon: ${(error as Error).message}\n`);
     process.exit(EXIT_USAGE);
   }
-  const stateRoot = selectStateRoot({ home, env: process.env });
+  const stateRoot = selectStateRoot({ home: flags.home, env: process.env });
   let claim;
   try {
     claim = claimStateRoot(stateRoot);
   } catch (error) {
     // A held lock, or a root we cannot create or write (EACCES and the like), is an instance-level
-    // failure: one line and exit 1, not a stack trace.
+    // failure: one line and exit 1, not a stack trace. Without the lock this daemon must not
+    // write the daemon log, which belongs to the daemon that holds it.
     fail(error instanceof StateRootLockedError ? error.message : `cannot claim state root ${stateRoot}: ${(error as Error).message}`);
     return;
   }
   process.on("exit", () => claim.release());
 
+  let log: DaemonLogger;
+  try {
+    log = openDaemonLog({ stateRoot, ...(flags.logLevel === undefined ? {} : { level: flags.logLevel }) });
+  } catch (error) {
+    claim.release();
+    fail(`cannot open the daemon log in ${stateRoot}: ${(error as Error).message}`);
+    return;
+  }
+
+  // The store lives as long as the process; WAL keeps a killed daemon's commits. Closing an
+  // unused or already-closed scope is a no-op, so every exit path may call `closeStore`.
+  const storeScope = Effect.runSync(Scope.make());
+  const closeStore = (): Promise<void> => Effect.runPromise(Scope.close(storeScope, Exit.void));
+
   // Installed before serving, so a signal during startup still stops cleanly. `on`, not `once`:
   // a repeated signal is a no-op instead of falling back to Node's default (abrupt) handler.
   let api: ManagementApi | undefined;
   let stopping = false;
-  const stop = (): void => {
+  const stop = (signal: NodeJS.Signals): void => {
     if (stopping) return;
     stopping = true;
+    log.info("daemon stopping", { detail: { signal } });
     // Before the API is up, the code after `serveManagementApi` sees `stopping` and finishes the stop.
     if (api !== undefined) finish(api);
   };
+  // Order: API close, store close, log close, lock release.
   const finish = (served: ManagementApi): void => {
-    void served.close().then(closeStore).finally(() => {
-      claim.release();
-      process.exit(0);
-    });
+    void served
+      .close()
+      .then(closeStore)
+      .finally(() => {
+        log.close();
+        claim.release();
+        process.exit(0);
+      });
   };
   process.on("SIGINT", stop);
   process.on("SIGTERM", stop);
 
-  const startedAt = new Date().toISOString();
-  // The store lives as long as the process; WAL keeps a killed daemon's commits.
-  const storeScope = Effect.runSync(Scope.make());
-  const closeStore = (): Promise<void> => Effect.runPromise(Scope.close(storeScope, Exit.void));
-  let store;
+  const databasePath = join(stateRoot, DATABASE_FILE_NAME);
+  let store: Store;
   try {
-    store = await Effect.runPromise(
-      openStore({ filename: join(stateRoot, DATABASE_FILE_NAME) }).pipe(Scope.provide(storeScope)),
-    );
+    store = await Effect.runPromise(openStore({ filename: databasePath }).pipe(Scope.provide(storeScope)));
   } catch (error) {
+    log.error("database open failed", { detail: { database: databasePath, error: (error as Error).message } });
     await closeStore();
+    log.close();
     claim.release();
-    fail(`cannot open the database: ${(error as Error).message}`);
+    fail(`cannot open the database ${databasePath}: ${(error as Error).message}`);
     return;
   }
+
+  const startedAt = new Date().toISOString();
   try {
     api = await serveManagementApi({
       stateRoot,
@@ -102,7 +137,13 @@ const main = async (): Promise<void> => {
       events: storeEventSource(store),
     });
   } catch (error) {
+    if (error instanceof ManagementSocketError) {
+      log.error("management API refused", { detail: { reason: error.reason, socket: error.socketPath } });
+    } else {
+      log.error("management API failed", { detail: { error: (error as Error).message } });
+    }
     await closeStore();
+    log.close();
     claim.release();
     fail(error instanceof ManagementSocketError ? error.message : `cannot serve the management API: ${(error as Error).message}`);
     return;
@@ -113,6 +154,9 @@ const main = async (): Promise<void> => {
     finish(api);
     return;
   }
+  log.info("daemon started", {
+    detail: { pid: process.pid, stateRoot, socket: api.socketPath, database: databasePath, logLevel: log.level },
+  });
   process.stdout.write(`foundry daemon: state root ${stateRoot} claimed (pid ${process.pid})\n`);
   process.stdout.write(`foundry daemon: management API on ${api.socketPath}\n`);
 };

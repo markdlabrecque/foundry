@@ -6,7 +6,7 @@ import type { EffectiveStation, ResolveResult } from "@foundry/daemon/config";
 // environment and the YAML's directory. No files are read.
 const baseDir = "/factory";
 
-/** A factory whose `defaults` and one station's settings vary per case. */
+/** A factory whose `defaults` and one station's settings vary per case; `ops.gate` only completes the line's final-stage contract. */
 const factory = (defaults: string, room: string, station: string): string => `version: 1
 name: f
 repository:
@@ -17,11 +17,21 @@ ${defaults === "" ? "" : `defaults:\n${defaults}`}rooms:
   eng:
 ${room}    stations:
       dev:
-${station === "" ? "        isolation: none\n" : station}production_lines:
+${station === "" ? "        isolation: none\n" : station}  ops:
+    stations:
+      gate: { isolation: worktree, model: p/m }
+production_lines:
   l:
     stages:
       - id: a
         station: eng.dev
+      - id: w
+        station: ops.gate
+        writing: true
+      - id: z
+        station: ops.gate
+        approval: true
+        on_rejection: w
 `;
 
 const resolveText = (text: string, env: Record<string, string | undefined> = {}): ResolveResult => {
@@ -124,4 +134,14 @@ test("resolution problems are located at their YAML setting", () => {
   expect(locateProblems(text, result.problems)).toContainEqual(
     expect.objectContaining({ path: "rooms.eng.stations.dev.model", line: 11 }),
   );
+});
+
+test("a leading ~ expands to the home directory, as in the offline checks", () => {
+  const decoded = decodeFactoryYaml(factory(`${MODEL}  instructions: ~/shared/factory.md\n`, "", "        skills: [~/skills/a/SKILL.md]\n"));
+  if (decoded._tag === "Invalid") throw new Error(JSON.stringify(decoded.problems));
+  const resolved = stationOf(resolveStations(decoded.config, { env: {}, baseDir, home: "/home/op" }));
+  expect({ instructions: resolved.instructions, skills: resolved.skills }).toEqual({
+    instructions: ["/home/op/shared/factory.md"],
+    skills: ["/home/op/skills/a/SKILL.md"],
+  });
 });
