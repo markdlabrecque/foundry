@@ -12,6 +12,8 @@ export interface StateRootInputs {
 }
 
 /**
+ * Shared by the daemon and the CLI, so both find the same instance without the CLI loading the daemon.
+ *
  * Select the instance's state root (PRD §3): `--home`, else `FOUNDRY_HOME`, else `~/.foundry`.
  * Empty values count as unset. The result is an absolute path.
  */
