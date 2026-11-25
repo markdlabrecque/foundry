@@ -7,7 +7,7 @@ import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit, Schema, Scope } from "effect";
 import {
   acknowledgeMessage, composeResumeNotice, createAssignmentScheduler, createMessageDelivery,
-  createReconciler, createTicketService, openSlotGate, openStore, planSlots,
+  createReconciler, createTicketService, openSlotGate, openStore, planSlots, raiseHold,
   taskTransitionHandler, ticketFactoryFrom,
 } from "@foundry/daemon";
 import type { Store, TicketService } from "@foundry/daemon";
@@ -112,6 +112,8 @@ test('proven absent idle copy is replaced without mutating or replaying its atte
   await delivery.idle();
   const original = (await notices())[0];
   await refresh('Replacement after reconciliation');
+  await Effect.runPromise(raiseHold(store, { factoryId: 'shop', kind: 'stuck_worker', subject: noticeId,
+    evidence: { messageId: noticeId } }));
   const reconciler = createReconciler(store);
   await reconciler.reconcile(slot, { type: 'hello', protocolVersion: PROTOCOL_VERSION, ...slot,
     conversationRef: 'conversation', hasRecoverableHistory: true, mode: 'headless', tools: [] }, {
@@ -127,6 +129,10 @@ test('proven absent idle copy is replaced without mutating or replaying its atte
   expect(saved).toHaveLength(2);
   expect(saved[0]).toEqual({ ...original, status: 'dropped' });
   expect(saved[1]).toMatchObject({ status: 'sent', body: expect.stringContaining('Replacement after reconciliation') });
+  expect(await Effect.runPromise(store.read(`SELECT retired_at FROM message_attempt WHERE message_id = ?`, [noticeId])))
+    .toEqual([{ retired_at: expect.any(Number) }]);
+  expect(await Effect.runPromise(store.read(`SELECT state FROM operator_hold WHERE subject = ?`, [noticeId])))
+    .toEqual([{ state: 'cleared' }]);
   expect(frames.filter((frame) => frame.type === 'message' && frame.id === noticeId)).toHaveLength(1);
   expect(frames[1]).toMatchObject({ type: 'message', id: saved[1]?.id, body: saved[1]?.body });
   expect(errors).toEqual([]);

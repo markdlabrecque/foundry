@@ -1,6 +1,7 @@
 /** Transaction-local resume notices (PRD §10.2). Recovery callers share this composer. */
 import { Clock, Effect } from "effect";
 import { acceptMessage } from "./agent-message.js";
+import { closeOpenHoldIn } from "./holds.js";
 import type { Change } from "./store.js";
 
 export interface ResumeNotice {
@@ -40,6 +41,9 @@ export const releaseResumeReplacement = (change: Change, messageId: string, sett
 
   if (pending === undefined) {return null;}
 
+  const settledAt = yield* Clock.currentTimeMillis;
+  yield* change.query(`UPDATE message_attempt SET retired_at = ? WHERE message_id = ? AND retired_at IS NULL`, [settledAt, messageId]);
+  yield* closeOpenHoldIn(change, { factoryId: pending.factory_id, kind: 'stuck_worker', subject: messageId }, 'cleared');
   yield* change.query(`UPDATE resume_notice SET pending_body = NULL WHERE message_id = ?`, [messageId]);
   yield* change.query(`UPDATE message SET status = 'dropped' WHERE id = ? AND status IN ('bound', 'sent', 'indeterminate')`, [messageId]);
 
