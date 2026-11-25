@@ -18,6 +18,7 @@ import { realpathSync } from "node:fs";
 import { isAbsolute } from "node:path";
 import { Effect, Option, Schema } from "effect";
 import { builtinToolSource, REGISTERED_AGENT_TOOLS } from "@foundry/protocol";
+import { messageOf } from "@foundry/protocol/errors";
 import type { Hello, ReportedTool } from "@foundry/protocol";
 import type { HoldEvidence } from "@foundry/protocol/holds";
 import { TOOL_SET_RECHECK_HELLO_TIMEOUT_MS } from "@foundry/protocol/slots-api";
@@ -130,6 +131,11 @@ export interface ToolSetGuardOptions {
   /** Has the host stop a mismatched launch. Not awaited by the hello's refusal. */
   readonly stop: (launchId: string) => Promise<void>;
   readonly onStopFailed?: (launchId: string, cause: unknown) => void;
+  /**
+   * The freeze could not be written, or named a slot with no record. The hello is still refused as a
+   * mismatch and the launch still stopped.
+   */
+  readonly onFreezeFailed?: (slot: SlotRef, cause: unknown) => void;
   /** Defaults to `canonicalSource`. */
   readonly canonical?: (source: string) => string;
 }
@@ -178,16 +184,21 @@ export const createToolSetGuard = (options: ToolSetGuardOptions): ToolSetGuard =
 
       const evidence = evidenceOf({ ...hello, launchId: result.slot.launchId }, discrepancy);
 
-      try {
-        if (waiter === undefined) {
-          await options.freezer.freeze({ ...slot, cause: "tool_set_mismatch", evidence });
-        } else {
-          waiter({ matched: false, launchId: result.slot.launchId, evidence });
+      if (waiter === undefined) {
+        // A failed freeze never turns the refusal retryable: the hello is still a terminal mismatch.
+        try {
+          const outcome = await options.freezer.freeze({ ...slot, cause: "tool_set_mismatch", evidence });
+
+          if (outcome === "unknown_slot") {options.onFreezeFailed?.(slot, new Error(`slot ${slot.slotId} has no record`));}
+        } catch (cause) {
+          options.onFreezeFailed?.(slot, cause);
         }
-      } finally {
-        // Stopped even if the freeze could not be written: a mismatched worker never keeps running.
-        stop(result.slot.launchId);
+      } else {
+        waiter({ matched: false, launchId: result.slot.launchId, evidence });
       }
+
+      // Stopped even if the freeze could not be written: a mismatched worker never keeps running.
+      stop(result.slot.launchId);
 
       return { accepted: false, reason: { kind: "terminal", code: TOOL_SET_MISMATCH, detail: describe(discrepancy) } };
     },
@@ -229,6 +240,7 @@ export interface ToolSetRecheckOptions {
   readonly relaunch: (slot: SlotRef, conversationRef: string) => Promise<{ readonly launchId: string }>;
   /** Has the host stop a launch whose hello never came. */
   readonly stop: (launchId: string) => Promise<void>;
+  readonly onStopFailed?: (launchId: string, cause: unknown) => void;
   /** Defaults to `TOOL_SET_RECHECK_HELLO_TIMEOUT_MS`. */
   readonly helloWithinMs?: number;
 }
@@ -253,7 +265,7 @@ export const createToolSetRecheck = (options: ToolSetRecheckOptions): CauseCheck
   } catch (cause) {
     waiting.cancel();
 
-    return { fixed: false, evidence: { conversationRef, recheck: `no new launch was started: ${String(cause)}` } };
+    return { fixed: false, evidence: { conversationRef, recheck: `no new launch was started: ${messageOf(cause)}` } };
   }
 
   const within = options.helloWithinMs ?? TOOL_SET_RECHECK_HELLO_TIMEOUT_MS;
@@ -268,9 +280,16 @@ export const createToolSetRecheck = (options: ToolSetRecheckOptions): CauseCheck
 
   if (checked === undefined) {
     waiting.cancel();
-    await options.stop(launchId).catch(() => {});
+    await options.stop(launchId).catch((cause: unknown) => options.onStopFailed?.(launchId, cause));
 
     return { fixed: false, evidence: { launchId, conversationRef, recheck: `the new launch sent no hello within ${within} ms` } };
+  }
+
+  // Fail closed on a hello from any launch but the one this recheck started.
+  if (checked.launchId !== launchId) {
+    await options.stop(launchId).catch((cause: unknown) => options.onStopFailed?.(launchId, cause));
+
+    return { fixed: false, evidence: { launchId, conversationRef, recheck: `a hello from launch ${checked.launchId} arrived instead` } };
   }
 
   return checked.matched ? { fixed: true } : { fixed: false, evidence: checked.evidence };

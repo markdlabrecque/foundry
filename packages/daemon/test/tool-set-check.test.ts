@@ -10,6 +10,9 @@ const PROJECT = "/factory/extensions/project.ts";
 
 const station = { extensions: [{ path: "/factory/extensions/audit.ts", tools: [] }, { path: PROJECT, tools: ["web_fetch"] }] };
 
+/** Stands in for macOS, where `/var` resolves to `/private/var`. */
+const privateVar = (source: string) => source.replace(/^\/var\//, "/private/var/");
+
 const builtins = PI_BUILTIN_TOOLS.map((name) => ({ name, source: `builtin:${name}` }));
 
 test("the expected Tool Set is Pi's built-ins plus each named tool from its extension", () => {
@@ -51,7 +54,5 @@ test("missing, extra and replaced tools are each reported with their sources", (
 
 test("sources are compared canonically, so a symlinked path is the same extension", () => {
   const expected = [{ name: "web_fetch", source: "/var/x/project.ts" }];
-  const canonical = (source: string) => source.replace(/^\/var\//, "/private/var/");
-
-  expect(isMatch(compareToolSet(expected, [{ name: "web_fetch", source: "/private/var/x/project.ts" }], canonical))).toBe(true);
+  expect(isMatch(compareToolSet(expected, [{ name: "web_fetch", source: "/private/var/x/project.ts" }], privateVar))).toBe(true);
 });

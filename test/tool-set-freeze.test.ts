@@ -79,6 +79,7 @@ const fakeHost = () => {
     inventory: async () => [...launches],
     launch: async (spec) => {
       specs.push(spec);
+
       const record: LaunchRecord = {
         launchId: `launch-${launches.length + 1}`,
         factoryId: spec.factoryId,
@@ -89,6 +90,7 @@ const fakeHost = () => {
         startedAt: "2026-01-01T00:00:00.000Z",
         liveness: "live",
       };
+
       launches.push(record);
       launchWaiters.splice(0).forEach((w) => w(record));
 
@@ -174,6 +176,7 @@ const fixture = async () => {
       mode: "headless",
       tools,
     };
+
     const opened = await openChannel({ socketPath: server.socketPath, hello, heartbeatIntervalMs: 60_000 });
 
     if (opened.accepted) {cleanups.push(() => opened.channel.close());}

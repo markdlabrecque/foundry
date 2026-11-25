@@ -374,6 +374,8 @@ const main = async (): Promise<void> => {
           await connection.terminate(launchId);
         },
         onStopFailed: (launchId, cause) => log.error("mismatched launch not stopped", { launchId, detail: { error: messageOf(cause) } }),
+        onFreezeFailed: (slot, cause) =>
+          log.error("tool set mismatch not frozen", { factoryId: slot.factoryId, slotId: slot.slotId, detail: { error: messageOf(cause) } }),
       });
 
       channel = await startChannelServer({
@@ -402,6 +404,7 @@ const main = async (): Promise<void> => {
         stop: async (launchId) => {
           await connection.terminate(launchId);
         },
+        onStopFailed: (launchId, cause) => log.error("recheck launch not stopped", { launchId, detail: { error: messageOf(cause) } }),
       });
 
       // Only the host's exit report is death evidence; a lost channel never relaunches a slot (PRD §5.3).
