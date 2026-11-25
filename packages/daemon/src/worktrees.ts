@@ -1,9 +1,11 @@
 /** Ticket worktrees (PRD §9.2, §9.4). Git never runs inside a store transaction. */
+import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { messageOf } from "@foundry/protocol/errors";
 import { Data, Effect } from "effect";
 import type { QueuedTicket } from "./assignments.js";
+import { runFirstAfterCreate } from "./after-create.js";
 import { resolveConfiguredPath } from "./config/index.js";
 import { runCloneGit } from "./factory-clone.js";
 import type { LoadedFactory } from "./factory-loads.js";
@@ -31,7 +33,7 @@ class WorktreeStepFailed extends Data.TaggedError("WorktreeStepFailed")<{ readon
 /**
  * Claim once durably, then create from the clone's current default-branch head. A previous
  * attempt in any status blocks a blind replay; interrupted creation is reconciled by recovery.
- * Hooks, cleanup and recovery belong to separate lifecycle handlers.
+ * The first after_create runs before assignment; cleanup and recovery have separate handlers.
  */
 export const createTicketWorktrees = (options: TicketWorktreesOptions) => (ticket: QueuedTicket) =>
   Effect.gen(function* () {
@@ -84,8 +86,11 @@ export const createTicketWorktrees = (options: TicketWorktreesOptions) => (ticke
       });
       yield* git(["-c", "core.hooksPath=/dev/null", "worktree", "add", "--quiet", "-b", branch, "--", path, startCommit]);
 
-      // Result and the worktree identity become visible together; only then can a stage use it.
-      yield* options.store.change((change) => Effect.gen(function* () {
+      const argv = factory.config.worktrees?.after_create;
+      const logPath = join(ticket.directory, "evidence", `after-create-${randomUUID()}.log`);
+
+      // Publish the worktree and hook intent atomically. A concurrent scheduler cannot skip setup.
+      const hook = yield* options.store.change((change) => Effect.gen(function* () {
         yield* change.query(
           `UPDATE ticket SET worktree_path = ?, branch = ?, start_commit = ? WHERE factory_id = ? AND number = ?`,
           [path, branch, startCommit, ticket.factory_id, ticket.number],
@@ -97,7 +102,21 @@ export const createTicketWorktrees = (options: TicketWorktreesOptions) => (ticke
           factoryId: ticket.factory_id, kind: "ticket.worktree_created", subject: String(ticket.number),
           detail: { path, branch, startCommit }, records: [ticketRecord(ticket.number)],
         });
+
+        if (argv === undefined) {return undefined;}
+
+        return yield* beginOperationIn(change, { factoryId: ticket.factory_id, kind: "hook", ticket: ticket.number,
+          intent: { hook: "after_create", operation: "worktree_create", worktreeOperationId: operation.id, argv: [...argv], path, logPath } });
       }));
+
+      if (hook !== undefined && argv !== undefined) {
+        const line = factory.config.production_lines[ticket.production_line];
+        const stage = ticket.stage ?? line?.stages[0]?.id;
+
+        if (stage === undefined) {return yield* Effect.die(new Error("worktree ticket has no stage"));}
+
+        yield* runFirstAfterCreate({ store: options.store, operation: hook, ticket, stage, argv, path, logPath, env });
+      }
     }).pipe(Effect.catchTag("WorktreeStepFailed", ({ reason }) =>
       options.store.change((change) => recordOperationResult(change, operation.id, { status: "failed", result: { reason } })),
     ));

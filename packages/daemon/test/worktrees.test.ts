@@ -1,5 +1,5 @@
 // Integration tier: real disposable Git and SQLite prove creation intent, base and stage reuse.
-import { existsSync, mkdirSync, mkdtempSync, rmSync, truncateSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateSync, writeFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -539,6 +539,69 @@ test("CLI list and confirmed force traverse the management socket without deleti
       expect(existsSync(path)).toBe(false);
     } finally {yield* Effect.promise(api.close);}
   }));
+});
+
+test("after_create executes literal argv in the worktree, persists intent and logs, and runs once", async () => {
+  const literal = "$(touch injected); * > injected";
+  const command = [process.execPath, "-e", `console.log(JSON.stringify({cwd:process.cwd(), args:process.argv.slice(1)})); console.error('setup stderr')`, literal];
+  await fixture(({ store, root, scheduler, newScheduler }) => Effect.gen(function* () {
+    const scans: Array<Promise<ReadonlyArray<unknown>>> = [];
+    let seen = false;
+    const observer = new DatabaseSync(join(root, "foundry.db"), { readOnly: true });
+
+    const unsubscribe = store.onCommit(() => {
+      if (!seen && observer.prepare(`SELECT 1 FROM operation WHERE kind = 'hook' AND status = 'running'`).get() !== undefined) {
+        seen = true;
+        scans.push(Effect.runPromise(newScheduler().schedule()));
+        expect(observer.prepare(`SELECT count(*) AS n FROM assignment`).get()?.["n"]).toBe(0);
+      }
+    });
+
+    try {
+      const assignments = yield* scheduler.schedule();
+      const concurrent = yield* Effect.promise(() => Promise.all(scans));
+      expect([...assignments, ...concurrent.flat()]).toHaveLength(1);
+      expect(seen).toBe(true);
+    } finally {unsubscribe(); observer.close();}
+
+    const hooks = (yield* listOperations(store, "shop")).filter((op) => op.kind === "hook");
+    expect(hooks).toMatchObject([{ status: "complete", intent: { hook: "after_create", argv: command }, result: { exitStatus: 0, signal: null } }]);
+    const logPath = String(hooks[0]?.intent["logPath"]);
+    const path = join(root, "worktrees/shop/1-build-widget");
+    const log = readFileSync(logPath, "utf8");
+    expect(log).toContain(JSON.stringify({ cwd: path, args: [literal] }));
+    expect(log).toContain("setup stderr");
+    expect(existsSync(join(path, "injected"))).toBe(false);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1`);
+      yield* change.query(`UPDATE ticket SET stage = 'review', status = 'queued'`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "next stage" });
+    }));
+    expect(yield* newScheduler().schedule()).toMatchObject([{ stage: "review" }]);
+    expect((yield* listOperations(store, "shop")).filter((op) => op.kind === "hook")).toEqual(hooks);
+  }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
+});
+
+test.each([
+  { name: "failed exit", command: [process.execPath, "-e", "console.log('setup failed'); console.error('diagnostic'); process.exit(17)"], exitStatus: 17 },
+  { name: "spawn error", command: ["./missing-setup-command"], exitStatus: null },
+])("after_create $name pauses without assignment and exposes durable hook-failure evidence", async ({ command, exitStatus }) => {
+  await fixture(({ store, scheduler, newScheduler }) => Effect.gen(function* () {
+    expect(yield* scheduler.schedule()).toEqual([]);
+    expect(yield* newScheduler().schedule()).toEqual([]);
+    expect(yield* store.read(`SELECT state, stage, status FROM ticket`)).toEqual([{ state: "stage", stage: "develop", status: "paused" }]);
+    expect(yield* store.read(`SELECT * FROM assignment`)).toEqual([]);
+    expect(yield* store.read(`SELECT * FROM message`)).toEqual([]);
+    const hooks = (yield* listOperations(store, "shop")).filter((op) => op.kind === "hook");
+    expect(hooks).toMatchObject([{ status: "failed", result: { exitStatus } }]);
+    const logPath = String(hooks[0]?.intent["logPath"]);
+    expect(readFileSync(logPath, "utf8")).toContain(exitStatus === null ? "ENOENT" : "diagnostic");
+    const holds = yield* store.read<{ evidence: string }>(`SELECT evidence FROM operator_hold WHERE kind = 'hook_failure' AND subject = '1' AND state = 'open'`);
+    expect(holds).toHaveLength(1);
+    expect(JSON.parse(holds[0]?.evidence ?? "{}")).toMatchObject({ hook: "after_create", operationId: hooks[0]?.id, exitStatus, logPath });
+    expect(yield* store.read(`SELECT to_state, to_status, reason FROM ticket_transition ORDER BY sequence DESC LIMIT 1`))
+      .toEqual([{ to_state: "stage", to_status: "paused", reason: "after_create failed" }]);
+  }), `root: ./worktrees, after_create: ${JSON.stringify(command)}`);
 });
 
 test("configured tilde root and branch pattern are used", async () => {

@@ -149,6 +149,19 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
             break;
           }
 
+          if (slot.station.isolation === 'worktree' && factory.config.worktrees?.after_create !== undefined) {
+            const hooks = yield* change.query<{ status: string }>(
+              `SELECT status FROM operation WHERE factory_id = ? AND ticket_number = ? AND kind = 'hook'
+               AND json_extract(intent, '$.hook') = 'after_create'
+               AND json_extract(intent, '$.operation') = 'worktree_create'
+               AND json_extract(intent, '$.path') = ? ORDER BY id DESC LIMIT 1`,
+              [ticket.factory_id, ticket.number, ticket.worktree_path],
+            );
+
+            // Missing, running, failed or interrupted setup is never assignment-ready.
+            if (hooks[0]?.status !== 'complete') {continue;}
+          }
+
           const id = randomUUID();
           const now = yield* Clock.currentTimeMillis;
 
