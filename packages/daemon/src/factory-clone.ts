@@ -16,17 +16,8 @@
  * Callers must hold the state-root claim.
  */
 import { execFile } from "node:child_process";
-import {
-  lstatSync,
-  mkdirSync,
-  mkdtempSync,
-  readdirSync,
-  readFileSync,
-  renameSync,
-  rmSync,
-  writeFileSync,
-  type Stats,
-} from "node:fs";
+import { lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import type { Stats } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { Effect } from "effect";
 import { isUrlSource, resolveConfiguredPath } from "./config/index.js";
@@ -36,8 +27,10 @@ import { pathSegment } from "./tickets.js";
 import type { Store, StoreError } from "./store.js";
 
 export const CLONES_DIR_NAME = "clones";
+
 /** The ownership marker, inside the clone's `.git` directory where no worker or checkout sees it. */
 export const CLONE_MARKER_FILE_NAME = "foundry-clone.json";
+
 /** Infix of a clone's staging directory: `clones/.<factory>.creating-XXXXXX`. */
 const STAGING_INFIX = ".creating-";
 
@@ -89,6 +82,7 @@ export interface EnsuredClone {
 /** The configured source as Git should see it: a URL unchanged, a local path made absolute. */
 export const cloneSource = (factory: Pick<LoadedFactory, "config" | "yamlFile">, home?: string): string => {
   const source = factory.config.repository.source;
+
   return isUrlSource(source) ? source : resolveConfiguredPath(source, dirname(factory.yamlFile), home);
 };
 
@@ -111,8 +105,11 @@ const REPOSITORY_ENV = [
  */
 export const cloneGitEnv = (env: NodeJS.ProcessEnv): NodeJS.ProcessEnv => {
   const out: NodeJS.ProcessEnv = { ...env, GIT_TERMINAL_PROMPT: "0" };
-  for (const name of REPOSITORY_ENV) delete out[name];
-  if (out["GIT_SSH_COMMAND"] === undefined && out["GIT_SSH"] === undefined) out["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes";
+
+  for (const name of REPOSITORY_ENV) {delete out[name];}
+
+  if (out["GIT_SSH_COMMAND"] === undefined && out["GIT_SSH"] === undefined) {out["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes";}
+
   return out;
 };
 
@@ -121,7 +118,8 @@ const entryAt = (path: string): Stats | undefined => {
   try {
     return lstatSync(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {return undefined;}
+
     throw error;
   }
 };
@@ -129,6 +127,7 @@ const entryAt = (path: string): Stats | undefined => {
 const readMarker = (clone: string): CloneMarker | undefined => {
   try {
     const parsed = JSON.parse(readFileSync(markerPath(clone), "utf8")) as Partial<CloneMarker>;
+
     return typeof parsed.factory === "string" && typeof parsed.source === "string" ? (parsed as CloneMarker) : undefined;
   } catch {
     return undefined;
@@ -138,7 +137,8 @@ const readMarker = (clone: string): CloneMarker | undefined => {
 const runGit = (args: ReadonlyArray<string>, env: NodeJS.ProcessEnv): Promise<void> =>
   new Promise((resolve, reject) => {
     execFile("git", args, { env: cloneGitEnv(env), maxBuffer: 4 * 1024 * 1024 }, (error, _stdout, stderr) => {
-      if (error === null) return resolve();
+      if (error === null) {return resolve();}
+
       const detail = stderr.trim().split("\n").filter((line) => line !== "").pop();
       reject(new Error(detail ?? error.message));
     });
@@ -150,16 +150,21 @@ const runGit = (args: ReadonlyArray<string>, env: NodeJS.ProcessEnv): Promise<vo
  */
 export const clearCloneStaging = (stateRoot: string): ReadonlyArray<string> => {
   const clones = join(stateRoot, CLONES_DIR_NAME);
-  let names: string[];
+  let names: Array<string>;
+
   try {
     names = readdirSync(clones);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {return [];}
+
     throw error;
   }
+
   // Factory directories are path segments that never start with "." plus this infix.
   const leftovers = names.filter((name) => name.startsWith(".") && name.includes(STAGING_INFIX)).map((name) => join(clones, name));
-  for (const leftover of leftovers) rmSync(leftover, { recursive: true, force: true });
+
+  for (const leftover of leftovers) {rmSync(leftover, { recursive: true, force: true });}
+
   return leftovers;
 };
 
@@ -180,9 +185,11 @@ export const ensureFactoryClone = async (factory: LoadedFactory, options: Ensure
   const path = factoryClonePath(options.stateRoot, factory.factoryId);
   const configuredSource = cloneSource(factory, options.home);
   const entry = entryAt(path);
+
   if (entry !== undefined) {
     // A symlink (even a dangling one) is not Foundry's: the clone is always a real directory.
     const marker = entry.isDirectory() ? readMarker(path) : undefined;
+
     if (marker === undefined) {
       throw new FactoryCloneError(
         factory.factoryId,
@@ -191,6 +198,7 @@ export const ensureFactoryClone = async (factory: LoadedFactory, options: Ensure
         `${path} exists but is not a Foundry-owned clone; move it aside so Foundry can create its own`,
       );
     }
+
     if (marker.factory !== factory.factoryId) {
       throw new FactoryCloneError(
         factory.factoryId,
@@ -199,12 +207,14 @@ export const ensureFactoryClone = async (factory: LoadedFactory, options: Ensure
         `${path} is the clone of factory "${marker.factory}", not "${factory.factoryId}"`,
       );
     }
+
     return { factory: factory.factoryId, path, created: false, source: marker.source, configuredSource };
   }
 
   const parent = dirname(path);
   const branch = factory.config.repository.default_branch;
   let staging: string | undefined;
+
   try {
     mkdirSync(parent, { recursive: true, mode: 0o700 });
     // A sibling, so the rename stays on one filesystem; the dot keeps it apart from factory names.
@@ -215,11 +225,13 @@ export const ensureFactoryClone = async (factory: LoadedFactory, options: Ensure
       ["-c", "core.hooksPath=/dev/null", "clone", "--quiet", "--no-hardlinks", "--branch", branch, "--", configuredSource, target],
       options.env ?? process.env,
     );
+
     const marker: CloneMarker = {
       factory: factory.factoryId,
       source: configuredSource,
       createdAt: (options.now?.() ?? new Date()).toISOString(),
     };
+
     writeFileSync(markerPath(target), `${JSON.stringify(marker, null, 2)}\n`, { mode: 0o600 });
     renameSync(target, path);
   } catch (error) {
@@ -230,8 +242,9 @@ export const ensureFactoryClone = async (factory: LoadedFactory, options: Ensure
       `cannot clone ${configuredSource} (branch ${branch}) for factory "${factory.factoryId}": ${(error as Error).message}`,
     );
   } finally {
-    if (staging !== undefined) rmSync(staging, { recursive: true, force: true });
+    if (staging !== undefined) {rmSync(staging, { recursive: true, force: true });}
   }
+
   return { factory: factory.factoryId, path, created: true, source: configuredSource, configuredSource };
 };
 

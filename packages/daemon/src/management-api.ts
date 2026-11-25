@@ -5,21 +5,16 @@
  * Callers must hold the state-root claim (`claimStateRoot`) while serving: clearing a stale
  * socket probes and then unlinks, which is only safe with one starter per root.
  */
-import { chmodSync, linkSync, lstatSync, mkdtempSync, rmdirSync, unlinkSync, type Stats } from "node:fs";
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { chmodSync, linkSync, lstatSync, mkdtempSync, rmdirSync, unlinkSync } from "node:fs";
+import type { Stats } from "node:fs";
+import { createServer } from "node:http";
+import type { IncomingMessage, Server, ServerResponse } from "node:http";
 import { connect } from "node:net";
 import { join } from "node:path";
 import type { HoldsReader } from "./holds.js";
 import { HOLDS_PATH } from "@foundry/protocol/holds";
-import {
-  EVENTS_PATH,
-  managementSocketPath,
-  parseEventsQuery,
-  STATUS_PATH,
-  type ApiError,
-  type ApiResponse,
-  type StatusResult,
-} from "@foundry/protocol/management-api";
+import { EVENTS_PATH, managementSocketPath, parseEventsQuery, STATUS_PATH } from "@foundry/protocol/management-api";
+import type { ApiError, ApiResponse, StatusResult } from "@foundry/protocol/management-api";
 import type { EventSource } from "./events.js";
 import { streamEvents } from "./events-stream.js";
 import { TICKETS_PATH } from "@foundry/protocol/tickets-api";
@@ -83,7 +78,8 @@ const lstatIfPresent = (path: string): Stats | undefined => {
   try {
     return lstatSync(path);
   } catch (error) {
-    if (isErrno(error, "ENOENT")) return undefined;
+    if (isErrno(error, "ENOENT")) {return undefined;}
+
     throw error;
   }
 };
@@ -92,6 +88,7 @@ const sameFile = (a: Stats | undefined, b: Stats): boolean => a !== undefined &&
 
 /** Longest Unix socket path, in bytes, excluding the terminating NUL: `sun_path` is 108 on Linux, 104 on macOS. */
 const SOCKET_PATH_LIMIT = process.platform === "darwin" ? 103 : 107;
+
 /** Name of the private bind directory: `mkdtemp` appends six characters to the prefix. */
 const PRIVATE_DIR_PREFIX = ".management-";
 const BIND_NAME = "s";
@@ -100,6 +97,7 @@ const checkPathLength = (stateRoot: string, socketPath: string): void => {
   // The bind path is the longer of the two: `<root>/.management-XXXXXX/s`.
   const bindPath = join(stateRoot, `${PRIVATE_DIR_PREFIX}XXXXXX`, BIND_NAME);
   const longest = Math.max(Buffer.byteLength(bindPath), Buffer.byteLength(socketPath));
+
   if (longest > SOCKET_PATH_LIMIT) {
     throw new ManagementSocketError(
       "path-too-long",
@@ -136,15 +134,19 @@ export const serveManagementApi = async (inputs: ManagementApiInputs): Promise<M
   const privateDir = mkdtempSync(join(inputs.stateRoot, PRIVATE_DIR_PREFIX));
   const bindPath = join(privateDir, BIND_NAME);
   let published: Stats;
+
   try {
     await listen(server, bindPath);
     chmodSync(bindPath, 0o600);
+
     try {
       linkSync(bindPath, socketPath);
     } catch (error) {
-      if (!isErrno(error, "EEXIST")) throw error;
+      if (!isErrno(error, "EEXIST")) {throw error;}
+
       throw new ManagementSocketError("in-use", socketPath, `${socketPath} appeared while the daemon was starting`);
     }
+
     published = lstatSync(socketPath);
   } catch (error) {
     await stop(server);
@@ -155,12 +157,13 @@ export const serveManagementApi = async (inputs: ManagementApiInputs): Promise<M
   }
 
   let closing: Promise<void> | undefined;
+
   return {
     socketPath,
     close: () =>
       (closing ??= stop(server).then(() => {
         // Never remove a socket someone else has since put in our place.
-        if (sameFile(lstatIfPresent(socketPath), published)) unlinkSync(socketPath);
+        if (sameFile(lstatIfPresent(socketPath), published)) {unlinkSync(socketPath);}
       })),
   };
 };
@@ -182,7 +185,9 @@ const stop = (server: Server): Promise<void> =>
 
 const clearStaleSocket = async (socketPath: string): Promise<void> => {
   const found = lstatIfPresent(socketPath);
-  if (found === undefined) return;
+
+  if (found === undefined) {return;}
+
   if (!found.isSocket()) {
     throw new ManagementSocketError(
       "not-a-socket",
@@ -190,6 +195,7 @@ const clearStaleSocket = async (socketPath: string): Promise<void> => {
       `${socketPath} exists and is not a socket; remove it if no daemon is running`,
     );
   }
+
   const probe = await new Promise<"answered" | "stale" | Error>((resolve) => {
     const socket = connect(socketPath);
     socket.once("connect", () => {
@@ -200,9 +206,11 @@ const clearStaleSocket = async (socketPath: string): Promise<void> => {
       resolve(error.code === "ECONNREFUSED" || error.code === "ENOENT" ? "stale" : error);
     });
   });
+
   if (probe === "answered") {
     throw new ManagementSocketError("in-use", socketPath, `a daemon already answers on ${socketPath}`);
   }
+
   if (probe instanceof Error) {
     throw new ManagementSocketError(
       "unprobeable",
@@ -210,35 +218,47 @@ const clearStaleSocket = async (socketPath: string): Promise<void> => {
       `cannot tell whether a daemon answers on ${socketPath}: ${probe.message}`,
     );
   }
+
   // Remove only the socket we judged stale.
-  if (sameFile(lstatIfPresent(socketPath), found)) unlinkSync(socketPath);
+  if (sameFile(lstatIfPresent(socketPath), found)) {unlinkSync(socketPath);}
 };
 
 const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response: ServerResponse): void => {
   const url = new URL(request.url ?? "/", "http://foundry");
   const path = url.pathname;
+
   // Ticket routes first: submit reads a POST body, so it must not be drained.
   if (inputs.tickets !== undefined && (path === TICKETS_PATH || path.startsWith(`${TICKETS_PATH}/`))) {
     void handleTickets(inputs.tickets, request, url).then(
       (reply) => {
-        if (reply.allow !== undefined) response.setHeader("allow", reply.allow);
+        if (reply.allow !== undefined) {response.setHeader("allow", reply.allow);}
+
         send(response, reply.status, reply.body);
       },
       (error: unknown) => send(response, 500, failure("internal", `ticket request failed: ${String(error)}`)),
     );
+
     return;
   }
+
   request.resume(); // The remaining routes read no body; drain it so the connection stays usable.
-  if (path === LOGS_PATH) return handleLogs(inputs, request, response, url.searchParams);
-  if (path === EVENTS_PATH) return handleEvents(inputs, url, request, response);
+
+  if (path === LOGS_PATH) {return handleLogs(inputs, request, response, url.searchParams);}
+
+  if (path === EVENTS_PATH) {return handleEvents(inputs, url, request, response);}
+
   const route = routeFor(inputs, path);
+
   if (route === undefined) {
     return send(response, 404, failure("not_found", `no route for ${request.method} ${path}`));
   }
+
   if (request.method !== "GET") {
     response.setHeader("allow", "GET");
+
     return send(response, 405, failure("method_not_allowed", `${path} only accepts GET`));
   }
+
   route().then(
     ([status, body]) => send(response, status, body),
     (error: unknown) => send(response, 500, failure("internal", `${path} unavailable: ${describeError(error)}`)),
@@ -248,12 +268,17 @@ const handle = (inputs: ManagementApiInputs, request: IncomingMessage, response:
 const handleEvents = (inputs: ManagementApiInputs, url: URL, request: IncomingMessage, response: ServerResponse): void => {
   if (request.method !== "GET") {
     response.setHeader("allow", "GET");
+
     return send(response, 405, failure("method_not_allowed", `${EVENTS_PATH} only accepts GET`));
   }
-  if (inputs.events === undefined) return send(response, 503, failure("unavailable", "events are not available"));
+
+  if (inputs.events === undefined) {return send(response, 503, failure("unavailable", "events are not available"));}
+
   const lastEventId = request.headers["last-event-id"];
   const parsed = parseEventsQuery(url.searchParams, Array.isArray(lastEventId) ? lastEventId[0] : lastEventId);
-  if (!parsed.ok) return send(response, 400, { ok: false, error: parsed.error });
+
+  if (!parsed.ok) {return send(response, 400, { ok: false, error: parsed.error });}
+
   streamEvents(inputs.events, parsed.query, request, response);
 };
 
@@ -265,10 +290,14 @@ const handleLogs = (
 ): void => {
   if (request.method !== "GET") {
     response.setHeader("allow", "GET");
+
     return send(response, 405, failure("method_not_allowed", `${LOGS_PATH} only accepts GET`));
   }
+
   const query = decodeLogQuery(params);
-  if (typeof query === "string") return send(response, 400, failure("bad_request", query));
+
+  if (typeof query === "string") {return send(response, 400, failure("bad_request", query));}
+
   try {
     send(response, 200, { ok: true, result: readLogs(inputs.stateRoot, query) });
   } catch (error) {
@@ -281,29 +310,40 @@ type Route = () => Promise<readonly [number, ApiResponse<unknown>]>;
 const HOLD_ID = new RegExp(`^${HOLDS_PATH}/([1-9][0-9]{0,15})$`);
 
 const routeFor = (inputs: ManagementApiInputs, path: string): Route | undefined => {
-  if (path === STATUS_PATH) return async () => [200, { ok: true, result: inputs.status() }];
+  if (path === STATUS_PATH) {return async () => [200, { ok: true, result: inputs.status() }];}
+
   if (path === FACTORIES_PATH) {
     const factories = inputs.factories;
+
     return async () =>
       factories === undefined
         ? [503, failure("unavailable", "factories are not served by this daemon")]
         : [200, { ok: true, result: await factories.list() }];
   }
-  if (path === HOLDS_PATH) return withHolds(inputs, async (holds) => [200, { ok: true, result: await holds.list() }]);
+
+  if (path === HOLDS_PATH) {return withHolds(inputs, async (holds) => [200, { ok: true, result: await holds.list() }]);}
+
   const factory = matchFactoryPathPath(path);
-  if (factory === null) return async () => [400, failure("bad_request", `malformed factory name in ${path}`)];
+
+  if (factory === null) {return async () => [400, failure("bad_request", `malformed factory name in ${path}`)];}
+
   if (factory !== undefined) {
     return async () => {
       const clone = inputs.clonePath?.(factory);
+
       return clone === undefined
         ? [404, failure("not_found", `no loaded factory named ${JSON.stringify(factory)}`)]
         : [200, { ok: true, result: { factory, path: clone } }];
     };
   }
+
   const id = HOLD_ID.exec(path)?.[1];
-  if (id === undefined) return undefined;
+
+  if (id === undefined) {return undefined;}
+
   return withHolds(inputs, async (holds) => {
     const shown = await holds.show(Number(id));
+
     return shown === undefined
       ? [404, failure("not_found", `no hold ${id}`)]
       : [200, { ok: true, result: shown }];

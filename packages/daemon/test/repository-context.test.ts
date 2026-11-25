@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { afterEach, describe, expect, test } from "vitest";
 import { discoverRepositoryContext } from "@foundry/daemon";
 
-const fixtures: string[] = [];
+const fixtures: Array<string> = [];
 
 afterEach(async () => {
   await Promise.all(fixtures.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
@@ -16,10 +16,12 @@ afterEach(async () => {
 async function makeTree(files: Record<string, string>): Promise<string> {
   const base = await mkdtemp(join(tmpdir(), "foundry-repo-context-"));
   fixtures.push(base);
+
   for (const [path, content] of Object.entries(files)) {
     await mkdir(dirname(join(base, path)), { recursive: true });
     await writeFile(join(base, path), content);
   }
+
   return base;
 }
 
@@ -121,6 +123,7 @@ test("discovery stops at the worktree root", async () => {
     "repo/.agents/skills/kept/SKILL.md": skill("Kept."),
     "elsewhere/gitignore": "kept/\n",
   });
+
   const root = join(outer, "repo");
   await symlink(join(outer, "elsewhere/gitignore"), join(root, ".agents/skills/.gitignore"));
   await symlink(join(outer, "elsewhere/escaped"), join(root, ".agents/skills/escaped"));

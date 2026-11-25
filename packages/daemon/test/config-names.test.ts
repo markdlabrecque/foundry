@@ -71,10 +71,13 @@ describe("rejected names", () => {
   test.each(rejected)("%s", (_name, rooms, expected) => {
     const result = decodeFactoryYaml(factory(rooms));
     expect(result._tag).toBe("Invalid");
-    if (result._tag !== "Invalid") return;
+
+    if (result._tag !== "Invalid") {return;}
+
     const match = result.problems.find(
       (problem) => problem.path === expected.path && expected.message.test(problem.message),
     );
+
     expect(match, JSON.stringify(result.problems)).toBeDefined();
     expect(match?.line).toBe(expected.line);
   });

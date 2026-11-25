@@ -60,7 +60,7 @@ export type HostRequest = IdentifyRequest | LaunchRequest | InventoryRequest | T
 export type HostResponse =
   | { readonly id: number; readonly ok: true; readonly identity: HostIdentity }
   | { readonly id: number; readonly ok: true; readonly launch: LaunchRecord }
-  | { readonly id: number; readonly ok: true; readonly launches: readonly LaunchRecord[] }
+  | { readonly id: number; readonly ok: true; readonly launches: ReadonlyArray<LaunchRecord> }
   | { readonly id: number; readonly ok: true; readonly termination: Termination }
   | { readonly id: number | null; readonly ok: false; readonly error: string };
 
@@ -82,10 +82,13 @@ export function readLines(socket: Socket, onLine: (line: string) => void): void 
   socket.on("data", (chunk: string) => {
     buffered += chunk;
     let newline = buffered.indexOf("\n");
+
     while (newline !== -1) {
       const line = buffered.slice(0, newline);
       buffered = buffered.slice(newline + 1);
-      if (line.trim() !== "") onLine(line);
+
+      if (line.trim() !== "") {onLine(line);}
+
       newline = buffered.indexOf("\n");
     }
   });

@@ -17,14 +17,16 @@ import { LOGS_PATH } from "@foundry/protocol/log-query";
 const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
 
 const cleanups: Array<() => Promise<void> | void> = [];
+
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 // Socket paths must stay short, so the root is a small temp dir, removed after each test.
 const tempRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "foundry-logs-"));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+
   return root;
 };
 
@@ -58,10 +60,11 @@ const fixture = (): string => {
   );
   // "é" is 0xC3 0xA9: the tail starts on the continuation byte left after the cut.
   writeFileSync(launchStderrPath(root, "L1"), Buffer.concat([Buffer.from([0xa9]), Buffer.from("boom: café\n", "utf8")]));
+
   return root;
 };
 
-const msgs = (lines: ReadonlyArray<string>): string[] => lines.map((l) => (JSON.parse(l) as { msg: string }).msg);
+const msgs = (lines: ReadonlyArray<string>): Array<string> => lines.map((l) => (JSON.parse(l) as { msg: string }).msg);
 
 const get = (socketPath: string, path: string): Promise<{ status: number; body: any }> =>
   new Promise((resolve, reject) => {
@@ -71,20 +74,25 @@ const get = (socketPath: string, path: string): Promise<{ status: number; body: 
       res.on("data", (chunk: string) => (body += chunk));
       res.on("end", () => resolve({ status: res.statusCode ?? 0, body: JSON.parse(body) }));
     });
+
     req.on("error", reject);
     req.end();
   });
 
 test("the logs API selects fixture lines by reference across rotated files, oldest first, and nothing unrelated", async () => {
   const root = fixture();
+
   const api = await serveManagementApi({
     stateRoot: root,
     status: () => ({ instance: { stateRoot: root, daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } }),
   });
+
   cleanups.push(() => api.close());
+
   const logs = async (search: string) => {
     const reply = await get(api.socketPath, `${LOGS_PATH}${search}`);
     expect(reply.status).toBe(200);
+
     return reply.body.result;
   };
 
@@ -118,8 +126,9 @@ test("foundry logs reads the same selection with the daemon down, and the binary
   const missing = await runLogs({ host: false, json: false, home: tempRoot(), env });
   expect(missing).toEqual({ exitCode: EXIT_OK, stdout: "", stderr: "" });
 
-  const run = (args: string[]) =>
+  const run = (args: Array<string>) =>
     spawnSync(process.execPath, [cliMain, "logs", ...args], { env: { ...process.env, ...env }, encoding: "utf8", timeout: 20_000 });
+
   const viaBinary = run(["--host", "--launch", "L1", "--home", root]);
   expect(viaBinary.status).toBe(EXIT_OK);
   expect(viaBinary.stdout).toContain("launch ended unexpectedly");

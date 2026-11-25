@@ -12,20 +12,10 @@
 import { chmod, lstat, mkdtemp, rename, rmdir, unlink } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { createServer, type Server, type Socket } from "node:net";
-import {
-  CHANNEL_LOST_AFTER_MS,
-  decodeHelloLine,
-  decodeWorkerFrameLine,
-  encodeFrame,
-  FrameLineSplitter,
-  PROTOCOL_VERSION,
-  type DaemonFrame,
-  type Hello,
-  type HelloRejectReason,
-  type InterruptOutcome,
-  type WorkerFrame,
-} from "@foundry/protocol";
+import { createServer } from "node:net";
+import type { Server, Socket } from "node:net";
+import { CHANNEL_LOST_AFTER_MS, decodeHelloLine, decodeWorkerFrameLine, encodeFrame, FrameLineSplitter, PROTOCOL_VERSION } from "@foundry/protocol";
+import type { DaemonFrame, Hello, HelloRejectReason, InterruptOutcome, WorkerFrame } from "@foundry/protocol";
 
 /** The slot a connection was authorized for, as decided by the slot claim. */
 export interface ClaimedSlot {
@@ -51,6 +41,7 @@ export type LapseTimer = (ms: number, onLapse: () => void) => () => void;
 
 const realTimer: LapseTimer = (ms, onLapse) => {
   const handle = setTimeout(onLapse, ms);
+
   return () => clearTimeout(handle);
 };
 
@@ -75,7 +66,7 @@ export interface ChannelEvents {
 }
 
 /** How long a refused peer gets to read its `hello_rejected` before the socket is destroyed. */
-export const REJECTED_SOCKET_GRACE_MS = 1_000;
+export const REJECTED_SOCKET_GRACE_MS = 1000;
 
 export interface ChannelServerOptions extends ChannelEvents {
   readonly socketPath: string;
@@ -118,6 +109,7 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
     readonly connection: AcceptedConnection;
     readonly pending: Map<string, { resolve: (o: InterruptOutcome) => void; reject: (e: Error) => void }>;
   }
+
   const byLaunch = new Map<string, Accepted>();
 
   const handle = (socket: Socket): void => {
@@ -130,19 +122,24 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
     let accepted: Accepted | undefined;
 
     const end = (cause: ChannelLostCause): void => {
-      if (state === "ended") return;
+      if (state === "ended") {return;}
+
       const wasAccepted = state === "accepted";
       state = "ended";
       cancelLapse?.();
       socket.destroy();
+
       if (accepted && slot) {
-        if (byLaunch.get(slot.launchId) === accepted) byLaunch.delete(slot.launchId);
+        if (byLaunch.get(slot.launchId) === accepted) {byLaunch.delete(slot.launchId);}
+
         for (const { reject } of accepted.pending.values()) {
           reject(new ChannelUnavailableError(slot.launchId, `was lost before the interrupt was acknowledged (${cause})`));
         }
+
         accepted.pending.clear();
       }
-      if (wasAccepted && slot) options.onChannelLost?.(slot, cause);
+
+      if (wasAccepted && slot) {options.onChannelLost?.(slot, cause);}
     };
 
     const armLapse = (): void => {
@@ -163,9 +160,12 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
 
     const onHello = async (line: string): Promise<void> => {
       const decoded = decodeHelloLine(line);
-      if (!decoded.ok) return reject(decoded.reason);
+
+      if (!decoded.ok) {return reject(decoded.reason);}
+
       state = "claiming";
       let result: SlotClaimResult;
+
       try {
         result = await options.slotClaim.claim(decoded.value);
       } catch (error) {
@@ -174,19 +174,25 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
           reason: { kind: "retryable", code: "slot_claim_failed", detail: String(error) },
         };
       }
-      if (state !== "claiming") return; // peer went away while the claim ran
-      if (!result.accepted) return reject(result.reason);
+
+      if (state !== "claiming") {return;} // peer went away while the claim ran
+
+      if (!result.accepted) {return reject(result.reason);}
+
       slot = result.slot;
       state = "accepted";
+
       const connection: AcceptedConnection = {
         send: (frame) =>
           new Promise<void>((done, failed) => {
             if (state !== "accepted" || socket.destroyed || !socket.writable) {
               return failed(new Error("channel connection has ended"));
             }
+
             socket.write(encodeFrame(frame), (error) => (error ? failed(error) : done()));
           }),
       };
+
       accepted = { connection, pending: new Map() };
       byLaunch.set(slot.launchId, accepted);
       socket.write(encodeFrame({ type: "hello_accepted", protocolVersion: PROTOCOL_VERSION }));
@@ -196,21 +202,30 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
 
     // Lines are handled strictly in order; nothing after the hello is read until the claim settles.
     let queue = Promise.resolve();
+
     const onLine = (line: string): Promise<void> => {
-      if (state === "awaiting_hello") return onHello(line);
-      if (state !== "accepted" || !slot) return Promise.resolve();
+      if (state === "awaiting_hello") {return onHello(line);}
+
+      if (state !== "accepted" || !slot) {return Promise.resolve();}
+
       const decoded = decodeWorkerFrameLine(line);
+
       if (!decoded.ok) {
         end("protocol_error");
+
         return Promise.resolve();
       }
-      if (decoded.value.type === "heartbeat") armLapse();
+
+      if (decoded.value.type === "heartbeat") {armLapse();}
+
       if (decoded.value.type === "interrupt_ack") {
         const waiter = accepted?.pending.get(decoded.value.requestId);
         accepted?.pending.delete(decoded.value.requestId);
         waiter?.resolve(decoded.value.outcome);
       }
+
       options.onFrame?.(slot, decoded.value);
+
       return Promise.resolve();
     };
 
@@ -218,14 +233,17 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
     armLapse();
 
     socket.on("data", (chunk: string) => {
-      let lines: string[];
+      let lines: Array<string>;
+
       try {
         lines = splitter.push(chunk);
       } catch {
         end("protocol_error");
+
         return;
       }
-      for (const line of lines) queue = queue.then(() => onLine(line));
+
+      for (const line of lines) {queue = queue.then(() => onLine(line));}
     });
     socket.on("close", () => {
       connections.delete(socket);
@@ -237,12 +255,15 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
   await removeStaleSocket(options.socketPath);
   const server: Server = createServer(handle);
   await listenPrivately(server, options.socketPath);
+
   return {
     socketPath: options.socketPath,
     interrupt: (launchId) =>
       new Promise<InterruptOutcome>((resolve, reject) => {
         const channel = byLaunch.get(launchId);
-        if (!channel) return reject(new ChannelUnavailableError(launchId, "is not connected"));
+
+        if (!channel) {return reject(new ChannelUnavailableError(launchId, "is not connected"));}
+
         const requestId = randomUUID();
         channel.pending.set(requestId, { resolve, reject });
         // Written straight to the connection, not through the primer's queue: an
@@ -255,7 +276,9 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
     close: async () => {
       closing = true;
       const closed = new Promise<void>((resolve) => server.close(() => resolve()));
-      for (const socket of connections) socket.destroy();
+
+      for (const socket of connections) {socket.destroy();}
+
       await closed;
       await removeStaleSocket(options.socketPath);
     },
@@ -269,13 +292,17 @@ export const startChannelServer = async (options: ChannelServerOptions): Promise
  */
 const removeStaleSocket = async (path: string): Promise<void> => {
   let stats;
+
   try {
     stats = await lstat(path);
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {return;}
+
     throw error;
   }
-  if (!stats.isSocket()) throw new Error(`refusing to replace non-socket file at ${path}`);
+
+  if (!stats.isSocket()) {throw new Error(`refusing to replace non-socket file at ${path}`);}
+
   await unlink(path);
 };
 
@@ -287,6 +314,7 @@ const removeStaleSocket = async (path: string): Promise<void> => {
 const listenPrivately = async (server: Server, socketPath: string): Promise<void> => {
   const privateDir = await mkdtemp(join(dirname(socketPath), `.${basename(socketPath)}-`));
   const bindPath = join(privateDir, "s");
+
   try {
     await new Promise<void>((resolve, reject) => {
       server.once("error", reject);

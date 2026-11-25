@@ -22,7 +22,7 @@ export interface LaunchReport {
 
 /** Where the claim asks the Worker Host which launches it owns. */
 export interface LaunchInventory {
-  inventory(): Promise<readonly LaunchReport[]>;
+  inventory(): Promise<ReadonlyArray<LaunchReport>>;
 }
 
 /**
@@ -40,6 +40,7 @@ export interface SlotConversations {
 export const inMemorySlotConversations = (): SlotConversations => {
   const refs = new Map<string, string>();
   const key = (factoryId: string, slotId: string): string => JSON.stringify([factoryId, slotId]);
+
   return {
     get: (factoryId, slotId) => refs.get(key(factoryId, slotId)),
     bind: (factoryId, slotId, conversationRef) => void refs.set(key(factoryId, slotId), conversationRef),
@@ -75,9 +76,11 @@ export interface HostSlotClaimOptions {
 
 export const createHostSlotClaim = (options: HostSlotClaimOptions): SlotClaim => {
   const conversations = options.conversations ?? inMemorySlotConversations();
+
   return {
     async claim(hello: Hello): Promise<SlotClaimResult> {
-      let launches: readonly LaunchReport[];
+      let launches: ReadonlyArray<LaunchReport>;
+
       try {
         launches = await options.host.inventory();
       } catch (error) {
@@ -88,11 +91,13 @@ export const createHostSlotClaim = (options: HostSlotClaimOptions): SlotClaim =>
       }
 
       const record = launches.find((launch) => launch.launchId === hello.launchId);
+
       // A host restart that lost its registry could make a live launch look unknown here;
       // PRD §3.2 treats unknown ownership as retryable, which 43a will distinguish.
       if (record === undefined) {
         return terminal(SlotClaimRejectCode.launchUnknown, `the worker host reports no launch ${hello.launchId}`);
       }
+
       if (record.factoryId !== hello.factoryId || record.slotId !== hello.slotId) {
         return terminal(
           SlotClaimRejectCode.launchIdentityConflict,
@@ -100,6 +105,7 @@ export const createHostSlotClaim = (options: HostSlotClaimOptions): SlotClaim =>
             `not slot ${hello.slotId} of factory ${hello.factoryId}`,
         );
       }
+
       if (record.liveness !== "live") {
         return terminal(
           SlotClaimRejectCode.launchStale,
@@ -109,13 +115,15 @@ export const createHostSlotClaim = (options: HostSlotClaimOptions): SlotClaim =>
 
       // Checked and bound without awaiting, so concurrent hellos for one slot cannot both bind.
       const bound = conversations.get(record.factoryId, record.slotId);
+
       if (bound !== undefined && bound !== hello.conversationRef) {
         return terminal(
           SlotClaimRejectCode.conversationChanged,
           `slot ${record.slotId} is bound to a different conversation than the one presented`,
         );
       }
-      if (bound === undefined) conversations.bind(record.factoryId, record.slotId, hello.conversationRef);
+
+      if (bound === undefined) {conversations.bind(record.factoryId, record.slotId, hello.conversationRef);}
 
       return {
         accepted: true,

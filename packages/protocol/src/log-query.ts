@@ -21,6 +21,7 @@ export interface LogQuery {
 }
 
 export const LOG_FILTERS = ["factory", "ticket", "slot", "launch"] as const;
+
 export type LogFilter = (typeof LOG_FILTERS)[number];
 
 /** Launch IDs name a file under `logs/launches`; anything that could leave that directory is refused. */
@@ -29,21 +30,27 @@ export const LAUNCH_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 /** Why `query` cannot be served, or `undefined` if it can. Wording matches the CLI flags. */
 export const logQueryProblem = (query: LogQuery): string | undefined => {
   for (const filter of LOG_FILTERS) {
-    if (query[filter] === "") return `--${filter} needs a value`;
+    if (query[filter] === "") {return `--${filter} needs a value`;}
   }
+
   if (query.launch !== undefined && !LAUNCH_ID_PATTERN.test(query.launch)) {
     return `--launch ${JSON.stringify(query.launch)} is not a launch ID`;
   }
+
   return undefined;
 };
 
 export const encodeLogQuery = (query: LogQuery): string => {
   const params = new URLSearchParams();
-  if (query.host) params.set("host", "1");
+
+  if (query.host) {params.set("host", "1");}
+
   for (const filter of LOG_FILTERS) {
     const value = query[filter];
-    if (value !== undefined) params.set(filter, value);
+
+    if (value !== undefined) {params.set(filter, value);}
   }
+
   return params.toString();
 };
 
@@ -51,18 +58,23 @@ export const encodeLogQuery = (query: LogQuery): string => {
 export const decodeLogQuery = (params: URLSearchParams): LogQuery | string => {
   const query: { host: boolean } & Partial<Record<LogFilter, string>> = { host: false };
   const seen = new Set<string>();
+
   for (const [key, value] of params) {
-    if (seen.has(key)) return `parameter ${key} is repeated`;
+    if (seen.has(key)) {return `parameter ${key} is repeated`;}
+
     seen.add(key);
+
     if (key === "host") {
-      if (value !== "1") return "parameter host must be 1";
+      if (value !== "1") {return "parameter host must be 1";}
+
       query.host = true;
-    } else if ((LOG_FILTERS as readonly string[]).includes(key)) {
+    } else if ((LOG_FILTERS as ReadonlyArray<string>).includes(key)) {
       query[key as LogFilter] = value;
     } else {
       return `unknown parameter ${key}`;
     }
   }
+
   return logQueryProblem(query) ?? query;
 };
 
@@ -87,12 +99,18 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 export const isLogsResult = (value: unknown): value is LogsResult => {
-  if (!isRecord(value)) return false;
-  if (value["log"] !== "daemon" && value["log"] !== "host") return false;
+  if (!isRecord(value)) {return false;}
+
+  if (value["log"] !== "daemon" && value["log"] !== "host") {return false;}
+
   const lines = value["lines"];
-  if (!Array.isArray(lines) || !lines.every((line) => typeof line === "string")) return false;
+
+  if (!Array.isArray(lines) || !lines.every((line) => typeof line === "string")) {return false;}
+
   const stderr = value["launchStderr"];
-  if (stderr === undefined) return true;
+
+  if (stderr === undefined) {return true;}
+
   return (
     isRecord(stderr) &&
     typeof stderr["launchId"] === "string" &&

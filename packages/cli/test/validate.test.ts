@@ -11,17 +11,23 @@ import { afterAll, expect, test } from "vitest";
 const require = createRequire(import.meta.url);
 const main = join(dirname(require.resolve("@foundry/cli")), "main.js");
 const dir = mkdtempSync(join(tmpdir(), "foundry-validate-"));
+
 mkdirSync(join(dir, "repo"));
+
 // Configured files must exist offline (FOU-25); the Tool Set case names these.
 mkdirSync(join(dir, "ext"));
+
 writeFileSync(join(dir, "ext/hooks.ts"), "");
+
 writeFileSync(join(dir, "ext/tools.ts"), "");
+
 afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
 const run = (yaml: string): { status: number; stdout: string; stderr: string } => {
   const file = join(dir, `${Math.random().toString(36).slice(2)}.yaml`);
   writeFileSync(file, yaml);
   const result = spawnSync(process.execPath, [main, "validate", file], { encoding: "utf8" });
+
   return {
     status: result.status ?? -1,
     stdout: result.stdout.replaceAll(file, "F"),
@@ -62,9 +68,11 @@ test("foundry validate accepts a valid factory with exit 0", () => {
 test("foundry validate prints each station's Tool Set with the source of every tool", () => {
   const station = "      s: { isolation: worktree, model: p/m }";
   expect(valid).toContain(station);
+
   const result = run(
     valid.replace(station, "      s:\n        isolation: worktree\n        model: p/m\n        extensions:\n          - ext/hooks.ts\n          - { path: ext/tools.ts, tools: [web_fetch] }"),
   );
+
   expect(result.status).toBe(0);
   const lines = result.stdout.trimEnd().split("\n");
   expect(lines[1]).toBe("Tool Set for r.s (13 tools):");

@@ -6,29 +6,26 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect } from "effect";
-import {
-  DATABASE_FILE_NAME,
-  decideFactoryStarts,
-  describeBlocker,
-  openStore,
-  ticketRecord,
-  type StartingFactory,
-  type Store,
-} from "@foundry/daemon";
+import { DATABASE_FILE_NAME, decideFactoryStarts, describeBlocker, openStore, ticketRecord } from "@foundry/daemon";
+import type { StartingFactory, Store } from "@foundry/daemon";
 
 let dir: string;
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "foundry-start-refusal-"));
 });
+
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const withStore = <A, E>(use: (store: Store) => Effect.Effect<A, E>) =>
   Effect.runPromise(Effect.scoped(Effect.flatMap(openStore({ filename: join(dir, DATABASE_FILE_NAME) }), use)));
 
 type Lines = StartingFactory["config"]["production_lines"];
-const line = (...stages: string[]): Lines[string] => ({
+
+const line = (...stages: Array<string>): Lines[string] => ({
   stages: stages.map((id) => ({ id, station: "eng.dev", writing: false, approval: false })),
 });
+
 const factory = (factoryId: string, lines: Lines, loadId?: number): StartingFactory => ({
   factoryId,
   config: { production_lines: lines },
@@ -81,6 +78,7 @@ test("an open ticket at a removed stage refuses its factory alone; closed ticket
         factory("shop", { feature: line("develop", "integrate") }, 7),
         factory("blog", { feature: line("develop", "review") }, 8),
       ]);
+
       return { decision, refused: yield* refusals(store) };
     }),
   );
@@ -114,9 +112,11 @@ test("with no blockers every factory starts and nothing is written", async () =>
       const before = yield* store.read<{ n: number }>(`SELECT count(*) AS n FROM history`);
       const decision = yield* decideFactoryStarts(store, [factory("shop", { feature: line("develop") }), factory("blog", {})]);
       const after = yield* store.read<{ n: number }>(`SELECT count(*) AS n FROM history`);
+
       return { decision, written: after[0]!.n - before[0]!.n };
     }),
   );
+
   expect(result.decision).toEqual({ started: ["shop", "blog"], refused: [] });
   expect(result.written).toBe(0);
 });

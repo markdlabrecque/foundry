@@ -21,13 +21,17 @@ const describeSource = (source: ToolSource): string => {
  * from, followed by the registration disclaimer (PRD §4, §14).
  */
 export const renderToolSets = (stations: ReadonlyArray<EffectiveStation>): ReadonlyArray<string> => {
-  const lines: string[] = [];
+  const lines: Array<string> = [];
+
   for (const station of stations) {
     const tools = toolSetOf(station);
     const width = Math.max(...tools.map((tool) => tool.name.length));
     lines.push(`Tool Set for ${station.address} (${tools.length} tools):`);
-    for (const tool of tools) lines.push(`  ${tool.name.padEnd(width)}  ${describeSource(tool.source)}`);
+
+    for (const tool of tools) {lines.push(`  ${tool.name.padEnd(width)}  ${describeSource(tool.source)}`);}
   }
+
   lines.push(REGISTRATION_DISCLAIMER);
+
   return lines;
 };

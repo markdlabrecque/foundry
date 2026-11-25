@@ -22,9 +22,10 @@ export const HOLD_KINDS = [
   "sync_conflict",
   "stuck_worker",
 ] as const;
+
 export type HoldKind = (typeof HOLD_KINDS)[number];
 
-export const isHoldKind = (value: unknown): value is HoldKind => (HOLD_KINDS as readonly unknown[]).includes(value);
+export const isHoldKind = (value: unknown): value is HoldKind => (HOLD_KINDS as ReadonlyArray<unknown>).includes(value);
 
 /** `resolved` by an operator command on the subject; `cleared` by the daemon when its cause went away. */
 export type HoldState = "open" | "resolved" | "cleared";
@@ -69,6 +70,7 @@ const text = (value: unknown, fallback: string): string =>
  */
 export const holdCommands = (hold: Pick<HoldRecord, "kind" | "subject" | "evidence">): ReadonlyArray<string> => {
   const s = hold.subject;
+
   switch (hold.kind) {
     case "frozen_slot":
       return [`foundry slot unfreeze ${s}`, `foundry slot reset ${s}`];
@@ -76,10 +78,12 @@ export const holdCommands = (hold: Pick<HoldRecord, "kind" | "subject" | "eviden
       return [`foundry slot reset ${s}`];
     case "hook_failure":
       // `hook` and `operation` name which hook failed and in which operation.
-      if (hold.evidence["hook"] === "before_remove") return [`foundry worktree clean ${s}`];
+      if (hold.evidence["hook"] === "before_remove") {return [`foundry worktree clean ${s}`];}
+
       if (hold.evidence["operation"] === "integration") {
         return [`foundry integration retry ${s}`, `foundry ticket cancel ${s}`];
       }
+
       return [`foundry ticket resume ${s}`, `foundry ticket cancel ${s}`];
     case "indeterminate_message":
       return [`foundry message resend ${s}`, `foundry message drop ${s}`];
@@ -91,6 +95,7 @@ export const holdCommands = (hold: Pick<HoldRecord, "kind" | "subject" | "eviden
     case "stuck_worker": {
       // The subject is the unacknowledged message; the commands act on the slot holding it.
       const slot = text(hold.evidence["slot"], "<station/ordinal>");
+
       return [`foundry slot interrupt ${slot}`, `foundry slot restart ${slot}`];
     }
   }
@@ -100,8 +105,10 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 export const isHoldRecord = (value: unknown): value is HoldRecord => {
-  if (!isRecord(value)) return false;
+  if (!isRecord(value)) {return false;}
+
   const { id, factoryId, kind, subject, state, evidence, raisedAt, updatedAt, closedAt } = value;
+
   return (
     typeof id === "number" &&
     typeof factoryId === "string" &&

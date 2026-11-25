@@ -16,9 +16,12 @@ export const factoryPathPath = (factory: string): string =>
  * when it is but the name segment is not valid percent-encoding.
  */
 export const matchFactoryPathPath = (path: string): string | null | undefined => {
-  if (!path.startsWith(FACTORIES_PREFIX) || !path.endsWith(PATH_SUFFIX)) return undefined;
+  if (!path.startsWith(FACTORIES_PREFIX) || !path.endsWith(PATH_SUFFIX)) {return undefined;}
+
   const segment = path.slice(FACTORIES_PREFIX.length, path.length - PATH_SUFFIX.length);
-  if (segment === "" || segment.includes("/")) return undefined;
+
+  if (segment === "" || segment.includes("/")) {return undefined;}
+
   try {
     return decodeURIComponent(segment);
   } catch {

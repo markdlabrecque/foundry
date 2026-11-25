@@ -33,7 +33,7 @@ export const PI_BIN_ENV = "FOUNDRY_PI_BIN";
  * custom prompt, so the worker still gets Pi's default coding prompt, not an empty one
  * (confirmed in Pi 1.6.0's resource loader and system-prompt builder).
  */
-export const SUPPRESSION_FLAGS: readonly string[] = [
+export const SUPPRESSION_FLAGS: ReadonlyArray<string> = [
   "--system-prompt",
   "", // skip global/project SYSTEM.md discovery; falls back to Pi's default prompt
   "--append-system-prompt",
@@ -52,7 +52,7 @@ export interface ConfiguredExtension {
   /** Absolute path, already resolved from the YAML's directory. */
   readonly path: string;
   /** Exact tool names; empty means hooks only. */
-  readonly tools: readonly string[];
+  readonly tools: ReadonlyArray<string>;
 }
 
 /** The effective station inputs for one launch of one slot. */
@@ -60,9 +60,9 @@ export interface LaunchInputs {
   /** Explicit `provider/model` selector, placeholders already resolved. */
   readonly model: string;
   /** Effective skill paths, absolute, in configured order. */
-  readonly skills: readonly string[];
+  readonly skills: ReadonlyArray<string>;
   /** Effective extensions, absolute paths, in configured order. */
-  readonly extensions: readonly ConfiguredExtension[];
+  readonly extensions: ReadonlyArray<ConfiguredExtension>;
   /** Absolute path of the Foundry Pi extension entry point. */
   readonly foundryExtension: string;
   /** Neutral per-slot folder under the state root; the worker's cwd. */
@@ -75,13 +75,13 @@ export interface LaunchInputs {
 /** How to start the pinned Pi: an executable plus any leading arguments. */
 export interface PiExecutable {
   readonly command: string;
-  readonly args: readonly string[];
+  readonly args: ReadonlyArray<string>;
 }
 
 /** Everything `child_process.spawn` needs for one worker launch. */
 export interface LaunchCommand {
   readonly command: string;
-  readonly args: readonly string[];
+  readonly args: ReadonlyArray<string>;
   readonly cwd: string;
   readonly env: Readonly<Record<string, string>>;
 }
@@ -96,12 +96,15 @@ export interface LaunchCommand {
  */
 export function resolvePiExecutable(env: Readonly<Record<string, string | undefined>>): PiExecutable {
   const override = env[PI_BIN_ENV];
+
   if (override !== undefined && override !== "") {
     return /\.[cm]?js$/.test(override)
       ? { command: process.execPath, args: [override] }
       : { command: override, args: [] };
   }
+
   const entry = fileURLToPath(import.meta.resolve("@earendil-works/pi-coding-agent/rpc-entry"));
+
   return { command: process.execPath, args: [entry] };
 }
 
@@ -114,11 +117,15 @@ export function buildLaunchCommand(
   requireValue("model", inputs.model);
   requireAbsolute("slotDir", inputs.slotDir);
   requireAbsolute("foundryExtension", inputs.foundryExtension);
-  for (const skill of inputs.skills) requireAbsolute("skill", skill);
+
+  for (const skill of inputs.skills) {requireAbsolute("skill", skill);}
+
   for (const extension of inputs.extensions) {
     requireAbsolute("extension", extension.path);
-    for (const tool of extension.tools) requireToolName(tool);
+
+    for (const tool of extension.tools) {requireToolName(tool);}
   }
+
   requireValue("factoryId", inputs.factoryId);
   requireValue("slotId", inputs.slotId);
   requireValue("launchId", inputs.launchId);
@@ -145,9 +152,11 @@ export function buildLaunchCommand(
   // The host's full environment, unfiltered (an allowlist is P1); identity always wins
   // over any inherited value, e.g. when the host itself was started from a worker.
   const env: Record<string, string> = {};
+
   for (const [name, value] of Object.entries(hostEnv)) {
-    if (value !== undefined) env[name] = value;
+    if (value !== undefined) {env[name] = value;}
   }
+
   env[LAUNCH_ENV.factoryId] = inputs.factoryId;
   env[LAUNCH_ENV.slotId] = inputs.slotId;
   env[LAUNCH_ENV.launchId] = inputs.launchId;

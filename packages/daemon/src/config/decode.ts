@@ -45,11 +45,13 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
 
   const at = (offset: number): { line: number; column: number } => {
     const { line, col } = lineCounter.linePos(offset);
+
     return { line, column: col };
   };
 
   // YAML warnings (such as an unresolved tag) are errors in strict configuration.
   const yamlErrors = [...doc.errors, ...doc.warnings];
+
   if (yamlErrors.length > 0) {
     return {
       _tag: "Invalid",
@@ -65,8 +67,10 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
     onExcessProperty: "error",
     errors: "all",
   });
+
   if (Result.isSuccess(decoded)) {
     const config = decoded.success;
+
     // Name and tool-name rules (PRD §4) run first; a name problem points at its key.
     // Line rules resolve station references by name, so they run only on valid names.
     const nameProblems = [...checkNames(config), ...checkToolNames(config)].map((problem) => ({
@@ -74,17 +78,21 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
       message: problem.message,
       ...at(locate(doc, problem.path, true) ?? 0),
     }));
-    if (nameProblems.length > 0) return { _tag: "Invalid", problems: nameProblems };
+
+    if (nameProblems.length > 0) {return { _tag: "Invalid", problems: nameProblems };}
 
     const located = (issue: LineIssue): ConfigProblem => ({
       path: issue.path.map(String).join("."),
       message: issue.message,
       ...at(locate(doc, issue.path, false) ?? 0),
     });
+
     const lines = checkProductionLines(config);
+
     if (lines.errors.length > 0) {
       return { _tag: "Invalid", problems: byLocation(lines.errors.map(located)) };
     }
+
     return { _tag: "Valid", config, warnings: byLocation(lines.warnings.map(located)) };
   }
 
@@ -92,18 +100,21 @@ export const decodeFactoryYaml = (text: string): DecodeResult => {
     const path = (issue.path ?? []).map((segment) =>
       typeof segment === "object" ? segment.key : segment,
     );
+
     // An empty document has no node; its problems belong at the document start.
     const range = locate(doc, path, issue.message === "Unknown key") ?? 0;
+
     return {
       path: path.map(String).join("."),
       message: issue.message,
       ...at(range),
     };
   });
+
   return { _tag: "Invalid", problems: byLocation(problems) };
 };
 
-const byLocation = (problems: ConfigProblem[]): ConfigProblem[] =>
+const byLocation = (problems: Array<ConfigProblem>): Array<ConfigProblem> =>
   problems.sort((a, b) => (a.line ?? 0) - (b.line ?? 0) || (a.column ?? 0) - (b.column ?? 0));
 
 /**
@@ -117,10 +128,13 @@ export const locateProblems = (
 ): ReadonlyArray<ConfigProblem> => {
   const lineCounter = new LineCounter();
   const doc = parseDocument(text, { uniqueKeys: true, prettyErrors: false, lineCounter });
+
   return problems.map((problem) => {
-    if (problem.line !== undefined) return problem;
+    if (problem.line !== undefined) {return problem;}
+
     const path = problem.path === "" ? [] : problem.path.split(".");
     const { line, col } = lineCounter.linePos(locate(doc, path, false) ?? 0);
+
     return { ...problem, line, column: col };
   });
 };
@@ -137,26 +151,34 @@ const locate = (
 ): number | undefined => {
   let node: unknown = doc.contents;
   let offset = rangeStart(node);
+
   for (const [index, segment] of path.entries()) {
-    if (isAlias(node)) node = node.resolve(doc);
+    if (isAlias(node)) {node = node.resolve(doc);}
+
     let next: unknown;
     let keyNode: unknown;
+
     if (isMap(node)) {
       const pair = node.items.find(
         (item) => isScalar(item.key) && String(item.key.value) === String(segment),
       );
+
       next = pair?.value;
       keyNode = pair?.key;
     } else if (isSeq(node)) {
       next = node.items[Number(segment)];
     }
+
     if (pointAtKey && index === path.length - 1 && keyNode !== undefined) {
       return rangeStart(keyNode) ?? offset;
     }
-    if (next === undefined || next === null) return keyNode === undefined ? offset : rangeStart(keyNode) ?? offset;
+
+    if (next === undefined || next === null) {return keyNode === undefined ? offset : rangeStart(keyNode) ?? offset;}
+
     node = next;
     offset = rangeStart(node) ?? offset;
   }
+
   return offset;
 };
 

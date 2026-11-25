@@ -4,23 +4,10 @@ import { chmod, mkdir, open } from "node:fs/promises";
 import { connect } from "node:net";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  HOST_CONTROL_VERSION,
-  hostSocketPath,
-  readLines,
-  type HostEvent,
-  type HostIdentity,
-  type HostRequest,
-  type HostResponse,
-} from "./control.js";
-import {
-  DEFAULT_TERMINATE_GRACE_MS,
-  DEFAULT_TERMINATE_KILL_WAIT_MS,
-  type LaunchRecord,
-  type LaunchSpec,
-  type TerminateOptions,
-  type Termination,
-} from "./launches.js";
+import { HOST_CONTROL_VERSION, hostSocketPath, readLines } from "./control.js";
+import type { HostEvent, HostIdentity, HostRequest, HostResponse } from "./control.js";
+import { DEFAULT_TERMINATE_GRACE_MS, DEFAULT_TERMINATE_KILL_WAIT_MS } from "./launches.js";
+import type { LaunchRecord, LaunchSpec, TerminateOptions, Termination } from "./launches.js";
 
 /** Path, relative to the state root, of the file that receives the host's stderr (PRD §15.2). */
 export const HOST_LOG_NAME = join("logs", "host.log");
@@ -48,27 +35,34 @@ export async function startHost(
   await chmod(join(stateRoot, "logs"), 0o700);
   const logPath = hostLogPath(stateRoot);
   const log = await open(logPath, "a", 0o600);
+
   try {
     const mainPath = fileURLToPath(new URL("./main.js", import.meta.url));
+
     const child = spawn(process.execPath, [mainPath, stateRoot], {
       detached: true,
       stdio: ["ignore", "pipe", log.fd],
     });
+
     const stdout = child.stdout;
-    if (stdout === null) throw new Error("worker host spawned without a stdout pipe");
+
+    if (stdout === null) {throw new Error("worker host spawned without a stdout pipe");}
 
     const ready = new Promise<HostIdentity>((resolve, reject) => {
       const timer = setTimeout(() => {
         reject(new Error(`worker host did not become ready; see ${logPath}`));
       }, options.readyTimeoutMs ?? 10_000);
+
       const settle = (): void => {
         clearTimeout(timer);
         child.off("exit", onExit);
       };
+
       const onExit = (code: number | null, signal: NodeJS.Signals | null): void => {
         settle();
         reject(new Error(`worker host exited before ready (code ${code}, signal ${signal}); see ${logPath}`));
       };
+
       child.once("exit", onExit);
       child.once("error", (error) => {
         settle();
@@ -79,8 +73,11 @@ export async function startHost(
       stdout.on("data", (chunk: string) => {
         buffered += chunk;
         const newline = buffered.indexOf("\n");
-        if (newline === -1) return;
+
+        if (newline === -1) {return;}
+
         settle();
+
         try {
           const line = JSON.parse(buffered.slice(0, newline)) as { identity: HostIdentity };
           resolve(line.identity);
@@ -111,7 +108,7 @@ export interface HostConnection {
   /** Starts a launch in its own process group; rejects if the host refuses. */
   launch(spec: LaunchSpec): Promise<LaunchRecord>;
   /** Every launch the host has started, with its liveness and, once gone, its exit. */
-  inventory(): Promise<LaunchRecord[]>;
+  inventory(): Promise<Array<LaunchRecord>>;
   /**
    * Has the host terminate the process group of a launch it owns. Resolves
    * with `outcome: "gone"` only when the host confirmed the group gone; an
@@ -144,28 +141,39 @@ export async function connectHost(
 
   const pending = new Map<number, { resolve: (r: HostResponse) => void; reject: (e: Error) => void }>();
   let nextId = 1;
+
   const failAll = (error: Error): void => {
-    for (const waiter of pending.values()) waiter.reject(error);
+    for (const waiter of pending.values()) {waiter.reject(error);}
+
     pending.clear();
   };
+
   socket.on("error", (error) => failAll(error));
   socket.on("close", () => failAll(new Error("worker host connection closed")));
   const exitListeners: Array<(launch: LaunchRecord) => void> = [];
   readLines(socket, (line) => {
     let message: HostResponse | HostEvent;
+
     try {
       message = JSON.parse(line) as HostResponse | HostEvent;
     } catch {
       return;
     }
+
     if ("event" in message) {
-      if (message.event === "launch-exited") for (const listener of exitListeners) listener(message.launch);
+      if (message.event === "launch-exited") {for (const listener of exitListeners) {listener(message.launch);}}
+
       return;
     }
+
     const response = message;
-    if (response.id === null) return;
+
+    if (response.id === null) {return;}
+
     const waiter = pending.get(response.id);
-    if (waiter === undefined) return;
+
+    if (waiter === undefined) {return;}
+
     pending.delete(response.id);
     waiter.resolve(response);
   });
@@ -176,11 +184,13 @@ export async function connectHost(
     extraTimeoutMs = 0,
   ): Promise<HostResponse> => {
     const id = nextId++;
+
     return new Promise<HostResponse>((resolve, reject) => {
       const timer = setTimeout(() => {
         pending.delete(id);
         reject(new Error(`worker host did not answer ${op} in time`));
-      }, (options.requestTimeoutMs ?? 5_000) + extraTimeoutMs);
+      }, (options.requestTimeoutMs ?? 5000) + extraTimeoutMs);
+
       pending.set(id, {
         resolve: (r) => {
           clearTimeout(timer);
@@ -198,25 +208,35 @@ export async function connectHost(
   return {
     async identify() {
       const response = await request("identify");
-      if (!response.ok) throw new Error(`worker host refused identify: ${response.error}`);
-      if (!("identity" in response)) throw new Error("worker host answered identify without an identity");
+
+      if (!response.ok) {throw new Error(`worker host refused identify: ${response.error}`);}
+
+      if (!("identity" in response)) {throw new Error("worker host answered identify without an identity");}
+
       if (response.identity.controlVersion !== HOST_CONTROL_VERSION) {
         throw new Error(
           `worker host control version ${response.identity.controlVersion} does not match ${HOST_CONTROL_VERSION}`,
         );
       }
+
       return response.identity;
     },
     async launch(spec) {
       const response = await request("launch", { spec });
-      if (!response.ok) throw new Error(`worker host refused launch: ${response.error}`);
-      if (!("launch" in response)) throw new Error("worker host answered launch without a launch");
+
+      if (!response.ok) {throw new Error(`worker host refused launch: ${response.error}`);}
+
+      if (!("launch" in response)) {throw new Error("worker host answered launch without a launch");}
+
       return response.launch;
     },
     async inventory() {
       const response = await request("inventory");
-      if (!response.ok) throw new Error(`worker host refused inventory: ${response.error}`);
-      if (!("launches" in response)) throw new Error("worker host answered inventory without launches");
+
+      if (!response.ok) {throw new Error(`worker host refused inventory: ${response.error}`);}
+
+      if (!("launches" in response)) {throw new Error("worker host answered inventory without launches");}
+
       return [...response.launches];
     },
     async terminate(launchId, terminateOptions = {}) {
@@ -224,9 +244,13 @@ export async function connectHost(
       const bound =
         (terminateOptions.graceMs ?? DEFAULT_TERMINATE_GRACE_MS) +
         (terminateOptions.killWaitMs ?? DEFAULT_TERMINATE_KILL_WAIT_MS);
+
       const response = await request("terminate", { ...terminateOptions, launchId }, bound);
-      if (!response.ok) throw new Error(`worker host refused terminate: ${response.error}`);
-      if (!("termination" in response)) throw new Error("worker host answered terminate without a termination");
+
+      if (!response.ok) {throw new Error(`worker host refused terminate: ${response.error}`);}
+
+      if (!("termination" in response)) {throw new Error("worker host answered terminate without a termination");}
+
       return response.termination;
     },
     onLaunchExited(listener) {

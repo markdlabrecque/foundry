@@ -5,12 +5,13 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { LAUNCH_ENV, connectHost, startHost, type LaunchRecord } from "@foundry/host";
+import { LAUNCH_ENV, connectHost, startHost } from "@foundry/host";
+import type { LaunchRecord } from "@foundry/host";
 
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 /**
@@ -34,6 +35,7 @@ function processGroupOf(pid: number): number {
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
+
     return true;
   } catch {
     return false;
@@ -44,7 +46,7 @@ test("the host owns a launched process group through launch and exit, across a l
   const stateRoot = await mkdtemp(join(tmpdir(), "foundry-host-"));
   const launchDir = join(stateRoot, "launches", "slot-1");
   cleanups.push(() => rm(stateRoot, { recursive: true, force: true }));
-  const launchedGroups: number[] = [];
+  const launchedGroups: Array<number> = [];
   // Registered before anything starts, so a failed check still leaves no process behind.
   cleanups.push(async () => {
     for (const pgid of launchedGroups) {
@@ -57,7 +59,7 @@ test("the host owns a launched process group through launch and exit, across a l
   });
   let hostPid: number | undefined;
   cleanups.push(async () => {
-    if (hostPid !== undefined && isAlive(hostPid)) process.kill(hostPid, "SIGTERM");
+    if (hostPid !== undefined && isAlive(hostPid)) {process.kill(hostPid, "SIGTERM");}
   });
 
   const host = await startHost(stateRoot);
@@ -65,6 +67,7 @@ test("the host owns a launched process group through launch and exit, across a l
   await mkdir(launchDir, { recursive: true });
 
   const first = await connectHost(stateRoot);
+
   const launched = await first.launch({
     factoryId: "factory-a",
     slotId: "slot-1",
@@ -74,6 +77,7 @@ test("the host owns a launched process group through launch and exit, across a l
     // The host's identity variables must win over anything a caller passes.
     env: { [LAUNCH_ENV.launchId]: "spoof", [LAUNCH_ENV.slotId]: "spoof" },
   });
+
   launchedGroups.push(launched.pgid);
 
   expect(launched).toMatchObject({
@@ -117,6 +121,7 @@ test("the host owns a launched process group through launch and exit, across a l
   // The slot is free again once its launch is gone.
   const relaunchDir = join(stateRoot, "launches", "slot-1-again");
   await mkdir(relaunchDir, { recursive: true });
+
   const relaunched = await third.launch({
     factoryId: "factory-a",
     slotId: "slot-1",
@@ -124,6 +129,7 @@ test("the host owns a launched process group through launch and exit, across a l
     args: ["-e", "setInterval(() => {}, 1000)"],
     cwd: relaunchDir,
   });
+
   launchedGroups.push(relaunched.pgid);
   expect(relaunched).toMatchObject({ slotId: "slot-1", liveness: "live" });
   expect(relaunched.launchId).not.toBe(launched.launchId);

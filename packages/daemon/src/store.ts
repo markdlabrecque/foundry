@@ -306,9 +306,11 @@ export const openStore = (
       Effect.provide(Reactivity.layer),
       Effect.mapError(sqlFailure("Open", `Could not open ${options.filename}`)),
     );
+
     const query = makeQuery(sql);
 
     const applied = yield* appliedVersion(query);
+
     if (applied > known) {
       return yield* new StoreError({
         reason: "NewerSchema",
@@ -332,34 +334,44 @@ export const openStore = (
     );
 
     const commitListeners = new Set<() => void>();
+
     const change: Store["change"] = (body) =>
       Effect.gen(function* () {
         let historyRows = 0;
+
         const recordHistory = (entry: HistoryEntry) =>
           Effect.gen(function* () {
             const recordedAt = yield* Clock.currentTimeMillis;
+
             const rows = yield* query<{ sequence: number }>(
               `INSERT INTO history (factory_id, recorded_at, kind, subject, detail)
                VALUES (?, ?, ?, ?, ?) RETURNING sequence`,
               [entry.factoryId, recordedAt, entry.kind, entry.subject, JSON.stringify(entry.detail ?? null)],
             );
+
             const sequence = rows[0]!.sequence;
+
             for (const record of entry.records ?? []) {
               yield* query(
                 `INSERT OR IGNORE INTO history_record (sequence, record_kind, record_id) VALUES (?, ?, ?)`,
                 [sequence, record.kind, record.id],
               );
             }
+
             historyRows += 1;
+
             return sequence;
           });
+
         const result = yield* body({ query, recordHistory });
+
         if (historyRows === 0) {
           return yield* new StoreError({
             reason: "NoHistory",
             message: "A change must record at least one history row; rolled back",
           });
         }
+
         return result;
       }).pipe(
         sql.withTransaction,
@@ -387,6 +399,7 @@ export const openStore = (
       onCommit: (listener) => {
         const registered = () => listener();
         commitListeners.add(registered);
+
         return () => void commitListeners.delete(registered);
       },
     } satisfies Store;
@@ -396,9 +409,12 @@ export const openStore = (
 const appliedVersion = (query: Query) =>
   Effect.gen(function* () {
     const tables = yield* query(`SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?`, [MIGRATIONS_TABLE]);
-    if (tables.length === 0) return 0;
+
+    if (tables.length === 0) {return 0;}
+
     const rows = yield* query<{ version: number | null }>(
       `SELECT max(migration_id) AS version FROM ${MIGRATIONS_TABLE}`,
     );
+
     return rows[0]?.version ?? 0;
   });

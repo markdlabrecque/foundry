@@ -5,12 +5,13 @@ import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { connectHost, launchStderrPath, startHost, type LaunchRecord } from "@foundry/host";
+import { connectHost, launchStderrPath, startHost } from "@foundry/host";
+import type { LaunchRecord } from "@foundry/host";
 
 const cleanups: Array<() => Promise<void>> = [];
 
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 /**
@@ -29,19 +30,22 @@ const STUBBORN_WITH_CHILD = `
 function isAlive(pid: number): boolean {
   try {
     process.kill(pid, 0);
+
     return true;
   } catch {
     return false;
   }
 }
 
-async function waitForFile(path: string, timeoutMs = 5_000): Promise<string> {
+async function waitForFile(path: string, timeoutMs = 5000): Promise<string> {
   const deadline = Date.now() + timeoutMs;
+
   for (;;) {
     try {
       return await readFile(path, "utf8");
     } catch (error) {
-      if (Date.now() >= deadline) throw error;
+      if (Date.now() >= deadline) {throw error;}
+
       await new Promise((resolve) => setTimeout(resolve, 20));
     }
   }
@@ -50,8 +54,8 @@ async function waitForFile(path: string, timeoutMs = 5_000): Promise<string> {
 test("terminating a launch ends its whole group, non-detached child included, while another group lives", async () => {
   const stateRoot = await mkdtemp(join(tmpdir(), "foundry-host-"));
   cleanups.push(() => rm(stateRoot, { recursive: true, force: true }));
-  const groups: number[] = [];
-  const pids: number[] = [];
+  const groups: Array<number> = [];
+  const pids: Array<number> = [];
   // Registered before anything starts, so a failed check still leaves no process behind.
   cleanups.push(async () => {
     for (const pgid of groups) {
@@ -61,6 +65,7 @@ test("terminating a launch ends its whole group, non-detached child included, wh
         // Already gone.
       }
     }
+
     for (const pid of pids) {
       try {
         process.kill(pid, "SIGKILL");
@@ -71,7 +76,7 @@ test("terminating a launch ends its whole group, non-detached child included, wh
   });
   let hostPid: number | undefined;
   cleanups.push(async () => {
-    if (hostPid !== undefined && isAlive(hostPid)) process.kill(hostPid, "SIGTERM");
+    if (hostPid !== undefined && isAlive(hostPid)) {process.kill(hostPid, "SIGTERM");}
   });
 
   const host = await startHost(stateRoot);
@@ -91,7 +96,9 @@ test("terminating a launch ends its whole group, non-detached child included, wh
     args: ["-e", STUBBORN_WITH_CHILD],
     cwd: targetDir,
   });
+
   groups.push(target.pgid);
+
   const other = await control.launch({
     factoryId: "factory-b",
     slotId: "slot-1",
@@ -99,6 +106,7 @@ test("terminating a launch ends its whole group, non-detached child included, wh
     args: ["-e", "setInterval(() => {}, 1000)"],
     cwd: otherDir,
   });
+
   groups.push(other.pgid);
 
   const childPid = Number(await waitForFile(join(targetDir, "child.pid")));
@@ -111,12 +119,12 @@ test("terminating a launch ends its whole group, non-detached child included, wh
   // The host writes any stderr file before it reports the exit, so the report bounds the check below.
   const targetExited = new Promise<LaunchRecord>((resolve) =>
     control.onLaunchExited((l) => {
-      if (l.launchId === target.launchId) resolve(l);
+      if (l.launchId === target.launchId) {resolve(l);}
     }),
   );
 
   // Both members ignore SIGTERM, so ending the group takes escalation.
-  const termination = await control.terminate(target.launchId, { graceMs: 200, killWaitMs: 5_000 });
+  const termination = await control.terminate(target.launchId, { graceMs: 200, killWaitMs: 5000 });
   expect(termination).toMatchObject({
     outcome: "gone",
     escalated: true,

@@ -4,14 +4,8 @@
  * call and needs no credential. See `../faux-script.ts` for the script rules.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  type FauxResponseFactory,
-  type ToolCall,
-  fauxAssistantMessage,
-  fauxProvider,
-  fauxText,
-  fauxToolCall,
-} from "@earendil-works/pi-ai";
+import { fauxAssistantMessage, fauxProvider, fauxText, fauxToolCall } from "@earendil-works/pi-ai";
+import type { FauxResponseFactory, ToolCall } from "@earendil-works/pi-ai";
 import { nextFauxReply } from "../faux-script.js";
 
 export const FAUX_PROVIDER = "foundry-faux";
@@ -22,19 +16,25 @@ export default function fauxProviderExtension(pi: ExtensionAPI): void {
     provider: FAUX_PROVIDER,
     api: FAUX_PROVIDER,
     models: [
-      { id: FAUX_MODEL, name: "Foundry scripted faux model", reasoning: false, input: ["text"], contextWindow: 128000, maxTokens: 4096 },
+      { id: FAUX_MODEL, name: "Foundry scripted faux model", reasoning: false, input: ["text"], contextWindow: 128_000, maxTokens: 4096 },
     ],
   });
+
   let calls = 0;
+
   // The faux core consumes one queued step per request; each step queues the next.
   const respond: FauxResponseFactory = (context) => {
     faux.appendResponses([respond]);
     const reply = nextFauxReply(context.messages);
-    if (reply.kind === "text") return fauxAssistantMessage(fauxText(reply.text));
+
+    if (reply.kind === "text") {return fauxAssistantMessage(fauxText(reply.text));}
+
     calls += 1;
     const args = reply.step.arguments as ToolCall["arguments"];
+
     return fauxAssistantMessage(fauxToolCall(reply.step.tool, args, { id: `faux-${calls}` }), { stopReason: "toolUse" });
   };
+
   faux.setResponses([respond]);
   pi.registerProvider(faux.provider);
 }

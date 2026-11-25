@@ -9,14 +9,16 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import { openStore, recordRun, serveManagementApi, storeFactoriesReader, type LoadedFactory, type Store } from "@foundry/daemon";
+import { openStore, recordRun, serveManagementApi, storeFactoriesReader } from "@foundry/daemon";
+import type { LoadedFactory, Store } from "@foundry/daemon";
 import { EXIT_OK, EXIT_REFUSED, EXIT_UNREACHABLE, runFactoryList } from "@foundry/cli";
 
 const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
 
 const cleanups: Array<() => Promise<void> | void> = [];
+
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 // FOUNDRY_HOME is never the operator's root: every call names --home.
@@ -25,12 +27,14 @@ const env = { FOUNDRY_HOME: "/nonexistent-foundry-home" };
 const tempHome = (): string => {
   const home = mkdtempSync(join(tmpdir(), "foundry-factories-"));
   cleanups.push(() => rmSync(home, { recursive: true, force: true }));
+
   return home;
 };
 
 const openTempStore = async (home: string): Promise<Store> => {
   const scope = Effect.runSync(Scope.make());
   cleanups.push(() => Effect.runPromise(Scope.close(scope, Exit.void)));
+
   return Effect.runPromise(Scope.provide(scope)(openStore({ filename: join(home, "foundry.db") })));
 };
 
@@ -52,10 +56,12 @@ test("factory list answers from the served run's recorded configuration loads", 
   const store = await openTempStore(home);
   // An earlier run loaded a factory this run does not; it must not be listed.
   await record(store, "run-old", Date.parse("2026-01-01T00:00:00.000Z"), [factory("gone", "00")]);
+
   const loads = await record(store, "run-now", Date.parse("2026-02-01T00:00:00.000Z"), [
     factory("alpha", "aa"),
     factory("beta", "bb"),
   ]);
+
   const status = () => ({ instance: { stateRoot: home, daemonPid: 1, startedAt: "2026-02-01T00:00:00.000Z" } });
   const api = await serveManagementApi({ stateRoot: home, status, factories: storeFactoriesReader(store, "run-now") });
   cleanups.push(() => api.close());
@@ -122,10 +128,12 @@ test("a served run with no record is refused, not answered with an empty list", 
 
 test("the foundry binary wires factory list through to the daemon check", () => {
   const home = tempHome();
+
   const result = spawnSync(process.execPath, [cliMain, "factory", "list", "--home", home], {
     env: { ...process.env, ...env },
     encoding: "utf8",
     timeout: 20_000,
   });
+
   expect(result.status).toBe(EXIT_UNREACHABLE);
 });

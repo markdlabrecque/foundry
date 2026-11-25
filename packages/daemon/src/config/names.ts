@@ -16,7 +16,9 @@ const grammarProblem = (kind: "Room" | "Station", name: string): string | undefi
   if (!NAME_GRAMMAR.test(name)) {
     return `${kind} name "${name}" must be lowercase letters, digits and hyphens, starting with a letter`;
   }
-  if (RESERVED_NAMES.has(name)) return `${kind} name "${name}" is reserved`;
+
+  if (RESERVED_NAMES.has(name)) {return `${kind} name "${name}" is reserved`;}
+
   return undefined;
 };
 
@@ -26,7 +28,7 @@ const grammarProblem = (kind: "Room" | "Station", name: string): string | undefi
  * namespace rooms and stations share. Pure: it reads only the decoded value.
  */
 export const checkNames = (config: FactoryConfig): ReadonlyArray<NameProblem> => {
-  const problems: NameProblem[] = [];
+  const problems: Array<NameProblem> = [];
   const rooms = Object.keys(config.rooms);
   const roomNames = new Set(rooms);
   const stationRoom = new Map<string, string>();
@@ -34,14 +36,17 @@ export const checkNames = (config: FactoryConfig): ReadonlyArray<NameProblem> =>
   for (const room of rooms) {
     const roomPath = ["rooms", room];
     const roomProblem = grammarProblem("Room", room);
-    if (roomProblem !== undefined) problems.push({ path: roomPath, message: roomProblem });
+
+    if (roomProblem !== undefined) {problems.push({ path: roomPath, message: roomProblem });}
 
     for (const station of Object.keys(config.rooms[room]?.stations ?? {})) {
       const path = [...roomPath, "stations", station];
       const stationProblem = grammarProblem("Station", station);
-      if (stationProblem !== undefined) problems.push({ path, message: stationProblem });
+
+      if (stationProblem !== undefined) {problems.push({ path, message: stationProblem });}
 
       const first = stationRoom.get(station);
+
       if (first !== undefined) {
         problems.push({
           path,
@@ -50,6 +55,7 @@ export const checkNames = (config: FactoryConfig): ReadonlyArray<NameProblem> =>
       } else {
         stationRoom.set(station, room);
       }
+
       if (roomNames.has(station)) {
         problems.push({
           path,
@@ -58,5 +64,6 @@ export const checkNames = (config: FactoryConfig): ReadonlyArray<NameProblem> =>
       }
     }
   }
+
   return problems;
 };

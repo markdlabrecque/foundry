@@ -31,45 +31,55 @@ const readIfPresent = (path: string): Buffer | undefined => {
   try {
     return readFileSync(path);
   } catch (error) {
-    if (isErrno(error, "ENOENT")) return undefined;
+    if (isErrno(error, "ENOENT")) {return undefined;}
+
     throw error;
   }
 };
 
 /** The daemon log's files, oldest first: rotated copies by descending number, then the live file. */
-const daemonLogFiles = (stateRoot: string): string[] => {
-  let names: string[];
+const daemonLogFiles = (stateRoot: string): Array<string> => {
+  let names: Array<string>;
+
   try {
     names = readdirSync(join(stateRoot, LOGS_DIR));
   } catch (error) {
-    if (isErrno(error, "ENOENT")) return [];
+    if (isErrno(error, "ENOENT")) {return [];}
+
     throw error;
   }
+
   const rotated = names
     .map((name) => /^daemon\.log\.([1-9][0-9]*)$/.exec(name))
     .filter((match): match is RegExpExecArray => match !== null)
     .map((match) => Number(match[1]))
     .sort((a, b) => b - a)
     .map((n) => join(stateRoot, LOGS_DIR, `${DAEMON_LOG_FILE}.${n}`));
+
   return [...rotated, join(stateRoot, LOGS_DIR, DAEMON_LOG_FILE)];
 };
 
 const activeFilters = (query: LogQuery): Array<[string, string]> =>
-  (Object.keys(FILTER_KEYS) as LogFilter[])
+  (Object.keys(FILTER_KEYS) as Array<LogFilter>)
     .filter((filter) => query[filter] !== undefined)
     .map((filter) => [FILTER_KEYS[filter], query[filter]!]);
 
 /** Whether `line` carries every reference asked for. With no filters every line is selected. */
 const selects = (line: string, filters: ReadonlyArray<[string, string]>): boolean => {
-  if (filters.length === 0) return true;
+  if (filters.length === 0) {return true;}
+
   let parsed: unknown;
+
   try {
     parsed = JSON.parse(line);
   } catch {
     return false; // A line that is not JSON carries no references.
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return false;
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {return false;}
+
   const record = parsed as Record<string, unknown>;
+
   return filters.every(([key, value]) => record[key] === value);
 };
 
@@ -80,13 +90,16 @@ const selects = (line: string, filters: ReadonlyArray<[string, string]>): boolea
  */
 export const decodeStderrTail = (bytes: Uint8Array): string => {
   let start = 0;
-  while (start < bytes.length && start < 3 && (bytes[start]! & 0xc0) === 0x80) start++;
+
+  while (start < bytes.length && start < 3 && (bytes[start]! & 0xc0) === 0x80) {start++;}
+
   return new TextDecoder("utf-8", { fatal: false }).decode(bytes.subarray(start));
 };
 
 const launchStderr = (stateRoot: string, launchId: string): LaunchStderr | undefined => {
   const path = join(stateRoot, LAUNCHES_DIR, `${launchId}.stderr`);
   const bytes = readIfPresent(path);
+
   return bytes === undefined ? undefined : { launchId, path, text: decodeStderrTail(bytes) };
 };
 
@@ -97,14 +110,19 @@ const launchStderr = (stateRoot: string, launchId: string): LaunchStderr | undef
 export const readLogs = (stateRoot: string, query: LogQuery): LogsResult => {
   const files = query.host ? [join(stateRoot, LOGS_DIR, HOST_LOG_FILE)] : daemonLogFiles(stateRoot);
   const filters = activeFilters(query);
-  const lines: string[] = [];
+  const lines: Array<string> = [];
+
   for (const file of files) {
     const text = readIfPresent(file)?.toString("utf8");
-    if (text === undefined) continue;
+
+    if (text === undefined) {continue;}
+
     for (const line of text.split("\n")) {
-      if (line !== "" && selects(line, filters)) lines.push(line);
+      if (line !== "" && selects(line, filters)) {lines.push(line);}
     }
   }
+
   const stderr = query.launch === undefined ? undefined : launchStderr(stateRoot, query.launch);
+
   return { log: query.host ? "host" : "daemon", lines, ...(stderr === undefined ? {} : { launchStderr: stderr }) };
 };

@@ -14,15 +14,8 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { Effect } from "effect";
-import {
-  locateProblems,
-  resolveConfiguredPath,
-  resolveStations,
-  validateFactoryYaml,
-  type ConfigProblem,
-  type EffectiveStation,
-  type FactoryConfig,
-} from "./config/index.js";
+import { locateProblems, resolveConfiguredPath, resolveStations, validateFactoryYaml } from "./config/index.js";
+import type { ConfigProblem, EffectiveStation, FactoryConfig } from "./config/index.js";
 // Types only: loading `./store.js` at runtime pulls in `node:sqlite` (see quiet-store.ts).
 import type { Store, StoreError } from "./store.js";
 
@@ -69,11 +62,13 @@ export interface LoadFactoriesOptions {
 const describe = (file: string, problem: ConfigProblem): string => {
   const location = problem.line === undefined ? file : `${file}:${problem.line}:${problem.column ?? 1}`;
   const setting = problem.path === "" ? "" : ` ${problem.path}:`;
+
   return `${location}:${setting} ${problem.message}`;
 };
 
 const refuseProblems = (file: string, problems: ReadonlyArray<ConfigProblem>): LoadFactoriesResult => {
   const more = problems.length > 1 ? ` (${problems.length - 1} more; run foundry validate ${file})` : "";
+
   return { _tag: "Refused", message: `${describe(file, problems[0]!)}${more}` };
 };
 
@@ -82,6 +77,7 @@ const knowledgeLayout = (config: FactoryConfig, baseDir: string, home: string | 
   // The decoder fills in the default `knowledge`; its type still marks it optional.
   const root = resolveConfiguredPath(config.knowledge?.root ?? "knowledge", baseDir, home);
   const names = Object.entries(config.rooms).flatMap(([room, { stations }]) => [room, ...Object.keys(stations)]);
+
   return { root, directories: [root, ...names.map((name) => join(root, name))] };
 };
 
@@ -93,30 +89,38 @@ export const loadFactoryFiles = (
   files: ReadonlyArray<string>,
   options: LoadFactoriesOptions,
 ): LoadFactoriesResult => {
-  const factories: LoadedFactory[] = [];
+  const factories: Array<LoadedFactory> = [];
+
   for (const file of files) {
     let text: string;
+
     try {
       text = readFileSync(file, "utf8");
     } catch (error) {
       return { _tag: "Refused", message: `${file}: cannot read factory YAML: ${(error as Error).message}` };
     }
+
     const yamlFile = resolve(file);
     const baseDir = dirname(yamlFile);
     const validated = validateFactoryYaml(text, { yamlFile, ...(options.home === undefined ? {} : { home: options.home }) });
-    if (validated._tag === "Invalid") return refuseProblems(file, validated.problems);
+
+    if (validated._tag === "Invalid") {return refuseProblems(file, validated.problems);}
+
     const resolved = resolveStations(validated.config, {
       env: options.env,
       baseDir,
       ...(options.home === undefined ? {} : { home: options.home }),
     });
-    if (resolved._tag === "Invalid") return refuseProblems(file, locateProblems(text, resolved.problems));
+
+    if (resolved._tag === "Invalid") {return refuseProblems(file, locateProblems(text, resolved.problems));}
 
     const factoryId = validated.config.name;
     const clash = factories.find((f) => f.factoryId === factoryId);
+
     if (clash !== undefined) {
       return { _tag: "Refused", message: `${file}: factory "${factoryId}" is already loaded from ${clash.yamlFile}` };
     }
+
     const configJson = JSON.stringify({ config: validated.config, stations: resolved.stations });
     factories.push({
       factoryId,
@@ -129,12 +133,13 @@ export const loadFactoryFiles = (
       knowledge: knowledgeLayout(validated.config, baseDir, options.home),
     });
   }
+
   return { _tag: "Loaded", factories };
 };
 
 /** Creates the reserved knowledge directories, leaving any that exist (and their contents) alone. */
 export const createKnowledgeLayout = (factory: LoadedFactory): void => {
-  for (const directory of factory.knowledge.directories) mkdirSync(directory, { recursive: true });
+  for (const directory of factory.knowledge.directories) {mkdirSync(directory, { recursive: true });}
 };
 
 /** One recorded configuration load. */
@@ -164,13 +169,15 @@ export const recordRun = (store: Store, run: RunRecord): Effect.Effect<ReadonlyA
         subject: run.runId,
         detail: { version: run.version, factories: run.factories.map((f) => f.factoryId) },
       });
-      const loads: RecordedLoad[] = [];
+      const loads: Array<RecordedLoad> = [];
+
       for (const factory of run.factories) {
         const rows = yield* query<{ id: number }>(
           `INSERT INTO factory_config_load (run_id, factory_id, yaml_file, config, config_hash, knowledge_root)
            VALUES (?, ?, ?, ?, ?, ?) RETURNING id`,
           [run.runId, factory.factoryId, factory.yamlFile, factory.configJson, factory.configHash, factory.knowledge.root],
         );
+
         const loadId = rows[0]!.id;
         yield* recordHistory({
           factoryId: factory.factoryId,
@@ -180,6 +187,7 @@ export const recordRun = (store: Store, run: RunRecord): Effect.Effect<ReadonlyA
         });
         loads.push({ loadId, factoryId: factory.factoryId, configHash: factory.configHash });
       }
+
       return loads;
     }),
   );

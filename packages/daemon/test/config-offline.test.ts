@@ -15,23 +15,28 @@ let root = "";
 let factoryDir = "";
 let home = "";
 let yamlFile = "";
+
 beforeAll(() => {
   root = mkdtempSync(join(tmpdir(), "foundry-offline-"));
   factoryDir = join(root, "factory");
   home = join(root, "home");
   yamlFile = join(factoryDir, "factory.yaml");
+
   for (const dir of ["repo", "factory/roles", "factory/skills/project", "factory/extensions", "factory/a-dir", "home"]) {
     mkdirSync(join(root, dir), { recursive: true });
   }
+
   for (const file of ["factory.md", "roles/developer.md", "skills/project/SKILL.md", "extensions/audit.ts", "extensions/project.ts", "a-file"]) {
     writeFileSync(join(factoryDir, file), "x");
   }
+
   // Files under the test home prove `~/` resolves there and not elsewhere.
   writeFileSync(join(home, "shared.md"), "x");
   writeFileSync(join(home, "a-file"), "x");
 });
+
 afterAll(() => {
-  if (root !== "") rmSync(root, { recursive: true, force: true });
+  if (root !== "") {rmSync(root, { recursive: true, force: true });}
 });
 
 /** Every configured file exists; relative paths resolve from the factory directory. */
@@ -76,12 +81,14 @@ const validate = (text: string) => validateFactoryYaml(text, { yamlFile, home })
 
 const problemsOf = (text: string): ReadonlyArray<ConfigProblem> => {
   const result = validate(text);
-  if (result._tag === "Valid") throw new Error("expected the configuration to be rejected");
+
+  if (result._tag === "Valid") {throw new Error("expected the configuration to be rejected");}
+
   return result.problems;
 };
 
 /** Every entry beneath the disposable root, to prove validation adds nothing. */
-const tree = (dir: string): string[] =>
+const tree = (dir: string): Array<string> =>
   readdirSync(dir, { recursive: true, encoding: "utf8" }).sort();
 
 describe("accepted", () => {
@@ -132,9 +139,11 @@ const rejected: ReadonlyArray<[string, string, { path: string; message: RegExp; 
 describe("rejected", () => {
   test.each(rejected)("%s", (_name, text, expected) => {
     const problems = problemsOf(text);
+
     const match = problems.find(
       (problem) => problem.path === expected.path && expected.message.test(problem.message),
     );
+
     expect(match, JSON.stringify(problems)).toBeDefined();
     expect(match?.line).toBe(expected.line);
   });
@@ -149,6 +158,7 @@ describe("rejected", () => {
 test.skipIf(process.getuid?.() === 0)("an unreadable configured file is rejected", () => {
   const locked = join(factoryDir, "locked.md");
   writeFileSync(locked, "x", { mode: 0o000 });
+
   try {
     const problems = problemsOf(valid.replace("instructions: factory.md", "instructions: locked.md"));
     expect(problems).toContainEqual(
@@ -165,12 +175,14 @@ test("validation creates no directory and runs no command", () => {
   const marker = join(root, "ran");
   const script = join(factoryDir, "mark.sh");
   writeFileSync(script, `#!/bin/sh\ntouch ${marker}\n`, { mode: 0o755 });
+
   const text = valid
     .replace("[./scripts/setup-worktree, --flag]", `[${script}]`)
     .replace("[npm, test]", `[${script}]`)
     .replace("root: ~/worktrees", "root: ~/not-yet/worktrees")
     .replace("root: knowledge", "root: not-yet-knowledge")
     .replace("instructions: factory.md", "instructions: gone.md");
+
   const before = tree(root);
 
   const problems = problemsOf(text);
@@ -199,8 +211,9 @@ describe("branch names", () => {
     ["a.lock", /".lock"/],
   ])("%s", (name, expected) => {
     const reason = branchNameProblem(name);
-    if (expected === undefined) expect(reason).toBeUndefined();
-    else expect(reason).toMatch(expected);
+
+    if (expected === undefined) {expect(reason).toBeUndefined();}
+    else {expect(reason).toMatch(expected);}
   });
 });
 

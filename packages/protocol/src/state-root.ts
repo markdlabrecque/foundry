@@ -18,8 +18,11 @@ export interface StateRootInputs {
  * Empty values count as unset. The result is an absolute path.
  */
 export const selectStateRoot = (inputs: StateRootInputs): string => {
-  if (inputs.home !== undefined && inputs.home !== "") return resolve(inputs.home);
+  if (inputs.home !== undefined && inputs.home !== "") {return resolve(inputs.home);}
+
   const fromEnv = inputs.env["FOUNDRY_HOME"];
-  if (fromEnv !== undefined && fromEnv !== "") return resolve(fromEnv);
+
+  if (fromEnv !== undefined && fromEnv !== "") {return resolve(fromEnv);}
+
   return join(inputs.userHome ?? homedir(), ".foundry");
 };

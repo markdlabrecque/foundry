@@ -6,28 +6,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import {
-  DATABASE_FILE_NAME,
-  makeTicketService,
-  openStore,
-  readEvents,
-  serveManagementApi,
-  slugify,
-  StoreError,
-  ticketDirectory,
-  type Store,
-  type TicketFactory,
-} from "@foundry/daemon";
+import { DATABASE_FILE_NAME, makeTicketService, openStore, readEvents, serveManagementApi, slugify, StoreError, ticketDirectory } from "@foundry/daemon";
+import type { Store, TicketFactory } from "@foundry/daemon";
 import { TICKETS_PATH, ticketPath } from "@foundry/protocol/tickets-api";
 
 const cleanups: Array<() => Promise<void> | void> = [];
+
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 const tempRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "foundry-tickets-"));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+
   return root;
 };
 
@@ -37,6 +29,7 @@ const shop: TicketFactory = {
   messageBudget: 100,
   lines: { standard: { rejectionLimit: 3 }, hotfix: { rejectionLimit: 1 } },
 };
+
 const blog: TicketFactory = { name: "blog", defaultLine: "standard", messageBudget: 50, lines: { standard: { rejectionLimit: 2 } } };
 
 const status = () => ({ instance: { stateRoot: "/fixture", daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } });
@@ -49,17 +42,21 @@ const openTestStore = async (root: string) => {
   const close = () => (closed ? Promise.resolve() : ((closed = true), Effect.runPromise(Scope.close(scope, Exit.void))));
   cleanups.push(close);
   const store = await Effect.runPromise(Scope.provide(scope)(openStore({ filename: join(root, DATABASE_FILE_NAME) })));
+
   return { store, close };
 };
 
 const start = async (root: string, factories: ReadonlyArray<TicketFactory>) => {
   const { store, close: stopStore } = await openTestStore(root);
+
   const api = await serveManagementApi({
     stateRoot: root,
     status,
     tickets: makeTicketService({ stateRoot: root, store, factories: () => factories }),
   });
+
   cleanups.push(() => api.close());
+
   return {
     store,
     call: (method: string, path: string, body?: unknown) => call(api.socketPath, method, path, body),
@@ -79,6 +76,7 @@ const call = (socketPath: string, method: string, path: string, body?: unknown):
       res.on("data", (chunk: string) => (text += chunk));
       res.on("end", () => resolve({ status: res.statusCode ?? 0, body: JSON.parse(text) }));
     });
+
     req.on("error", reject);
     req.end(body === undefined ? undefined : typeof body === "string" ? body : JSON.stringify(body));
   });
@@ -151,6 +149,7 @@ test("an unknown production line is refused and writes no ticket, transition, hi
               (SELECT count(*) FROM history) AS history`,
     ),
   );
+
   expect(counts).toEqual([{ tickets: 0, transitions: 0, history: 0 }]);
   expect(existsSync(join(root, "tickets"))).toBe(false);
 
@@ -188,6 +187,7 @@ test("with two factories loaded, submit and show need one named and numbers are 
 test("malformed submit requests are refused before anything is written", async () => {
   const root = tempRoot();
   const daemon = await start(root, [shop]);
+
   const cases: Array<[unknown, string]> = [
     ["not json", "invalid_request"],
     [[], "invalid_request"],
@@ -197,12 +197,14 @@ test("malformed submit requests are refused before anything is written", async (
     [{ title: "a\nb", spec: "x" }, "invalid_request"],
     [{ title: "T", spec: "x", line: "" }, "invalid_request"],
   ];
+
   for (const [body, code] of cases) {
     expect(await daemon.call("POST", TICKETS_PATH, body), JSON.stringify(body)).toMatchObject({
       status: 400,
       body: { ok: false, error: { code } },
     });
   }
+
   expect((await daemon.call("DELETE", TICKETS_PATH)).status).toBe(405);
   expect((await daemon.call("GET", `${TICKETS_PATH}/0`)).status).toBe(404);
   expect((await daemon.call("GET", TICKETS_PATH)).body.result.tickets).toEqual([]);
@@ -222,6 +224,7 @@ test("ticket transitions cannot be updated or deleted", async () => {
         }),
       ),
     );
+
   expect(await attempt(`UPDATE ticket_transition SET actor = 'daemon'`)).toMatchObject(Exit.fail({ reason: "Sql" }));
   expect(await attempt(`DELETE FROM ticket_transition`)).toMatchObject(Exit.fail({ reason: "Sql" }));
   expect(await Effect.runPromise(daemon.store.read(`SELECT actor FROM ticket_transition`))).toEqual([{ actor: "operator" }]);
@@ -230,14 +233,16 @@ test("ticket transitions cannot be updated or deleted", async () => {
 test("a submission whose change fails after its directory is written leaves no directory behind", async () => {
   const root = tempRoot();
   const { store } = await openTestStore(root);
+
   // The body runs in full (directory included), then the change fails, as a failed commit would.
   const failingCommit: Store = {
     ...store,
     change: ((body) =>
       store.change((change) =>
         Effect.flatMap(body(change), () => Effect.fail(new StoreError({ reason: "Sql", message: "injected commit failure" }))),
-      )) as Store["change"],
+      )),
   };
+
   const failing = makeTicketService({ stateRoot: root, store: failingCommit, factories: () => [shop] });
 
   const exit = await Effect.runPromiseExit(failing.submit({ title: "T", spec: SPEC }));

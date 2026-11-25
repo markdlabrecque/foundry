@@ -21,9 +21,10 @@ export const DAEMON_LOG_MAX_BYTES = 10 * 1024 * 1024;
 export const DAEMON_LOG_KEEP_FILES = 5;
 
 export const LOG_LEVELS = ["debug", "info", "warn", "error"] as const;
+
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
-export const isLogLevel = (value: string): value is LogLevel => (LOG_LEVELS as readonly string[]).includes(value);
+export const isLogLevel = (value: string): value is LogLevel => (LOG_LEVELS as ReadonlyArray<string>).includes(value);
 
 const rank = (level: LogLevel): number => LOG_LEVELS.indexOf(level);
 
@@ -48,6 +49,7 @@ export interface LogEntry extends LogRefs {
 
 /** Keys whose values are never written: credentials. */
 const CREDENTIAL_KEY = /pass(word|phrase)?|secret|token|credential|auth|api[-_]?key|private[-_]?key|cookie/i;
+
 /** Keys whose values are never written: routine message and prompt content. */
 const BODY_KEY = /^(body|text|content|prompt|message|messageBody)$/i;
 
@@ -56,9 +58,11 @@ export const OMITTED = "[omitted]";
 
 const sanitizeDetail = (detail: Readonly<Record<string, LogDetailValue>>): Record<string, LogDetailValue> => {
   const clean: Record<string, LogDetailValue> = {};
+
   for (const [key, value] of Object.entries(detail)) {
     clean[key] = CREDENTIAL_KEY.test(key) ? REDACTED : BODY_KEY.test(key) ? OMITTED : value;
   }
+
   return clean;
 };
 
@@ -111,13 +115,16 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
     const fd = openSync(path, "a", 0o600);
     // The mode above applies only on creation; an older file is tightened too.
     fchmodSync(fd, 0o600);
+
     return { fd, size: fstatSync(fd).size };
   };
+
   const failure = (msg: string, error: unknown): string =>
     `${JSON.stringify({ time: now().toISOString(), level: "error", runId, msg, detail: { error: (error as Error).message } })}\n`;
 
   // A log file that cannot be opened is not fatal: the daemon logs to stderr only.
   let file: { fd: number; size: number } | undefined;
+
   try {
     file = openFile();
   } catch (error) {
@@ -125,31 +132,40 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
   }
 
   const rotate = (): void => {
-    if (file === undefined) return;
+    if (file === undefined) {return;}
+
     closeSync(file.fd);
     file = undefined;
+
     if (keepFiles === 1) {
       unlinkSync(path);
     } else {
       for (let i = keepFiles - 1; i >= 1; i--) {
         const from = i === 1 ? path : `${path}.${i - 1}`;
+
         try {
           renameSync(from, `${path}.${i}`);
         } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") {throw error;}
         }
       }
     }
+
     file = openFile();
   };
 
   const write = (line: string): void => {
     toStderr(line);
-    if (file === undefined) return;
+
+    if (file === undefined) {return;}
+
     try {
       const bytes = Buffer.from(line, "utf8");
-      if (file.size > 0 && file.size + bytes.length > maxBytes) rotate();
-      if (file === undefined) return;
+
+      if (file.size > 0 && file.size + bytes.length > maxBytes) {rotate();}
+
+      if (file === undefined) {return;}
+
       writeSync(file.fd, bytes);
       file.size += bytes.length;
     } catch (error) {
@@ -160,15 +176,21 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
 
   const make = (bound: LogRefs): DaemonLogger => {
     const emit = (lineLevel: LogLevel, msg: string, entry: LogEntry = {}): void => {
-      if (rank(lineLevel) < rank(level)) return;
+      if (rank(lineLevel) < rank(level)) {return;}
+
       const line: Record<string, unknown> = { time: now().toISOString(), level: lineLevel, runId, msg };
+
       for (const key of REF_KEYS) {
         const value = entry[key] ?? bound[key];
-        if (value !== undefined) line[key] = value;
+
+        if (value !== undefined) {line[key] = value;}
       }
-      if (entry.detail !== undefined) line["detail"] = sanitizeDetail(entry.detail);
+
+      if (entry.detail !== undefined) {line["detail"] = sanitizeDetail(entry.detail);}
+
       write(`${JSON.stringify(line)}\n`);
     };
+
     return {
       runId,
       level,
@@ -179,11 +201,13 @@ export const openDaemonLog = (options: DaemonLoggerOptions): DaemonLogger => {
       error: (msg, entry) => emit("error", msg, entry),
       with: (refs) => make({ ...bound, ...refs }),
       close: () => {
-        if (file === undefined) return;
+        if (file === undefined) {return;}
+
         closeSync(file.fd);
         file = undefined;
       },
     };
   };
+
   return make({});
 };

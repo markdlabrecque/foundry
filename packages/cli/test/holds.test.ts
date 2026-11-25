@@ -6,12 +6,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import { closeHold, openStore, raiseHold, serveManagementApi, storeHoldsReader, type Store } from "@foundry/daemon";
+import { closeHold, openStore, raiseHold, serveManagementApi, storeHoldsReader } from "@foundry/daemon";
+import type { Store } from "@foundry/daemon";
 import { EXIT_OK, EXIT_REFUSED, runHoldList, runHoldShow } from "@foundry/cli";
 
 const cleanups: Array<() => Promise<void> | void> = [];
+
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 // FOUNDRY_HOME is never the operator's root: every call names --home.
@@ -26,6 +28,7 @@ const serveHolds = async (): Promise<{ home: string; store: Store }> => {
   const status = () => ({ instance: { stateRoot: home, daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } });
   const api = await serveManagementApi({ stateRoot: home, status, holds: storeHoldsReader(store) });
   cleanups.push(() => api.close());
+
   return { home, store };
 };
 
@@ -66,6 +69,7 @@ test("a repeated hold keeps one open record, refreshes its evidence, and shows i
       }),
     ),
   );
+
   expect(duplicate).toMatchObject(Exit.fail({ reason: "Sql" }));
 
   const list = await runHoldList({ json: false, home, env });

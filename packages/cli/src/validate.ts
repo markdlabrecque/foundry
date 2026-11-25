@@ -14,7 +14,9 @@ export interface ValidateOutcome {
 const describe = (file: string, problem: ConfigProblem): string => {
   const location =
     problem.line === undefined ? file : `${file}:${problem.line}:${problem.column ?? 1}`;
+
   const setting = problem.path === "" ? "" : ` ${problem.path}:`;
+
   return `${location}:${setting} ${problem.message}`;
 };
 
@@ -25,25 +27,33 @@ const describe = (file: string, problem: ConfigProblem): string => {
  */
 export const validateFactoryFile = (file: string): ValidateOutcome => {
   let text: string;
+
   try {
     text = readFileSync(file, "utf8");
   } catch (error) {
     const reason = error instanceof Error ? error.message : String(error);
+
     return { exitCode: 1, stdout: [], stderr: [`${file}: cannot read factory YAML: ${reason}`] };
   }
+
   // Decode, then the offline file and setting checks, then station resolution.
   const result = validateFactoryYaml(text, { yamlFile: file });
+
   if (result._tag === "Invalid") {
     return { exitCode: 1, stdout: [], stderr: result.problems.map((p) => describe(file, p)) };
   }
+
   const stations = resolveStations(result.config, {
     env: process.env,
     baseDir: dirname(resolve(file)),
   });
+
   if (stations._tag === "Invalid") {
     const problems = locateProblems(text, stations.problems);
+
     return { exitCode: 1, stdout: [], stderr: problems.map((p) => describe(file, p)) };
   }
+
   return {
     exitCode: 0,
     stdout: [`${file}: factory "${result.config.name}" is valid`, ...renderToolSets(stations.stations)],

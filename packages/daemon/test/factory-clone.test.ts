@@ -2,34 +2,28 @@
 // under the state root, reused without contacting the source, refused when not Foundry's, and the
 // source left unchanged — so it runs real Git against a local bare repository in a temp dir. One
 // row starts the built daemon and runs the built CLI to prove the start and `factory path` wiring.
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, expect, test } from "vitest";
 import { Effect } from "effect";
-import {
-  clearCloneStaging,
-  CLONE_MARKER_FILE_NAME,
-  DATABASE_FILE_NAME,
-  ensureFactoryClone,
-  factoryClonePath,
-  FactoryCloneError,
-  loadFactoryFiles,
-  openStore,
-  type LoadedFactory,
-} from "@foundry/daemon";
+import { clearCloneStaging, CLONE_MARKER_FILE_NAME, DATABASE_FILE_NAME, ensureFactoryClone, factoryClonePath, FactoryCloneError, loadFactoryFiles, openStore } from "@foundry/daemon";
+import type { LoadedFactory } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
 const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
 
-const roots: string[] = [];
-const children: ChildProcess[] = [];
+const roots: Array<string> = [];
+const children: Array<ChildProcess> = [];
+
 afterEach(() => {
-  for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const child of children.splice(0)) {if (child.exitCode === null && child.signalCode === null) {child.kill("SIGKILL");}}
+
+  for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });}
 });
 
 const factoryYaml = (name: string, source: string): string => `version: 1
@@ -74,12 +68,16 @@ const fixture = (name = "alpha", home?: string): Fixture => {
   const source = join(dir, "source.git");
   const yamlFile = join(dir, "factory.yaml");
   writeFileSync(yamlFile, factoryYaml(name, "./source.git"));
+
   const load = (factoryName = name): LoadedFactory => {
     writeFileSync(yamlFile, factoryYaml(factoryName, "./source.git"));
     const loaded = loadFactoryFiles([yamlFile], { env: {} });
-    if (loaded._tag !== "Loaded") throw new Error(loaded.message);
+
+    if (loaded._tag !== "Loaded") {throw new Error(loaded.message);}
+
     return loaded.factories[0]!;
   };
+
   return { dir, home: home ?? join(dir, "home"), source, yamlFile, load };
 };
 
@@ -90,6 +88,7 @@ const advanceSource = (f: Fixture): string => {
   git(seed, ["add", "later.md"]);
   git(seed, ["commit", "--quiet", "--no-verify", "-m", "later"]);
   git(seed, ["push", "--quiet", f.source, "main"]);
+
   return git(seed, ["rev-parse", "HEAD"]);
 };
 
@@ -197,19 +196,22 @@ const foundry = (args: ReadonlyArray<string>, home: string): Promise<{ code: num
     );
   });
 
-const startDaemon = (home: string, ...files: string[]): Promise<ChildProcess> => {
+const startDaemon = (home: string, ...files: Array<string>): Promise<ChildProcess> => {
   const child = spawn(process.execPath, [daemonMain, "--home", home, ...files], {
     env: { ...isolatedGitEnv(), FOUNDRY_HOME: join(home, "not-this-one") },
     stdio: ["ignore", "pipe", "pipe"],
   });
+
   children.push(child);
   let stdout = "";
   let stderr = "";
-  child.stderr!.on("data", (c: Buffer) => (stderr += c.toString()));
+  child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
+
   return new Promise((resolve, reject) => {
-    child.stdout!.on("data", (c: Buffer) => {
+    child.stdout.on("data", (c: Buffer) => {
       stdout += c.toString();
-      if (stdout.includes("management API on")) resolve(child);
+
+      if (stdout.includes("management API on")) {resolve(child);}
     });
     child.on("exit", (code) => reject(new Error(`daemon exited ${code} before serving: ${stderr}`)));
   });
@@ -218,6 +220,7 @@ const startDaemon = (home: string, ...files: string[]): Promise<ChildProcess> =>
 const stop = async (child: ChildProcess): Promise<number | null> => {
   const exited = new Promise<number | null>((done) => child.on("exit", done));
   child.kill("SIGTERM");
+
   return exited;
 };
 
@@ -261,6 +264,7 @@ test("a factory whose clone path is not Foundry's is refused alone; the daemon s
   expect(await stop(daemon)).toBe(0);
 
   expect(readdirSync(betaPath)).toEqual(["operator-file"]);
+
   const rows = await Effect.runPromise(
     Effect.scoped(
       Effect.flatMap(openStore({ filename: join(alpha.home, DATABASE_FILE_NAME) }), (store) =>
@@ -270,6 +274,7 @@ test("a factory whose clone path is not Foundry's is refused alone; the daemon s
       ),
     ),
   );
+
   // The run and both configuration loads are recorded; one refusal names beta and why.
   expect(rows.map((r) => [r.factory_id, r.kind])).toEqual([
     ["", "run.started"],

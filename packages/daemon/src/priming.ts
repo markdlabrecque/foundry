@@ -21,13 +21,8 @@ import { randomUUID } from "node:crypto";
 import { Clock, Data, Effect } from "effect";
 import type { DaemonFrame, Hello } from "@foundry/protocol";
 import type { AcceptedConnection, ClaimedSlot } from "./channel/server.js";
-import {
-  composePrime,
-  type ComposePrimeResult,
-  type PrimeRequest,
-  type PrimeSourceProblem,
-  type Situation,
-} from "./prime.js";
+import { composePrime } from "./prime.js";
+import type { ComposePrimeResult, PrimeRequest, PrimeSourceProblem, Situation } from "./prime.js";
 import type { Store, StoreError } from "./store.js";
 
 /** What the daemon records about each composed part: never its content. */
@@ -71,7 +66,7 @@ const fromRow = (row: PrimeRow): PrimeRecord => ({
   launchId: row.launch_id,
   conversationRef: row.conversation_ref,
   situation: row.situation,
-  parts: JSON.parse(row.parts) as PrimePartRecord[],
+  parts: JSON.parse(row.parts) as Array<PrimePartRecord>,
   recordedAt: row.recorded_at,
   acknowledgedAt: row.acknowledged_at,
 });
@@ -92,6 +87,7 @@ export const recordPrime = (store: Store, prime: NewPrimeRecord): Effect.Effect<
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)`,
         [prime.id, prime.factoryId, prime.slotId, prime.launchId, prime.conversationRef, prime.situation, JSON.stringify(parts), now],
       );
+
       return yield* recordHistory({
         factoryId: prime.factoryId,
         kind: "prime.sent",
@@ -142,9 +138,13 @@ export const acknowledgePrime = (
           `SELECT acknowledged_at FROM prime WHERE id = ? AND factory_id = ? AND slot_id = ?`,
           [receipt.id, receipt.factoryId, receipt.slotId],
         );
+
         const row = rows[0];
-        if (row === undefined) return yield* new NothingToAcknowledge({ outcome: "unknown" });
-        if (row.acknowledged_at !== null) return yield* new NothingToAcknowledge({ outcome: "duplicate" });
+
+        if (row === undefined) {return yield* new NothingToAcknowledge({ outcome: "unknown" });}
+
+        if (row.acknowledged_at !== null) {return yield* new NothingToAcknowledge({ outcome: "duplicate" });}
+
         const now = yield* Clock.currentTimeMillis;
         yield* query(`UPDATE prime SET acknowledged_at = ? WHERE id = ?`, [now, receipt.id]);
         yield* recordHistory({
@@ -153,6 +153,7 @@ export const acknowledgePrime = (
           subject: receipt.slotId,
           detail: { primeId: receipt.id },
         });
+
         return "acknowledged" as const;
       }),
     )
@@ -168,8 +169,10 @@ export const decideFreshPriming = (
   primes: ReadonlyArray<PrimeRecord>,
   launchId: string,
 ): "fresh" | "reconnect" | "not_fresh" => {
-  if (primes.some((p) => p.launchId === launchId)) return "reconnect";
-  if (primes.some((p) => p.acknowledgedAt !== null)) return "not_fresh";
+  if (primes.some((p) => p.launchId === launchId)) {return "reconnect";}
+
+  if (primes.some((p) => p.acknowledgedAt !== null)) {return "not_fresh";}
+
   return "fresh";
 };
 
@@ -219,8 +222,8 @@ interface QueuedFrame {
  * work frames wait while a compaction prime is being prepared.
  */
 class PrimedWriter {
-  private readonly work: QueuedFrame[] = [];
-  private readonly first: QueuedFrame[] = [];
+  private readonly work: Array<QueuedFrame> = [];
+  private readonly first: Array<QueuedFrame> = [];
   private holds = 0;
   private writing = false;
   private state: "pending" | "open" | Error = "pending";
@@ -233,9 +236,11 @@ class PrimedWriter {
   ) {
     this.opened = outcome.then(
       (settled) => {
-        if (!opensConnection(settled)) return this.refuse(new Error(`priming did not complete: ${settled._tag}`));
+        if (!opensConnection(settled)) {return this.refuse(new Error(`priming did not complete: ${settled._tag}`));}
+
         this.state = "open";
         this.pump();
+
         return true;
       },
       (error: unknown) => this.refuse(new Error(`priming did not complete: ${String(error)}`)),
@@ -256,17 +261,20 @@ class PrimedWriter {
   hold(): () => void {
     this.holds += 1;
     let released = false;
+
     return () => {
-      if (released) return;
+      if (released) {return;}
+
       released = true;
       this.holds -= 1;
       this.pump();
     };
   }
 
-  private enqueue(queue: QueuedFrame[], frame: DaemonFrame): Promise<void> {
+  private enqueue(queue: Array<QueuedFrame>, frame: DaemonFrame): Promise<void> {
     return new Promise<void>((resolve, reject) => {
-      if (this.state instanceof Error) return reject(this.state);
+      if (this.state instanceof Error) {return reject(this.state);}
+
       queue.push({ frame, resolve, reject });
       this.pump();
     });
@@ -274,14 +282,19 @@ class PrimedWriter {
 
   private refuse(error: Error): false {
     this.state = error;
-    for (const queued of [...this.first.splice(0), ...this.work.splice(0)]) queued.reject(error);
+
+    for (const queued of [...this.first.splice(0), ...this.work.splice(0)]) {queued.reject(error);}
+
     return false;
   }
 
   private pump(): void {
-    if (this.state !== "open" || this.writing) return;
+    if (this.state !== "open" || this.writing) {return;}
+
     const next = this.first.shift() ?? (this.holds === 0 ? this.work.shift() : undefined);
-    if (next === undefined) return;
+
+    if (next === undefined) {return;}
+
     this.writing = true;
     void this.connection
       .send(next.frame)
@@ -338,34 +351,44 @@ export const createPrimer = (options: PrimerOptions): Primer => {
   const slotKey = (slot: ClaimedSlot): string => JSON.stringify([slot.factoryId, slot.slotId]);
   // The latest primed connection per slot, where a compaction prime is written.
   const live = new Map<string, { readonly launchId: string; readonly conversationRef: string; readonly writer: PrimedWriter }>();
+
   const serialized = <A>(slot: ClaimedSlot, task: () => Promise<A>): Promise<A> => {
     const key = slotKey(slot);
     const previous = slotTurns.get(key) ?? Promise.resolve();
     const next = previous.then(task, task);
+
     const settled = next.then(
       () => {},
       () => {},
     );
+
     slotTurns.set(key, settled);
     void settled.then(() => {
-      if (slotTurns.get(key) === settled) slotTurns.delete(key);
+      if (slotTurns.get(key) === settled) {slotTurns.delete(key);}
     });
+
     return next;
   };
 
   const decideAndSend = async (slot: ClaimedSlot, hello: Hello, connection: AcceptedConnection): Promise<PrimingOutcome> => {
     const primes = await run(primesForConversation(options.store, slot.factoryId, slot.slotId, hello.conversationRef));
     const decision = decideFreshPriming(primes, slot.launchId);
+
     if (decision === "reconnect") {
       const unacknowledged = primes.filter((p) => p.launchId === slot.launchId && p.acknowledgedAt === null).at(-1);
+
       return unacknowledged === undefined ? { _tag: "Reconnect" } : { _tag: "Reconnect", unacknowledgedPrimeId: unacknowledged.id };
     }
-    if (decision === "not_fresh") return { _tag: "NotFresh" };
+
+    if (decision === "not_fresh") {return { _tag: "NotFresh" };}
 
     const request = options.primeRequest(slot);
-    if (request === undefined) return { _tag: "UnknownStation" };
+
+    if (request === undefined) {return { _tag: "UnknownStation" };}
+
     const composed = await compose({ ...request, situation: "fresh" });
-    if (composed._tag === "SourceUnavailable") return composed;
+
+    if (composed._tag === "SourceUnavailable") {return composed;}
 
     const primeId = newPrimeId();
     // Recorded before it is written, so a prime that reaches the worker is always on record.
@@ -380,11 +403,13 @@ export const createPrimer = (options: PrimerOptions): Primer => {
         parts: composed.prime.parts,
       }),
     );
+
     try {
       await connection.send({ type: "prime", id: primeId, text: composed.prime.text });
     } catch (error) {
       return { _tag: "SendFailed", primeId, error };
     }
+
     return { _tag: "Sent", primeId };
   };
 
@@ -393,11 +418,15 @@ export const createPrimer = (options: PrimerOptions): Primer => {
     conversationRef: string,
     writer: PrimedWriter,
   ): Promise<CompactionPrimingOutcome> => {
-    if (!(await writer.opened)) return { _tag: "NotPrimed" };
+    if (!(await writer.opened)) {return { _tag: "NotPrimed" };}
+
     const request = options.primeRequest(slot);
-    if (request === undefined) return { _tag: "UnknownStation" };
+
+    if (request === undefined) {return { _tag: "UnknownStation" };}
+
     const composed = await compose({ ...request, situation: "compaction" });
-    if (composed._tag === "SourceUnavailable") return composed;
+
+    if (composed._tag === "SourceUnavailable") {return composed;}
 
     const primeId = newPrimeId();
     await run(
@@ -411,11 +440,13 @@ export const createPrimer = (options: PrimerOptions): Primer => {
         parts: composed.prime.parts,
       }),
     );
+
     try {
       await writer.sendFirst({ type: "prime", id: primeId, text: composed.prime.text });
     } catch (error) {
       return { _tag: "SendFailed", primeId, error };
     }
+
     return { _tag: "Sent", primeId };
   };
 
@@ -424,17 +455,21 @@ export const createPrimer = (options: PrimerOptions): Primer => {
       const outcome = serialized(slot, () => decideAndSend(slot, hello, connection));
       const writer = new PrimedWriter(connection, outcome);
       live.set(slotKey(slot), { launchId: slot.launchId, conversationRef: hello.conversationRef, writer });
+
       return { outcome, connection: { send: (frame: DaemonFrame) => writer.send(frame) } };
     },
     receipt: (slot, id) =>
       run(acknowledgePrime(options.store, { factoryId: slot.factoryId, slotId: slot.slotId, id })),
     compacted(slot) {
       const current = live.get(slotKey(slot));
-      if (current === undefined || current.launchId !== slot.launchId) return Promise.resolve({ _tag: "NotConnected" });
+
+      if (current === undefined || current.launchId !== slot.launchId) {return Promise.resolve({ _tag: "NotConnected" });}
+
       // Held now, not once composition starts, so no work frame slips out ahead of the prime.
       const release = current.writer.hold();
       const outcome = serialized(slot, () => sendCompactionPrime(slot, current.conversationRef, current.writer));
       void outcome.then(release, release);
+
       return outcome;
     },
   };

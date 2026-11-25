@@ -4,7 +4,8 @@
  * and the exit code (PRD §11.5).
  */
 import { selectStateRoot } from "@foundry/protocol/state-root";
-import { isStatusResult, STATUS_PATH, type StatusResult } from "@foundry/protocol/management-api";
+import { isStatusResult, STATUS_PATH } from "@foundry/protocol/management-api";
+import type { StatusResult } from "@foundry/protocol/management-api";
 import { DaemonUnreachableError, getFromDaemon } from "./management-client.js";
 
 export const EXIT_OK = 0;
@@ -40,22 +41,29 @@ export const runStatus = async (options: StatusOptions): Promise<StatusOutcome> 
   if (options.home === "") {
     return { exitCode: EXIT_USAGE, stdout: "", stderr: "foundry: --home needs a directory\n" };
   }
+
   const stateRoot = selectStateRoot({ home: options.home, env: options.env });
   let reply;
+
   try {
     reply = await getFromDaemon(stateRoot, STATUS_PATH);
   } catch (error) {
     if (error instanceof DaemonUnreachableError) {
       return { exitCode: EXIT_UNREACHABLE, stdout: "", stderr: `foundry: daemon unreachable: ${error.message}\n` };
     }
+
     return refused((error as Error).message);
   }
 
   if (options.json) {
     const stdout = reply.body.endsWith("\n") ? reply.body : `${reply.body}\n`;
+
     return { exitCode: reply.envelope.ok ? EXIT_OK : EXIT_REFUSED, stdout, stderr: "" };
   }
-  if (!reply.envelope.ok) return refused(reply.envelope.error.message);
-  if (!isStatusResult(reply.envelope.result)) return refused("the daemon answered status with an unexpected shape");
+
+  if (!reply.envelope.ok) {return refused(reply.envelope.error.message);}
+
+  if (!isStatusResult(reply.envelope.result)) {return refused("the daemon answered status with an unexpected shape");}
+
   return { exitCode: EXIT_OK, stdout: renderStatus(reply.envelope.result), stderr: "" };
 };

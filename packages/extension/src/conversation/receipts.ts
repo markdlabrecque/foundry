@@ -26,7 +26,7 @@ export interface FoundryInjection {
 
 /** Which of the given IDs are in the worker's recoverable conversation history. */
 export interface RecoverableHistory {
-  recoverable(ids: readonly string[]): ReadonlySet<string>;
+  recoverable(ids: ReadonlyArray<string>): ReadonlySet<string>;
 }
 
 /**
@@ -47,19 +47,22 @@ export class ReceiptIssuer {
   }
 
   /** IDs injected but not yet found in recoverable history. */
-  pending(): readonly string[] {
+  pending(): ReadonlyArray<string> {
     return [...this.awaiting];
   }
 
   /** Issue receipts for every awaited ID now in recoverable history; returns them. */
-  check(): readonly string[] {
-    if (this.awaiting.size === 0) return [];
+  check(): ReadonlyArray<string> {
+    if (this.awaiting.size === 0) {return [];}
+
     const found = this.history.recoverable([...this.awaiting]);
     const issued = [...this.awaiting].filter((id) => found.has(id));
+
     for (const id of issued) {
       this.awaiting.delete(id);
       this.onReceipt(id);
     }
+
     return issued;
   }
 }
@@ -75,26 +78,37 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
  */
 export const readRecoverableIds = (sessionFile: string | undefined): Set<string> => {
   const ids = new Set<string>();
-  if (sessionFile === undefined) return ids;
+
+  if (sessionFile === undefined) {return ids;}
+
   let text: string;
+
   try {
     text = readFileSync(sessionFile, "utf8");
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return ids;
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {return ids;}
+
     throw error;
   }
+
   for (const line of text.split("\n")) {
-    if (line.trim() === "") continue;
+    if (line.trim() === "") {continue;}
+
     let entry: unknown;
+
     try {
       entry = JSON.parse(line);
     } catch {
       continue; // Pi skips malformed lines when it restores, so they are not recoverable.
     }
-    if (!isRecord(entry) || entry["type"] !== "custom_message" || entry["customType"] !== FOUNDRY_MESSAGE_TYPE) continue;
+
+    if (!isRecord(entry) || entry["type"] !== "custom_message" || entry["customType"] !== FOUNDRY_MESSAGE_TYPE) {continue;}
+
     const details = entry["details"];
-    if (isRecord(details) && typeof details["foundryId"] === "string") ids.add(details["foundryId"]);
+
+    if (isRecord(details) && typeof details["foundryId"] === "string") {ids.add(details["foundryId"]);}
   }
+
   return ids;
 };
 
@@ -102,6 +116,7 @@ export const readRecoverableIds = (sessionFile: string | undefined): Set<string>
 export const sessionFileHistory = (sessionFile: () => string | undefined): RecoverableHistory => ({
   recoverable(ids) {
     const present = readRecoverableIds(sessionFile());
+
     return new Set(ids.filter((id) => present.has(id)));
   },
 });

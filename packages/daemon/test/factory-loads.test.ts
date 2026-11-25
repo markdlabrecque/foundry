@@ -2,7 +2,8 @@
 // message on refusal, the run and configuration-load rows in the state root's database, and the
 // knowledge directories on disk — so it runs the built foreground daemon against temp dirs.
 // Validation rules themselves are covered by the config unit tests; one invalid case suffices here.
-import { execFile, spawn, type ChildProcess } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { appendFileSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -14,10 +15,12 @@ import { isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { runFactoryList } from "@foundry/cli";
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
+
 // The version the daemon records is its package's.
 const daemonVersion = (
   JSON.parse(readFileSync(new URL("../package.json", import.meta.resolve("@foundry/daemon")), "utf8")) as { version: string }
 ).version;
+
 const cliMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/cli"))), "main.js");
 
 /** Runs the built `foundry` CLI without blocking, so the daemon's pipes keep draining. */
@@ -31,15 +34,19 @@ const foundry = (args: ReadonlyArray<string>, home: string): Promise<{ code: num
     );
   });
 
-const roots: string[] = [];
-const children: ChildProcess[] = [];
+const roots: Array<string> = [];
+const children: Array<ChildProcess> = [];
+
 afterEach(() => {
-  for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const child of children.splice(0)) {if (child.exitCode === null && child.signalCode === null) {child.kill("SIGKILL");}}
+
+  for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });}
 });
+
 const tempRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "foundry-load-"));
   roots.push(root);
+
   return root;
 };
 
@@ -73,6 +80,7 @@ const factoryDir = (yaml: string): string => {
   makeGitSource(join(dir, "repo"));
   const file = join(dir, "factory.yaml");
   writeFileSync(file, yaml);
+
   return file;
 };
 
@@ -89,20 +97,25 @@ const startDaemon = (home: string, files: ReadonlyArray<string>, env: Record<str
     env: { ...isolatedGitEnv(), ...env, FOUNDRY_HOME: join(home, "not-this-one") },
     stdio: ["ignore", "pipe", "pipe"],
   });
+
   children.push(child);
   let stdout = "";
   let stderr = "";
-  child.stdout!.on("data", (c: Buffer) => (stdout += c.toString()));
-  child.stderr!.on("data", (c: Buffer) => (stderr += c.toString()));
+  child.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
+  child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
+
   const exited = new Promise<{ code: number | null; stdout: string; stderr: string }>((done) =>
     child.on("exit", (code) => done({ code, stdout, stderr })),
   );
+
   const serving = new Promise<void>((done, fail) => {
-    child.stdout!.on("data", () => stdout.includes("management API on") && done());
+    child.stdout.on("data", () => stdout.includes("management API on") && done());
     void exited.then(({ code }) => fail(new Error(`daemon exited ${code}: ${stderr}`)));
   });
+
   // A run expected to be refused never awaits `serving`; keep its rejection from going unhandled.
   serving.catch(() => {});
+
   return { child, exited, serving };
 };
 
@@ -201,5 +214,6 @@ test("a valid start records the run and its load and creates the empty knowledge
 
   // Flat layout (PRD §5.4.3): the root, then one directory per room and per station, all empty.
   expect(readdirSync(knowledge).sort()).toEqual(["dev", "eng", "rev"]);
-  for (const name of ["dev", "eng", "rev"]) expect(readdirSync(join(knowledge, name))).toEqual([]);
+
+  for (const name of ["dev", "eng", "rev"]) {expect(readdirSync(join(knowledge, name))).toEqual([]);}
 });

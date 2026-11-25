@@ -6,17 +6,20 @@ import { request } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { ManagementSocketError, serveManagementApi, type ManagementApi } from "@foundry/daemon";
+import { ManagementSocketError, serveManagementApi } from "@foundry/daemon";
+import type { ManagementApi } from "@foundry/daemon";
 import { managementSocketPath, STATUS_PATH } from "@foundry/protocol/management-api";
 
 const cleanups: Array<() => Promise<void> | void> = [];
+
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 const tempRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "foundry-api-"));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+
   return root;
 };
 
@@ -25,6 +28,7 @@ const status = { instance: { stateRoot: "/fixture", daemonPid: 4242, startedAt: 
 const serve = async (stateRoot: string): Promise<ManagementApi> => {
   const api = await serveManagementApi({ stateRoot, status: () => status });
   cleanups.push(() => api.close());
+
   return api;
 };
 
@@ -36,6 +40,7 @@ const get = (socketPath: string, path: string): Promise<{ status: number; body: 
       res.on("data", (chunk: string) => (body += chunk));
       res.on("end", () => resolve({ status: res.statusCode ?? 0, body: JSON.parse(body) }));
     });
+
     req.on("error", reject);
     req.end();
   });
@@ -44,9 +49,11 @@ const refusal = async (start: Promise<unknown>): Promise<ManagementSocketError> 
   try {
     await start;
   } catch (error) {
-    if (error instanceof ManagementSocketError) return error;
+    if (error instanceof ManagementSocketError) {return error;}
+
     throw error;
   }
+
   throw new Error("expected serving to be refused");
 };
 

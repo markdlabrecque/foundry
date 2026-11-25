@@ -6,14 +6,15 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { LAUNCH_ENV } from "./launch-command.js";
 import { LAUNCH_STDERR_TAIL_BYTES, StderrTail } from "./log.js";
-import { terminateGroup, type GroupSignal, type GroupTermination } from "./terminate.js";
+import { terminateGroup } from "./terminate.js";
+import type { GroupSignal, GroupTermination } from "./terminate.js";
 
 /** What the daemon asks the host to start in a slot. */
 export interface LaunchSpec {
   readonly factoryId: string;
   readonly slotId: string;
   readonly command: string;
-  readonly args: readonly string[];
+  readonly args: ReadonlyArray<string>;
   readonly cwd: string;
   /**
    * Added to the host's full environment. The host then sets the identity
@@ -81,14 +82,14 @@ export interface Termination extends GroupTermination {
   readonly launch: LaunchRecord;
 }
 
-export const DEFAULT_TERMINATE_GRACE_MS = 5_000;
-export const DEFAULT_TERMINATE_KILL_WAIT_MS = 5_000;
+export const DEFAULT_TERMINATE_GRACE_MS = 5000;
+export const DEFAULT_TERMINATE_KILL_WAIT_MS = 5000;
 
 export interface LaunchRegistry {
   /** Starts `spec` unless its slot already holds a live launch. */
   launch(spec: LaunchSpec): Promise<LaunchRecord>;
   /** Every launch this host has started, oldest first. */
-  inventory(): LaunchRecord[];
+  inventory(): Array<LaunchRecord>;
   /**
    * Terminates the process group of launch `launchId`, which this host must
    * have started in this boot; refuses anything else. Concurrent calls for
@@ -98,7 +99,7 @@ export interface LaunchRegistry {
 }
 
 /** How long an exited launch's stderr may take to drain before its tail is taken as is. */
-const STDERR_DRAIN_MS = 1_000;
+const STDERR_DRAIN_MS = 1000;
 
 export function createLaunchRegistry(options: {
   readonly bootId: string;
@@ -116,6 +117,7 @@ export function createLaunchRegistry(options: {
   const terminations = new Map<string, Promise<Termination>>();
   const signalGroup = options.signalGroup ?? signalProcessGroup;
   const watchMs = options.groupWatchMs ?? 200;
+
   /**
    * Probes a group whose leader has exited until it has no process left, then
    * records it empty. A reuse of the ID can slip in only within one interval.
@@ -127,8 +129,10 @@ export function createLaunchRegistry(options: {
         clearInterval(timer);
       }
     }, watchMs);
+
     timer.unref();
   };
+
   const slotKey = (factoryId: string, slotId: string): string => JSON.stringify([factoryId, slotId]);
   /** Slots with a launch that is starting or live; checked and set without awaiting, so starts serialize. */
   const occupied = new Set<string>();
@@ -136,12 +140,15 @@ export function createLaunchRegistry(options: {
   return {
     async launch(spec) {
       const key = slotKey(spec.factoryId, spec.slotId);
+
       if (occupied.has(key)) {
         throw new LaunchRefused(`slot ${spec.slotId} of factory ${spec.factoryId} already holds a live launch`, "slot_occupied");
       }
+
       occupied.add(key);
 
       const launchId = randomUUID();
+
       const child = spawn(spec.command, [...spec.args], {
         cwd: spec.cwd,
         env: {
@@ -177,6 +184,7 @@ export function createLaunchRegistry(options: {
       child.on("error", () => {});
 
       const pid = child.pid as number;
+
       const started: LaunchRecord = {
         launchId,
         factoryId: spec.factoryId,
@@ -187,6 +195,7 @@ export function createLaunchRegistry(options: {
         startedAt: new Date().toISOString(),
         liveness: "live",
       };
+
       launches.set(launchId, started);
 
       // Hold stdin open for the launch's lifetime. Drain stdout without keeping
@@ -195,25 +204,31 @@ export function createLaunchRegistry(options: {
       child.stdin.on("error", () => {});
       child.stdout.on("error", () => {}).resume();
       const tail = new StderrTail(options.stderrTailBytes ?? LAUNCH_STDERR_TAIL_BYTES);
+
       const stderrEnded = new Promise<void>((resolve) => {
         child.stderr.once("end", resolve).once("close", resolve);
       });
+
       child.stderr.on("error", () => {}).on("data", (chunk: Buffer) => tail.push(chunk));
 
       child.once("exit", (code, signal) => {
         child.stdin.destroy();
         const endedAt = new Date().toISOString();
+
         const ended: LaunchRecord = {
           ...started,
           liveness: "gone",
           exit: terminations.has(launchId) ? { code, signal, endedAt, requested: true } : { code, signal, endedAt },
         };
+
         launches.set(launchId, ended);
+
         // Learn now, while the ID cannot yet have been reused, whether the
         // group emptied with its leader; if not, keep watching until it does,
         // so a later reuse of the ID is never mistaken for this group.
-        if (!signalGroup(pid, 0)) emptyGroups.add(launchId);
-        else watchUntilEmpty(launchId, pid);
+        if (!signalGroup(pid, 0)) {emptyGroups.add(launchId);}
+        else {watchUntilEmpty(launchId, pid);}
+
         occupied.delete(key);
         // Let the last stderr bytes arrive before reporting; a descendant
         // still holding the pipe open must not delay the report for long.
@@ -234,22 +249,28 @@ export function createLaunchRegistry(options: {
     },
     terminate(launchId, terminateOptions = {}) {
       const record = launches.get(launchId);
+
       if (record === undefined) {
         return Promise.reject(new TerminateRefused(`launch ${launchId} is not owned by this host`));
       }
+
       // Defensive and untested: records come only from this host process
       // today, so the boot always matches. It matters once records are restored.
       if (record.bootId !== options.bootId) {
         return Promise.reject(new TerminateRefused(`launch ${launchId} belongs to an earlier boot`));
       }
+
       const running = terminations.get(launchId);
-      if (running !== undefined) return running;
+
+      if (running !== undefined) {return running;}
 
       const leaderReaped = (): boolean => launches.get(launchId)?.liveness === "gone";
+
       const termination = (async (): Promise<Termination> => {
         if (emptyGroups.has(launchId)) {
           return { outcome: "gone", escalated: false, launch: launches.get(launchId) as LaunchRecord };
         }
+
         const result = await terminateGroup(
           record.pgid,
           {
@@ -258,10 +279,14 @@ export function createLaunchRegistry(options: {
           },
           { signalGroup, leaderReaped },
         );
-        if (result.outcome === "gone") emptyGroups.add(launchId);
+
+        if (result.outcome === "gone") {emptyGroups.add(launchId);}
+
         return { ...result, launch: launches.get(launchId) as LaunchRecord };
       })().finally(() => terminations.delete(launchId));
+
       terminations.set(launchId, termination);
+
       return termination;
     },
   };
@@ -271,9 +296,11 @@ export function createLaunchRegistry(options: {
 function signalProcessGroup(pgid: number, signal: GroupSignal): boolean {
   try {
     process.kill(-pgid, signal);
+
     return true;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ESRCH") return false;
+    if ((error as NodeJS.ErrnoException).code === "ESRCH") {return false;}
+
     // EPERM: a process remains that the host may not signal; the group is not
     // gone. For SIGTERM/SIGKILL this counts as sent, so it ends as `unconfirmed`.
     return true;

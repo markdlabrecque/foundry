@@ -53,6 +53,7 @@ export type ResolveResult =
 
 /** A whole-field placeholder. Anything else in a model field is taken literally. */
 const PLACEHOLDER = /^\$\{([A-Za-z_][A-Za-z0-9_]*)\}$/;
+
 /** An explicit `provider/model` selector: a provider, a slash, then a model. */
 const SELECTOR = /^[^/\s]+\/\S+$/;
 
@@ -65,27 +66,35 @@ const resolveModel = (
 ): ModelOutcome => {
   const placeholder = PLACEHOLDER.exec(raw);
   let model = raw;
+
   if (placeholder !== null) {
     const name = placeholder[1] as string;
     const value = env[name];
+
     if (value === undefined) {
       return { problem: { path, message: `Model variable ${name} is not set` } };
     }
-    if (value === "") return { problem: { path, message: `Model variable ${name} is empty` } };
+
+    if (value === "") {return { problem: { path, message: `Model variable ${name} is empty` } };}
+
     model = value;
   }
+
   if (!SELECTOR.test(model)) {
     const shown = placeholder === null ? `"${model}"` : `"${model}" (from ${raw})`;
+
     return {
       problem: { path, message: `Model ${shown} is not an explicit provider/model selector` },
     };
   }
+
   return { model };
 };
 
 export const resolveStations = (config: FactoryConfig, options: ResolveOptions): ResolveResult => {
   const toPath = (path: string): string =>
     resolveConfiguredPath(path, options.baseDir, options.home);
+
   const toExtension = (entry: string | { readonly path: string; readonly tools: ReadonlyArray<string> }): EffectiveExtension =>
     typeof entry === "string"
       ? { path: toPath(entry), tools: [] }
@@ -98,18 +107,22 @@ export const resolveStations = (config: FactoryConfig, options: ResolveOptions):
   // when every station overrides it: an unset or empty variable is an error.
   const defaultModel =
     defaults.model === undefined ? undefined : resolveModel(defaults.model, "defaults.model", options.env);
-  if (defaultModel !== undefined && "problem" in defaultModel) problems.push(defaultModel.problem);
+
+  if (defaultModel !== undefined && "problem" in defaultModel) {problems.push(defaultModel.problem);}
 
   const stations: Array<EffectiveStation> = [];
+
   for (const [roomName, room] of Object.entries(config.rooms)) {
     for (const [stationName, station] of Object.entries(room.stations)) {
       const stationPath = `rooms.${roomName}.stations.${stationName}`;
 
       let model: string | undefined;
+
       if (station.model !== undefined) {
         const outcome = resolveModel(station.model, `${stationPath}.model`, options.env);
-        if ("problem" in outcome) problems.push(outcome.problem);
-        else model = outcome.model;
+
+        if ("problem" in outcome) {problems.push(outcome.problem);}
+        else {model = outcome.model;}
       } else if (defaultModel === undefined) {
         problems.push({
           path: stationPath,
@@ -118,7 +131,8 @@ export const resolveStations = (config: FactoryConfig, options: ResolveOptions):
       } else if ("model" in defaultModel) {
         model = defaultModel.model;
       }
-      if (model === undefined) continue;
+
+      if (model === undefined) {continue;}
 
       const instructions = [defaults.instructions, room.instructions, station.instructions]
         .filter((path): path is string => path !== undefined)

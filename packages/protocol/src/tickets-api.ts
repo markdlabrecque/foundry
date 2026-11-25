@@ -107,7 +107,9 @@ export const isTicketListResult = (value: unknown): value is TicketListResult =>
   isRecord(value) && Array.isArray(value["tickets"]) && value["tickets"].every(isSummary);
 
 export const isTicketDetail = (value: unknown): value is TicketDetail => {
-  if (!isRecord(value) || !Array.isArray(value["transitions"])) return false;
+  if (!isRecord(value) || !Array.isArray(value["transitions"])) {return false;}
+
   const ticket = value["ticket"];
+
   return isSummary(ticket) && isRecord(ticket) && typeof ticket["directory"] === "string";
 };

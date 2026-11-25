@@ -4,10 +4,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
 import { Effect, Exit } from "effect";
-import { foundryMigrations, openStore, type Migration, type Store } from "@foundry/daemon";
+import { foundryMigrations, openStore } from "@foundry/daemon";
+import type { Migration, Store } from "@foundry/daemon";
 
 // Stands in for a later ticket's current-state table, one past the migrations this build knows.
 const nextId = foundryMigrations.length + 1;
+
 const withSlots: ReadonlyArray<Migration> = [
   ...foundryMigrations,
   {
@@ -24,10 +26,12 @@ test("the migrations this build ships are numbered 1..n with no gaps or repeats"
 
 let dir: string;
 let filename: string;
+
 beforeEach(() => {
   dir = mkdtempSync(join(tmpdir(), "foundry-store-"));
   filename = join(dir, "foundry.db");
 });
+
 afterEach(() => rmSync(dir, { recursive: true, force: true }));
 
 const withStore = <A, E>(migrations: ReadonlyArray<Migration>, use: (store: Store) => Effect.Effect<A, E>) =>
@@ -46,6 +50,7 @@ const freeze = (store: Store, id: string) =>
   store.change(({ query, recordHistory }) =>
     Effect.gen(function* () {
       yield* query(`INSERT INTO slot (id, factory_id, condition) VALUES (?, 'f1', 'frozen')`, [id]);
+
       return yield* recordHistory({ factoryId: "f1", kind: "slot.frozen", subject: id, detail: { cause: "test" } });
     }),
   );
@@ -102,10 +107,12 @@ test("a failed change rolls back both its state writes and its history rows", as
           Effect.gen(function* () {
             yield* query(`INSERT INTO slot (id, factory_id, condition) VALUES ('s1', 'f1', 'frozen')`);
             yield* recordHistory({ factoryId: "f1", kind: "slot.frozen", subject: "s1" });
+
             return yield* Effect.fail("boom" as const);
           }),
         ),
       );
+
       return { failed, state: yield* snapshot(store) };
     }),
   );
@@ -120,6 +127,7 @@ test("a change that records no history is refused and rolled back", async () => 
       const failed = yield* Effect.exit(
         store.change(({ query }) => query(`INSERT INTO slot (id, factory_id, condition) VALUES ('s1', 'f1', 'ok')`)),
       );
+
       return { failed, state: yield* snapshot(store) };
     }),
   );
@@ -139,6 +147,7 @@ test("a commit listener that throws cannot turn a committed change into a failur
         throw new Error("listener bug");
       });
       const exit = yield* Effect.exit(freeze(store, "s1"));
+
       return { exit, state: yield* snapshot(store) };
     }),
   );
@@ -152,6 +161,7 @@ test("history rows cannot be updated or deleted", async () => {
   const outcomes = await withStore(withSlots, (store) =>
     Effect.gen(function* () {
       yield* freeze(store, "s1");
+
       const attempt = (statement: string) =>
         Effect.exit(
           store.change(({ query, recordHistory }) =>
@@ -161,6 +171,7 @@ test("history rows cannot be updated or deleted", async () => {
             }),
           ),
         );
+
       return {
         update: yield* attempt(`UPDATE history SET kind = 'x'`),
         remove: yield* attempt(`DELETE FROM history`),

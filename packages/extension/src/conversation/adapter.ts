@@ -5,13 +5,8 @@
  * fires only once the ID is found in the session file Pi would restore from.
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  FOUNDRY_MESSAGE_TYPE,
-  type FoundryInjection,
-  type FoundryMessageDetails,
-  ReceiptIssuer,
-  sessionFileHistory,
-} from "./receipts.js";
+import { FOUNDRY_MESSAGE_TYPE, ReceiptIssuer, sessionFileHistory } from "./receipts.js";
+import type { FoundryInjection, FoundryMessageDetails } from "./receipts.js";
 
 export interface InjectOptions {
   /** Start a turn if Pi is idle. A prime never does; delivery policy decides for messages. */
@@ -22,9 +17,9 @@ export interface ConversationAdapter {
   /** Inject into the conversation and start awaiting its receipt. Not itself a receipt. */
   inject(injection: FoundryInjection, options?: InjectOptions): void;
   /** Issue receipts for injected IDs now recoverable; returns the IDs receipted. */
-  check(): readonly string[];
+  check(): ReadonlyArray<string>;
   /** Injected IDs whose receipt has not been issued yet. */
-  pending(): readonly string[];
+  pending(): ReadonlyArray<string>;
 }
 
 export interface ConversationAdapterOptions {
@@ -39,6 +34,7 @@ export interface ConversationAdapterOptions {
  */
 export const createConversationAdapter = (pi: ExtensionAPI, options: ConversationAdapterOptions): ConversationAdapter => {
   let sessionFile: () => string | undefined = () => undefined;
+
   const issuer = new ReceiptIssuer(
     sessionFileHistory(() => sessionFile()),
     options.onReceipt,

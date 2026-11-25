@@ -76,6 +76,7 @@ export const EVIDENCE_DIR_NAME = "evidence";
 /** A factory name as one safe path segment: no separators, never `.` or `..`. Shared with the factory clone path. */
 export const pathSegment = (name: string): string => {
   const encoded = encodeURIComponent(name);
+
   return encoded === "." || encoded === ".." ? encoded.replaceAll(".", "%2E") : encoded;
 };
 
@@ -92,12 +93,13 @@ const SLUG_LIMIT = 48;
 export const slugify = (title: string): string => {
   const slug = title
     .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
+    .replaceAll(/[\u0300-\u036f]/g, "")
     .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
+    .replaceAll(/[^a-z0-9]+/g, "-")
     .replace(/^-+/, "")
     .slice(0, SLUG_LIMIT)
     .replace(/-+$/, "");
+
   return slug === "" ? "ticket" : slug;
 };
 
@@ -191,7 +193,7 @@ const transition = (row: TransitionRow): TicketTransition => ({
   outcome: row.outcome,
   reason: row.reason,
   commit: row.git_commit,
-  evidence: JSON.parse(row.evidence) as string[],
+  evidence: JSON.parse(row.evidence) as Array<string>,
   configLoad: row.config_load,
 });
 
@@ -217,11 +219,15 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
   /** The named factory, or the only one loaded when none is named (PRD §11.1). */
   const loadedFactory = (name: string | undefined) => {
     const loaded = options.factories();
+
     if (name !== undefined) {
       const found = loaded.find((f) => f.name === name);
+
       return found === undefined ? refuse("unknown_factory", `No factory "${name}" is loaded`) : Effect.succeed(found);
     }
-    if (loaded.length === 1) return Effect.succeed(loaded[0]!);
+
+    if (loaded.length === 1) {return Effect.succeed(loaded[0]!);}
+
     return refuse(
       "factory_required",
       loaded.length === 0 ? "No factory is loaded" : "More than one factory is loaded; name one with --factory",
@@ -231,16 +237,21 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
   const show: TicketService["show"] = (name, number) =>
     Effect.gen(function* () {
       const factory = name ?? (yield* loadedFactory(undefined)).name;
+
       const rows = yield* store.read<TicketRow>(`SELECT * FROM ticket WHERE factory_id = ? AND number = ?`, [
         factory,
         number,
       ]);
+
       const row = rows[0];
-      if (row === undefined) return yield* refuse("ticket_not_found", `No ticket ${number} in factory "${factory}"`);
+
+      if (row === undefined) {return yield* refuse("ticket_not_found", `No ticket ${number} in factory "${factory}"`);}
+
       const transitions = yield* store.read<TransitionRow>(
         `SELECT * FROM ticket_transition WHERE factory_id = ? AND ticket_number = ? ORDER BY sequence`,
         [factory, number],
       );
+
       return { ticket: ticket(row), transitions: transitions.map(transition) };
     });
 
@@ -248,21 +259,27 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
     Effect.gen(function* () {
       const factory = yield* loadedFactory(request.factory);
       const title = request.title.trim();
+
       if (title === "" || /[\r\n]/.test(title)) {
         return yield* refuse("invalid_request", "A ticket title must be one non-empty line");
       }
+
       const lineName = request.line ?? factory.defaultLine;
+
       if (!Object.hasOwn(factory.lines, lineName)) {
         const known = Object.keys(factory.lines).join(", ");
+
         return yield* refuse(
           "unknown_line",
           `No production line "${lineName}" in factory "${factory.name}"; its lines are: ${known}`,
         );
       }
+
       const line = factory.lines[lineName]!;
       const submittedAt = yield* Clock.currentTimeMillis;
 
       let written: string | undefined;
+
       const number = yield* store
         .change(({ query, recordHistory }) =>
           Effect.gen(function* () {
@@ -270,6 +287,7 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
               `SELECT coalesce(max(number), 0) + 1 AS next FROM ticket WHERE factory_id = ?`,
               [factory.name],
             );
+
             const number = next[0]!.next;
             const directory = ticketDirectory(stateRoot, factory.name, number);
             yield* query(
@@ -303,16 +321,18 @@ export const makeTicketService = (options: TicketServiceOptions): TicketService 
             // Last, so a failed statement never leaves files; a failed commit removes them below.
             written = directory;
             yield* materialize(directory, request.spec);
+
             return number;
           }),
         )
         .pipe(
           Effect.onError(() =>
             Effect.sync(() => {
-              if (written !== undefined) rmSync(written, { recursive: true, force: true });
+              if (written !== undefined) {rmSync(written, { recursive: true, force: true });}
             }),
           ),
         );
+
       return yield* show(factory.name, number);
     });
 

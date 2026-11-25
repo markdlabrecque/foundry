@@ -27,10 +27,12 @@ export type ToolRegistryView = Pick<ExtensionAPI, "getAllTools" | "getActiveTool
  * Read the registered Tool Set now. Its order is Pi's and carries no meaning. Call it at each hello
  * (from `session_start` on), not once at load: extensions may register tools later.
  */
-export const registeredToolSet = (pi: ToolRegistryView): ReportedTool[] => {
+export const registeredToolSet = (pi: ToolRegistryView): Array<ReportedTool> => {
   const sourceByName = new Map(pi.getAllTools().map((tool) => [tool.name, tool.sourceInfo.path]));
+
   return pi.getActiveTools().flatMap((name) => {
     const source = sourceByName.get(name);
+
     return source === undefined ? [] : [{ name, source }];
   });
 };

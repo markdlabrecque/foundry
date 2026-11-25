@@ -129,10 +129,13 @@ const rejected: ReadonlyArray<[string, string, { path: string; message: RegExp; 
 describe("rejected production lines", () => {
   test.each(rejected)("%s", (_name, text, expected) => {
     const result = decodeFactoryYaml(text);
-    if (result._tag === "Valid") throw new Error("expected the configuration to be rejected");
+
+    if (result._tag === "Valid") {throw new Error("expected the configuration to be rejected");}
+
     const match = result.problems.find(
       (problem) => problem.path === expected.path && expected.message.test(problem.message),
     );
+
     expect(match, JSON.stringify(result.problems)).toBeDefined();
     expect(match?.line).toBe(expected.line);
   });
@@ -141,7 +144,9 @@ describe("rejected production lines", () => {
 test("a line with no verify command is warned about, not rejected", () => {
   const result = decodeFactoryYaml(base(goodStages).replace("    verify: [npm, test]\n", ""));
   expect(result._tag).toBe("Valid");
-  if (result._tag !== "Valid") return;
+
+  if (result._tag !== "Valid") {return;}
+
   expect(result.warnings).toEqual([
     expect.objectContaining({ path: "production_lines.feature", message: expect.stringMatching(/No verify command/), line: 19 }),
   ]);

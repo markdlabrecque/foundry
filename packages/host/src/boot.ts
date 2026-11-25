@@ -10,12 +10,16 @@ export function readBootId(): string {
   if (process.platform === "linux") {
     return readFileSync("/proc/sys/kernel/random/boot_id", "utf8").trim();
   }
+
   if (process.platform === "darwin") {
     // e.g. "{ sec = 1700000000, usec = 123456 } Tue Nov 14 ..."; the date part depends on TZ.
     const raw = execFileSync("sysctl", ["-n", "kern.boottime"], { encoding: "utf8" });
     const match = /sec\s*=\s*(\d+),\s*usec\s*=\s*(\d+)/.exec(raw);
-    if (match === null) throw new Error(`cannot parse kern.boottime: ${raw.trim()}`);
+
+    if (match === null) {throw new Error(`cannot parse kern.boottime: ${raw.trim()}`);}
+
     return `${match[1]}.${match[2]}`;
   }
+
   throw new Error(`no boot identifier source for platform ${process.platform}`);
 }

@@ -1,9 +1,11 @@
 // Journey: a real pinned `pi` process with the credential-free faux provider
 // calls a named fixture tool. Proves the wiring only; script logic is unit-tested.
 import { afterEach, expect, test } from "vitest";
-import { FIXTURE_TOOL, type FauxPi, startFauxPi } from "@foundry/testkit";
+import { FIXTURE_TOOL, startFauxPi } from "@foundry/testkit";
+import type { FauxPi } from "@foundry/testkit";
 
 let pi: FauxPi | undefined;
+
 afterEach(async () => {
   await pi?.dispose();
   pi = undefined;
@@ -17,9 +19,11 @@ test("faux-provider Pi calls the named fixture tool without credentials or netwo
 
   const accepted = pi.events.find((e) => e.type === "response" && e.id === "p1");
   expect(accepted?.success).toBe(true);
+
   const end = pi.events.find((e) => e.type === "tool_execution_end") as
-    | { toolName: string; isError: boolean; result: { content: { text: string }[] } }
+    | { toolName: string; isError: boolean; result: { content: Array<{ text: string }> } }
     | undefined;
+
   expect(end?.toolName).toBe(FIXTURE_TOOL);
   expect(end?.isError).toBe(false);
   expect(end?.result.content[0]?.text).toBe("marker-42");

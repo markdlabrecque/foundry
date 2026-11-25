@@ -1,7 +1,8 @@
 // Integration tier (filesystem): the claims are about the files the daemon leaves in a state
 // root — format, references, redaction, rotation and permissions — so they need a real directory.
 // The process test proves the foreground entry point wires the log in; no cheaper tier can.
-import { spawn, type ChildProcess } from "node:child_process";
+import { spawn } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
@@ -11,17 +12,22 @@ import { channelLogEvents, daemonLogPath, OMITTED, openDaemonLog, REDACTED } fro
 
 const daemonMain = join(dirname(fileURLToPath(import.meta.resolve("@foundry/daemon"))), "main.js");
 
-const roots: string[] = [];
-const children: ChildProcess[] = [];
+const roots: Array<string> = [];
+const children: Array<ChildProcess> = [];
+
 afterEach(() => {
-  for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  for (const child of children.splice(0)) {if (child.exitCode === null && child.signalCode === null) {child.kill("SIGKILL");}}
+
+  for (const root of roots.splice(0)) {rmSync(root, { recursive: true, force: true });}
 });
+
 const tempRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "foundry-log-"));
   roots.push(root);
+
   return root;
 };
+
 const lines = (text: string): Array<Record<string, unknown>> =>
   text
     .split("\n")
@@ -30,7 +36,7 @@ const lines = (text: string): Array<Record<string, unknown>> =>
 
 test("daemon log lines are JSON with the run ID and references, private, and free of credentials and bodies", () => {
   const root = tempRoot();
-  const echoed: string[] = [];
+  const echoed: Array<string> = [];
   const log = openDaemonLog({ stateRoot: root, runId: "run-1", stderr: (l) => echoed.push(l) });
   const slotLog = log.with({ factoryId: "f1", slotId: "s1" });
   slotLog.info("message failed", {
@@ -69,7 +75,7 @@ test("a daemon log that cannot be opened falls back to stderr with one error lin
   const root = tempRoot();
   // A file where the logs directory belongs: unopenable for any user, root included.
   writeFileSync(join(root, "logs"), "");
-  const echoed: string[] = [];
+  const echoed: Array<string> = [];
   const log = openDaemonLog({ stateRoot: root, runId: "r", stderr: (l) => echoed.push(l) });
   log.info("still logged");
   log.close();
@@ -83,15 +89,19 @@ test("a daemon log that cannot be opened falls back to stderr with one error lin
 test("the daemon log rotates by size and keeps a fixed number of files", () => {
   const root = tempRoot();
   const log = openDaemonLog({ stateRoot: root, runId: "r", maxBytes: 200, keepFiles: 3, stderr: () => {} });
-  for (let i = 0; i < 20; i++) log.info(`line ${i}`);
+
+  for (let i = 0; i < 20; i++) {log.info(`line ${i}`);}
+
   log.close();
 
   expect(readdirSync(join(root, "logs")).sort()).toEqual(["daemon.log", "daemon.log.1", "daemon.log.2"]);
+
   for (const name of ["daemon.log", "daemon.log.1", "daemon.log.2"]) {
     const path = join(root, "logs", name);
     expect(statSync(path).size).toBeLessThanOrEqual(200);
     expect(statSync(path).mode & 0o777).toBe(0o600);
   }
+
   // The newest line is in the live file; the oldest lines were dropped.
   expect(readFileSync(daemonLogPath(root), "utf8")).toContain('"line 19"');
   const kept = ["daemon.log.2", "daemon.log.1", "daemon.log"].map((n) => readFileSync(join(root, "logs", n), "utf8")).join("");
@@ -100,7 +110,7 @@ test("the daemon log rotates by size and keeps a fixed number of files", () => {
 
 test("debug adds channel frames by type only, never their contents", () => {
   const root = tempRoot();
-  const echoed: string[] = [];
+  const echoed: Array<string> = [];
   const atInfo = channelLogEvents(openDaemonLog({ stateRoot: root, runId: "r", stderr: (l) => echoed.push(l) }));
   const slot = { factoryId: "f1", slotId: "s1", launchId: "l1" };
   atInfo.onFrame(slot, { type: "heartbeat" });
@@ -117,18 +127,20 @@ test("debug adds channel frames by type only, never their contents", () => {
 
 test("the foreground daemon writes its run to logs/daemon.log and stderr, and nothing to the host log", async () => {
   const home = tempRoot();
+
   const child = spawn(process.execPath, [daemonMain, "--home", home, "--log-level", "debug"], {
     env: { ...process.env, FOUNDRY_HOME: join(home, "not-this-one") },
     stdio: ["ignore", "pipe", "pipe"],
   });
+
   children.push(child);
   let stdout = "";
   let stderr = "";
-  child.stdout!.on("data", (c: Buffer) => (stdout += c.toString()));
-  child.stderr!.on("data", (c: Buffer) => (stderr += c.toString()));
+  child.stdout.on("data", (c: Buffer) => (stdout += c.toString()));
+  child.stderr.on("data", (c: Buffer) => (stderr += c.toString()));
   const exited = new Promise<number | null>((done) => child.on("exit", (code) => done(code)));
   await new Promise<void>((done, fail) => {
-    child.stdout!.on("data", () => stdout.includes("claimed") && done());
+    child.stdout.on("data", () => stdout.includes("claimed") && done());
     void exited.then((code) => fail(new Error(`daemon exited ${code}: ${stderr}`)));
   });
   child.kill("SIGTERM");

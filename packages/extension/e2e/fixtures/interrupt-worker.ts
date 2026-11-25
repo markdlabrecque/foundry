@@ -6,14 +6,17 @@
  */
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "typebox";
-import { interruptRuns, openChannel, RunInterrupter, type OpenChannel } from "@foundry/extension";
+import { interruptRuns, openChannel, RunInterrupter } from "@foundry/extension";
+import type { OpenChannel } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 
 export const BLOCK_TOOL = "fixture_block";
 
 export default function interruptWorker(pi: ExtensionAPI): void {
   const socketPath = process.env["FOUNDRY_TEST_CHANNEL_SOCKET"];
-  if (!socketPath) throw new Error("FOUNDRY_TEST_CHANNEL_SOCKET is not set");
+
+  if (!socketPath) {throw new Error("FOUNDRY_TEST_CHANNEL_SOCKET is not set");}
+
   const interrupter = new RunInterrupter();
   interruptRuns(pi, interrupter);
   let channel: OpenChannel | undefined;
@@ -25,15 +28,18 @@ export default function interruptWorker(pi: ExtensionAPI): void {
     parameters: Type.Object({}),
     async execute(_id, _params, signal) {
       await new Promise<void>((resolve) => {
-        if (!signal || signal.aborted) return resolve();
+        if (!signal || signal.aborted) {return resolve();}
+
         signal.addEventListener("abort", () => resolve(), { once: true });
       });
+
       return { content: [{ type: "text", text: "aborted" }], details: {} };
     },
   });
 
   pi.on("session_start", async (_event, ctx) => {
-    if (channel) return;
+    if (channel) {return;}
+
     const opened = await openChannel({
       socketPath,
       hello: {
@@ -48,10 +54,11 @@ export default function interruptWorker(pi: ExtensionAPI): void {
         tools: [],
       },
       onFrame: (frame, ch) => {
-        if (frame.type === "interrupt") interrupter.handle(frame, ch);
+        if (frame.type === "interrupt") {interrupter.handle(frame, ch);}
       },
     });
-    if (opened.accepted) channel = opened.channel;
+
+    if (opened.accepted) {channel = opened.channel;}
   });
   pi.on("session_shutdown", () => {
     channel?.close();

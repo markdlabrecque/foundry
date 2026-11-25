@@ -2,25 +2,21 @@
 // cursor contract end to end (replay after the cursor, then a live append in sequence); a second
 // row checks the filters against the same boundary.
 import { mkdtempSync, rmSync } from "node:fs";
-import { request, type IncomingMessage } from "node:http";
+import { request } from "node:http";
+import type { IncomingMessage } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
-import {
-  openStore,
-  serveManagementApi,
-  storeEventSource,
-  ticketRecord,
-  type EventSource,
-  type HistoryEntry,
-  type Store,
-} from "@foundry/daemon";
-import { eventsPath, type FactoryEvent } from "@foundry/protocol/management-api";
+import { openStore, serveManagementApi, storeEventSource, ticketRecord } from "@foundry/daemon";
+import type { EventSource, HistoryEntry, Store } from "@foundry/daemon";
+import { eventsPath } from "@foundry/protocol/management-api";
+import type { FactoryEvent } from "@foundry/protocol/management-api";
 
 const cleanups: Array<() => Promise<void> | void> = [];
+
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 const status = { instance: { stateRoot: "/fixture", daemonPid: 4242, startedAt: "2026-01-01T00:00:00.000Z" } };
@@ -37,6 +33,7 @@ const serveStore = async (
   const events = wrap(storeEventSource(store), store);
   const api = await serveManagementApi({ stateRoot: root, status: () => status, events });
   cleanups.push(() => api.close());
+
   return { store, socketPath: api.socketPath };
 };
 
@@ -45,17 +42,19 @@ const append = (store: Store, entry: HistoryEntry): Promise<number> =>
 
 /** Opens the SSE stream and collects parsed events; `next(n)` resolves once `n` have arrived. */
 const openStream = (socketPath: string, path: string, headers: Record<string, string> = {}) => {
-  const events: FactoryEvent[] = [];
-  const ids: string[] = [];
+  const events: Array<FactoryEvent> = [];
+  const ids: Array<string> = [];
   const waiters: Array<{ count: number; resolve: () => void }> = [];
   let ended = false;
   let response: IncomingMessage | undefined;
+
   const settle = () => {
     for (const w of waiters.splice(0)) {
-      if (events.length >= w.count || ended) w.resolve();
-      else waiters.push(w);
+      if (events.length >= w.count || ended) {w.resolve();}
+      else {waiters.push(w);}
     }
   };
+
   const opened = new Promise<number>((resolve, reject) => {
     const req = request({ socketPath, path, headers }, (res) => {
       response = res;
@@ -64,14 +63,18 @@ const openStream = (socketPath: string, path: string, headers: Record<string, st
       res.on("data", (chunk: string) => {
         buffer += chunk;
         let end: number;
+
         while ((end = buffer.indexOf("\n\n")) !== -1) {
           const block = buffer.slice(0, end);
           buffer = buffer.slice(end + 2);
           const id = /^id: (.*)$/m.exec(block)?.[1];
           const data = /^data: (.*)$/m.exec(block)?.[1];
-          if (id !== undefined) ids.push(id);
-          if (data !== undefined) events.push(JSON.parse(data) as FactoryEvent);
+
+          if (id !== undefined) {ids.push(id);}
+
+          if (data !== undefined) {events.push(JSON.parse(data) as FactoryEvent);}
         }
+
         settle();
       });
       res.on("end", () => {
@@ -80,10 +83,12 @@ const openStream = (socketPath: string, path: string, headers: Record<string, st
       });
       resolve(res.statusCode ?? 0);
     });
+
     req.on("error", reject);
     cleanups.push(() => void req.destroy());
     req.end();
   });
+
   return {
     opened,
     events,
@@ -101,6 +106,7 @@ const openStream = (socketPath: string, path: string, headers: Record<string, st
 test("a followed stream replays only after the cursor, then sees one newly appended event in sequence", async () => {
   const { store, socketPath } = await serveStore();
   const first = await append(store, { factoryId: "f1", kind: "factory.started", subject: "f1" });
+
   const second = await append(store, {
     factoryId: "f1",
     kind: "ticket.submitted",
@@ -108,6 +114,7 @@ test("a followed stream replays only after the cursor, then sees one newly appen
     records: [ticketRecord(1)],
     detail: { title: "first" },
   });
+
   const third = await append(store, { factoryId: "f1", kind: "launch.started", subject: "l1" });
 
   // Reconnecting with the first event's ID as Last-Event-ID, which takes precedence over `since`.
@@ -138,12 +145,14 @@ test("a followed stream replays only after the cursor, then sees one newly appen
 test("an unfollowed read filters by factory and ticket, ends after replay, and refuses a bad cursor", async () => {
   const { store, socketPath } = await serveStore();
   await append(store, { factoryId: "f1", kind: "ticket.submitted", subject: "t1", records: [{ kind: "ticket", id: "1" }] });
+
   const wanted = await append(store, {
     factoryId: "f1",
     kind: "ticket.submitted",
     subject: "t2",
     records: [{ kind: "ticket", id: "2" }],
   });
+
   await append(store, { factoryId: "f2", kind: "ticket.submitted", subject: "t2", records: [{ kind: "ticket", id: "2" }] });
 
   const stream = openStream(socketPath, eventsPath({ factory: "f1", ticket: 2 }));
@@ -158,6 +167,7 @@ test("an unfollowed read filters by factory and ticket, ends after replay, and r
 
 test("a row committed while a followed replay is being read is sent once, in sequence", async () => {
   let injected: Promise<number> | undefined;
+
   const { store, socketPath } = await serveStore((source, store) => ({
     ...source,
     // The first replay page is read, then a row commits before the client has seen anything.
@@ -165,9 +175,11 @@ test("a row committed while a followed replay is being read is sent once, in seq
       const page = await source.page(query);
       injected ??= append(store, { factoryId: "f1", kind: "launch.started", subject: "l9" });
       await injected;
+
       return page;
     },
   }));
+
   const first = await append(store, { factoryId: "f1", kind: "factory.started", subject: "f1" });
   const second = await append(store, { factoryId: "f1", kind: "launch.requested", subject: "l9" });
 
@@ -185,11 +197,13 @@ test("a client that disconnects from a followed stream stops listening for commi
   let live = 0;
   let released: () => void = () => {};
   const unsubscribed = new Promise<void>((resolve) => (released = resolve));
+
   const { socketPath } = await serveStore((source) => ({
     ...source,
     onCommit: (listener) => {
       live += 1;
       const off = source.onCommit(listener);
+
       return () => {
         off();
         live -= 1;
@@ -197,6 +211,7 @@ test("a client that disconnects from a followed stream stops listening for commi
       };
     },
   }));
+
   const stream = openStream(socketPath, eventsPath({ follow: true }));
   expect(await stream.opened).toBe(200);
   expect(live).toBe(1);

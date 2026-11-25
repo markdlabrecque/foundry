@@ -28,12 +28,15 @@ const memoryReader =
   (files: Record<string, string>): ReadSource =>
   async (path) => {
     const content = files[path];
-    if (content === undefined) throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });
+
+    if (content === undefined) {throw Object.assign(new Error(`ENOENT: ${path}`), { code: "ENOENT" });}
+
     return new TextEncoder().encode(content);
   };
 
 const composed = (result: ComposePrimeResult): Prime => {
-  if (result._tag !== "Composed") throw new Error(JSON.stringify(result.problems));
+  if (result._tag !== "Composed") {throw new Error(JSON.stringify(result.problems));}
+
   return result.prime;
 };
 
@@ -74,6 +77,7 @@ describe("composition", () => {
         composed(await composePrime(request({ situation }), memoryReader(FILES))).text,
       ),
     );
+
     const withoutSituation = texts.map((text) => text.replace(/^Situation: .*$/m, ""));
     expect(new Set(withoutSituation).size).toBe(1);
     expect(new Set(texts).size).toBe(3);
@@ -82,7 +86,9 @@ describe("composition", () => {
   test("every missing source is named, in order, and no prime is returned", async () => {
     const result = await composePrime(request(), memoryReader({ "/factory/rooms/eng.md": "ROOM" }));
     expect(result._tag).toBe("SourceUnavailable");
-    if (result._tag !== "SourceUnavailable") return;
+
+    if (result._tag !== "SourceUnavailable") {return;}
+
     expect(result.problems.map(({ path, source, reason }) => ({ path, source, reason }))).toEqual([
       { path: "/factory/factory.md", source: "factory.md", reason: "missing" },
       { path: "/factory/roles/dev.md", source: "roles/dev.md", reason: "missing" },
@@ -98,9 +104,11 @@ describe("source bytes", () => {
 
   test("the hash covers the raw bytes, including a byte-order mark the content drops", async () => {
     const bytes = new TextEncoder().encode("\uFEFFX");
+
     const prime = composed(
       await composePrime(request({ instructions: ["/factory/factory.md"] }), reader(async () => bytes)),
     );
+
     expect(prime.parts).toEqual([
       {
         source: "factory.md",
@@ -112,12 +120,14 @@ describe("source bytes", () => {
 
   test("a source that exists but cannot be read is reported as unreadable", async () => {
     const denied = Object.assign(new Error("EACCES: permission denied"), { code: "EACCES" });
+
     const result = await composePrime(
       request({ instructions: ["/factory/factory.md"] }),
       reader(async () => {
         throw denied;
       }),
     );
+
     expect(result).toMatchObject({
       _tag: "SourceUnavailable",
       problems: [{ path: "/factory/factory.md", source: "factory.md", reason: "unreadable" }],
@@ -126,7 +136,7 @@ describe("source bytes", () => {
 });
 
 describe("real files", () => {
-  const dirs: string[] = [];
+  const dirs: Array<string> = [];
   afterEach(async () => {
     await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });

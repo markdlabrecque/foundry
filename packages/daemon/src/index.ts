@@ -2,9 +2,13 @@
 export const packageName = "@foundry/daemon" as const;
 
 export * from "./channel/server.js";
+
 export { channelLogEvents } from "./channel/log-events.js";
+
 export * from "./channel/slot-claim.js";
+
 export { selectStateRoot, type StateRootInputs } from "@foundry/protocol/state-root";
+
 export {
   claimStateRoot,
   LOCK_FILE_NAME,
@@ -14,16 +18,22 @@ export {
   type StateRootClaim,
   type StateRootLockedReason,
 } from "./instance-lock.js";
+
 export {
   discoverRepositoryContext,
   type RepositoryContext,
   type RepositoryContextFile,
   type SkillHeader,
 } from "./repository-context.js";
+
 export * from "./store.js";
+
 export * from "./tickets.js";
+
 export * from "./prime.js";
+
 export * from "./priming.js";
+
 export {
   DAEMON_LOG_KEEP_FILES,
   DAEMON_LOG_MAX_BYTES,
@@ -41,6 +51,7 @@ export {
   type LogLevel,
   type LogRefs,
 } from "./log.js";
+
 export {
   ManagementSocketError,
   serveManagementApi,
@@ -48,6 +59,7 @@ export {
   type ManagementApiInputs,
   type ManagementSocketRefusal,
 } from "./management-api.js";
+
 export {
   closeHold,
   getHold,
@@ -59,9 +71,13 @@ export {
   type RaiseOutcome,
   type RaiseResult,
 } from "./holds.js";
+
 export { readEvents, storeEventSource, type EventPageQuery, type EventSource } from "./events.js";
+
 export { formatEvent } from "./events-stream.js";
+
 export * from "./factory-loads.js";
+
 export {
   CLONE_MARKER_FILE_NAME,
   CLONES_DIR_NAME,
@@ -79,5 +95,7 @@ export {
   type EnsureCloneOptions,
   type EnsuredClone,
 } from "./factory-clone.js";
+
 export * from "./start-refusal.js";
+
 export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";

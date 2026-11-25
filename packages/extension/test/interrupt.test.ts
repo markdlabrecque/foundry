@@ -1,14 +1,17 @@
 // Tier: unit. RunInterrupter wired to a fake Pi through interruptRuns; no socket.
 // The channel round trip is in test/interrupt.test.ts, the real Pi journey in e2e.
 import { expect, test } from "vitest";
-import { interruptRuns, RunInterrupter, type RunControl } from "@foundry/extension";
+import { interruptRuns, RunInterrupter } from "@foundry/extension";
+import type { RunControl } from "@foundry/extension";
 
 /** A stand-in for Pi's extension API: records handlers so the test can fire Pi's events. */
 const fakePi = () => {
   const handlers = new Map<string, Array<(event: unknown, ctx: unknown) => void>>();
+
   return {
     on: ((event: string, handler: (event: unknown, ctx: unknown) => void) => {
       handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+
       return () => {};
     }) as never,
     emit: (event: string, payload: unknown = {}, ctx: unknown = undefined) =>
@@ -24,6 +27,7 @@ const busyPi = () => {
   const interrupter = new RunInterrupter();
   interruptRuns(pi, interrupter);
   pi.emit("session_start", { reason: "startup" }, control);
+
   return { pi, state, interrupter };
 };
 
@@ -32,6 +36,7 @@ const tick = () => new Promise<void>((resolve) => setImmediate(resolve));
 const track = <T>(promise: Promise<T>) => {
   const seen: { value?: T } = {};
   void promise.then((value) => (seen.value = value));
+
   return seen;
 };
 

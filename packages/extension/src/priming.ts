@@ -16,7 +16,7 @@ import type { RunInterrupter } from "./interrupt.js";
  * daemon reconciles unacknowledged IDs on reconnect (17a).
  */
 export class ReceiptReporter {
-  private readonly held: string[] = [];
+  private readonly held: Array<string> = [];
   private sending = false;
   private channel: OpenChannel | undefined;
 
@@ -30,30 +30,34 @@ export class ReceiptReporter {
   attach(channel: OpenChannel): void {
     this.channel = channel;
     void channel.closed.then(() => {
-      if (this.channel === channel) this.channel = undefined;
+      if (this.channel === channel) {this.channel = undefined;}
     });
     this.flush();
   }
 
   /** Receipts issued but not yet written to a channel. */
-  pending(): readonly string[] {
+  pending(): ReadonlyArray<string> {
     return [...this.held];
   }
 
   private flush(): void {
     const channel = this.channel;
     const id = this.held[0];
-    if (id === undefined || this.sending || !channel) return;
+
+    if (id === undefined || this.sending || !channel) {return;}
+
     this.sending = true;
     channel.send({ type: "receipt", id }).then(
       () => {
-        if (this.held[0] === id) this.held.shift();
+        if (this.held[0] === id) {this.held.shift();}
+
         this.sending = false;
         this.flush();
       },
       () => {
         // Keep the receipt for the next attach(); see CompactionReporter for why no retry here.
-        if (this.channel === channel) this.channel = undefined;
+        if (this.channel === channel) {this.channel = undefined;}
+
         this.sending = false;
       },
     );
@@ -76,9 +80,11 @@ export const receiveDaemonFrames =
     switch (frame.type) {
       case "prime":
         handlers.adapter.inject({ id: frame.id, kind: "prime", content: frame.text });
+
         return;
       case "interrupt":
         handlers.interrupter.handle(frame, channel);
+
         return;
       default: {
         const unhandled: never = frame;

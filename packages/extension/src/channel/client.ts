@@ -3,18 +3,10 @@
  * promises: dial the daemon's socket, send `hello` as the first frame, wait for
  * the reply, then heartbeat on a fixed interval while the channel is open.
  */
-import { connect, type Socket } from "node:net";
-import {
-  decodeDaemonFrameLine,
-  decodeHelloReplyLine,
-  type DaemonFrame,
-  encodeFrame,
-  FrameLineSplitter,
-  HEARTBEAT_INTERVAL_MS,
-  type Hello,
-  type HelloRejectReason,
-  type WorkerFrame,
-} from "@foundry/protocol";
+import { connect } from "node:net";
+import type { Socket } from "node:net";
+import { decodeDaemonFrameLine, decodeHelloReplyLine, encodeFrame, FrameLineSplitter, HEARTBEAT_INTERVAL_MS } from "@foundry/protocol";
+import type { DaemonFrame, Hello, HelloRejectReason, WorkerFrame } from "@foundry/protocol";
 
 export interface OpenChannel {
   /** Write one frame. Resolves once written to the socket; rejects if the channel is closed. */
@@ -56,13 +48,16 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
     const closed = new Promise<void>((done) => socket.once("close", () => done()));
 
     const stop = (): void => {
-      if (heartbeat) clearInterval(heartbeat);
+      if (heartbeat) {clearInterval(heartbeat);}
+
       heartbeat = undefined;
     };
+
     closed.then(stop);
 
     const fail = (error: Error): void => {
-      if (settled) return;
+      if (settled) {return;}
+
       settled = true;
       socket.destroy();
       reject(error);
@@ -73,23 +68,32 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
     socket.once("close", () => fail(new Error("channel closed before the hello was answered")));
     let channel: OpenChannel | undefined;
     socket.on("data", (chunk: string) => {
-      let lines: string[];
+      let lines: Array<string>;
+
       try {
         lines = splitter.push(chunk);
       } catch (error) {
-        if (!settled) return fail(error as Error);
+        if (!settled) {return fail(error as Error);}
+
         socket.destroy();
+
         return;
       }
+
       for (const line of lines) {
         if (!settled) {
           const reply = decodeHelloReplyLine(line);
-          if (!reply.ok) return fail(new Error(`malformed hello reply: ${reply.detail}`));
+
+          if (!reply.ok) {return fail(new Error(`malformed hello reply: ${reply.detail}`));}
+
           settled = true;
+
           if (reply.value.type === "hello_rejected") {
             socket.end();
+
             return resolve({ accepted: false, reason: reply.value.reason });
           }
+
           heartbeat = setInterval(
             () => socket.write(encodeFrame({ type: "heartbeat" })),
             options.heartbeatIntervalMs ?? HEARTBEAT_INTERVAL_MS,
@@ -97,7 +101,8 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
           channel = {
             send: (frame) =>
               new Promise<void>((done, failed) => {
-                if (socket.destroyed || !socket.writable) return failed(new Error("channel is closed"));
+                if (socket.destroyed || !socket.writable) {return failed(new Error("channel is closed"));}
+
                 socket.write(encodeFrame(frame), (error) => (error ? failed(error) : done()));
               }),
             close: () => {
@@ -109,17 +114,23 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
           resolve({ accepted: true, channel });
           continue;
         }
-        if (!channel) return; // refused: nothing after the refusal is read
+
+        if (!channel) {return;} // refused: nothing after the refusal is read
+
         const frame = decodeDaemonFrameLine(line);
+
         if (!frame.ok) {
           socket.destroy();
+
           return;
         }
+
         try {
           options.onFrame?.(frame.value, channel);
         } catch {
           // A throwing handler must not crash the Pi process; drop the channel instead.
           socket.destroy();
+
           return;
         }
       }

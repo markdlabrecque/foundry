@@ -23,8 +23,8 @@ type ProductionLine = FactoryConfig["production_lines"][string];
  * contract. A line with no `verify` command is only a warning.
  */
 export const checkProductionLines = (config: FactoryConfig): LineCheck => {
-  const errors: LineIssue[] = [];
-  const warnings: LineIssue[] = [];
+  const errors: Array<LineIssue> = [];
+  const warnings: Array<LineIssue> = [];
 
   if (!Object.hasOwn(config.production_lines, config.default_production_line)) {
     errors.push({
@@ -35,6 +35,7 @@ export const checkProductionLines = (config: FactoryConfig): LineCheck => {
 
   for (const [name, line] of Object.entries(config.production_lines)) {
     checkLine(config, ["production_lines", name], line, errors);
+
     if (line.verify === undefined) {
       warnings.push({
         path: ["production_lines", name],
@@ -42,18 +43,25 @@ export const checkProductionLines = (config: FactoryConfig): LineCheck => {
       });
     }
   }
+
   return { errors, warnings };
 };
 
 /** The isolation of the station a stage names, or undefined if it does not exist. */
 const stationIsolation = (config: FactoryConfig, reference: string): "none" | "worktree" | undefined => {
   const parts = reference.split(".");
-  if (parts.length !== 2) return undefined;
+
+  if (parts.length !== 2) {return undefined;}
+
   const [room, station] = parts as [string, string];
   const rooms = config.rooms;
-  if (!Object.hasOwn(rooms, room)) return undefined;
+
+  if (!Object.hasOwn(rooms, room)) {return undefined;}
+
   const stations = rooms[room]!.stations;
-  if (!Object.hasOwn(stations, station)) return undefined;
+
+  if (!Object.hasOwn(stations, station)) {return undefined;}
+
   return stations[station]!.isolation;
 };
 
@@ -61,7 +69,7 @@ const checkLine = (
   config: FactoryConfig,
   at: ReadonlyArray<string>,
   line: ProductionLine,
-  errors: LineIssue[],
+  errors: Array<LineIssue>,
 ): void => {
   const firstIndex = new Map<string, number>();
   const isolation: Array<"none" | "worktree" | undefined> = [];
@@ -77,6 +85,7 @@ const checkLine = (
 
     const stationIso = stationIsolation(config, stage.station);
     isolation.push(stationIso);
+
     if (stationIso === undefined) {
       errors.push({
         path: [...stagePath, "station"],
@@ -91,6 +100,7 @@ const checkLine = (
 
     if (stage.on_rejection !== undefined) {
       const target = firstIndex.get(stage.on_rejection);
+
       if (target === undefined || target >= index) {
         errors.push({
           path: [...stagePath, "on_rejection"],
@@ -102,18 +112,26 @@ const checkLine = (
 
   const last = line.stages.length - 1;
   const final = line.stages[last];
-  if (final === undefined) return;
+
+  if (final === undefined) {return;}
+
   const finalPath = [...at, "stages", last];
+
   const contract = (key: string, message: string): void => {
     errors.push({ path: [...finalPath, key], message: `Final stage ${message}` });
   };
-  if (final.writing) contract("writing", "must not be a writing stage");
-  if (isolation[last] === "none") contract("station", "must use a worktree station");
-  if (!final.approval) contract("approval", "must require approval");
+
+  if (final.writing) {contract("writing", "must not be a writing stage");}
+
+  if (isolation[last] === "none") {contract("station", "must use a worktree station");}
+
+  if (!final.approval) {contract("approval", "must require approval");}
+
   if (final.on_rejection === undefined) {
     contract("on_rejection", "must name an earlier writing stage as its rejection target");
   } else {
     const target = firstIndex.get(final.on_rejection);
+
     if (target !== undefined && target < last && !line.stages[target]!.writing) {
       contract("on_rejection", `must route rejection to a writing stage; "${final.on_rejection}" is not writing`);
     }

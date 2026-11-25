@@ -9,16 +9,19 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
 import { openStore, serveManagementApi, storeEventSource, ticketRecord } from "@foundry/daemon";
 import { managementSocketPath } from "@foundry/protocol/management-api";
-import { EXIT_OK, EXIT_UNREACHABLE, EXIT_USAGE, runEvents, type EventsOptions } from "@foundry/cli";
+import { EXIT_OK, EXIT_UNREACHABLE, EXIT_USAGE, runEvents } from "@foundry/cli";
+import type { EventsOptions } from "@foundry/cli";
 
 const cleanups: Array<() => Promise<void> | void> = [];
+
 afterEach(async () => {
-  for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
 const tempRoot = (): string => {
   const root = mkdtempSync(join(tmpdir(), "foundry-cli-events-"));
   cleanups.push(() => rmSync(root, { recursive: true, force: true }));
+
   return root;
 };
 
@@ -26,7 +29,8 @@ const tempRoot = (): string => {
 const env = { FOUNDRY_HOME: "/nonexistent-foundry-home" };
 
 const run = async (home: string, overrides: Partial<EventsOptions> = {}) => {
-  const lines: string[] = [];
+  const lines: Array<string> = [];
+
   const outcome = await runEvents({
     json: false,
     follow: false,
@@ -38,6 +42,7 @@ const run = async (home: string, overrides: Partial<EventsOptions> = {}) => {
     write: (line) => lines.push(line),
     ...overrides,
   });
+
   return { ...outcome, lines };
 };
 
@@ -46,12 +51,15 @@ test("foundry events prints history after --since, as text or JSON, and ends", a
   const scope = Effect.runSync(Scope.make());
   cleanups.push(() => Effect.runPromise(Scope.close(scope, Exit.void)));
   const store = await Effect.runPromise(openStore({ filename: join(home, "foundry.db") }).pipe(Scope.provide(scope)));
+
   const api = await serveManagementApi({
     stateRoot: home,
     status: () => ({ instance: { stateRoot: home, daemonPid: 1, startedAt: "2026-01-01T00:00:00.000Z" } }),
     events: storeEventSource(store),
   });
+
   cleanups.push(() => api.close());
+
   const append = (kind: string, subject: string, ticket?: string) =>
     Effect.runPromise(
       store.change(({ recordHistory }) =>
@@ -63,6 +71,7 @@ test("foundry events prints history after --since, as text or JSON, and ends", a
         }),
       ),
     );
+
   const first = await append("factory.started", "f1");
   const second = await append("ticket.submitted", "t7", "7");
 
@@ -89,12 +98,14 @@ test("a one-shot read whose stream drops exits as unreachable instead of retryin
   const home = tempRoot();
   // Stands in for a daemon that dies mid-stream: one event, then the connection is cut.
   let requests = 0;
+
   const server = createServer((_req, res) => {
     requests += 1;
     res.writeHead(200, { "content-type": "text/event-stream" });
     const event = { id: 1, factoryId: "f1", recordedAt: "2026-01-01T00:00:00.000Z", kind: "factory.started", subject: "f1", records: [], detail: null };
     res.write(`id: 1\ndata: ${JSON.stringify(event)}\n\n`, () => res.socket?.destroy());
   });
+
   cleanups.push(() => new Promise<void>((done) => { server.closeAllConnections(); server.close(() => done()); }));
   await new Promise<void>((done) => server.listen(managementSocketPath(home), done));
 

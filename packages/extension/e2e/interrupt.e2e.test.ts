@@ -4,14 +4,15 @@
 // and conversation carry on without a new launch or hello.
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { afterEach, expect, test } from "vitest";
-import { startChannelServer, type ChannelServer, type SlotClaim } from "@foundry/daemon";
-import { type FauxPi, type RpcEvent, startFauxPi } from "@foundry/testkit";
+import { startChannelServer } from "@foundry/daemon";
+import type { ChannelServer, SlotClaim } from "@foundry/daemon";
+import { startFauxPi } from "@foundry/testkit";
+import type { FauxPi, RpcEvent } from "@foundry/testkit";
 import { BLOCK_TOOL } from "./fixtures/interrupt-worker.js";
 
-const WORKER_EXTENSION = join(dirname(fileURLToPath(import.meta.url)), "fixtures", "interrupt-worker.ts");
+const WORKER_EXTENSION = join(import.meta.dirname, "fixtures", "interrupt-worker.ts");
 
 const acceptAll: SlotClaim = {
   claim: async (h) => ({ accepted: true, slot: { factoryId: h.factoryId, slotId: h.slotId, launchId: h.launchId } }),
@@ -20,24 +21,28 @@ const acceptAll: SlotClaim = {
 let pi: FauxPi | undefined;
 let server: ChannelServer | undefined;
 let dir: string | undefined;
+
 afterEach(async () => {
   await pi?.dispose();
   pi = undefined;
   await server?.close();
   server = undefined;
-  if (dir) await rm(dir, { recursive: true, force: true });
+
+  if (dir) {await rm(dir, { recursive: true, force: true });}
+
   dir = undefined;
 });
 
 const sessionId = async (p: FauxPi, id: string): Promise<unknown> => {
   const reply = p.waitFor((e) => e.type === "response" && e.id === id);
   p.send({ id, type: "get_state" });
+
   return ((await reply) as RpcEvent & { data: { sessionId: unknown } }).data.sessionId;
 };
 
 test("an interrupt aborts the active run and keeps the launch and conversation", async () => {
   dir = await mkdtemp(join(tmpdir(), "foundry-interrupt-"));
-  const hellos: string[] = [];
+  const hellos: Array<string> = [];
   let accepted!: () => void;
   const connected = new Promise<void>((r) => (accepted = r));
   server = await startChannelServer({

@@ -25,19 +25,23 @@ export interface ToolSetEntry {
 
 type ExtensionList = NonNullable<NonNullable<FactoryConfig["defaults"]>["extensions"]>;
 
-const checkList = (list: ExtensionList | undefined, at: ReadonlyArray<string>): NameProblem[] => {
-  const problems: NameProblem[] = [];
+const checkList = (list: ExtensionList | undefined, at: ReadonlyArray<string>): Array<NameProblem> => {
+  const problems: Array<NameProblem> = [];
   const firstAt = new Map<string, string>();
   (list ?? []).forEach((entry, index) => {
-    if (typeof entry === "string") return;
+    if (typeof entry === "string") {return;}
+
     entry.tools.forEach((name, toolIndex) => {
       const path = [...at, String(index), "tools", String(toolIndex)];
+
       if (!isPlainToolName(name)) {
         problems.push({ path, message: `Tool name "${name}" must be an exact name of letters, digits, "_" and "-"; patterns are not allowed` });
       } else if (isReservedToolName(name)) {
         problems.push({ path, message: `Tool name "${name}" is reserved (Pi built-ins, agent tools, codemode, tool_search and mcp__ names)` });
       }
+
       const first = firstAt.get(name);
+
       if (first !== undefined) {
         problems.push({ path, message: `Tool name "${name}" is already named at ${first}; a tool appears once in a Tool Set` });
       } else {
@@ -45,6 +49,7 @@ const checkList = (list: ExtensionList | undefined, at: ReadonlyArray<string>): 
       }
     });
   });
+
   return problems;
 };
 
@@ -55,11 +60,13 @@ const checkList = (list: ExtensionList | undefined, at: ReadonlyArray<string>): 
  */
 export const checkToolNames = (config: FactoryConfig): ReadonlyArray<NameProblem> => {
   const problems = checkList(config.defaults?.extensions, ["defaults", "extensions"]);
+
   for (const [room, { stations }] of Object.entries(config.rooms)) {
     for (const [station, settings] of Object.entries(stations)) {
       problems.push(...checkList(settings.extensions, ["rooms", room, "stations", station, "extensions"]));
     }
   }
+
   return problems;
 };
 

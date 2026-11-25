@@ -7,15 +7,8 @@
  * nothing, and new evidence refreshes the open hold (as a repeated sync conflict does).
  */
 import { Clock, Effect } from "effect";
-import {
-  holdCommands,
-  type HoldEvidence,
-  type HoldKind,
-  type HoldListResult,
-  type HoldRecord,
-  type HoldShowResult,
-  type HoldState,
-} from "@foundry/protocol/holds";
+import { holdCommands } from "@foundry/protocol/holds";
+import type { HoldEvidence, HoldKind, HoldListResult, HoldRecord, HoldShowResult, HoldState } from "@foundry/protocol/holds";
 import type { Query, Store, StoreError } from "./store.js";
 
 export interface RaiseHold {
@@ -71,18 +64,22 @@ const byId = (query: Query, id: number) =>
 export const raiseHold = (store: Store, hold: RaiseHold): Effect.Effect<RaiseResult, StoreError> =>
   Effect.gen(function* () {
     const evidence = JSON.stringify(hold.evidence);
+
     const open = yield* store.read<HoldRow>(
       `SELECT ${COLUMNS} FROM operator_hold WHERE factory_id = ? AND kind = ? AND subject = ? AND state = 'open'`,
       [hold.factoryId, hold.kind, hold.subject],
     );
+
     // The daemon is the only writer, so this read cannot be raced; the unique index backs it up.
     if (open[0] !== undefined && open[0].evidence === evidence) {
       return { outcome: "unchanged", hold: toRecord(open[0]) } as const;
     }
+
     return yield* store.change(({ query, recordHistory }) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
         const existing = open[0];
+
         const id =
           existing === undefined
             ? (yield* query<{ id: number }>(
@@ -96,12 +93,14 @@ export const raiseHold = (store: Store, hold: RaiseHold): Effect.Effect<RaiseRes
                 existing.id,
               ]),
               existing.id);
+
         yield* recordHistory({
           factoryId: hold.factoryId,
           kind: "hold.raised",
           subject: hold.subject,
           detail: { holdId: id, kind: hold.kind, refreshed: existing !== undefined, evidence: hold.evidence },
         });
+
         return { outcome: existing === undefined ? "raised" : "refreshed", hold: (yield* byId(query, id))! } as const;
       }),
     );
@@ -119,7 +118,9 @@ export const closeHold = (
   Effect.gen(function* () {
     // The daemon is the only writer, so a hold read as open is still open inside the change.
     const current = yield* getHold(store, id);
-    if (current === undefined || current.state !== "open") return undefined;
+
+    if (current === undefined || current.state !== "open") {return undefined;}
+
     return yield* store.change(({ query, recordHistory }) =>
       Effect.gen(function* () {
         const now = yield* Clock.currentTimeMillis;
@@ -134,6 +135,7 @@ export const closeHold = (
           subject: current.subject,
           detail: { holdId: id, kind: current.kind },
         });
+
         return (yield* byId(query, id))!;
       }),
     );

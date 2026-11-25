@@ -43,9 +43,13 @@ const DEFAULTS = `  extensions:
 
 const toolSet = (text: string): ReadonlyArray<ToolSetEntry> => {
   const decoded = decodeFactoryYaml(text);
-  if (decoded._tag === "Invalid") throw new Error(JSON.stringify(decoded.problems));
+
+  if (decoded._tag === "Invalid") {throw new Error(JSON.stringify(decoded.problems));}
+
   const resolved = resolveStations(decoded.config, { env: {}, baseDir: "/factory" });
-  if (resolved._tag === "Invalid") throw new Error(JSON.stringify(resolved.problems));
+
+  if (resolved._tag === "Invalid") {throw new Error(JSON.stringify(resolved.problems));}
+
   return toolSetOf(resolved.stations[0]!);
 };
 
@@ -53,7 +57,8 @@ const fixed: ReadonlyArray<ToolSetEntry> = FIXED_TOOLS.map((name, index) => ({
   name,
   source: index < 4 ? { _tag: "Pi" } : { _tag: "Foundry" },
 }));
-const from = (path: string, ...names: string[]): ToolSetEntry[] =>
+
+const from = (path: string, ...names: Array<string>): Array<ToolSetEntry> =>
   names.map((name) => ({ name, source: { _tag: "Extension", path } }));
 
 describe("a Tool Set is the fixed tools plus those named on the effective extensions", () => {
@@ -63,6 +68,7 @@ describe("a Tool Set is the fixed tools plus those named on the effective extens
     ["[] clears every extension tool", DEFAULTS, "        extensions: []\n", fixed],
     ["a hooks-only extension adds no tools", "  extensions: [ext/hooks.ts]\n", "", fixed],
   ];
+
   test.each(rows)("%s", (_name, defaults, station, expected) => {
     expect(toolSet(factory(defaults, station))).toEqual(expected);
   });
@@ -70,6 +76,7 @@ describe("a Tool Set is the fixed tools plus those named on the effective extens
 
 describe("extension tool names are exact, unreserved and listed once", () => {
   const ext = (tools: string): string => `  extensions:\n    - path: ext/a.ts\n      tools: ${tools}\n`;
+
   // Each row: the defaults block, then the problem path and message.
   const rejected: ReadonlyArray<[string, string, string, string, RegExp]> = [
     ["an enabled Pi built-in", ext("[bash]"), "", "defaults.extensions.0.tools.0", /"bash" is reserved/],
@@ -89,10 +96,13 @@ describe("extension tool names are exact, unreserved and listed once", () => {
     ],
     ["a reserved name on a station's own list", "", "        extensions: [{ path: ext/a.ts, tools: [write] }]\n", "rooms.eng.stations.dev.extensions.0.tools.0", /"write" is reserved/],
   ];
+
   test.each(rejected)("rejects %s", (_name, defaults, station, path, message) => {
     const decoded = decodeFactoryYaml(factory(defaults, station));
     expect(decoded._tag).toBe("Invalid");
-    if (decoded._tag !== "Invalid") return;
+
+    if (decoded._tag !== "Invalid") {return;}
+
     expect(decoded.problems).toContainEqual(
       expect.objectContaining({ path, message: expect.stringMatching(message), line: expect.any(Number) }),
     );
@@ -100,7 +110,9 @@ describe("extension tool names are exact, unreserved and listed once", () => {
 
   test("a problem points at the line naming the tool", () => {
     const decoded = decodeFactoryYaml(factory(ext("[ok, agent_message]"), ""));
-    if (decoded._tag !== "Invalid") throw new Error("expected a problem");
+
+    if (decoded._tag !== "Invalid") {throw new Error("expected a problem");}
+
     expect(decoded.problems).toEqual([expect.objectContaining({ line: 11, column: 19 })]);
   });
 

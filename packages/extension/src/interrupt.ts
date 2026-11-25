@@ -32,16 +32,20 @@ export class RunInterrupter {
    * compaction ending inside a run does not ack before the run itself settles.
    */
   settled(aborted: boolean): void {
-    if (this.control && !this.control.isIdle()) return;
-    for (const release of this.waiting.splice(0)) release(aborted);
+    if (this.control && !this.control.isIdle()) {return;}
+
+    for (const release of this.waiting.splice(0)) {release(aborted);}
   }
 
   /** Abort the current run, if any, and resolve once Pi is idle again. */
   async interrupt(): Promise<InterruptOutcome> {
     const control = this.control;
-    if (!control || control.isIdle()) return "idle";
+
+    if (!control || control.isIdle()) {return "idle";}
+
     const settled = new Promise<boolean>((resolve) => this.waiting.push(resolve));
     control.abort();
+
     // Work that completed despite the abort (a compaction past its last abort check) was not aborted.
     return (await settled) ? "aborted" : "idle";
   }

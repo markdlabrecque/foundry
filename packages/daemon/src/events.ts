@@ -46,11 +46,13 @@ interface RecordRow {
 export const readEvents = (store: Store, query: EventPageQuery): Effect.Effect<ReadonlyArray<FactoryEvent>, unknown> =>
   Effect.gen(function* () {
     const where = ["h.sequence > ?"];
-    const params: SqlValue[] = [query.after];
+    const params: Array<SqlValue> = [query.after];
+
     if (query.factory !== undefined) {
       where.push("h.factory_id = ?");
       params.push(query.factory);
     }
+
     if (query.ticket !== undefined) {
       where.push(
         `EXISTS (SELECT 1 FROM history_record r
@@ -58,20 +60,25 @@ export const readEvents = (store: Store, query: EventPageQuery): Effect.Effect<R
       );
       params.push(TICKET_RECORD_KIND, String(query.ticket));
     }
+
     params.push(query.limit);
+
     const rows = yield* store.read<HistoryRow>(
       `SELECT h.sequence, h.factory_id, h.recorded_at, h.kind, h.subject, h.detail
        FROM history h WHERE ${where.join(" AND ")} ORDER BY h.sequence LIMIT ?`,
       params,
     );
-    if (rows.length === 0) return [];
 
-    const records = new Map<number, EventRecordRef[]>();
+    if (rows.length === 0) {return [];}
+
+    const records = new Map<number, Array<EventRecordRef>>();
+
     const refs = yield* store.read<RecordRow>(
       `SELECT sequence, record_kind, record_id FROM history_record
        WHERE sequence BETWEEN ? AND ? ORDER BY sequence, record_kind, record_id`,
-      [rows[0]!.sequence, rows[rows.length - 1]!.sequence],
+      [rows[0]!.sequence, rows.at(-1)!.sequence],
     );
+
     for (const ref of refs) {
       const list = records.get(ref.sequence) ?? [];
       list.push({ kind: ref.record_kind, id: ref.record_id });

@@ -48,23 +48,31 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /** Parses a response body into an envelope; `undefined` if it is not one. The result is not checked. */
 export const parseApiResponse = (body: string): ApiResponse<unknown> | undefined => {
   let parsed: unknown;
+
   try {
     parsed = JSON.parse(body);
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed)) return undefined;
-  if (parsed["ok"] === true && "result" in parsed) return { ok: true, result: parsed["result"] };
+
+  if (!isRecord(parsed)) {return undefined;}
+
+  if (parsed["ok"] === true && "result" in parsed) {return { ok: true, result: parsed["result"] };}
+
   const error = parsed["error"];
+
   if (parsed["ok"] === false && isRecord(error) && typeof error["code"] === "string" && typeof error["message"] === "string") {
     return { ok: false, error: { code: error["code"], message: error["message"] } };
   }
+
   return undefined;
 };
 
 export const isStatusResult = (value: unknown): value is StatusResult => {
-  if (!isRecord(value) || !isRecord(value["instance"])) return false;
+  if (!isRecord(value) || !isRecord(value["instance"])) {return false;}
+
   const { stateRoot, daemonPid, startedAt } = value["instance"];
+
   return typeof stateRoot === "string" && typeof daemonPid === "number" && typeof startedAt === "string";
 };
 
@@ -107,17 +115,25 @@ export interface EventsQuery {
 /** Builds the request path for a query. */
 export const eventsPath = (query: Partial<EventsQuery>): string => {
   const params = new URLSearchParams();
-  if (query.since !== undefined) params.set("since", String(query.since));
-  if (query.follow === true) params.set("follow", "1");
-  if (query.factory !== undefined) params.set("factory", query.factory);
-  if (query.ticket !== undefined) params.set("ticket", String(query.ticket));
+
+  if (query.since !== undefined) {params.set("since", String(query.since));}
+
+  if (query.follow === true) {params.set("follow", "1");}
+
+  if (query.factory !== undefined) {params.set("factory", query.factory);}
+
+  if (query.ticket !== undefined) {params.set("ticket", String(query.ticket));}
+
   const search = params.toString();
+
   return search === "" ? EVENTS_PATH : `${EVENTS_PATH}?${search}`;
 };
 
 const parseCount = (raw: string, min: number): number | undefined => {
-  if (!/^\d+$/.test(raw)) return undefined;
+  if (!/^\d+$/.test(raw)) {return undefined;}
+
   const value = Number(raw);
+
   return Number.isSafeInteger(value) && value >= min ? value : undefined;
 };
 
@@ -129,21 +145,32 @@ export const parseEventsQuery = (
   const bad = (message: string) => ({ ok: false as const, error: { code: "bad_request", message } });
   let since = 0;
   const cursor = lastEventId ?? params.get("since");
+
   if (cursor !== null) {
     const parsed = parseCount(cursor, 0);
-    if (parsed === undefined) return bad(`event ID must be a non-negative integer, got ${JSON.stringify(cursor)}`);
+
+    if (parsed === undefined) {return bad(`event ID must be a non-negative integer, got ${JSON.stringify(cursor)}`);}
+
     since = parsed;
   }
+
   const followRaw = params.get("follow");
-  if (followRaw !== null && followRaw !== "1" && followRaw !== "0") return bad(`follow must be 1 or 0`);
+
+  if (followRaw !== null && followRaw !== "1" && followRaw !== "0") {return bad(`follow must be 1 or 0`);}
+
   const factory = params.get("factory") ?? undefined;
-  if (factory === "") return bad("factory must not be empty");
+
+  if (factory === "") {return bad("factory must not be empty");}
+
   let ticket: number | undefined;
   const ticketRaw = params.get("ticket");
+
   if (ticketRaw !== null) {
     ticket = parseCount(ticketRaw, 1);
-    if (ticket === undefined) return bad(`ticket must be a positive integer, got ${JSON.stringify(ticketRaw)}`);
+
+    if (ticket === undefined) {return bad(`ticket must be a positive integer, got ${JSON.stringify(ticketRaw)}`);}
   }
+
   return { ok: true, query: { since, follow: followRaw === "1", factory, ticket } };
 };
 
