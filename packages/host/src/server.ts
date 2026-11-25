@@ -1,18 +1,68 @@
 /** The Worker Host control server: serves identity, launches, inventory and termination on the host socket. */
 import { randomUUID } from "node:crypto";
-import { messageOf } from "@foundry/protocol/errors";
+import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { chmod, mkdir, unlink } from "node:fs/promises";
 import { connect, createServer } from "node:net";
 import type { Socket } from "node:net";
+import { Option, Schema } from "effect";
 import { readBootId } from "./boot.js";
 import { HOST_CONTROL_VERSION, hostSocketPath, readLines } from "./control.js";
 import type { HostEvent, HostIdentity, HostResponse } from "./control.js";
-import { LaunchRefused, TerminateRefused, createLaunchRegistry } from "./launches.js";
-import type { LaunchRecord, LaunchRegistry, LaunchSpec, TerminateOptions } from "./launches.js";
+import { LaunchRefusedError, TerminateRefusedError, createLaunchRegistry } from "./launches.js";
+import type { LaunchRecord, LaunchRegistry, TerminateOptions } from "./launches.js";
 import { createHostLog, createLaunchStderrStore } from "./log.js";
 
 /** Upper bound on a terminate's grace and kill wait, each; keeps client timers in range. */
 const MAX_TERMINATE_WAIT_MS = 10 * 60_000;
+
+const isNumber = Schema.is(Schema.Number);
+
+const isNonEmptyText = Schema.is(Schema.NonEmptyString);
+
+const isTextList = Schema.is(Schema.Array(Schema.String));
+
+const isObject = Schema.is(Schema.Record(Schema.String, Schema.Unknown));
+
+const isTextRecord = Schema.is(Schema.Record(Schema.String, Schema.String));
+
+const isWaitMs = (value: unknown): value is number => isNumber(value) && value >= 0 && value <= MAX_TERMINATE_WAIT_MS;
+
+/** Any request object; each op checks the fields it reads. */
+const RequestFields = Schema.Struct({
+  id: Schema.optionalKey(Schema.Unknown),
+  op: Schema.optionalKey(Schema.Unknown),
+  spec: Schema.optionalKey(Schema.Unknown),
+  launchId: Schema.optionalKey(Schema.Unknown),
+  graceMs: Schema.optionalKey(Schema.Unknown),
+  killWaitMs: Schema.optionalKey(Schema.Unknown),
+});
+
+const isRequestFields = Schema.is(RequestFields);
+
+/** A launch spec's fields before they are checked, so each problem can be named. */
+const SpecFields = Schema.Struct({
+  factoryId: Schema.optionalKey(Schema.Unknown),
+  slotId: Schema.optionalKey(Schema.Unknown),
+  command: Schema.optionalKey(Schema.Unknown),
+  cwd: Schema.optionalKey(Schema.Unknown),
+  args: Schema.optionalKey(Schema.Unknown),
+  env: Schema.optionalKey(Schema.Unknown),
+});
+
+type SpecFields = typeof SpecFields.Type;
+
+const isSpecFields = Schema.is(SpecFields);
+
+const isLaunchSpec = Schema.is(
+  Schema.Struct({
+    factoryId: Schema.NonEmptyString,
+    slotId: Schema.NonEmptyString,
+    command: Schema.NonEmptyString,
+    cwd: Schema.NonEmptyString,
+    args: Schema.Array(Schema.String),
+    env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  }),
+);
 
 /**
  * A launch ends unexpectedly unless it exits on its own with code 0 or the
@@ -35,6 +85,11 @@ export interface RunningHost {
   close(): Promise<void>;
 }
 
+/** Writes one newline-terminated message, unless the client has already gone. */
+const send = (socket: Socket, message: HostResponse | HostEvent): void => {
+  if (socket.writable) {socket.write(`${JSON.stringify(message)}\n`);}
+};
+
 /** Serves the host control socket in `stateRoot` from the current process. */
 export async function serveHost(stateRoot: string): Promise<RunningHost> {
   const socketPath = hostSocketPath(stateRoot);
@@ -55,10 +110,6 @@ export async function serveHost(stateRoot: string): Promise<RunningHost> {
   const log = createHostLog(identity.hostId);
   const stderrStore = createLaunchStderrStore(stateRoot);
   const clients = new Set<Socket>();
-
-  const send = (socket: Socket, message: HostResponse | HostEvent): void => {
-    if (socket.writable) {socket.write(`${JSON.stringify(message)}\n`);}
-  };
 
   const registry = createLaunchRegistry({
     bootId,
@@ -158,13 +209,13 @@ async function answer(
     return { id: null, ok: false, error: "malformed request: not JSON" };
   }
 
-  if (typeof request !== "object" || request === null) {
+  if (!isRequestFields(request)) {
     return { id: null, ok: false, error: "malformed request: not an object" };
   }
 
-  const { id, op, spec } = request as { id?: unknown; op?: unknown; spec?: unknown };
+  const { id, op, spec } = request;
 
-  if (typeof id !== "number") {
+  if (!isNumber(id)) {
     return { id: null, ok: false, error: "malformed request: missing numeric id" };
   }
 
@@ -174,19 +225,21 @@ async function answer(
     case "inventory":
       return { id, ok: true, launches: registry.inventory() };
     case "launch": {
-      const problem = checkLaunchSpec(spec);
+      if (!isLaunchSpec(spec)) {
+        const problem = isSpecFields(spec) ? (launchSpecProblem(spec) ?? "not a launch spec") : "not an object";
 
-      if (problem !== undefined) {return { id, ok: false, error: `malformed launch spec: ${problem}` };}
+        return { id, ok: false, error: `malformed launch spec: ${problem}` };
+      }
 
-      const { factoryId, slotId } = spec as LaunchSpec;
+      const { factoryId, slotId } = spec;
 
       try {
-        const launch = await registry.launch(spec as LaunchSpec);
+        const launch = await registry.launch(spec);
         log("info", "launch started", { factoryId, slotId, launchId: launch.launchId }, { pid: launch.pid });
 
         return { id, ok: true, launch };
       } catch (error) {
-        if (error instanceof LaunchRefused) {
+        if (error instanceof LaunchRefusedError) {
           // The code only: a spawn error's message names the command.
           log("warn", "launch refused", { factoryId, slotId }, { reason: error.code });
 
@@ -198,14 +251,14 @@ async function answer(
     }
 
     case "terminate": {
-      const { launchId, graceMs, killWaitMs } = request as Record<string, unknown>;
+      const { launchId, graceMs, killWaitMs } = request;
 
-      if (typeof launchId !== "string" || launchId === "") {
+      if (!isNonEmptyText(launchId)) {
         return { id, ok: false, error: "malformed terminate: launchId must be a non-empty string" };
       }
 
       for (const [name, value] of [["graceMs", graceMs], ["killWaitMs", killWaitMs]] as const) {
-        if (value !== undefined && !(typeof value === "number" && value >= 0 && value <= MAX_TERMINATE_WAIT_MS)) {
+        if (value !== undefined && !isWaitMs(value)) {
           return {
             id,
             ok: false,
@@ -216,14 +269,14 @@ async function answer(
 
       const options: { -readonly [K in keyof TerminateOptions]: TerminateOptions[K] } = {};
 
-      if (graceMs !== undefined) {options.graceMs = graceMs as number;}
+      if (isWaitMs(graceMs)) {options.graceMs = graceMs;}
 
-      if (killWaitMs !== undefined) {options.killWaitMs = killWaitMs as number;}
+      if (isWaitMs(killWaitMs)) {options.killWaitMs = killWaitMs;}
 
       try {
         return { id, ok: true, termination: await registry.terminate(launchId, options) };
       } catch (error) {
-        if (error instanceof TerminateRefused) {return { id, ok: false, error: error.message };}
+        if (error instanceof TerminateRefusedError) {return { id, ok: false, error: error.message };}
 
         throw error;
       }
@@ -234,34 +287,24 @@ async function answer(
   }
 }
 
-function requestId(line: string): number | null {
-  try {
-    const { id } = JSON.parse(line) as { id?: unknown };
+const decodeRequestId = Schema.decodeUnknownOption(Schema.fromJsonString(Schema.Struct({ id: Schema.Number })));
 
-    return typeof id === "number" ? id : null;
-  } catch {
-    return null;
-  }
+function requestId(line: string): number | null {
+  return Option.getOrNull(Option.map(decodeRequestId(line), ({ id }) => id));
 }
 
-/** Names the first thing wrong with a launch spec, or returns undefined. */
-function checkLaunchSpec(spec: unknown): string | undefined {
-  if (typeof spec !== "object" || spec === null) {return "not an object";}
-
-  const s = spec as Record<string, unknown>;
-
+/** Names the first thing wrong with a launch spec's fields, or returns undefined. */
+function launchSpecProblem(spec: SpecFields): string | undefined {
   for (const field of ["factoryId", "slotId", "command", "cwd"] as const) {
-    if (typeof s[field] !== "string" || s[field] === "") {return `${field} must be a non-empty string`;}
+    if (!isNonEmptyText(spec[field])) {return `${field} must be a non-empty string`;}
   }
 
-  if (!Array.isArray(s.args) || !s.args.every((a) => typeof a === "string")) {
-    return "args must be an array of strings";
-  }
+  if (!isTextList(spec.args)) {return "args must be an array of strings";}
 
-  if (s.env !== undefined) {
-    if (typeof s.env !== "object" || s.env === null || Array.isArray(s.env)) {return "env must be an object";}
+  if (spec.env !== undefined) {
+    if (!isObject(spec.env)) {return "env must be an object";}
 
-    if (!Object.values(s.env).every((v) => typeof v === "string")) {return "env values must be strings";}
+    if (!isTextRecord(spec.env)) {return "env values must be strings";}
   }
 
   return undefined;
@@ -292,7 +335,7 @@ async function clearStaleSocket(socketPath: string): Promise<void> {
     throw new Error(`cannot tell whether a Worker Host answers on ${socketPath}: ${probe.message}`);
   }
 
-  await unlink(socketPath).catch((error: NodeJS.ErrnoException) => {
-    if (error.code !== "ENOENT") {throw error;}
+  await unlink(socketPath).catch((cause: unknown) => {
+    if (codeOf(cause) !== "ENOENT") {throw cause;}
   });
 }

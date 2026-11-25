@@ -55,7 +55,7 @@ export type LaunchRecord = {
  * A launch the host would not or could not start. `code` names why without
  * echoing the command, which may hold credentials or a prompt.
  */
-export class LaunchRefused extends Error {
+export class LaunchRefusedError extends Error {
   constructor(
     message: string,
     readonly code: string,
@@ -65,7 +65,7 @@ export class LaunchRefused extends Error {
 }
 
 /** Refusal to terminate: the host does not own the named launch in this boot. */
-export class TerminateRefused extends Error {}
+export class TerminateRefusedError extends Error {}
 
 export interface TerminateOptions {
   /** Time between SIGTERM and SIGKILL. 0 skips SIGTERM. Default 5 s. */
@@ -143,7 +143,7 @@ export function createLaunchRegistry(options: {
       const key = slotKey(spec.factoryId, spec.slotId);
 
       if (occupied.has(key)) {
-        throw new LaunchRefused(`slot ${spec.slotId} of factory ${spec.factoryId} already holds a live launch`, "slot_occupied");
+        throw new LaunchRefusedError(`slot ${spec.slotId} of factory ${spec.factoryId} already holds a live launch`, "slot_occupied");
       }
 
       occupied.add(key);
@@ -175,7 +175,7 @@ export function createLaunchRegistry(options: {
         });
       } catch (error) {
         occupied.delete(key);
-        throw new LaunchRefused(
+        throw new LaunchRefusedError(
           `launch failed to start: ${messageOf(error)}`,
           codeOf(error) ?? "spawn_failed",
         );
@@ -252,13 +252,13 @@ export function createLaunchRegistry(options: {
       const record = launches.get(launchId);
 
       if (record === undefined) {
-        return Promise.reject(new TerminateRefused(`launch ${launchId} is not owned by this host`));
+        return Promise.reject(new TerminateRefusedError(`launch ${launchId} is not owned by this host`));
       }
 
       // Defensive and untested: records come only from this host process
       // today, so the boot always matches. It matters once records are restored.
       if (record.bootId !== options.bootId) {
-        return Promise.reject(new TerminateRefused(`launch ${launchId} belongs to an earlier boot`));
+        return Promise.reject(new TerminateRefusedError(`launch ${launchId} belongs to an earlier boot`));
       }
 
       const running = terminations.get(launchId);
