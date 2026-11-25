@@ -7,6 +7,7 @@ import { Effect } from "effect";
 import { afterEach, expect, test } from "vitest";
 import { acknowledgeMessage, assignmentContextSlot, bindStationMessages, createAssignmentScheduler, createMessageDelivery, createTicketService, ensureFactoryClone, listOperations, loadFactoryFiles, LoadFactoriesResult, openSlotGate, openStore, planSlots, ticketFactoryFrom } from "@foundry/daemon";
 import type { DaemonFrame } from "@foundry/protocol";
+import { MessageReceiver } from "@foundry/extension";
 import type { AssignmentSchedulerOptions, Store } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
 import { createTicketWorktrees } from "../src/worktrees.js";
@@ -139,9 +140,21 @@ test("assignments send the branch's changed context, skip received hashes and sc
     const path = join(root, "worktrees", "shop", "1-build-widget");
     const received: Array<DaemonFrame> = [];
     const errors: Array<unknown> = [];
+    const turns: Array<string> = [];
+
+    // Exercise the extension's real turn-triggering boundary. The first injection
+    // that can start a turn must contain both the assignment and its current context.
+    const receiver = new MessageReceiver({ inject: (injection, options) => {
+      if (options?.triggerTurn) {turns.push(injection.content);}
+    } });
+
     const delivery = createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => errors.push(cause) });
     const slot = { factoryId: "shop", slotId: "worker/1", launchId: "launch" };
-    delivery.attach(slot, { send: async (frame) => { received.push(frame); } });
+    delivery.attach(slot, { send: async (frame) => {
+      received.push(frame);
+
+      if (frame.type === "message") {receiver.receive(frame);}
+    } });
 
     const drain = () => Effect.gen(function* () {
       yield* bindStationMessages({ store, slots, contextSlot: assignmentContextSlot });
@@ -166,6 +179,9 @@ test("assignments send the branch's changed context, skip received hashes and sc
       expect(yield* scheduler().schedule()).toHaveLength(1);
       yield* drain();
       const first = yield* contexts();
+      expect(turns).toHaveLength(1);
+      expect(turns[0]).toContain("Ticket 1: Build widget");
+      expect(turns[0]).toContain("Default branch instructions");
       expect(first).toMatchObject([{ body: expect.stringContaining("Default branch instructions"), conversation_ref: "first" }]);
       expect(JSON.parse(first[0]?.parts ?? "[]")).toEqual([{ path: "AGENTS.md", hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/) }]);
       // Commit context on the ticket's branch only, while the factory default stays unchanged.
@@ -178,6 +194,9 @@ test("assignments send the branch's changed context, skip received hashes and sc
       expect(yield* scheduler().schedule()).toMatchObject([{ stage: "review" }]);
       yield* drain();
       const changed = yield* contexts();
+      expect(turns).toHaveLength(2);
+      expect(turns[1]).toContain("Stage: review");
+      expect(turns[1]).toContain("Branch instructions for review");
       expect(changed).toHaveLength(2);
       expect(changed[1]?.body).toContain("Branch instructions for review");
       expect(changed[1]?.body).toContain(`Path: ${path}/.pi/skills/review.md`);
@@ -208,6 +227,67 @@ test("assignments send the branch's changed context, skip received hashes and sc
       expect(yield* contexts()).toMatchObject([{}, {}, {}, { conversation_ref: "second", parts: "[]" }]);
       expect(yield* store.read(`SELECT messages_spent FROM ticket`)).toEqual([{ messages_spent: 0 }]);
       expect(errors).toEqual([]);
+    } finally {
+      yield* Effect.promise(() => delivery.stop());
+    }
+  }));
+});
+
+test("equivalent skill headers in two tickets refresh their effective worktree paths", async () => {
+  await fixture(({ store, root, clone, slots, newScheduler }) => Effect.gen(function* () {
+    const skill = join(".pi", "skills", "review.md");
+    const header = "---\nname: review\ndescription: Review this branch\n---\n";
+    mkdirSync(join(clone, ".pi", "skills"), { recursive: true });
+    writeFileSync(join(clone, skill), `${header}SECOND TICKET BODY`);
+    git(clone, ["add", "."]);
+    git(clone, ["commit", "--quiet", "-m", "indexed skill"]);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`INSERT INTO conversation VALUES ('shop', 'worker/1', 'shared', 'current', 0)`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "conversation" });
+    }));
+    const scheduler = () => newScheduler({ clonePath: () => clone });
+    yield* scheduler().schedule();
+    const firstPath = join(root, "worktrees", "shop", "1-build-widget");
+    writeFileSync(join(firstPath, skill), `${header}FIRST TICKET BODY`);
+    const delivered: Array<DaemonFrame> = [];
+    const delivery = createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => { throw cause; } });
+    const slot = { factoryId: "shop", slotId: "worker/1", launchId: "launch" };
+    delivery.attach(slot, { send: async (frame) => { delivered.push(frame); } });
+
+    const drain = () => Effect.gen(function* () {
+      yield* bindStationMessages({ store, slots, contextSlot: assignmentContextSlot });
+      yield* Effect.promise(() => delivery.idle());
+
+      for (const frame of delivered.splice(0)) {
+        if (frame.type === "message") {yield* acknowledgeMessage(store, slot, frame.id);}
+      }
+    });
+
+    try {
+      yield* drain();
+      yield* store.change((change) => Effect.gen(function* () {
+        yield* change.query(`UPDATE assignment SET status = 'ended', ended_at = 1`);
+        yield* change.query(`UPDATE ticket SET status = 'paused'`);
+        yield* change.query(`INSERT INTO ticket (factory_id, number, title, slug, production_line, directory, state,
+          rejection_ceiling, message_ceiling, submitted_at)
+          SELECT factory_id, 2, 'Next widget', 'next-widget', production_line, directory, 'backlog',
+            rejection_ceiling, message_ceiling, submitted_at + 1 FROM ticket WHERE number = 1`);
+        yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "next ticket" });
+      }));
+      expect(yield* scheduler().schedule()).toMatchObject([{ ticket: 2, slotId: "worker/1" }]);
+      yield* drain();
+
+      const contexts = yield* store.read<{ body: string; parts: string }>(
+        `SELECT m.body, r.parts FROM repository_context r JOIN message m ON m.id = r.message_id ORDER BY m.sequence`,
+      );
+
+      expect(contexts).toHaveLength(2);
+      const secondPath = join(root, "worktrees", "shop", "2-next-widget");
+      expect(contexts[0]?.body).toContain(`Path: ${firstPath}/${skill}`);
+      expect(contexts[1]?.body).toContain(`Path: ${secondPath}/${skill}`);
+      expect(contexts[1]?.body).not.toContain(firstPath);
+      expect(contexts[1]?.parts).not.toBe(contexts[0]?.parts);
+      expect(contexts[1]?.body).not.toContain("SECOND TICKET BODY");
     } finally {
       yield* Effect.promise(() => delivery.stop());
     }

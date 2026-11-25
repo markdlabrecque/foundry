@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { Cause, Clock, Data, Effect, Exit } from "effect";
 import { acceptMessage } from "./agent-message.js";
 import { eligibleAssignmentSlots } from "./assignment-slots.js";
-import { acceptAssignmentRepositoryContext } from "./assignment-repository-context.js";
+import { composeAssignmentRepositoryContext, recordAssignmentRepositoryContext } from "./assignment-repository-context.js";
 import type { AssignmentSlot } from "./assignment-slots.js";
 import type { FactoryConfig } from "./config/schema.js";
 import { slotRecord, ticketRecord } from "./history-records.js";
@@ -152,10 +152,16 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
           const id = randomUUID();
           const now = yield* Clock.currentTimeMillis;
 
+          const repositoryContext = options.clonePath === undefined ? null : yield* composeAssignmentRepositoryContext(change, {
+            factoryId: ticket.factory_id, slotId: slot.slotId,
+            root: slot.station.isolation === 'worktree' && ticket.worktree_path !== null
+              ? ticket.worktree_path : options.clonePath(ticket.factory_id),
+          });
+
           const message = yield* acceptMessage(change, {
             factoryId: ticket.factory_id, senderKind: "daemon", senderSlot: null, recipient: slot.station.address,
             kind: "ordinary", delivery: "after_turn", correlation: { ticket: ticket.number },
-            body: `Ticket ${ticket.number}: ${ticket.title}\nProduction line: ${ticket.production_line}\nStage: ${stage.id}\nAssignment: ${id}\nSlot: ${slot.slotId}\nSpecification: ${join(ticket.directory, 'spec.md')}\nEvidence: ${join(ticket.directory, 'evidence')}\nWorktree: ${ticket.worktree_path ?? 'none (write only in the ticket directory)'}`,
+            body: `Ticket ${ticket.number}: ${ticket.title}\nProduction line: ${ticket.production_line}\nStage: ${stage.id}\nAssignment: ${id}\nSlot: ${slot.slotId}\nSpecification: ${join(ticket.directory, 'spec.md')}\nEvidence: ${join(ticket.directory, 'evidence')}\nWorktree: ${slot.station.isolation === 'worktree' ? ticket.worktree_path : 'none (write only in the ticket directory)'}${repositoryContext === null ? '' : `\n\n${repositoryContext.body}`}`,
           }).pipe(Effect.catchTag("ToolRefusal", Effect.die)); // No agent guards: daemon context cannot be refused.
 
           yield* change.query(
@@ -164,12 +170,9 @@ export const createAssignmentScheduler = (options: AssignmentSchedulerOptions) =
             [id, ticket.factory_id, ticket.number, stage.id, slot.slotId, factory.config.recovery_limit ?? 3, now, message.id],
           );
 
-          if (options.clonePath !== undefined) {
-            yield* acceptAssignmentRepositoryContext(change, {
-              factoryId: ticket.factory_id, slotId: slot.slotId, recipient: slot.station.address,
-              ticket: ticket.number, assignmentId: id,
-              root: slot.station.isolation === 'worktree' && ticket.worktree_path !== null
-                ? ticket.worktree_path : options.clonePath(ticket.factory_id),
+          if (repositoryContext !== null) {
+            yield* recordAssignmentRepositoryContext(change, {
+              messageId: message.id, ticket: ticket.number, assignmentId: id, context: repositoryContext,
             });
           }
 
