@@ -35,7 +35,7 @@ import type { LaunchRecord } from "@foundry/host";
 import { openChannel, RunInterrupter } from "@foundry/extension";
 import { PROTOCOL_VERSION } from "@foundry/protocol";
 import type { Hello } from "@foundry/protocol";
-import { EXIT_OK, EXIT_REFUSED, runSlotInterrupt, runSlotShow, runTicketPause } from "@foundry/cli";
+import { EXIT_OK, EXIT_REFUSED, runSlotInterrupt, runSlotShow, runTicketPause, runTicketRetry } from "@foundry/cli";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -249,6 +249,26 @@ test("pausing an assigned ticket waits for settlement, suspends without abandoni
   const again = await runTicketPause({ json: true, home: d.home, factory: "alpha", number: 1, env });
   expect(JSON.parse(again.stdout)).toMatchObject({ ok: false, error: { code: "invalid_state" } });
   expect(d.aborts()).toBe(1); // Must not interrupt the next ticket now using the slot.
+});
+
+test("retry through the CLI waits for the worker acknowledgement, then queues a new assignment on the same launch", async () => {
+  const d = await daemonWithWorker(true);
+  await Effect.runPromise(d.tickets.submit({ title: "Retry me", spec: "Disposable spec" }));
+  const [old] = await Effect.runPromise(d.assignments.schedule());
+  const before = await Effect.runPromise(pauseSnapshot(d.store));
+  const pending = runTicketRetry({ json: true, home: d.home, factory: "alpha", number: 1, env });
+  await d.aborted;
+  expect(await Effect.runPromise(pauseSnapshot(d.store))).toEqual(before);
+  d.settle();
+  expect(JSON.parse((await pending).stdout)).toMatchObject({ ok: true, result: { ticket: { status: "queued" } } });
+  const [fresh] = await Effect.runPromise(d.assignments.schedule());
+  expect(fresh).toMatchObject({ ticket: 1, slotId: "lead/1" });
+  expect(fresh?.id).not.toBe(old?.id);
+  expect(await Effect.runPromise(d.store.read(`SELECT status, end_reason FROM assignment WHERE id = ?`, [old?.id ?? "missing"])))
+    .toEqual([{ status: "ended", end_reason: "abandoned" }]);
+  expect(d.aborts()).toBe(1);
+  expect(d.launched.map((launch) => launch.launchId)).toEqual(["launch-1"]);
+  expect(d.boundConversation()).toBe("conv-1");
 });
 
 const pauseSnapshot = (store: Store) => Effect.all({
