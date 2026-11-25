@@ -7,24 +7,10 @@
  */
 import { isAbsolute } from "node:path";
 import { fileURLToPath } from "node:url";
+import { FIXED_TOOLS, isPlainToolName } from "@foundry/protocol";
 
-/** Pi's four built-in tools every worker has (PRD §3.2 Tool Set). */
-export const PI_BUILTIN_TOOLS = ["read", "bash", "edit", "write"] as const;
-
-/** The eight P0 agent tools the Foundry extension registers (PRD §6.1). */
-export const AGENT_TOOLS = [
-  "agent_discover",
-  "agent_status",
-  "agent_message",
-  "agent_request",
-  "agent_reply",
-  "agent_delegate",
-  "task_transition",
-  "human_request",
-] as const;
-
-/** The twelve fixed tools of every worker's Tool Set, in launch order. */
-export const FIXED_TOOLS: readonly string[] = [...PI_BUILTIN_TOOLS, ...AGENT_TOOLS];
+// The fixed tools live in @foundry/protocol, shared with the daemon and the extension.
+export { AGENT_TOOLS, FIXED_TOOLS, PI_BUILTIN_TOOLS } from "@foundry/protocol";
 
 /** Environment variables carrying launch identity to the Foundry extension (PRD §3.2). */
 export const LAUNCH_ENV = {
@@ -182,7 +168,7 @@ function requireAbsolute(field: string, path: string): void {
 }
 
 function requireToolName(name: string): void {
-  if (!/^[A-Za-z0-9_-]+$/.test(name)) {
+  if (!isPlainToolName(name)) {
     throw new Error(`launch input tool name must be a plain name: ${JSON.stringify(name)}`);
   }
 }
