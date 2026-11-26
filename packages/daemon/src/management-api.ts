@@ -20,7 +20,7 @@ import type { ApprovalAnswers } from "./approval-answer.js";
 import { ApprovalDecisionError } from "./approval-decision.js";
 import type { ApprovalDecisions } from "./approval-decision.js";
 import type { HoldsReader } from "./holds.js";
-import { WORKTREES_PATH, WorktreeCleanRequest } from "@foundry/protocol/worktrees-api";
+import { WORKTREES_PATH, WorktreeCleanRequest, WorktreeDiscardRequest } from "@foundry/protocol/worktrees-api";
 import type { WorktreeService } from "./worktree-cleanup.js";
 import { TicketError } from "./tickets.js";
 import { HOLDS_PATH } from "@foundry/protocol/holds";
@@ -965,6 +965,8 @@ const withHolds =
 
 const decodeWorktreeClean = Schema.decodeUnknownOption(Schema.fromJsonString(WorktreeCleanRequest));
 
+const decodeWorktreeDiscard = Schema.decodeUnknownOption(Schema.fromJsonString(WorktreeDiscardRequest));
+
 const runWorktree = async <A>(effect: Effect.Effect<A, unknown>): Promise<A> => {
   const exit = await Effect.runPromiseExit(effect);
 
@@ -978,7 +980,11 @@ const handleWorktrees = (inputs: ManagementApiInputs, request: IncomingMessage, 
     const service = inputs.worktrees;
     const rest = url.pathname.slice(WORKTREES_PATH.length);
     const match = /^\/([1-9][0-9]{0,8})$/.exec(rest);
+    // A failed creation: GET inspects it, POST retry or discard acts on it (failed-worktree hold).
+    const failed = /^\/([1-9][0-9]{0,8})\/failed(?:\/(retry|discard))?$/.exec(rest);
     const factory = url.searchParams.get("factory") ?? undefined;
+
+    if (failed !== null) {return handleFailedWorktree(service, request, response, factory, Number(failed[1]), failed[2]);}
 
     if (rest !== "" && match === null) {
       request.resume();
@@ -1028,6 +1034,48 @@ const handleWorktrees = (inputs: ManagementApiInputs, request: IncomingMessage, 
     (cause: unknown) => send(response, cause instanceof TicketError ? (cause.code === "invalid_state" ? 409 : cause.code === "ticket_not_found" || cause.code === "unknown_factory" ? 404 : 400) : 500,
       failure(cause instanceof TicketError ? cause.code : "internal", messageOf(cause))),
   );
+};
+
+const handleFailedWorktree = async (service: WorktreeService | undefined, request: IncomingMessage, response: ServerResponse,
+  factory: string | undefined, ticket: number, action: string | undefined): Promise<readonly [number, ApiResponse<unknown>]> => {
+  const method = action === undefined ? "GET" : "POST";
+
+  if (request.method !== method) {
+    request.resume();
+    response.setHeader("allow", method);
+
+    return [405, failure("method_not_allowed", `failed worktree ${action ?? "inspection"} accepts ${method}`)];
+  }
+
+  if (service === undefined) {
+    request.resume();
+
+    return [503, failure("unavailable", "worktrees are not served by this daemon")];
+  }
+
+  if (factory === "") {
+    request.resume();
+
+    return [400, failure("invalid_request", "factory must not be empty")];
+  }
+
+  if (action === undefined) {
+    request.resume();
+
+    return [200, { ok: true, result: await runWorktree<unknown>(service.inspectFailed(factory, ticket)) }];
+  }
+
+  const text = await readSmallBody(request, STOP_BODY_LIMIT);
+
+  if (text === undefined) {return [413, failure("payload_too_large", "request body is too large")];}
+
+  if (action === "retry") {return [200, { ok: true, result: await runWorktree<unknown>(service.retry(factory, ticket)) }];}
+
+  const decoded = decodeWorktreeDiscard(text);
+
+  if (Option.isNone(decoded)) {return [400, failure("invalid_request", "expected a discard request with an optional string confirmation")];}
+
+  return [200, { ok: true, result: await runWorktree<unknown>(service.discard(factory, ticket, decoded.value.confirmation)) }];
 };
 
 const failure = (code: string, message: string): ApiResponse<never> => ({ ok: false, error: { code, message } satisfies ApiError });

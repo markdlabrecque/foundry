@@ -23,6 +23,7 @@ export const HOLD_KINDS = [
   "interrupted_sync",
   "sync_conflict",
   "stuck_worker",
+  "failed_worktree",
 ] as const;
 
 export const HoldKind = Schema.Literals(HOLD_KINDS);
@@ -107,6 +108,9 @@ export const holdCommands = (hold: Pick<HoldRecord, "kind" | "subject" | "eviden
     case "interrupted_sync":
     case "sync_conflict":
       return [`foundry factory sync ${s}`];
+    case "failed_worktree":
+      // Retry reapplies the recovery rules; discard removes the partial worktree and branch first.
+      return [`foundry worktree retry ${s}`, `foundry worktree discard ${s}`, `foundry ticket cancel ${s}`];
     case "stuck_worker": {
       // The subject is the unacknowledged message; the commands act on the slot holding it.
       const slot = text(hold.evidence["slot"], "<station/ordinal>");

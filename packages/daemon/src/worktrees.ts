@@ -10,9 +10,10 @@ import { resolveConfiguredPath } from "./config/index.js";
 import { runCloneGit } from "./factory-clone.js";
 import type { LoadedFactory } from "./factory-loads.js";
 import { ticketRecord } from "./history-records.js";
+import { closeOpenHoldIn, raiseHoldIn } from "./holds.js";
 import { beginOperationIn, extendOperationIntent, recordOperationResult } from "./operations.js";
 import type { Operation } from "./operations.js";
-import type { Change, Store } from "./store.js";
+import type { Change, Store, StoreError } from "./store.js";
 import { pathSegment } from "./tickets.js";
 
 export interface WorktreeTarget {
@@ -75,6 +76,39 @@ export const createTicketWorktrees = (options: TicketWorktreesOptions) => (ticke
       path, branch, defaultBranch, env: options.env ?? process.env });
   });
 
+/**
+ * A creation that needs the operator: its recorded intent, what Git held when it was last looked
+ * at, and why it failed. Shown as a failed-worktree hold's evidence (PRD §10.2).
+ */
+export type FailedCreation = {
+  readonly path: string;
+  readonly branch: string;
+  readonly defaultBranch: string;
+  /** `null` when the creation failed before it recorded its base, so it changed no Git state. */
+  readonly startCommit: string | null;
+  /** The branch's commit when last inspected; `""` when the branch was missing, `null` when not inspected. */
+  readonly head: string | null;
+  readonly reason: string;
+};
+
+/**
+ * Raises, or refreshes, the failed-worktree hold on a ticket in the change that records its
+ * creation failed. `operationId` is the failed `worktree_create`. A ticket no longer waiting for a
+ * worktree (cancelled meanwhile, say) gets no hold: nothing would ever resolve it.
+ */
+export const raiseFailedWorktreeIn = (change: Change, failed: FailedCreation & {
+  readonly factoryId: string; readonly ticket: number; readonly operationId: number;
+}) => Effect.gen(function* () {
+  const { factoryId, ticket, ...evidence } = failed;
+
+  const live = yield* change.query(`SELECT 1 FROM ticket WHERE factory_id = ? AND number = ? AND worktree_path IS NULL
+    AND (state = 'backlog' OR (state = 'stage' AND status = 'queued'))`, [factoryId, ticket]);
+
+  if (live.length === 0) {return undefined;}
+
+  return yield* raiseHoldIn(change, { factoryId, kind: "failed_worktree", subject: String(ticket), evidence });
+});
+
 /** Where a ticket's worktree lives, fixed when it is created (PRD §9.2). */
 export interface WorktreeIdentity {
   readonly path: string;
@@ -91,9 +125,15 @@ export interface FirstSetup {
 }
 
 /**
+ * Who closes an open failed-worktree hold when the worktree is published: `resolved` by an
+ * operator's retry or discard, `cleared` by the daemon's own creation or recovery.
+ */
+export type HoldClosure = "resolved" | "cleared";
+
+/**
  * Records the worktree on its ticket and, when `argv` is given, begins its first after_create in
  * the same change, so a concurrent scheduler cannot skip setup. The caller settles the creation
- * operation in that change too.
+ * operation in that change too. An open failed-worktree hold closes as `closure`.
  */
 export const publishTicketWorktreeIn = (
   change: Change,
@@ -101,6 +141,7 @@ export const publishTicketWorktreeIn = (
   worktreeOperationId: number,
   identity: WorktreeIdentity,
   argv: ReadonlyArray<string> | undefined,
+  closure: HoldClosure,
 ) => Effect.gen(function* () {
   const { path, branch, startCommit } = identity;
   yield* change.query(
@@ -111,6 +152,7 @@ export const publishTicketWorktreeIn = (
     factoryId: ticket.factory_id, kind: "ticket.worktree_created", subject: String(ticket.number),
     detail: { path, branch, startCommit }, records: [ticketRecord(ticket.number)],
   });
+  yield* closeOpenHoldIn(change, { factoryId: ticket.factory_id, kind: "failed_worktree", subject: String(ticket.number) }, closure);
 
   if (argv === undefined) {return undefined;}
 
@@ -147,37 +189,78 @@ export interface WorktreeBuild {
   readonly branch: string;
   readonly defaultBranch: string;
   readonly env: NodeJS.ProcessEnv;
+  /** How an open failed-worktree hold closes on publishing; the daemon's own creation by default. */
+  readonly closure?: HoldClosure;
 }
+
+/** A creation's end: published with the first after_create still to run, or failed with its hold raised. */
+export type CreatedWorktree =
+  | { readonly created: true; readonly setup: FirstSetup | undefined; readonly startCommit: string }
+  | { readonly created: false; readonly reason: string };
 
 /**
  * Creates the branch and worktree for a running `worktree_create` from the clone's current
- * default-branch head, publishes them with the operation's result, then runs the first
- * after_create. A failed Git step records the operation failed.
+ * default-branch head and publishes them with the operation's result, leaving the first
+ * after_create to the caller. A failed Git step records the operation failed and raises a
+ * failed-worktree hold on the ticket in the same change.
  */
-export const buildTicketWorktree = (build: WorktreeBuild) => Effect.gen(function* () {
+export const createTicketWorktree = (build: WorktreeBuild): Effect.Effect<CreatedWorktree, StoreError> => {
   const { store, factory, clonePath, ticket, operation, path, branch, defaultBranch, env } = build;
+  // The base the failure reports, once this build has recorded it.
+  let recordedStart: string | null = null;
 
   const git = (args: ReadonlyArray<string>) => Effect.tryPromise({
     try: () => runCloneGit(args, env, clonePath), catch: (cause) => new WorktreeStepFailed({ reason: messageOf(cause) }),
   });
 
-  const startCommit = yield* git(["rev-parse", "--verify", `refs/heads/${defaultBranch}^{commit}`]);
+  return Effect.gen(function* () {
+    // A branch already at the name is not Foundry's. Failing before the start is recorded marks it
+    // so: a failed creation without a start commit changed no Git (worktree-retry.ts relies on it).
+    const existing = yield* git(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]).pipe(
+      Effect.catchTag("WorktreeStepFailed", () => Effect.succeed("")),
+    );
 
-  // The exact base is durable before branch/worktree creation can change Git state.
-  yield* extendOperationIntent(store, operation.id, { startCommit });
-  yield* Effect.try({
-    try: () => mkdirSync(dirname(path), { recursive: true }),
-    catch: (cause) => new WorktreeStepFailed({ reason: messageOf(cause) }),
-  });
-  yield* git(["-c", "core.hooksPath=/dev/null", "worktree", "add", "--quiet", "-b", branch, "--", path, startCommit]);
+    if (existing !== "") {return yield* new WorktreeStepFailed({ reason: `a branch named '${branch}' already exists; Foundry did not create it` });}
 
-  const setup = yield* store.change((change) => Effect.gen(function* () {
-    yield* recordOperationResult(change, operation.id, { status: "complete", result: { path, branch, startCommit } });
+    const startCommit = yield* git(["rev-parse", "--verify", `refs/heads/${defaultBranch}^{commit}`]);
 
-    return yield* publishTicketWorktreeIn(change, ticket, operation.id, { path, branch, startCommit }, factory.config.worktrees?.after_create);
-  }));
+    // The exact base is durable before branch/worktree creation can change Git state.
+    yield* extendOperationIntent(store, operation.id, { startCommit });
+    recordedStart = startCommit;
+    yield* Effect.try({
+      try: () => mkdirSync(dirname(path), { recursive: true }),
+      catch: (cause) => new WorktreeStepFailed({ reason: messageOf(cause) }),
+    });
+    yield* git(["-c", "core.hooksPath=/dev/null", "worktree", "add", "--quiet", "-b", branch, "--", path, startCommit]);
 
-  yield* runFirstSetup(store, factory, ticket, setup, env);
-}).pipe(Effect.catchTag("WorktreeStepFailed", ({ reason }) =>
-  build.store.change((change) => recordOperationResult(change, build.operation.id, { status: "failed", result: { reason } })),
-));
+    const setup = yield* store.change((change) => Effect.gen(function* () {
+      yield* recordOperationResult(change, operation.id, { status: "complete", result: { path, branch, startCommit } });
+
+      return yield* publishTicketWorktreeIn(change, ticket, operation.id, { path, branch, startCommit }, factory.config.worktrees?.after_create,
+        build.closure ?? "cleared");
+    }));
+
+    const created: CreatedWorktree = { created: true, setup, startCommit };
+
+    return created;
+  }).pipe(Effect.catchTag("WorktreeStepFailed", ({ reason }) =>
+    store.change((change) => Effect.gen(function* () {
+      yield* recordOperationResult(change, operation.id, { status: "failed", result: { reason } });
+      yield* raiseFailedWorktreeIn(change, {
+        factoryId: ticket.factory_id, ticket: ticket.number, operationId: operation.id, path, branch, defaultBranch,
+        startCommit: recordedStart, head: null, reason,
+      });
+
+      const failed: CreatedWorktree = { created: false, reason };
+
+      return failed;
+    })),
+  ));
+};
+
+/** Creates and publishes the worktree (`createTicketWorktree`), then runs its first after_create. */
+export const buildTicketWorktree = (build: WorktreeBuild) => Effect.gen(function* () {
+  const created = yield* createTicketWorktree(build);
+
+  if (created.created) {yield* runFirstSetup(build.store, build.factory, build.ticket, created.setup, build.env);}
+});

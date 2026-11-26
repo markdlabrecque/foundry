@@ -8,8 +8,9 @@
  *   result naming the new one, recorded in the change that begins it.
  * - Git that this recovery cannot prove is Foundry's own partial work (a branch Foundry did not
  *   start, a worktree on another branch, a branch checked out elsewhere) is left alone and the
- *   operation is recorded failed, so nothing that may hold authored work is ever deleted. The
- *   ticket then needs the operator.
+ *   operation is recorded failed, so nothing that may hold authored work is ever deleted. A
+ *   failed-worktree hold is raised with it; `foundry worktree retry` or `discard` resolves it
+ *   (worktree-retry.ts).
  *
  * Recovery runs in two phases per factory. Settling inspects Git, removes provably empty partial
  * work and records every verdict, so the factory's queue can resume as soon as it returns; the
@@ -27,8 +28,8 @@ import { runCloneGit } from "./factory-clone.js";
 import { beginOperationIn, listOperationsAwaitingRecovery, recordRecoveryResultIn } from "./operations.js";
 import type { Operation, OperationDetail } from "./operations.js";
 import type { Store } from "./store.js";
-import { buildTicketWorktree, publishTicketWorktreeIn, runFirstSetup } from "./worktrees.js";
-import type { WorktreeTarget } from "./worktrees.js";
+import { buildTicketWorktree, publishTicketWorktreeIn, raiseFailedWorktreeIn, runFirstSetup } from "./worktrees.js";
+import type { FailedCreation, WorktreeTarget } from "./worktrees.js";
 
 export interface WorktreeSettleOptions {
   readonly store: Store;
@@ -59,7 +60,7 @@ interface Settled {
   readonly finish?: Effect.Effect<void, unknown>;
 }
 
-class GitFailed extends Data.TaggedError("GitFailed")<{ readonly reason: string }> {}
+export class GitFailed extends Data.TaggedError("GitFailed")<{ readonly reason: string }> {}
 
 const decodeIntent = Schema.decodeUnknownEffect(Schema.Struct({
   path: Schema.String,
@@ -69,7 +70,7 @@ const decodeIntent = Schema.decodeUnknownEffect(Schema.Struct({
 }));
 
 /** One record of `git worktree list --porcelain`. */
-interface ListedWorktree {
+export interface ListedWorktree {
   path: string;
   /** The checked-out branch, `null` when detached or not yet set. */
   branch: string | null;
@@ -77,7 +78,7 @@ interface ListedWorktree {
   locked: string | undefined;
 }
 
-const parseWorktrees = (listing: string): ReadonlyArray<ListedWorktree> => {
+export const parseWorktrees = (listing: string): ReadonlyArray<ListedWorktree> => {
   const worktrees: Array<ListedWorktree> = [];
   let current: ListedWorktree | undefined;
 
@@ -95,7 +96,7 @@ const parseWorktrees = (listing: string): ReadonlyArray<ListedWorktree> => {
   return worktrees;
 };
 
-interface PartialState {
+export interface PartialState {
   /** The branch's commit, or `undefined` when the branch does not exist. */
   readonly head: string | undefined;
   /** The worktree registered at the path, if any. */
@@ -105,7 +106,7 @@ interface PartialState {
 }
 
 /** Reads the branch and the worktrees registered in the clone. */
-const inspect = (git: (args: ReadonlyArray<string>) => Effect.Effect<string, GitFailed>, path: string, branch: string) =>
+export const inspectPartial = (git: (args: ReadonlyArray<string>) => Effect.Effect<string, GitFailed>, path: string, branch: string) =>
   Effect.gen(function* () {
     const head = yield* git(["rev-parse", "--verify", "--quiet", `refs/heads/${branch}^{commit}`]).pipe(
       Effect.catchTag("GitFailed", () => Effect.succeed("")),
@@ -124,6 +125,63 @@ const inspect = (git: (args: ReadonlyArray<string>) => Effect.Effect<string, Git
     return state;
   });
 
+export type PartialCreation =
+  | { readonly verdict: "kept"; readonly head: string }
+  | { readonly verdict: "cleared" }
+  | { readonly verdict: "refused"; readonly reason: string; readonly head: string };
+
+/**
+ * Applies the recovery rules to whatever an earlier creation from `startCommit` left in Git:
+ * `kept` when the branch has authored commits in its worktree; `cleared` once a provably empty
+ * partial worktree and branch are removed, so the creation can run again; `refused` when Git holds
+ * something this cannot prove is Foundry's own partial work. Nothing with commits, nothing on
+ * another branch and no branch checked out elsewhere is ever removed.
+ */
+export const reconcilePartialCreation = (
+  git: (args: ReadonlyArray<string>) => Effect.Effect<string, GitFailed>, path: string, branch: string, startCommit: string,
+) => Effect.gen(function* () {
+  const state = yield* inspectPartial(git, path, branch);
+  const listed = state.worktree;
+
+  const ahead = state.head === undefined ? 0
+    : Number(yield* git(["rev-list", "--count", `${startCommit}..${state.head}`]));
+
+  if (ahead > 0 && listed?.branch === branch && existsSync(path)) {
+    const kept: PartialCreation = { verdict: "kept", head: state.head ?? "" };
+
+    return kept;
+  }
+
+  // A crash inside `git worktree add` leaves it locked as `initializing`, possibly before HEAD names the branch.
+  const initializing = listed?.locked === "initializing";
+  const onBranch = listed === undefined || listed.branch === branch || (initializing && listed.branch === null);
+
+  // Only a branch still at the recorded start, in a worktree on that branch, is provably empty.
+  const refusal = ahead > 0 ? "branch has commits but its worktree is missing; preserved for the operator"
+    : !onBranch || (state.head !== undefined && state.head !== startCommit)
+      ? "partial worktree or branch does not match the recorded creation; preserved for the operator"
+      : state.checkedOutElsewhere ? "branch is checked out in another worktree; preserved for the operator" : undefined;
+
+  if (refusal !== undefined) {
+    const refused: PartialCreation = { verdict: "refused", reason: refusal, head: state.head ?? "" };
+
+    return refused;
+  }
+
+  if (listed !== undefined) {
+    yield* git(["worktree", "remove", ...(initializing ? ["-f", "-f"] : ["--force"]), "--", path]);
+  }
+
+  yield* git(["worktree", "prune"]);
+
+  // Deleted only while it still points at the recorded start.
+  if (state.head !== undefined) {yield* git(["update-ref", "-d", `refs/heads/${branch}`, startCommit]);}
+
+  const cleared: PartialCreation = { verdict: "cleared" };
+
+  return cleared;
+});
+
 /**
  * Settles one interrupted creation: records its verdict and returns what remains to run.
  * `undefined` start commit: the operation was interrupted before it recorded its base, so it
@@ -136,6 +194,15 @@ const settleOne = (options: WorktreeSettleOptions, target: WorktreeTarget, inter
 
   const settle = (status: "complete" | "failed" | "interrupted", result: OperationDetail) =>
     store.change((change) => recordRecoveryResultIn(change, interrupted.id, { status, result }));
+
+  // A refused creation needs the operator: the failure and its hold commit together (PRD §10.2).
+  const settleFailed = (failed: FailedCreation) => store.change((change) => Effect.gen(function* () {
+    yield* recordRecoveryResultIn(change, interrupted.id, { status: "failed", result: { recreated: false, ...failed } });
+
+    if (interrupted.ticket !== null) {
+      yield* raiseFailedWorktreeIn(change, { factoryId: interrupted.factoryId, ticket: interrupted.ticket, operationId: interrupted.id, ...failed });
+    }
+  }));
 
   const verdict = (value: WorktreeVerdict, reason?: string): Settled =>
     ({ recovered: reason === undefined ? { operation: interrupted, verdict: value } : { operation: interrupted, verdict: value, reason } });
@@ -171,21 +238,17 @@ const settleOne = (options: WorktreeSettleOptions, target: WorktreeTarget, inter
   return yield* Effect.gen(function* () {
     if (intent.startCommit !== undefined) {
       const startCommit = intent.startCommit;
-      const state = yield* inspect(git, path, branch);
-      const listed = state.worktree;
+      const partial = yield* reconcilePartialCreation(git, path, branch, startCommit);
 
-      const ahead = state.head === undefined ? 0
-        : Number(yield* git(["rev-list", "--count", `${startCommit}..${state.head}`]));
-
-      if (ahead > 0 && listed?.branch === branch && existsSync(path)) {
+      if (partial.verdict === "kept") {
         // Authored commits: the creation counts as done and nothing is removed.
         const setup = yield* store.change((change) => Effect.gen(function* () {
           yield* recordRecoveryResultIn(change, interrupted.id, {
-            status: "complete", result: { path, branch, startCommit, head: state.head ?? "", recovered: "kept" },
+            status: "complete", result: { path, branch, startCommit, head: partial.head, recovered: "kept" },
           });
 
           return yield* publishTicketWorktreeIn(change, ticket, interrupted.id, { path, branch, startCommit },
-            factory.config.worktrees?.after_create);
+            factory.config.worktrees?.after_create, "cleared");
         }));
 
         const kept: Settled = { ...verdict("kept"), finish: runFirstSetup(store, factory, ticket, setup, env) };
@@ -193,30 +256,11 @@ const settleOne = (options: WorktreeSettleOptions, target: WorktreeTarget, inter
         return kept;
       }
 
-      // A crash inside `git worktree add` leaves it locked as `initializing`, possibly before HEAD names the branch.
-      const initializing = listed?.locked === "initializing";
-      const onBranch = listed === undefined || listed.branch === branch || (initializing && listed.branch === null);
+      if (partial.verdict === "refused") {
+        yield* settleFailed({ path, branch, defaultBranch: intent.defaultBranch, startCommit, head: partial.head, reason: partial.reason });
 
-      // Only a branch still at the recorded start, in a worktree on that branch, is provably empty.
-      const refusal = ahead > 0 ? "branch has commits but its worktree is missing; preserved for the operator"
-        : !onBranch || (state.head !== undefined && state.head !== startCommit)
-          ? "partial worktree or branch does not match the recorded creation; preserved for the operator"
-          : state.checkedOutElsewhere ? "branch is checked out in another worktree; preserved for the operator" : undefined;
-
-      if (refusal !== undefined) {
-        yield* settle("failed", { recreated: false, path, branch, startCommit, head: state.head ?? "", reason: refusal });
-
-        return verdict("refused", refusal);
+        return verdict("refused", partial.reason);
       }
-
-      if (listed !== undefined) {
-        yield* git(["worktree", "remove", ...(initializing ? ["-f", "-f"] : ["--force"]), "--", path]);
-      }
-
-      yield* git(["worktree", "prune"]);
-
-      // Deleted only while it still points at the recorded start.
-      if (state.head !== undefined) {yield* git(["update-ref", "-d", `refs/heads/${branch}`, startCommit]);}
     }
 
     const operation = yield* store.change((change) => Effect.gen(function* () {
@@ -235,7 +279,8 @@ const settleOne = (options: WorktreeSettleOptions, target: WorktreeTarget, inter
 
     return recreated;
   }).pipe(Effect.catchTag("GitFailed", ({ reason }) => Effect.as(
-    settle("failed", { recreated: false, path, branch, reason }), verdict("refused", reason),
+    settleFailed({ path, branch, defaultBranch: intent.defaultBranch, startCommit: intent.startCommit ?? null, head: null, reason }),
+    verdict("refused", reason),
   )));
 });
 
