@@ -1,0 +1,17 @@
+{
+  "at": "2026-11-26T02:42:03.160568+00:00",
+  "groups": [
+    {
+      "launchId": "39d1a541-0532-48a3-ae76-5e4a023564ac",
+      "pgid": 3141427,
+      "result": "ESRCH"
+    },
+    {
+      "launchId": "16b39346-058c-4a6f-b2fd-e99e506e7cd8",
+      "pgid": 3141433,
+      "result": "ESRCH"
+    }
+  ],
+  "markedProcessesRemaining": [],
+  "fixtureRootRemoved": true
+}

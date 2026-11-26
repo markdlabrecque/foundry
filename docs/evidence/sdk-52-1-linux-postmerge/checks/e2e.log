@@ -1,0 +1,6 @@
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ Test Files  3 passed (3)
+      Tests  5 passed (5)
+   Start at  18:41:19
+   Duration  11.16s (tests 74%, import 16%, transform 10%)
