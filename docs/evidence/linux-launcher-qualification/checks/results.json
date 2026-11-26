@@ -1,0 +1,75 @@
+{
+  "productCommit": "a61daf0913331e83cb111c6b6572a8a3bba2f434",
+  "observedAt": "2026-11-26T03:01:27.777731+00:00",
+  "environment": {
+    "TMPDIR": "<scratch>; short private home-backed root, child propagation via merged testkit",
+    "FOUNDRY_PI_BIN": "unset",
+    "shim": "none"
+  },
+  "commands": [
+    {
+      "command": "npm run build",
+      "exitCode": 0,
+      "log": "build.log"
+    },
+    {
+      "command": "npm run typecheck",
+      "exitCode": 0,
+      "log": "typecheck.log"
+    },
+    {
+      "command": "./node_modules/.bin/oxlint",
+      "exitCode": 0,
+      "log": "lint.log"
+    },
+    {
+      "command": "npm test",
+      "exitCode": 0,
+      "log": "vitest.log"
+    },
+    {
+      "command": "npm run test:e2e",
+      "exitCode": 0,
+      "log": "e2e.log"
+    },
+    {
+      "command": "git diff --check",
+      "exitCode": 0,
+      "log": "diff-check.log"
+    }
+  ],
+  "npmCi": {
+    "exitCode": 0,
+    "auditVulnerabilities": 0,
+    "log": "npm-ci.log"
+  },
+  "manualRechecks": {
+    "restorationAndThreePrimes": {
+      "exitCode": 0,
+      "outcome": "supported-on-tested-linux-implementation",
+      "orderlyCleanup": true
+    },
+    "resources": {
+      "driverExitCode": 0,
+      "analyzerExitCode": 0,
+      "verifiedObservationGroups": 8
+    },
+    "explicitStop": {
+      "exitCode": 0,
+      "sdkContractChecksPassed": 8,
+      "rawChecksPassed": 11,
+      "rawChecksTotal": 13,
+      "rawResult": "failed"
+    }
+  },
+  "vitest": {
+    "files": 105,
+    "tests": 862,
+    "passed": 862
+  },
+  "separateE2e": {
+    "files": 3,
+    "tests": 5,
+    "passed": 5
+  }
+}

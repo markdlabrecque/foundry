@@ -1,0 +1,577 @@
+{
+  "result": "failed",
+  "checks": {
+    "fixtureShape": true,
+    "childrenInWorkerGroups": true,
+    "stopSucceeded": true,
+    "stopNamedOnlyAlpha": true,
+    "escalatedEveryAlphaLaunch": true,
+    "alphaChildOutlivedLeader": false,
+    "alphaGroupsGone": true,
+    "betaSurvivesBeforeShutdown": true,
+    "shutdownSucceeded": true,
+    "betaChildOutlivedLeader": false,
+    "noOwnedGroupsAfterShutdown": true,
+    "hostAndDaemonGone": true,
+    "noRunProcessLeft": true
+  },
+  "log": [
+    {
+      "at": "2026-11-26T02:56:28.032Z",
+      "event": "versions",
+      "runtime": "sdk",
+      "node": "v22.23.2",
+      "pi": "1.6.0",
+      "platform": "linux x64",
+      "kernel": "7.2.15-1-omarchy",
+      "foundryCommit": "a61daf0",
+      "uncommitted": [
+        "?? docs/evidence/linux-launcher-qualification/",
+        "?? docs/evidence/rpc-54-4-linux/fou145-3234100.mjs",
+        "?? docs/evidence/sdk-54-4-linux/fou145-3234100.mjs"
+      ]
+    },
+    {
+      "at": "2026-11-26T02:56:28.489Z",
+      "event": "daemon serving",
+      "pid": 3234132
+    },
+    {
+      "at": "2026-11-26T02:56:30.510Z",
+      "event": "before stop",
+      "hostPid": 3234148,
+      "launches": [
+        {
+          "launchId": "f145db5c-8707-4280-8e57-7d0aec95c250",
+          "factoryId": "alpha",
+          "slotId": "hold/1",
+          "pid": 3234160,
+          "pgid": 3234160,
+          "liveness": "live"
+        },
+        {
+          "launchId": "a0206ba5-b60b-4425-8182-25551b457bae",
+          "factoryId": "alpha",
+          "slotId": "hold/2",
+          "pid": 3234166,
+          "pgid": 3234166,
+          "liveness": "live"
+        },
+        {
+          "launchId": "8e7c6f9c-4eec-4950-82fa-71ebebd60774",
+          "factoryId": "beta",
+          "slotId": "hold/1",
+          "pid": 3234173,
+          "pgid": 3234173,
+          "liveness": "live"
+        }
+      ],
+      "holds": [
+        {
+          "factoryId": "alpha",
+          "slotId": "hold/1",
+          "launchId": "f145db5c-8707-4280-8e57-7d0aec95c250",
+          "workerPid": 3234160,
+          "childPid": 3234269,
+          "at": "2026-11-26T02:56:30.473Z",
+          "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+          "argv": [
+            "<repo>/packages/host/dist/sdk-worker.js",
+            "--mode",
+            "rpc",
+            "--system-prompt",
+            "",
+            "--append-system-prompt",
+            "",
+            "--no-extensions",
+            "--no-mcp",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--session-id",
+            "e482ab5c-c4ca-4b21-a992-44b5a6732b87",
+            "--model",
+            "probe/busy",
+            "--tools",
+            "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
+            "--extension",
+            "<repo>/packages/extension/dist/index.js",
+            "--extension",
+            "<repo>/docs/evidence/rpc-54-4-linux/probe-extension.ts"
+          ],
+          "cwd": "<stop-root>/home/slots/alpha/hold-1"
+        },
+        {
+          "factoryId": "alpha",
+          "slotId": "hold/2",
+          "launchId": "a0206ba5-b60b-4425-8182-25551b457bae",
+          "workerPid": 3234166,
+          "childPid": 3234263,
+          "at": "2026-11-26T02:56:30.466Z",
+          "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+          "argv": [
+            "<repo>/packages/host/dist/sdk-worker.js",
+            "--mode",
+            "rpc",
+            "--system-prompt",
+            "",
+            "--append-system-prompt",
+            "",
+            "--no-extensions",
+            "--no-mcp",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--session-id",
+            "1bab7234-fdbd-42e0-a547-406943abf273",
+            "--model",
+            "probe/busy",
+            "--tools",
+            "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
+            "--extension",
+            "<repo>/packages/extension/dist/index.js",
+            "--extension",
+            "<repo>/docs/evidence/rpc-54-4-linux/probe-extension.ts"
+          ],
+          "cwd": "<stop-root>/home/slots/alpha/hold-2"
+        },
+        {
+          "factoryId": "beta",
+          "slotId": "hold/1",
+          "launchId": "8e7c6f9c-4eec-4950-82fa-71ebebd60774",
+          "workerPid": 3234173,
+          "childPid": 3234276,
+          "at": "2026-11-26T02:56:30.480Z",
+          "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+          "argv": [
+            "<repo>/packages/host/dist/sdk-worker.js",
+            "--mode",
+            "rpc",
+            "--system-prompt",
+            "",
+            "--append-system-prompt",
+            "",
+            "--no-extensions",
+            "--no-mcp",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--session-id",
+            "393faec1-5c0f-4563-9925-bad92416b0df",
+            "--model",
+            "probe/busy",
+            "--tools",
+            "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
+            "--extension",
+            "<repo>/packages/extension/dist/index.js",
+            "--extension",
+            "<repo>/docs/evidence/rpc-54-4-linux/probe-extension.ts"
+          ],
+          "cwd": "<stop-root>/home/slots/beta/hold-1"
+        }
+      ],
+      "groupMembers": [
+        {
+          "pid": 3234160,
+          "pgid": 3234160,
+          "ppid": 3234148,
+          "stat": "Ssl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node <repo>/packages/host/dist/sdk-worker.js --mo"
+        },
+        {
+          "pid": 3234166,
+          "pgid": 3234166,
+          "ppid": 3234148,
+          "stat": "Ssl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node <repo>/packages/host/dist/sdk-worker.js --mo"
+        },
+        {
+          "pid": 3234173,
+          "pgid": 3234173,
+          "ppid": 3234148,
+          "stat": "Ssl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node <repo>/packages/host/dist/sdk-worker.js --mo"
+        },
+        {
+          "pid": 3234263,
+          "pgid": 3234166,
+          "ppid": 3234166,
+          "stat": "Sl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node -e process.on('SIGTERM', () => {}); setInterval(() => {}, 60000);"
+        },
+        {
+          "pid": 3234269,
+          "pgid": 3234160,
+          "ppid": 3234160,
+          "stat": "Sl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node -e process.on('SIGTERM', () => {}); setInterval(() => {}, 60000);"
+        },
+        {
+          "pid": 3234276,
+          "pgid": 3234173,
+          "ppid": 3234173,
+          "stat": "Sl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node -e process.on('SIGTERM', () => {}); setInterval(() => {}, 60000);"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-26T02:56:40.842Z",
+      "event": "factory stop alpha",
+      "argv": [
+        "foundry",
+        "factory",
+        "stop",
+        "alpha",
+        "--home",
+        "<home>",
+        "--json"
+      ],
+      "startedAt": "2026-11-26T02:56:30.510Z",
+      "exitCode": 0,
+      "signal": null,
+      "ms": 10331,
+      "body": {
+        "ok": true,
+        "result": {
+          "factoryId": "alpha",
+          "state": "stopped",
+          "force": false,
+          "launches": [
+            {
+              "launchId": "f145db5c-8707-4280-8e57-7d0aec95c250",
+              "slotId": "hold/1",
+              "drained": false,
+              "escalated": true
+            },
+            {
+              "launchId": "a0206ba5-b60b-4425-8182-25551b457bae",
+              "slotId": "hold/2",
+              "drained": false,
+              "escalated": true
+            }
+          ]
+        }
+      },
+      "stderr": "",
+      "samples": [
+        {
+          "ms": 14,
+          "members": [
+            {
+              "pid": 3234160,
+              "pgid": 3234160,
+              "ppid": 3234148,
+              "stat": "Ssl"
+            },
+            {
+              "pid": 3234166,
+              "pgid": 3234166,
+              "ppid": 3234148,
+              "stat": "Ssl"
+            },
+            {
+              "pid": 3234173,
+              "pgid": 3234173,
+              "ppid": 3234148,
+              "stat": "Ssl"
+            },
+            {
+              "pid": 3234263,
+              "pgid": 3234166,
+              "ppid": 3234166,
+              "stat": "Sl"
+            },
+            {
+              "pid": 3234269,
+              "pgid": 3234160,
+              "ppid": 3234160,
+              "stat": "Sl"
+            },
+            {
+              "pid": 3234276,
+              "pgid": 3234173,
+              "ppid": 3234173,
+              "stat": "Sl"
+            }
+          ]
+        },
+        {
+          "ms": 10290,
+          "members": [
+            {
+              "pid": 3234173,
+              "pgid": 3234173,
+              "ppid": 3234148,
+              "stat": "Ssl"
+            },
+            {
+              "pid": 3234276,
+              "pgid": 3234173,
+              "ppid": 3234173,
+              "stat": "Sl"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "at": "2026-11-26T02:56:41.358Z",
+      "event": "after stop",
+      "escalation": [
+        {
+          "slot": "alpha/hold/1",
+          "pgid": 3234160,
+          "leader": 3234160,
+          "child": 3234269,
+          "leaderGoneAtMs": 10290,
+          "groupEmptyAtMs": 10290,
+          "childOutlivedLeader": false
+        },
+        {
+          "slot": "alpha/hold/2",
+          "pgid": 3234166,
+          "leader": 3234166,
+          "child": 3234263,
+          "leaderGoneAtMs": 10290,
+          "groupEmptyAtMs": 10290,
+          "childOutlivedLeader": false
+        }
+      ],
+      "hostRecords": [
+        {
+          "launchId": "f145db5c-8707-4280-8e57-7d0aec95c250",
+          "factoryId": "alpha",
+          "slotId": "hold/1",
+          "pid": 3234160,
+          "pgid": 3234160,
+          "liveness": "gone",
+          "exit": {
+            "code": null,
+            "signal": "SIGKILL",
+            "endedAt": "2026-11-26T02:56:40.776Z",
+            "requested": true
+          }
+        },
+        {
+          "launchId": "a0206ba5-b60b-4425-8182-25551b457bae",
+          "factoryId": "alpha",
+          "slotId": "hold/2",
+          "pid": 3234166,
+          "pgid": 3234166,
+          "liveness": "gone",
+          "exit": {
+            "code": null,
+            "signal": "SIGKILL",
+            "endedAt": "2026-11-26T02:56:40.776Z",
+            "requested": true
+          }
+        },
+        {
+          "launchId": "8e7c6f9c-4eec-4950-82fa-71ebebd60774",
+          "factoryId": "beta",
+          "slotId": "hold/1",
+          "pid": 3234173,
+          "pgid": 3234173,
+          "liveness": "live"
+        }
+      ],
+      "alphaGroupsAlive": [
+        {
+          "pgid": 3234160,
+          "alive": false
+        },
+        {
+          "pgid": 3234166,
+          "alive": false
+        }
+      ],
+      "alphaChildrenAlive": [
+        {
+          "pid": 3234269,
+          "alive": false
+        },
+        {
+          "pid": 3234263,
+          "alive": false
+        }
+      ],
+      "betaGroupsAlive": [
+        {
+          "pgid": 3234173,
+          "alive": true
+        }
+      ],
+      "betaChildrenAlive": [
+        {
+          "pid": 3234276,
+          "alive": true
+        }
+      ],
+      "groupMembers": [
+        {
+          "pid": 3234173,
+          "pgid": 3234173,
+          "ppid": 3234148,
+          "stat": "Ssl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node <repo>/packages/host/dist/sdk-worker.js --mo"
+        },
+        {
+          "pid": 3234276,
+          "pgid": 3234173,
+          "ppid": 3234173,
+          "stat": "Sl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node -e process.on('SIGTERM', () => {}); setInterval(() => {}, 60000);"
+        }
+      ],
+      "factories": {
+        "ok": true,
+        "result": {
+          "runId": "eff35762-532f-4e7b-a2ca-17c47459ac8d",
+          "loadedAt": "2026-11-26T02:56:28.326Z",
+          "factories": [
+            {
+              "factoryId": "alpha",
+              "state": "stopped",
+              "loadId": 1,
+              "yamlFile": "<stop-root>/alpha.yaml",
+              "configHash": "sha256:3fd6dfbfdb8abed93dced1f96423e80bb84000f2a5485950724e81df2b29780b",
+              "knowledgeRoot": "<stop-root>/knowledge"
+            },
+            {
+              "factoryId": "beta",
+              "state": "running",
+              "loadId": 2,
+              "yamlFile": "<stop-root>/beta.yaml",
+              "configHash": "sha256:3c940ec0bc4c2e86584d09bc92c41f3b3e7efbdf763fc323c42366577f5a88ca",
+              "knowledgeRoot": "<stop-root>/knowledge"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-26T02:56:51.963Z",
+      "event": "shutdown",
+      "argv": [
+        "foundry",
+        "shutdown",
+        "--home",
+        "<home>",
+        "--json"
+      ],
+      "startedAt": "2026-11-26T02:56:41.358Z",
+      "exitCode": 0,
+      "signal": null,
+      "ms": 10605,
+      "body": {
+        "ok": true,
+        "result": {
+          "force": false,
+          "factories": [
+            {
+              "factoryId": "beta",
+              "state": "stopped",
+              "force": false,
+              "launches": [
+                {
+                  "launchId": "8e7c6f9c-4eec-4950-82fa-71ebebd60774",
+                  "slotId": "hold/1",
+                  "drained": false,
+                  "escalated": true
+                }
+              ]
+            }
+          ],
+          "hostStopped": true
+        }
+      },
+      "stderr": "",
+      "samples": [
+        {
+          "ms": 26,
+          "members": [
+            {
+              "pid": 3234173,
+              "pgid": 3234173,
+              "ppid": 3234148,
+              "stat": "Ssl"
+            },
+            {
+              "pid": 3234276,
+              "pgid": 3234173,
+              "ppid": 3234173,
+              "stat": "Sl"
+            }
+          ]
+        },
+        {
+          "ms": 10605,
+          "members": []
+        }
+      ]
+    },
+    {
+      "at": "2026-11-26T02:56:51.990Z",
+      "event": "after shutdown",
+      "escalation": [
+        {
+          "slot": "beta/hold/1",
+          "pgid": 3234173,
+          "leader": 3234173,
+          "child": 3234276,
+          "leaderGoneAtMs": 10605,
+          "groupEmptyAtMs": 10605,
+          "childOutlivedLeader": false
+        }
+      ],
+      "daemonExit": 0,
+      "hostAlive": false,
+      "groupsAlive": [
+        {
+          "pgid": 3234160,
+          "alive": false
+        },
+        {
+          "pgid": 3234166,
+          "alive": false
+        },
+        {
+          "pgid": 3234173,
+          "alive": false
+        }
+      ],
+      "childrenAlive": [
+        {
+          "pid": 3234269,
+          "alive": false
+        },
+        {
+          "pid": 3234263,
+          "alive": false
+        },
+        {
+          "pid": 3234276,
+          "alive": false
+        }
+      ],
+      "groupMembers": [],
+      "runProcessesLeft": []
+    },
+    {
+      "at": "2026-11-26T02:56:52.001Z",
+      "event": "state root logs",
+      "files": [
+        "daemon.log",
+        "host.log"
+      ],
+      "copiedTo": "<scratch>/stop"
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "observedAt": "2026-11-26T02:57:59.646896+00:00",
+  "pgids": [
+    3209536,
+    3209600,
+    3209887,
+    3209898,
+    3209905,
+    3209911,
+    3234160,
+    3234166,
+    3234173
+  ],
+  "remainingGroupMembers": [],
+  "resourceRootAbsent": true,
+  "stopRootAbsent": true,
+  "restoreRootAbsent": true,
+  "temporaryDriverCopiesAbsent": true,
+  "finalMarkerProcesses": [],
+  "scratchRemovalObservedAt": "2026-11-26T03:02:41.606617+00:00",
+  "ownedScratchRootAbsent": true
+}
