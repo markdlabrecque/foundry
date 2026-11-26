@@ -1,15 +1,15 @@
 {
   "variant": "reserved",
-  "root": "<PROBE_TMP>/fou153-reserved-pRzzJr",
+  "root": "<PROBE_TMP>/fou153-reserved-AaYRet",
   "factoryYaml": "version: 1\nname: probe\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\nrooms:\n  eng:\n    stations:\n      dev:\n        isolation: worktree\n        model: openai/gpt-4.1-mini\n        extensions: [{ path: \"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/reserved.ts\", tools: [probe_named] }]\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: s0\n        station: eng.dev\n        writing: true\n      - id: approve\n        station: eng.dev\n        approval: true\n        on_rejection: s0\n",
   "validate": {
     "code": 0,
-    "out": "<PROBE_TMP>/fou153-reserved-pRzzJr/factory.yaml: factory \"probe\" is valid\nTool Set for eng.dev (13 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\n  probe_named      extension <REPO>/docs/evidence/rpc-53-3-linux/fixtures/reserved.ts\nExtension tools are listed as configured; whether each extension registers them is not checked.\n"
+    "out": "<PROBE_TMP>/fou153-reserved-AaYRet/factory.yaml: factory \"probe\" is valid\nTool Set for eng.dev (13 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\n  probe_named      extension <REPO>/docs/evidence/rpc-53-3-linux/fixtures/reserved.ts\nExtension tools are listed as configured; whether each extension registers them is not checked.\n"
   },
   "daemonLog": [
     {
       "level": "info",
-      "runId": "a576adc2-51ef-4964-b0b3-d2e29f850823",
+      "runId": "22e195ee-a205-4c83-b125-9fb724dcaefc",
       "msg": "channel hello refused",
       "detail": {
         "kind": "terminal",
@@ -18,46 +18,46 @@
     },
     {
       "level": "info",
-      "runId": "a576adc2-51ef-4964-b0b3-d2e29f850823",
+      "runId": "22e195ee-a205-4c83-b125-9fb724dcaefc",
       "msg": "launch ended",
       "factoryId": "probe",
       "slotId": "dev/1",
-      "launchId": "12d68634-1b79-44d7-9f88-edf73176ef9b"
+      "launchId": "64cd3532-249d-4781-99ad-30a7381c7ed1"
     }
   ],
   "holdList": {
     "code": 0,
-    "out": "1  frozen_slot  dev/1  raised 2026-11-26T01:02:28.676Z\n"
+    "out": "1  frozen_slot  dev/1  raised 2026-11-26T01:15:18.363Z\n"
   },
   "holdShow": [
     {
       "code": 0,
-      "out": "hold        1\nkind        frozen_slot\nsubject     dev/1\nfactory     probe\nstate       open\nraised at   2026-11-26T01:02:28.676Z\nupdated at  2026-11-26T01:02:28.676Z\nevidence\n  cause: tool_set_mismatch\n  launchId: 12d68634-1b79-44d7-9f88-edf73176ef9b\n  conversationRef: c3d46999-7eaa-4e53-ab89-849519e4d9a7\n  missing: []\n  extra: []\n  replaced: [{\"name\":\"read\",\"expected\":\"builtin:read\",\"actual\":\"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/reserved.ts\"}]\ncommands\n  foundry slot unfreeze dev/1\n  foundry slot reset dev/1\n"
+      "out": "hold        1\nkind        frozen_slot\nsubject     dev/1\nfactory     probe\nstate       open\nraised at   2026-11-26T01:15:18.363Z\nupdated at  2026-11-26T01:15:18.363Z\nevidence\n  cause: tool_set_mismatch\n  launchId: 64cd3532-249d-4781-99ad-30a7381c7ed1\n  conversationRef: 1e5f0be0-19e8-4a70-9f6c-21695158ccfb\n  missing: []\n  extra: []\n  replaced: [{\"name\":\"read\",\"expected\":\"builtin:read\",\"actual\":\"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/reserved.ts\"}]\ncommands\n  foundry slot unfreeze dev/1\n  foundry slot reset dev/1\n"
     }
   ],
   "slotList": {
     "code": 0,
-    "out": "probe  dev/1  eng.dev  frozen (tool_set_mismatch)  launch 12d68634-1b79-44d7-9f88-edf73176ef9b ended (requested)\n"
+    "out": "probe  dev/1  eng.dev  frozen (tool_set_mismatch)  launch 64cd3532-249d-4781-99ad-30a7381c7ed1 ended (requested)\n"
   },
   "slotShow": [
     {
       "code": 0,
-      "out": "slot        dev/1\nfactory     probe\nstation     eng.dev\ncondition   frozen (tool_set_mismatch)\nlaunches\n  12d68634-1b79-44d7-9f88-edf73176ef9b  started  started 2026-11-26T01:02:28.258Z  pid 2616895  ended 2026-11-26T01:02:28.692Z (requested, code 0)\n"
+      "out": "slot        dev/1\nfactory     probe\nstation     eng.dev\ncondition   frozen (tool_set_mismatch)\nlaunches\n  64cd3532-249d-4781-99ad-30a7381c7ed1  started  started 2026-11-26T01:15:17.938Z  pid 2785121  ended 2026-11-26T01:15:18.381Z (requested, code 0)\n"
     }
   ],
   "markers": {
-    "12d68634-1b79-44d7-9f88-edf73176ef9b.network.json": {
+    "64cd3532-249d-4781-99ad-30a7381c7ed1.network.json": {
       "fetchCalls": 0,
       "denied": true
     },
-    "12d68634-1b79-44d7-9f88-edf73176ef9b.process.json": {
-      "pid": 2616895,
-      "pgid": 2616895,
-      "launchId": "12d68634-1b79-44d7-9f88-edf73176ef9b",
+    "64cd3532-249d-4781-99ad-30a7381c7ed1.process.json": {
+      "pid": 2785121,
+      "pgid": 2785121,
+      "launchId": "64cd3532-249d-4781-99ad-30a7381c7ed1",
       "slot": "dev/1",
       "runtime": "sdk"
     },
-    "dev_1.launch.12d68634-1b79-44d7-9f88-edf73176ef9b.json": {
+    "dev_1.launch.64cd3532-249d-4781-99ad-30a7381c7ed1.json": {
       "execPath": "<NODE>",
       "argv": [
         "<REPO>/packages/host/dist/sdk-worker.js",
@@ -75,7 +75,7 @@
         "--no-context-files",
         "--no-approve",
         "--session-id",
-        "c3d46999-7eaa-4e53-ab89-849519e4d9a7",
+        "1e5f0be0-19e8-4a70-9f6c-21695158ccfb",
         "--model",
         "openai/gpt-4.1-mini",
         "--tools",
@@ -85,10 +85,10 @@
         "--extension",
         "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/reserved.ts"
       ],
-      "cwd": "<PROBE_TMP>/fou153-reserved-pRzzJr/home/slots/probe/dev-1"
+      "cwd": "<PROBE_TMP>/fou153-reserved-AaYRet/home/slots/probe/dev-1"
     },
-    "dev_1.launch.12d68634-1b79-44d7-9f88-edf73176ef9b.stderr.log": "foundry: channel hello refused (terminal tool_set_mismatch)\n",
-    "dev_1.launch.12d68634-1b79-44d7-9f88-edf73176ef9b.stdout.log": "",
+    "dev_1.launch.64cd3532-249d-4781-99ad-30a7381c7ed1.stderr.log": "foundry: channel hello refused (terminal tool_set_mismatch)\n",
+    "dev_1.launch.64cd3532-249d-4781-99ad-30a7381c7ed1.stdout.log": "",
     "dev_1.reserved.loaded.json": {
       "argv": [
         "<NODE>",
@@ -107,7 +107,7 @@
         "--no-context-files",
         "--no-approve",
         "--session-id",
-        "c3d46999-7eaa-4e53-ab89-849519e4d9a7",
+        "1e5f0be0-19e8-4a70-9f6c-21695158ccfb",
         "--model",
         "openai/gpt-4.1-mini",
         "--tools",
@@ -121,7 +121,7 @@
         "probe_named",
         "read"
       ],
-      "launchId": "12d68634-1b79-44d7-9f88-edf73176ef9b"
+      "launchId": "64cd3532-249d-4781-99ad-30a7381c7ed1"
     },
     "dev_1.reserved.session.json": {
       "all": [
@@ -197,9 +197,9 @@
   },
   "ownedProcesses": [
     {
-      "pid": 2616895,
-      "pgid": 2616895,
-      "launchId": "12d68634-1b79-44d7-9f88-edf73176ef9b",
+      "pid": 2785121,
+      "pgid": 2785121,
+      "launchId": "64cd3532-249d-4781-99ad-30a7381c7ed1",
       "slot": "dev/1",
       "runtime": "sdk"
     }
@@ -210,7 +210,7 @@
   },
   "cleanup": {
     "ownedGroups": [
-      2616895
+      2785121
     ],
     "remaining": [],
     "daemonExited": true,

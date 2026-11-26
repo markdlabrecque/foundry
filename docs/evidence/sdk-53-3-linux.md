@@ -51,9 +51,13 @@ this recovery but were not copied as qualification evidence.
 ## Versions and exact launcher
 
 Linux `7.2.15-1-omarchy`, Node `v22.23.2`, npm `10.9.8`, pinned Pi `1.6.0`.
-Fresh probe ran on branch revision `179476b` (evidence-only original commit), whose
-product/base is `050145655c76a722afc6bce70ae422397e49872c`. Final fetch/rebase
-confirmed that same latest `origin/develop`; this recovery changes evidence only.
+Historical recovery probe ran on branch revision `179476b` (evidence-only original
+commit), whose product/base was `050145655c76a722afc6bce70ae422397e49872c`.
+That is the historical observation base, not the current integration base. Before
+opening the evidence-only PR, the branch was rebased onto latest `origin/develop`
+`6dc2a5b5f01b9be13d465bccecedc67f04e8410c`; the corrected probe and all regression
+commands below were rerun on this integration base. Current `results/versions.json`
+records the pre-evidence-refresh branch revision for that final probe.
 Read [RPC sibling](rpc-53-3-linux.md), [SDK trial](sdk-147-trial.md) and PRD §17.2–3.
 No repository `AGENTS.md` was present in the tracked source.
 
@@ -144,6 +148,10 @@ Artifacts under `sdk-53-3-linux/`:
 - `checks/`: status, launch shim text, summary logs and historical failed e2e logs.
 - `run-probe.mjs`, `record-process.mjs`, `inspect-load.mjs`,
   `check-observations.mjs`: portable minimal probe/inspection/checker sources.
+  The checker checks a selected subset of recorded observations, not completeness
+  of every artifact or a comprehensive fail-closed qualification contract. Its
+  `selectedRecordedObservationsChecked` flag is deliberately narrow; acceptance
+  also rests on the inspected retained evidence. It still exits 1 for the unmet gate.
 
 ## Isolation and cleanup
 
@@ -196,7 +204,7 @@ node docs/evidence/sdk-53-3-linux/run-checks.mjs
 node docs/evidence/sdk-53-3-linux/normalize-evidence.mjs
 ```
 
-Final checks, latest base `0501456`:
+Final checks, integration base `6dc2a5b` (historical base `0501456`):
 
 | Command | Exit / counts |
 | --- | --- |

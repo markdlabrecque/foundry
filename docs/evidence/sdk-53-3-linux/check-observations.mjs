@@ -60,7 +60,7 @@ assert.ok(!Object.keys(agent.markers).some(k => k.endsWith(".session.json")));
 const errors = read("loader-errors");
 assert.ok(errors.some(e => e.path.endsWith("/fixtures/agent-name.ts") && /Tool "agent_message" conflicts with .*\/packages\/extension\/dist\/index.js/.test(e.error)));
 console.log(JSON.stringify({
-  observationsVerified: true, zeroFetch: true, cleanupVerified: true,
+  selectedRecordedObservationsChecked: true, zeroFetch: true, cleanupVerified: true,
   missingNamedHold: "verified", reservedNamedHold: "verified", clearedAndInheritedControl: "verified",
   agentCollisionRefusedWithSource: "verified", agentNamedMismatchHold: "unmet: early loader refusal then parked_slot",
   qualification: "blocked on tested implementation; not passed",

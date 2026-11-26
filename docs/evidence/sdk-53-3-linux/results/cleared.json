@@ -1,19 +1,19 @@
 {
   "variant": "cleared",
-  "root": "<PROBE_TMP>/fou153-cleared-EATRPV",
+  "root": "<PROBE_TMP>/fou153-cleared-S2CXPB",
   "factoryYaml": "version: 1\nname: probe\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\ndefaults:\n  extensions: [{ path: \"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts\", tools: [probe_named] }]\nrooms:\n  eng:\n    stations:\n      inherit:\n        isolation: worktree\n        model: openai/gpt-4.1-mini\n      cleared:\n        isolation: worktree\n        model: openai/gpt-4.1-mini\n        extensions: []\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: s0\n        station: eng.inherit\n        writing: true\n      - id: s1\n        station: eng.cleared\n        writing: false\n      - id: approve\n        station: eng.inherit\n        approval: true\n        on_rejection: s0\n",
   "validate": {
     "code": 0,
-    "out": "<PROBE_TMP>/fou153-cleared-EATRPV/factory.yaml: factory \"probe\" is valid\nTool Set for eng.inherit (13 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\n  probe_named      extension <REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts\nTool Set for eng.cleared (12 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\nExtension tools are listed as configured; whether each extension registers them is not checked.\n"
+    "out": "<PROBE_TMP>/fou153-cleared-S2CXPB/factory.yaml: factory \"probe\" is valid\nTool Set for eng.inherit (13 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\n  probe_named      extension <REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts\nTool Set for eng.cleared (12 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\nExtension tools are listed as configured; whether each extension registers them is not checked.\n"
   },
   "daemonLog": [
     {
       "level": "info",
-      "runId": "f8190561-a16f-42e4-9955-798bdbcf7745",
+      "runId": "fd3e82ee-e9f7-461c-b685-8a624cfe8776",
       "msg": "channel accepted",
       "factoryId": "probe",
       "slotId": "cleared/1",
-      "launchId": "81503a22-f2db-4d89-a7dc-ccb8384f1672",
+      "launchId": "f0f91b96-9b4e-4c4a-a06a-3e75573b64c0",
       "detail": {
         "mode": "headless",
         "tools": 12
@@ -21,11 +21,11 @@
     },
     {
       "level": "info",
-      "runId": "f8190561-a16f-42e4-9955-798bdbcf7745",
+      "runId": "fd3e82ee-e9f7-461c-b685-8a624cfe8776",
       "msg": "channel accepted",
       "factoryId": "probe",
       "slotId": "inherit/1",
-      "launchId": "4760e18b-a482-490b-a7f2-30c6aec5bb88",
+      "launchId": "4502cba3-68c8-476d-b8eb-598e7530c929",
       "detail": {
         "mode": "headless",
         "tools": 13
@@ -39,42 +39,31 @@
   "holdShow": [],
   "slotList": {
     "code": 0,
-    "out": "probe  inherit/1  eng.inherit  normal  launch 4760e18b-a482-490b-a7f2-30c6aec5bb88 live (pid 2617170)\nprobe  cleared/1  eng.cleared  normal  launch 81503a22-f2db-4d89-a7dc-ccb8384f1672 live (pid 2617177)\n"
+    "out": "probe  inherit/1  eng.inherit  normal  launch 4502cba3-68c8-476d-b8eb-598e7530c929 live (pid 2785332)\nprobe  cleared/1  eng.cleared  normal  launch f0f91b96-9b4e-4c4a-a06a-3e75573b64c0 live (pid 2785338)\n"
   },
   "slotShow": [
     {
       "code": 0,
-      "out": "slot        inherit/1\nfactory     probe\nstation     eng.inherit\ncondition   normal\nlaunches\n  4760e18b-a482-490b-a7f2-30c6aec5bb88  started  started 2026-11-26T01:02:31.725Z  pid 2617170  live\n"
+      "out": "slot        inherit/1\nfactory     probe\nstation     eng.inherit\ncondition   normal\nlaunches\n  4502cba3-68c8-476d-b8eb-598e7530c929  started  started 2026-11-26T01:15:21.428Z  pid 2785332  live\n"
     },
     {
       "code": 0,
-      "out": "slot        cleared/1\nfactory     probe\nstation     eng.cleared\ncondition   normal\nlaunches\n  81503a22-f2db-4d89-a7dc-ccb8384f1672  started  started 2026-11-26T01:02:31.734Z  pid 2617177  live\n"
+      "out": "slot        cleared/1\nfactory     probe\nstation     eng.cleared\ncondition   normal\nlaunches\n  f0f91b96-9b4e-4c4a-a06a-3e75573b64c0  started  started 2026-11-26T01:15:21.437Z  pid 2785338  live\n"
     }
   ],
   "markers": {
-    "4760e18b-a482-490b-a7f2-30c6aec5bb88.network.json": {
+    "4502cba3-68c8-476d-b8eb-598e7530c929.network.json": {
       "fetchCalls": 0,
       "denied": true
     },
-    "4760e18b-a482-490b-a7f2-30c6aec5bb88.process.json": {
-      "pid": 2617170,
-      "pgid": 2617170,
-      "launchId": "4760e18b-a482-490b-a7f2-30c6aec5bb88",
+    "4502cba3-68c8-476d-b8eb-598e7530c929.process.json": {
+      "pid": 2785332,
+      "pgid": 2785332,
+      "launchId": "4502cba3-68c8-476d-b8eb-598e7530c929",
       "slot": "inherit/1",
       "runtime": "sdk"
     },
-    "81503a22-f2db-4d89-a7dc-ccb8384f1672.network.json": {
-      "fetchCalls": 0,
-      "denied": true
-    },
-    "81503a22-f2db-4d89-a7dc-ccb8384f1672.process.json": {
-      "pid": 2617177,
-      "pgid": 2617177,
-      "launchId": "81503a22-f2db-4d89-a7dc-ccb8384f1672",
-      "slot": "cleared/1",
-      "runtime": "sdk"
-    },
-    "cleared_1.launch.81503a22-f2db-4d89-a7dc-ccb8384f1672.json": {
+    "cleared_1.launch.f0f91b96-9b4e-4c4a-a06a-3e75573b64c0.json": {
       "execPath": "<NODE>",
       "argv": [
         "<REPO>/packages/host/dist/sdk-worker.js",
@@ -92,7 +81,7 @@
         "--no-context-files",
         "--no-approve",
         "--session-id",
-        "12e2f3fb-7499-4044-962b-a1de0b8cc8ba",
+        "9853b15e-94a1-47f5-87c9-cc0ba49c5fb3",
         "--model",
         "openai/gpt-4.1-mini",
         "--tools",
@@ -100,11 +89,22 @@
         "--extension",
         "<REPO>/packages/extension/dist/index.js"
       ],
-      "cwd": "<PROBE_TMP>/fou153-cleared-EATRPV/home/slots/probe/cleared-1"
+      "cwd": "<PROBE_TMP>/fou153-cleared-S2CXPB/home/slots/probe/cleared-1"
     },
-    "cleared_1.launch.81503a22-f2db-4d89-a7dc-ccb8384f1672.stderr.log": "",
-    "cleared_1.launch.81503a22-f2db-4d89-a7dc-ccb8384f1672.stdout.log": "",
-    "inherit_1.launch.4760e18b-a482-490b-a7f2-30c6aec5bb88.json": {
+    "cleared_1.launch.f0f91b96-9b4e-4c4a-a06a-3e75573b64c0.stderr.log": "",
+    "cleared_1.launch.f0f91b96-9b4e-4c4a-a06a-3e75573b64c0.stdout.log": "",
+    "f0f91b96-9b4e-4c4a-a06a-3e75573b64c0.network.json": {
+      "fetchCalls": 0,
+      "denied": true
+    },
+    "f0f91b96-9b4e-4c4a-a06a-3e75573b64c0.process.json": {
+      "pid": 2785338,
+      "pgid": 2785338,
+      "launchId": "f0f91b96-9b4e-4c4a-a06a-3e75573b64c0",
+      "slot": "cleared/1",
+      "runtime": "sdk"
+    },
+    "inherit_1.launch.4502cba3-68c8-476d-b8eb-598e7530c929.json": {
       "execPath": "<NODE>",
       "argv": [
         "<REPO>/packages/host/dist/sdk-worker.js",
@@ -122,7 +122,7 @@
         "--no-context-files",
         "--no-approve",
         "--session-id",
-        "772a2b8c-9a38-4c7c-88aa-4c72fd44b4fc",
+        "56a0565f-1d5c-4b26-a568-d21818df82ad",
         "--model",
         "openai/gpt-4.1-mini",
         "--tools",
@@ -132,10 +132,10 @@
         "--extension",
         "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts"
       ],
-      "cwd": "<PROBE_TMP>/fou153-cleared-EATRPV/home/slots/probe/inherit-1"
+      "cwd": "<PROBE_TMP>/fou153-cleared-S2CXPB/home/slots/probe/inherit-1"
     },
-    "inherit_1.launch.4760e18b-a482-490b-a7f2-30c6aec5bb88.stderr.log": "",
-    "inherit_1.launch.4760e18b-a482-490b-a7f2-30c6aec5bb88.stdout.log": "",
+    "inherit_1.launch.4502cba3-68c8-476d-b8eb-598e7530c929.stderr.log": "",
+    "inherit_1.launch.4502cba3-68c8-476d-b8eb-598e7530c929.stdout.log": "",
     "inherit_1.named.loaded.json": {
       "argv": [
         "<NODE>",
@@ -154,7 +154,7 @@
         "--no-context-files",
         "--no-approve",
         "--session-id",
-        "772a2b8c-9a38-4c7c-88aa-4c72fd44b4fc",
+        "56a0565f-1d5c-4b26-a568-d21818df82ad",
         "--model",
         "openai/gpt-4.1-mini",
         "--tools",
@@ -167,7 +167,7 @@
       "registers": [
         "probe_named"
       ],
-      "launchId": "4760e18b-a482-490b-a7f2-30c6aec5bb88"
+      "launchId": "4502cba3-68c8-476d-b8eb-598e7530c929"
     },
     "inherit_1.named.session.json": {
       "all": [
@@ -243,16 +243,16 @@
   },
   "ownedProcesses": [
     {
-      "pid": 2617170,
-      "pgid": 2617170,
-      "launchId": "4760e18b-a482-490b-a7f2-30c6aec5bb88",
+      "pid": 2785332,
+      "pgid": 2785332,
+      "launchId": "4502cba3-68c8-476d-b8eb-598e7530c929",
       "slot": "inherit/1",
       "runtime": "sdk"
     },
     {
-      "pid": 2617177,
-      "pgid": 2617177,
-      "launchId": "81503a22-f2db-4d89-a7dc-ccb8384f1672",
+      "pid": 2785338,
+      "pgid": 2785338,
+      "launchId": "f0f91b96-9b4e-4c4a-a06a-3e75573b64c0",
       "slot": "cleared/1",
       "runtime": "sdk"
     }
@@ -263,8 +263,8 @@
   },
   "cleanup": {
     "ownedGroups": [
-      2617170,
-      2617177
+      2785332,
+      2785338
     ],
     "remaining": [],
     "daemonExited": true,
