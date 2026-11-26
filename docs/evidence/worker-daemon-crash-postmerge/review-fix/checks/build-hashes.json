@@ -1,0 +1,6 @@
+{
+  "packages/cli/dist/main.js": "082c9f22c322f3ffd4855fc8c1ec0745bae717142e56b4177928c0d820d93922",
+  "packages/host/dist/index.js": "b85b8efe76c1b92320fb99cce1476bdfeeef58f788ba2fe9c527378bf9e2d547",
+  "packages/extension/dist/index.js": "4f6cfd0254c9a288dc00d40dce48a3a4bc14ad65eb558119de1b4afec942c8a5",
+  "packages/daemon/dist/index.js": "8c3a00b0fa4bde9b83ec9374f5582202f78da3865c5ab394917d3dd36156b34b"
+}

@@ -1,0 +1,1 @@
+Normalized evidence, not byte-for-byte raw output. Unrelated inherited PATH is redacted. Real user-home and T3 checkout prefixes are consistently replaced by <USER_HOME> and <CHECKOUT>. Versions, executable suffixes, ordered arguments, IDs, times and fixture-relative relationships are preserved. Binary DB/WAL copies are local-only.

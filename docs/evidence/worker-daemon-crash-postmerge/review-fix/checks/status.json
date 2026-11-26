@@ -1,0 +1,131 @@
+{
+  "developBase": "a61daf0913331e83cb111c6b6572a8a3bba2f434",
+  "capturedCheckoutHead": "f380cd2c6c1161c04d30498c655000f0b8a16437",
+  "developFetch": "unchanged; no rebase needed",
+  "runtimeSourcePins": "fresh replay matched all 6 current sources; retained replay resolves pre-review oracle to exact archived source",
+  "red": {
+    "oracleHead": "f380cd2c6c1161c04d30498c655000f0b8a16437",
+    "testSourceSha256": "7af5d73f5fbaab4a60bce38640a285fcaaf8369cb7c94b93a21af4e51f4d6e47",
+    "exit": 1,
+    "tests": 54,
+    "passed": 29,
+    "failed": 25
+  },
+  "green": {
+    "exit": 0,
+    "tests": 54,
+    "passed": 54,
+    "targetedNegativeCases": 49,
+    "requiredFlagMutations": 40
+  },
+  "normalEnvironment": {
+    "mode": "env -i",
+    "PATH":"<REDACTED inherited PATH>",
+    "HOME": "<USER_HOME>/f124rv-GYWJQo/user",
+    "TMPDIR": "<USER_HOME>/f124rv-GYWJQo/t",
+    "FOUNDRY_PI_BIN": "UNSET; no shim",
+    "runtimeOverride": "unset"
+  },
+  "commands": [
+    {
+      "argv": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "./node_modules/.bin/oxlint"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "test"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "test:e2e"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "node",
+        "--test",
+        "docs/evidence/worker-daemon-crash-postmerge/verify.test.mjs"
+      ],
+      "exit": 0
+    }
+  ],
+  "vitest": {
+    "files": 105,
+    "passed": 862
+  },
+  "ordinaryE2E": {
+    "files": 3,
+    "passed": 5
+  },
+  "freshActualJourney": {
+    "exit": 0,
+    "observationsPassed": 20
+  },
+  "readOnlyReplays": {
+    "retainedExit": 0,
+    "freshExit": 0
+  },
+  "cleanup": {
+    "preFallback": {
+      "shutdownSucceeded": true,
+      "markedPids": [],
+      "groups": [
+        {
+          "pgid": 3334884,
+          "liveMembers": []
+        },
+        {
+          "pgid": 3334891,
+          "liveMembers": []
+        },
+        {
+          "pgid": 3335077,
+          "liveMembers": []
+        }
+      ],
+      "orderly": true
+    },
+    "independentGroups": [
+      {
+        "pgid": 3334884,
+        "signal0": "ESRCH"
+      },
+      {
+        "pgid": 3334891,
+        "signal0": "ESRCH"
+      },
+      {
+        "pgid": 3335077,
+        "signal0": "ESRCH"
+      }
+    ],
+    "validationRootProcesses": [],
+    "validationRootRemoved": true,
+    "copiedOutputRootRemoved": true
+  },
+  "review": "REQUESTCHANGES on f380 addressed; NEW independent review pending; no PR or tracker edit"
+}

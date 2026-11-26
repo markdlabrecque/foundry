@@ -1,0 +1,3 @@
+{"time":"2026-11-26T02:49:20.974Z","level":"info","hostId":"2e3dc804-b30b-424a-b9f1-586973f44a2b","msg":"worker host serving","detail":{"pid":3198718,"socket":"<USER_HOME>/f124a-k5EVBj/home/host.sock","bootId":"e4653541-62f1-4746-93c3-19c8d32b3110"}}
+{"time":"2026-11-26T02:49:20.989Z","level":"info","hostId":"2e3dc804-b30b-424a-b9f1-586973f44a2b","msg":"launch started","factoryId":"alpha","slotId":"dev/1","launchId":"fa894bfd-d29d-4c0a-8883-b319f2109a28","detail":{"pid":3198730}}
+{"time":"2026-11-26T02:49:20.999Z","level":"info","hostId":"2e3dc804-b30b-424a-b9f1-586973f44a2b","msg":"launch started","factoryId":"alpha","slotId":"dev/2","launchId":"a7e74a4e-426a-4d6e-bf99-12d8aa7652a0","detail":{"pid":3198737}}

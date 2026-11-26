@@ -1,0 +1,1329 @@
+{
+  "ticket": [
+    {
+      "factory_id": "alpha",
+      "number": 1,
+      "title": "Crash durability 1",
+      "slug": "crash-durability-1",
+      "production_line": "f",
+      "directory": "<USER_HOME>/f124a-c7duH4/home/tickets/alpha/1",
+      "state": "stage",
+      "stage": "gate",
+      "status": "awaiting_approval",
+      "rejections": 0,
+      "rejection_ceiling": 3,
+      "messages_spent": 0,
+      "message_ceiling": 100,
+      "worktree_path": "<USER_HOME>/f124a-c7duH4/worktrees/alpha/1-crash-durability-1",
+      "branch": "ticket/1-crash-durability-1",
+      "start_commit": "b99aac73e8ebb914a0e3d4a458f7c80dc75c7905",
+      "submitted_at": 1795661676861
+    },
+    {
+      "factory_id": "alpha",
+      "number": 2,
+      "title": "Crash durability 2",
+      "slug": "crash-durability-2",
+      "production_line": "f",
+      "directory": "<USER_HOME>/f124a-c7duH4/home/tickets/alpha/2",
+      "state": "stage",
+      "stage": "gate",
+      "status": "awaiting_approval",
+      "rejections": 0,
+      "rejection_ceiling": 3,
+      "messages_spent": 0,
+      "message_ceiling": 100,
+      "worktree_path": "<USER_HOME>/f124a-c7duH4/worktrees/alpha/2-crash-durability-2",
+      "branch": "ticket/2-crash-durability-2",
+      "start_commit": "b99aac73e8ebb914a0e3d4a458f7c80dc75c7905",
+      "submitted_at": 1795661677127
+    }
+  ],
+  "ticket_transition": [
+    {
+      "sequence": 1,
+      "factory_id": "alpha",
+      "ticket_number": 1,
+      "recorded_at": 1795661676861,
+      "actor": "operator",
+      "from_state": null,
+      "from_stage": null,
+      "from_status": null,
+      "to_state": "backlog",
+      "to_stage": null,
+      "to_status": null,
+      "outcome": null,
+      "reason": null,
+      "git_commit": null,
+      "evidence": "[]",
+      "config_load": "1",
+      "voided_transitions": "[]"
+    },
+    {
+      "sequence": 2,
+      "factory_id": "alpha",
+      "ticket_number": 1,
+      "recorded_at": 1795661676921,
+      "actor": "daemon",
+      "from_state": "backlog",
+      "from_stage": null,
+      "from_status": null,
+      "to_state": "stage",
+      "to_stage": "implement",
+      "to_status": "assigned",
+      "outcome": null,
+      "reason": null,
+      "git_commit": null,
+      "evidence": "[]",
+      "config_load": "1",
+      "voided_transitions": "[]"
+    },
+    {
+      "sequence": 3,
+      "factory_id": "alpha",
+      "ticket_number": 2,
+      "recorded_at": 1795661677127,
+      "actor": "operator",
+      "from_state": null,
+      "from_stage": null,
+      "from_status": null,
+      "to_state": "backlog",
+      "to_stage": null,
+      "to_status": null,
+      "outcome": null,
+      "reason": null,
+      "git_commit": null,
+      "evidence": "[]",
+      "config_load": "1",
+      "voided_transitions": "[]"
+    },
+    {
+      "sequence": 4,
+      "factory_id": "alpha",
+      "ticket_number": 2,
+      "recorded_at": 1795661677149,
+      "actor": "daemon",
+      "from_state": "backlog",
+      "from_stage": null,
+      "from_status": null,
+      "to_state": "stage",
+      "to_stage": "implement",
+      "to_status": "assigned",
+      "outcome": null,
+      "reason": null,
+      "git_commit": null,
+      "evidence": "[]",
+      "config_load": "1",
+      "voided_transitions": "[]"
+    },
+    {
+      "sequence": 5,
+      "factory_id": "alpha",
+      "ticket_number": 1,
+      "recorded_at": 1795661684233,
+      "actor": "dev/1",
+      "from_state": "stage",
+      "from_stage": "implement",
+      "from_status": "assigned",
+      "to_state": "stage",
+      "to_stage": "gate",
+      "to_status": "queued",
+      "outcome": "done",
+      "reason": "FOU124 actual implement continuation",
+      "git_commit": "3044ed31b71e6c8481bfec4eeb3c964f94cebd5a",
+      "evidence": "[\"<USER_HOME>/f124a-c7duH4/home/tickets/alpha/1/evidence/continued.json\"]",
+      "config_load": "2",
+      "voided_transitions": "[]"
+    },
+    {
+      "sequence": 6,
+      "factory_id": "alpha",
+      "ticket_number": 1,
+      "recorded_at": 1795661684255,
+      "actor": "daemon",
+      "from_state": "stage",
+      "from_stage": "gate",
+      "from_status": "queued",
+      "to_state": "stage",
+      "to_stage": "gate",
+      "to_status": "assigned",
+      "outcome": null,
+      "reason": null,
+      "git_commit": null,
+      "evidence": "[]",
+      "config_load": "2",
+      "voided_transitions": "[]"
+    },
+    {
+      "sequence": 7,
+      "factory_id": "alpha",
+      "ticket_number": 2,
+      "recorded_at": 1795661684300,
+      "actor": "dev/2",
+      "from_state": "stage",
+      "from_stage": "implement",
+      "from_status": "assigned",
+      "to_state": "stage",
+      "to_stage": "gate",
+      "to_status": "queued",
+      "outcome": "done",
+      "reason": "FOU124 actual implement continuation",
+      "git_commit": "257ff9fc753a2153f41e0db4c60b7c431c74677c",
+      "evidence": "[\"<USER_HOME>/f124a-c7duH4/home/tickets/alpha/2/evidence/continued.json\"]",
+      "config_load": "2",
+      "voided_transitions": "[]"
+    },
+    {
+      "sequence": 8,
+      "factory_id": "alpha",
+      "ticket_number": 2,
+      "recorded_at": 1795661684304,
+      "actor": "daemon",
+      "from_state": "stage",
+      "from_stage": "gate",
+      "from_status": "queued",
+      "to_state": "stage",
+      "to_stage": "gate",
+      "to_status": "assigned",
+      "outcome": null,
+      "reason": null,
+      "git_commit": null,
+      "evidence": "[]",
+      "config_load": "2",
+      "voided_transitions": "[]"
+    },
+    {
+      "sequence": 9,
+      "factory_id": "alpha",
+      "ticket_number": 1,
+      "recorded_at": 1795661684320,
+      "actor": "dev/1",
+      "from_state": "stage",
+      "from_stage": "gate",
+      "from_status": "assigned",
+      "to_state": "stage",
+      "to_stage": "gate",
+      "to_status": "awaiting_approval",
+      "outcome": "done",
+      "reason": "FOU124 actual gate continuation",
+      "git_commit": "3044ed31b71e6c8481bfec4eeb3c964f94cebd5a",
+      "evidence": "[\"<USER_HOME>/f124a-c7duH4/home/tickets/alpha/1/evidence/continued.json\"]",
+      "config_load": "2",
+      "voided_transitions": "[]"
+    },
+    {
+      "sequence": 10,
+      "factory_id": "alpha",
+      "ticket_number": 2,
+      "recorded_at": 1795661684344,
+      "actor": "dev/2",
+      "from_state": "stage",
+      "from_stage": "gate",
+      "from_status": "assigned",
+      "to_state": "stage",
+      "to_stage": "gate",
+      "to_status": "awaiting_approval",
+      "outcome": "done",
+      "reason": "FOU124 actual gate continuation",
+      "git_commit": "257ff9fc753a2153f41e0db4c60b7c431c74677c",
+      "evidence": "[\"<USER_HOME>/f124a-c7duH4/home/tickets/alpha/2/evidence/continued.json\"]",
+      "config_load": "2",
+      "voided_transitions": "[]"
+    }
+  ],
+  "assignment": [
+    {
+      "id": "e4a0b237-3f3c-41e3-9605-5800af21935d",
+      "factory_id": "alpha",
+      "ticket_number": 1,
+      "stage": "implement",
+      "slot_id": "dev/1",
+      "status": "ended",
+      "recovery_count": 1,
+      "recovery_ceiling": 3,
+      "created_at": 1795661676921,
+      "ended_at": 1795661684233,
+      "end_reason": "done",
+      "context_message": "7f9caf03-4198-48e6-b599-41940c6a1152"
+    },
+    {
+      "id": "f0c38843-3ebd-4abe-ad76-cb984d28f35f",
+      "factory_id": "alpha",
+      "ticket_number": 2,
+      "stage": "implement",
+      "slot_id": "dev/2",
+      "status": "ended",
+      "recovery_count": 0,
+      "recovery_ceiling": 3,
+      "created_at": 1795661677149,
+      "ended_at": 1795661684300,
+      "end_reason": "done",
+      "context_message": "4ca27710-f401-4576-936d-885f33bce321"
+    },
+    {
+      "id": "89d89d1e-ed81-4971-9268-a1166dc2401a",
+      "factory_id": "alpha",
+      "ticket_number": 1,
+      "stage": "gate",
+      "slot_id": "dev/1",
+      "status": "ended",
+      "recovery_count": 0,
+      "recovery_ceiling": 3,
+      "created_at": 1795661684255,
+      "ended_at": 1795661684320,
+      "end_reason": "done",
+      "context_message": "5f3ed3b4-1ad4-4de0-b7c4-59e25f3c56d7"
+    },
+    {
+      "id": "f6ca2bb8-5337-4cb8-a523-66e695ea2ea2",
+      "factory_id": "alpha",
+      "ticket_number": 2,
+      "stage": "gate",
+      "slot_id": "dev/2",
+      "status": "ended",
+      "recovery_count": 0,
+      "recovery_ceiling": 3,
+      "created_at": 1795661684304,
+      "ended_at": 1795661684344,
+      "end_reason": "done",
+      "context_message": "c97d61f3-6785-4526-84d1-284e68367f71"
+    }
+  ],
+  "assignment_resume": [],
+  "message": [
+    {
+      "id": "7f9caf03-4198-48e6-b599-41940c6a1152",
+      "factory_id": "alpha",
+      "sequence": 1,
+      "sender_kind": "daemon",
+      "sender_slot": null,
+      "recipient": "eng.dev",
+      "body": "Ticket 1: Crash durability 1\nProduction line: f\nStage: implement\nAssignment: e4a0b237-3f3c-41e3-9605-5800af21935d\nSlot: dev/1\nSpecification: <USER_HOME>/f124a-c7duH4/home/tickets/alpha/1/spec.md\nEvidence: <USER_HOME>/f124a-c7duH4/home/tickets/alpha/1/evidence\nWorktree: <USER_HOME>/f124a-c7duH4/worktrees/alpha/1-crash-durability-1\n\n# Repository Context\nRoot: <USER_HOME>/f124a-c7duH4/worktrees/alpha/1-crash-durability-1\n\n## Repository skills (read bodies on demand)\nNo repository context files or indexed skills.",
+      "delivery": "after_turn",
+      "kind": "ordinary",
+      "ticket_number": 1,
+      "request_id": null,
+      "delegation_id": null,
+      "status": "acknowledged",
+      "accepted_at": 1795661676922,
+      "bound_slot": "dev/1",
+      "bound_at": 1795661676926,
+      "acknowledged_at": 1795661678026
+    },
+    {
+      "id": "4ca27710-f401-4576-936d-885f33bce321",
+      "factory_id": "alpha",
+      "sequence": 2,
+      "sender_kind": "daemon",
+      "sender_slot": null,
+      "recipient": "eng.dev",
+      "body": "Ticket 2: Crash durability 2\nProduction line: f\nStage: implement\nAssignment: f0c38843-3ebd-4abe-ad76-cb984d28f35f\nSlot: dev/2\nSpecification: <USER_HOME>/f124a-c7duH4/home/tickets/alpha/2/spec.md\nEvidence: <USER_HOME>/f124a-c7duH4/home/tickets/alpha/2/evidence\nWorktree: <USER_HOME>/f124a-c7duH4/worktrees/alpha/2-crash-durability-2\n\n# Repository Context\nRoot: <USER_HOME>/f124a-c7duH4/worktrees/alpha/2-crash-durability-2\n\n## Repository skills (read bodies on demand)\nNo repository context files or indexed skills.",
+      "delivery": "after_turn",
+      "kind": "ordinary",
+      "ticket_number": 2,
+      "request_id": null,
+      "delegation_id": null,
+      "status": "acknowledged",
+      "accepted_at": 1795661677149,
+      "bound_slot": "dev/2",
+      "bound_at": 1795661677153,
+      "acknowledged_at": 1795661679142
+    },
+    {
+      "id": "41d9b373-91d2-41c5-9949-18cd744c58e2",
+      "factory_id": "alpha",
+      "sequence": 3,
+      "sender_kind": "operator",
+      "sender_slot": null,
+      "recipient": "eng.dev",
+      "body": "FOU124_BEFORE_WORKER",
+      "delivery": "when_idle",
+      "kind": "ordinary",
+      "ticket_number": null,
+      "request_id": null,
+      "delegation_id": null,
+      "status": "acknowledged",
+      "accepted_at": 1795661677674,
+      "bound_slot": "dev/1",
+      "bound_at": 1795661677685,
+      "acknowledged_at": 1795661678055
+    },
+    {
+      "id": "e11f1c7c-ee14-4581-9087-1e957c1c24f0",
+      "factory_id": "alpha",
+      "sequence": 4,
+      "sender_kind": "daemon",
+      "sender_slot": null,
+      "recipient": "eng.dev",
+      "body": "Ticket 1\nStage: implement\nAssignment: e4a0b237-3f3c-41e3-9605-5800af21935d\nThe worker was interrupted or the daemon was unavailable. The last tool call may or may not have completed. Inspect the worktree and ticket directory before continuing; do not replay tool calls blindly.\nReported outcome: none\nOpen requests: none\nOpen delegations: none",
+      "delivery": "after_turn",
+      "kind": "resume_notice",
+      "ticket_number": 1,
+      "request_id": null,
+      "delegation_id": null,
+      "status": "acknowledged",
+      "accepted_at": 1795661678041,
+      "bound_slot": "dev/1",
+      "bound_at": 1795661678041,
+      "acknowledged_at": 1795661678063
+    },
+    {
+      "id": "3defe10e-bc7d-490c-8733-1c1737ee6108",
+      "factory_id": "alpha",
+      "sequence": 5,
+      "sender_kind": "operator",
+      "sender_slot": null,
+      "recipient": "eng.dev",
+      "body": "FOU124_BEFORE_DAEMON",
+      "delivery": "when_idle",
+      "kind": "ordinary",
+      "ticket_number": null,
+      "request_id": null,
+      "delegation_id": null,
+      "status": "acknowledged",
+      "accepted_at": 1795661678366,
+      "bound_slot": "dev/1",
+      "bound_at": 1795661678369,
+      "acknowledged_at": 1795661684273
+    },
+    {
+      "id": "5f3ed3b4-1ad4-4de0-b7c4-59e25f3c56d7",
+      "factory_id": "alpha",
+      "sequence": 6,
+      "sender_kind": "daemon",
+      "sender_slot": null,
+      "recipient": "eng.dev",
+      "body": "Ticket 1: Crash durability 1\nProduction line: f\nStage: gate\nAssignment: 89d89d1e-ed81-4971-9268-a1166dc2401a\nSlot: dev/1\nSpecification: <USER_HOME>/f124a-c7duH4/home/tickets/alpha/1/spec.md\nEvidence: <USER_HOME>/f124a-c7duH4/home/tickets/alpha/1/evidence\nWorktree: <USER_HOME>/f124a-c7duH4/worktrees/alpha/1-crash-durability-1",
+      "delivery": "after_turn",
+      "kind": "ordinary",
+      "ticket_number": 1,
+      "request_id": null,
+      "delegation_id": null,
+      "status": "acknowledged",
+      "accepted_at": 1795661684257,
+      "bound_slot": "dev/1",
+      "bound_at": 1795661684264,
+      "acknowledged_at": 1795661684288
+    },
+    {
+      "id": "c97d61f3-6785-4526-84d1-284e68367f71",
+      "factory_id": "alpha",
+      "sequence": 7,
+      "sender_kind": "daemon",
+      "sender_slot": null,
+      "recipient": "eng.dev",
+      "body": "Ticket 2: Crash durability 2\nProduction line: f\nStage: gate\nAssignment: f6ca2bb8-5337-4cb8-a523-66e695ea2ea2\nSlot: dev/2\nSpecification: <USER_HOME>/f124a-c7duH4/home/tickets/alpha/2/spec.md\nEvidence: <USER_HOME>/f124a-c7duH4/home/tickets/alpha/2/evidence\nWorktree: <USER_HOME>/f124a-c7duH4/worktrees/alpha/2-crash-durability-2",
+      "delivery": "after_turn",
+      "kind": "ordinary",
+      "ticket_number": 2,
+      "request_id": null,
+      "delegation_id": null,
+      "status": "acknowledged",
+      "accepted_at": 1795661684308,
+      "bound_slot": "dev/2",
+      "bound_at": 1795661684312,
+      "acknowledged_at": 1795661684330
+    }
+  ],
+  "message_attempt": [
+    {
+      "id": "36377259-e731-4f99-9ec4-b69dab3cae55",
+      "factory_id": "alpha",
+      "message_id": "7f9caf03-4198-48e6-b599-41940c6a1152",
+      "slot_id": "dev/1",
+      "launch_id": "93cd28f8-30c5-43e7-abdd-7afbd04b4342",
+      "connection_id": "23fdd11d-fb1c-4ee7-b682-a8b9ad11ae65",
+      "sent_at": 1795661676930,
+      "acknowledged_at": 1795661678026,
+      "injected_at": 1795661676935,
+      "retired_at": null
+    },
+    {
+      "id": "eb069740-1945-4a34-8d8f-8ef8f7ae2879",
+      "factory_id": "alpha",
+      "message_id": "4ca27710-f401-4576-936d-885f33bce321",
+      "slot_id": "dev/2",
+      "launch_id": "a1fa8c0d-919d-4efe-bbc7-ea855745c8e8",
+      "connection_id": "1249e91f-e8de-495d-9128-234eccbd0f23",
+      "sent_at": 1795661677156,
+      "acknowledged_at": 1795661679142,
+      "injected_at": 1795661677160,
+      "retired_at": null
+    },
+    {
+      "id": "8b559929-5565-4116-a6e8-201311fcaf2a",
+      "factory_id": "alpha",
+      "message_id": "41d9b373-91d2-41c5-9949-18cd744c58e2",
+      "slot_id": "dev/1",
+      "launch_id": "93cd28f8-30c5-43e7-abdd-7afbd04b4342",
+      "connection_id": "23fdd11d-fb1c-4ee7-b682-a8b9ad11ae65",
+      "sent_at": 1795661677689,
+      "acknowledged_at": null,
+      "injected_at": null,
+      "retired_at": 1795661678020
+    },
+    {
+      "id": "de951b52-476f-469e-940b-675cc6a85a42",
+      "factory_id": "alpha",
+      "message_id": "41d9b373-91d2-41c5-9949-18cd744c58e2",
+      "slot_id": "dev/1",
+      "launch_id": "a61cd388-9f8c-425c-9e5b-5eeda85a33fa",
+      "connection_id": "cd50e535-da54-4765-9917-6efa12eb59ca",
+      "sent_at": 1795661678045,
+      "acknowledged_at": 1795661678055,
+      "injected_at": 1795661678048,
+      "retired_at": null
+    },
+    {
+      "id": "7cdc5875-e326-477e-92c4-af1ea6691fcd",
+      "factory_id": "alpha",
+      "message_id": "e11f1c7c-ee14-4581-9087-1e957c1c24f0",
+      "slot_id": "dev/1",
+      "launch_id": "a61cd388-9f8c-425c-9e5b-5eeda85a33fa",
+      "connection_id": "cd50e535-da54-4765-9917-6efa12eb59ca",
+      "sent_at": 1795661678048,
+      "acknowledged_at": 1795661678063,
+      "injected_at": 1795661678055,
+      "retired_at": null
+    },
+    {
+      "id": "c6e111d9-c2fd-41cc-956c-9f80978e3656",
+      "factory_id": "alpha",
+      "message_id": "3defe10e-bc7d-490c-8733-1c1737ee6108",
+      "slot_id": "dev/1",
+      "launch_id": "a61cd388-9f8c-425c-9e5b-5eeda85a33fa",
+      "connection_id": "cd50e535-da54-4765-9917-6efa12eb59ca",
+      "sent_at": 1795661678373,
+      "acknowledged_at": 1795661684273,
+      "injected_at": 1795661684258,
+      "retired_at": null
+    },
+    {
+      "id": "588802d2-c080-4796-b474-3513e00efebe",
+      "factory_id": "alpha",
+      "message_id": "5f3ed3b4-1ad4-4de0-b7c4-59e25f3c56d7",
+      "slot_id": "dev/1",
+      "launch_id": "a61cd388-9f8c-425c-9e5b-5eeda85a33fa",
+      "connection_id": "793def40-89bf-4baa-91de-a9081994d36a",
+      "sent_at": 1795661684277,
+      "acknowledged_at": 1795661684288,
+      "injected_at": 1795661684281,
+      "retired_at": null
+    },
+    {
+      "id": "30692391-84e5-4a75-a0e4-239c69149d82",
+      "factory_id": "alpha",
+      "message_id": "c97d61f3-6785-4526-84d1-284e68367f71",
+      "slot_id": "dev/2",
+      "launch_id": "a1fa8c0d-919d-4efe-bbc7-ea855745c8e8",
+      "connection_id": "2d17863d-b41a-4bb0-8cae-902ae119d497",
+      "sent_at": 1795661684316,
+      "acknowledged_at": 1795661684330,
+      "injected_at": 1795661684320,
+      "retired_at": null
+    }
+  ],
+  "launch": [
+    {
+      "launch_id": "93cd28f8-30c5-43e7-abdd-7afbd04b4342",
+      "factory_id": "alpha",
+      "slot_id": "dev/1",
+      "boot_id": "e4653541-62f1-4746-93c3-19c8d32b3110",
+      "pid": 3211050,
+      "started_at": 1795661676538,
+      "origin": "started",
+      "ended_at": 1795661677710,
+      "end_reason": "exited",
+      "exit_code": null,
+      "exit_signal": "SIGKILL"
+    },
+    {
+      "launch_id": "a1fa8c0d-919d-4efe-bbc7-ea855745c8e8",
+      "factory_id": "alpha",
+      "slot_id": "dev/2",
+      "boot_id": "e4653541-62f1-4746-93c3-19c8d32b3110",
+      "pid": 3211056,
+      "started_at": 1795661676546,
+      "origin": "started",
+      "ended_at": 1795661684809,
+      "end_reason": "requested",
+      "exit_code": 143,
+      "exit_signal": null
+    },
+    {
+      "launch_id": "a61cd388-9f8c-425c-9e5b-5eeda85a33fa",
+      "factory_id": "alpha",
+      "slot_id": "dev/1",
+      "boot_id": "e4653541-62f1-4746-93c3-19c8d32b3110",
+      "pid": 3211167,
+      "started_at": 1795661677722,
+      "origin": "started",
+      "ended_at": 1795661684807,
+      "end_reason": "requested",
+      "exit_code": 143,
+      "exit_signal": null
+    }
+  ],
+  "slot": [
+    {
+      "factory_id": "alpha",
+      "slot_id": "dev/1",
+      "station": "eng.dev",
+      "ordinal": 1,
+      "condition": "normal",
+      "current_launch": "a61cd388-9f8c-425c-9e5b-5eeda85a33fa",
+      "pending_host": null,
+      "pending_boot": null,
+      "freeze_cause": null,
+      "recovery_count": 0
+    },
+    {
+      "factory_id": "alpha",
+      "slot_id": "dev/2",
+      "station": "eng.dev",
+      "ordinal": 2,
+      "condition": "normal",
+      "current_launch": "a1fa8c0d-919d-4efe-bbc7-ea855745c8e8",
+      "pending_host": null,
+      "pending_boot": null,
+      "freeze_cause": null,
+      "recovery_count": 0
+    }
+  ],
+  "history": [
+    {
+      "sequence": 1,
+      "factory_id": "",
+      "recorded_at": 1795661676407,
+      "kind": "run.started",
+      "subject": "d06a8fa4-c16c-4896-af63-277810ab1779",
+      "detail": "{\"version\":\"0.0.0\",\"factories\":[\"alpha\"]}"
+    },
+    {
+      "sequence": 2,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676408,
+      "kind": "factory.config_loaded",
+      "subject": "1",
+      "detail": "{\"runId\":\"d06a8fa4-c16c-4896-af63-277810ab1779\",\"configHash\":\"sha256:4784d4648cf4bc9ff763481a0896d0bc6f352e6db6ad98826aeb41e9094d56b2\",\"yamlFile\":\"<USER_HOME>/f124a-c7duH4/factory.yaml\"}"
+    },
+    {
+      "sequence": 3,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676532,
+      "kind": "launch.requested",
+      "subject": "dev/1",
+      "detail": "{\"station\":\"eng.dev\",\"hostId\":\"092b16e2-a82f-4e7b-b539-bfb4273457a3\",\"conversationRef\":\"fba9d2c2-ef3f-483f-a22b-9dc3dd5d8eb5\"}"
+    },
+    {
+      "sequence": 4,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676538,
+      "kind": "launch.started",
+      "subject": "93cd28f8-30c5-43e7-abdd-7afbd04b4342",
+      "detail": "{\"slotId\":\"dev/1\",\"pid\":3211050,\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\"}"
+    },
+    {
+      "sequence": 5,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676542,
+      "kind": "launch.requested",
+      "subject": "dev/2",
+      "detail": "{\"station\":\"eng.dev\",\"hostId\":\"092b16e2-a82f-4e7b-b539-bfb4273457a3\",\"conversationRef\":\"558bfd9c-89c1-4520-8724-1db16279c7fe\"}"
+    },
+    {
+      "sequence": 6,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676547,
+      "kind": "launch.started",
+      "subject": "a1fa8c0d-919d-4efe-bbc7-ea855745c8e8",
+      "detail": "{\"slotId\":\"dev/2\",\"pid\":3211056,\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\"}"
+    },
+    {
+      "sequence": 7,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676862,
+      "kind": "ticket.submitted",
+      "subject": "1",
+      "detail": "{\"title\":\"Crash durability 1\",\"line\":\"f\",\"directory\":\"<USER_HOME>/f124a-c7duH4/home/tickets/alpha/1\"}"
+    },
+    {
+      "sequence": 8,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676892,
+      "kind": "prime.sent",
+      "subject": "dev/1",
+      "detail": "{\"primeId\":\"prime-0d69a7b4-112e-4b7a-acd9-be923b644181\",\"launchId\":\"93cd28f8-30c5-43e7-abdd-7afbd04b4342\",\"conversationRef\":\"fba9d2c2-ef3f-483f-a22b-9dc3dd5d8eb5\",\"situation\":\"fresh\",\"parts\":[]}"
+    },
+    {
+      "sequence": 9,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676898,
+      "kind": "operation.started",
+      "subject": "1",
+      "detail": "{\"operationId\":1,\"kind\":\"worktree_create\",\"intent\":{\"clonePath\":\"<USER_HOME>/f124a-c7duH4/home/clones/alpha\",\"path\":\"<USER_HOME>/f124a-c7duH4/worktrees/alpha/1-crash-durability-1\",\"branch\":\"ticket/1-crash-durability-1\",\"defaultBranch\":\"main\"}}"
+    },
+    {
+      "sequence": 10,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676906,
+      "kind": "prime.sent",
+      "subject": "dev/2",
+      "detail": "{\"primeId\":\"prime-d881a6e3-f1c2-4c1d-b14a-ccfb8cc151ae\",\"launchId\":\"a1fa8c0d-919d-4efe-bbc7-ea855745c8e8\",\"conversationRef\":\"558bfd9c-89c1-4520-8724-1db16279c7fe\",\"situation\":\"fresh\",\"parts\":[]}"
+    },
+    {
+      "sequence": 11,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676910,
+      "kind": "operation.progressed",
+      "subject": "1",
+      "detail": "{\"operationId\":1,\"kind\":\"worktree_create\",\"intent\":{\"clonePath\":\"<USER_HOME>/f124a-c7duH4/home/clones/alpha\",\"path\":\"<USER_HOME>/f124a-c7duH4/worktrees/alpha/1-crash-durability-1\",\"branch\":\"ticket/1-crash-durability-1\",\"defaultBranch\":\"main\",\"startCommit\":\"b99aac73e8ebb914a0e3d4a458f7c80dc75c7905\"}}"
+    },
+    {
+      "sequence": 12,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676917,
+      "kind": "operation.complete",
+      "subject": "1",
+      "detail": "{\"operationId\":1,\"kind\":\"worktree_create\",\"result\":{\"path\":\"<USER_HOME>/f124a-c7duH4/worktrees/alpha/1-crash-durability-1\",\"branch\":\"ticket/1-crash-durability-1\",\"startCommit\":\"b99aac73e8ebb914a0e3d4a458f7c80dc75c7905\"}}"
+    },
+    {
+      "sequence": 13,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676917,
+      "kind": "ticket.worktree_created",
+      "subject": "1",
+      "detail": "{\"path\":\"<USER_HOME>/f124a-c7duH4/worktrees/alpha/1-crash-durability-1\",\"branch\":\"ticket/1-crash-durability-1\",\"startCommit\":\"b99aac73e8ebb914a0e3d4a458f7c80dc75c7905\"}"
+    },
+    {
+      "sequence": 14,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676923,
+      "kind": "message.accepted",
+      "subject": "7f9caf03-4198-48e6-b599-41940c6a1152",
+      "detail": "{\"sequence\":1,\"senderKind\":\"daemon\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"kind\":\"ordinary\",\"delivery\":\"after_turn\"}"
+    },
+    {
+      "sequence": 15,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676923,
+      "kind": "repository_context.accepted",
+      "subject": "7f9caf03-4198-48e6-b599-41940c6a1152",
+      "detail": "{\"assignment\":\"e4a0b237-3f3c-41e3-9605-5800af21935d\",\"slotId\":\"dev/1\",\"conversationRef\":\"fba9d2c2-ef3f-483f-a22b-9dc3dd5d8eb5\",\"root\":\"<USER_HOME>/f124a-c7duH4/worktrees/alpha/1-crash-durability-1\",\"parts\":[]}"
+    },
+    {
+      "sequence": 16,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676923,
+      "kind": "ticket.assigned",
+      "subject": "1",
+      "detail": "{\"assignment\":\"e4a0b237-3f3c-41e3-9605-5800af21935d\",\"stage\":\"implement\",\"slotId\":\"dev/1\",\"contextMessage\":\"7f9caf03-4198-48e6-b599-41940c6a1152\"}"
+    },
+    {
+      "sequence": 17,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676927,
+      "kind": "message.bound",
+      "subject": "7f9caf03-4198-48e6-b599-41940c6a1152",
+      "detail": "{\"sequence\":1,\"slotId\":\"dev/1\"}"
+    },
+    {
+      "sequence": 18,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676931,
+      "kind": "message.sent",
+      "subject": "7f9caf03-4198-48e6-b599-41940c6a1152",
+      "detail": "{\"attemptId\":\"36377259-e731-4f99-9ec4-b69dab3cae55\",\"slotId\":\"dev/1\",\"launchId\":\"93cd28f8-30c5-43e7-abdd-7afbd04b4342\",\"connectionId\":\"23fdd11d-fb1c-4ee7-b682-a8b9ad11ae65\"}"
+    },
+    {
+      "sequence": 19,
+      "factory_id": "alpha",
+      "recorded_at": 1795661676935,
+      "kind": "message.injected",
+      "subject": "7f9caf03-4198-48e6-b599-41940c6a1152",
+      "detail": "{\"slotId\":\"dev/1\",\"launchId\":\"93cd28f8-30c5-43e7-abdd-7afbd04b4342\",\"injectedAt\":1795661676935}"
+    },
+    {
+      "sequence": 20,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677127,
+      "kind": "ticket.submitted",
+      "subject": "2",
+      "detail": "{\"title\":\"Crash durability 2\",\"line\":\"f\",\"directory\":\"<USER_HOME>/f124a-c7duH4/home/tickets/alpha/2\"}"
+    },
+    {
+      "sequence": 21,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677132,
+      "kind": "operation.started",
+      "subject": "2",
+      "detail": "{\"operationId\":2,\"kind\":\"worktree_create\",\"intent\":{\"clonePath\":\"<USER_HOME>/f124a-c7duH4/home/clones/alpha\",\"path\":\"<USER_HOME>/f124a-c7duH4/worktrees/alpha/2-crash-durability-2\",\"branch\":\"ticket/2-crash-durability-2\",\"defaultBranch\":\"main\"}}"
+    },
+    {
+      "sequence": 22,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677139,
+      "kind": "operation.progressed",
+      "subject": "2",
+      "detail": "{\"operationId\":2,\"kind\":\"worktree_create\",\"intent\":{\"clonePath\":\"<USER_HOME>/f124a-c7duH4/home/clones/alpha\",\"path\":\"<USER_HOME>/f124a-c7duH4/worktrees/alpha/2-crash-durability-2\",\"branch\":\"ticket/2-crash-durability-2\",\"defaultBranch\":\"main\",\"startCommit\":\"b99aac73e8ebb914a0e3d4a458f7c80dc75c7905\"}}"
+    },
+    {
+      "sequence": 23,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677145,
+      "kind": "operation.complete",
+      "subject": "2",
+      "detail": "{\"operationId\":2,\"kind\":\"worktree_create\",\"result\":{\"path\":\"<USER_HOME>/f124a-c7duH4/worktrees/alpha/2-crash-durability-2\",\"branch\":\"ticket/2-crash-durability-2\",\"startCommit\":\"b99aac73e8ebb914a0e3d4a458f7c80dc75c7905\"}}"
+    },
+    {
+      "sequence": 24,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677145,
+      "kind": "ticket.worktree_created",
+      "subject": "2",
+      "detail": "{\"path\":\"<USER_HOME>/f124a-c7duH4/worktrees/alpha/2-crash-durability-2\",\"branch\":\"ticket/2-crash-durability-2\",\"startCommit\":\"b99aac73e8ebb914a0e3d4a458f7c80dc75c7905\"}"
+    },
+    {
+      "sequence": 25,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677149,
+      "kind": "message.accepted",
+      "subject": "4ca27710-f401-4576-936d-885f33bce321",
+      "detail": "{\"sequence\":2,\"senderKind\":\"daemon\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"kind\":\"ordinary\",\"delivery\":\"after_turn\"}"
+    },
+    {
+      "sequence": 26,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677149,
+      "kind": "repository_context.accepted",
+      "subject": "4ca27710-f401-4576-936d-885f33bce321",
+      "detail": "{\"assignment\":\"f0c38843-3ebd-4abe-ad76-cb984d28f35f\",\"slotId\":\"dev/2\",\"conversationRef\":\"558bfd9c-89c1-4520-8724-1db16279c7fe\",\"root\":\"<USER_HOME>/f124a-c7duH4/worktrees/alpha/2-crash-durability-2\",\"parts\":[]}"
+    },
+    {
+      "sequence": 27,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677149,
+      "kind": "ticket.assigned",
+      "subject": "2",
+      "detail": "{\"assignment\":\"f0c38843-3ebd-4abe-ad76-cb984d28f35f\",\"stage\":\"implement\",\"slotId\":\"dev/2\",\"contextMessage\":\"4ca27710-f401-4576-936d-885f33bce321\"}"
+    },
+    {
+      "sequence": 28,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677153,
+      "kind": "message.bound",
+      "subject": "4ca27710-f401-4576-936d-885f33bce321",
+      "detail": "{\"sequence\":2,\"slotId\":\"dev/2\"}"
+    },
+    {
+      "sequence": 29,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677156,
+      "kind": "message.sent",
+      "subject": "4ca27710-f401-4576-936d-885f33bce321",
+      "detail": "{\"attemptId\":\"eb069740-1945-4a34-8d8f-8ef8f7ae2879\",\"slotId\":\"dev/2\",\"launchId\":\"a1fa8c0d-919d-4efe-bbc7-ea855745c8e8\",\"connectionId\":\"1249e91f-e8de-495d-9128-234eccbd0f23\"}"
+    },
+    {
+      "sequence": 30,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677161,
+      "kind": "message.injected",
+      "subject": "4ca27710-f401-4576-936d-885f33bce321",
+      "detail": "{\"slotId\":\"dev/2\",\"launchId\":\"a1fa8c0d-919d-4efe-bbc7-ea855745c8e8\",\"injectedAt\":1795661677160}"
+    },
+    {
+      "sequence": 31,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677675,
+      "kind": "message.accepted",
+      "subject": "41d9b373-91d2-41c5-9949-18cd744c58e2",
+      "detail": "{\"sequence\":3,\"senderKind\":\"operator\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"kind\":\"ordinary\",\"delivery\":\"when_idle\"}"
+    },
+    {
+      "sequence": 32,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677685,
+      "kind": "message.bound",
+      "subject": "41d9b373-91d2-41c5-9949-18cd744c58e2",
+      "detail": "{\"sequence\":3,\"slotId\":\"dev/1\"}"
+    },
+    {
+      "sequence": 33,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677689,
+      "kind": "message.sent",
+      "subject": "41d9b373-91d2-41c5-9949-18cd744c58e2",
+      "detail": "{\"attemptId\":\"8b559929-5565-4116-a6e8-201311fcaf2a\",\"slotId\":\"dev/1\",\"launchId\":\"93cd28f8-30c5-43e7-abdd-7afbd04b4342\",\"connectionId\":\"23fdd11d-fb1c-4ee7-b682-a8b9ad11ae65\"}"
+    },
+    {
+      "sequence": 34,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677714,
+      "kind": "launch.ended",
+      "subject": "93cd28f8-30c5-43e7-abdd-7afbd04b4342",
+      "detail": "{\"slotId\":\"dev/1\",\"reason\":\"exited\",\"unexpected\":true,\"code\":null,\"signal\":\"SIGKILL\"}"
+    },
+    {
+      "sequence": 35,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677718,
+      "kind": "launch.requested",
+      "subject": "dev/1",
+      "detail": "{\"station\":\"eng.dev\",\"hostId\":\"092b16e2-a82f-4e7b-b539-bfb4273457a3\",\"conversationRef\":\"fba9d2c2-ef3f-483f-a22b-9dc3dd5d8eb5\"}"
+    },
+    {
+      "sequence": 36,
+      "factory_id": "alpha",
+      "recorded_at": 1795661677723,
+      "kind": "launch.started",
+      "subject": "a61cd388-9f8c-425c-9e5b-5eeda85a33fa",
+      "detail": "{\"slotId\":\"dev/1\",\"pid\":3211167,\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\"}"
+    },
+    {
+      "sequence": 37,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678020,
+      "kind": "message.retry_ready",
+      "subject": "41d9b373-91d2-41c5-9949-18cd744c58e2",
+      "detail": "{\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"launch\":\"replacement\",\"lifecycle\":\"idle\"}"
+    },
+    {
+      "sequence": 38,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678026,
+      "kind": "message.acknowledged",
+      "subject": "7f9caf03-4198-48e6-b599-41940c6a1152",
+      "detail": "{\"attemptId\":\"36377259-e731-4f99-9ec4-b69dab3cae55\",\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\"}"
+    },
+    {
+      "sequence": 39,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678029,
+      "kind": "prime.acknowledged",
+      "subject": "dev/1",
+      "detail": "{\"primeId\":\"prime-0d69a7b4-112e-4b7a-acd9-be923b644181\"}"
+    },
+    {
+      "sequence": 40,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678033,
+      "kind": "prime.sent",
+      "subject": "dev/1",
+      "detail": "{\"primeId\":\"prime-92e71e45-7cee-4159-90ec-0cfb9b14d5c5\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"conversationRef\":\"fba9d2c2-ef3f-483f-a22b-9dc3dd5d8eb5\",\"situation\":\"recovery\",\"parts\":[]}"
+    },
+    {
+      "sequence": 41,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678037,
+      "kind": "prime.acknowledged",
+      "subject": "dev/1",
+      "detail": "{\"primeId\":\"prime-92e71e45-7cee-4159-90ec-0cfb9b14d5c5\"}"
+    },
+    {
+      "sequence": 42,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678041,
+      "kind": "message.accepted",
+      "subject": "e11f1c7c-ee14-4581-9087-1e957c1c24f0",
+      "detail": "{\"sequence\":4,\"senderKind\":\"daemon\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"kind\":\"resume_notice\",\"delivery\":\"after_turn\"}"
+    },
+    {
+      "sequence": 43,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678045,
+      "kind": "message.sent",
+      "subject": "41d9b373-91d2-41c5-9949-18cd744c58e2",
+      "detail": "{\"attemptId\":\"de951b52-476f-469e-940b-675cc6a85a42\",\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"connectionId\":\"cd50e535-da54-4765-9917-6efa12eb59ca\"}"
+    },
+    {
+      "sequence": 44,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678048,
+      "kind": "message.sent",
+      "subject": "e11f1c7c-ee14-4581-9087-1e957c1c24f0",
+      "detail": "{\"attemptId\":\"7cdc5875-e326-477e-92c4-af1ea6691fcd\",\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"connectionId\":\"cd50e535-da54-4765-9917-6efa12eb59ca\"}"
+    },
+    {
+      "sequence": 45,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678052,
+      "kind": "message.injected",
+      "subject": "41d9b373-91d2-41c5-9949-18cd744c58e2",
+      "detail": "{\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"injectedAt\":1795661678048}"
+    },
+    {
+      "sequence": 46,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678055,
+      "kind": "message.acknowledged",
+      "subject": "41d9b373-91d2-41c5-9949-18cd744c58e2",
+      "detail": "{\"attemptId\":\"de951b52-476f-469e-940b-675cc6a85a42\",\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\"}"
+    },
+    {
+      "sequence": 47,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678059,
+      "kind": "message.injected",
+      "subject": "e11f1c7c-ee14-4581-9087-1e957c1c24f0",
+      "detail": "{\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"injectedAt\":1795661678055}"
+    },
+    {
+      "sequence": 48,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678063,
+      "kind": "message.acknowledged",
+      "subject": "e11f1c7c-ee14-4581-9087-1e957c1c24f0",
+      "detail": "{\"attemptId\":\"7cdc5875-e326-477e-92c4-af1ea6691fcd\",\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\"}"
+    },
+    {
+      "sequence": 49,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678366,
+      "kind": "message.accepted",
+      "subject": "3defe10e-bc7d-490c-8733-1c1737ee6108",
+      "detail": "{\"sequence\":5,\"senderKind\":\"operator\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"kind\":\"ordinary\",\"delivery\":\"when_idle\"}"
+    },
+    {
+      "sequence": 50,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678369,
+      "kind": "message.bound",
+      "subject": "3defe10e-bc7d-490c-8733-1c1737ee6108",
+      "detail": "{\"sequence\":5,\"slotId\":\"dev/1\"}"
+    },
+    {
+      "sequence": 51,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678373,
+      "kind": "message.sent",
+      "subject": "3defe10e-bc7d-490c-8733-1c1737ee6108",
+      "detail": "{\"attemptId\":\"c6e111d9-c2fd-41cc-956c-9f80978e3656\",\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"connectionId\":\"cd50e535-da54-4765-9917-6efa12eb59ca\"}"
+    },
+    {
+      "sequence": 52,
+      "factory_id": "",
+      "recorded_at": 1795661678586,
+      "kind": "run.started",
+      "subject": "69475539-955f-400a-8cf7-d9e77bd34cba",
+      "detail": "{\"version\":\"0.0.0\",\"factories\":[\"alpha\"]}"
+    },
+    {
+      "sequence": 53,
+      "factory_id": "alpha",
+      "recorded_at": 1795661678586,
+      "kind": "factory.config_loaded",
+      "subject": "2",
+      "detail": "{\"runId\":\"69475539-955f-400a-8cf7-d9e77bd34cba\",\"configHash\":\"sha256:4784d4648cf4bc9ff763481a0896d0bc6f352e6db6ad98826aeb41e9094d56b2\",\"yamlFile\":\"<USER_HOME>/f124a-c7duH4/factory.yaml\"}"
+    },
+    {
+      "sequence": 54,
+      "factory_id": "alpha",
+      "recorded_at": 1795661679142,
+      "kind": "message.acknowledged",
+      "subject": "4ca27710-f401-4576-936d-885f33bce321",
+      "detail": "{\"attemptId\":\"eb069740-1945-4a34-8d8f-8ef8f7ae2879\",\"slotId\":\"dev/2\",\"launchId\":\"a1fa8c0d-919d-4efe-bbc7-ea855745c8e8\"}"
+    },
+    {
+      "sequence": 55,
+      "factory_id": "alpha",
+      "recorded_at": 1795661679149,
+      "kind": "prime.acknowledged",
+      "subject": "dev/2",
+      "detail": "{\"primeId\":\"prime-d881a6e3-f1c2-4c1d-b14a-ccfb8cc151ae\"}"
+    },
+    {
+      "sequence": 56,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684236,
+      "kind": "ticket.transitioned",
+      "subject": "1",
+      "detail": "{\"assignment\":\"e4a0b237-3f3c-41e3-9605-5800af21935d\",\"outcome\":\"done\",\"fromStage\":\"implement\",\"stage\":\"gate\",\"status\":\"queued\"}"
+    },
+    {
+      "sequence": 57,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684236,
+      "kind": "submission.recorded",
+      "subject": "dev/1",
+      "detail": "{\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"callId\":\"crash124-a61cd388-9f8c-425c-9e5b-5eeda85a33fa-e4a0b237-3f3c-41e3-9605-5800af21935d-1\",\"tool\":\"task_transition\"}"
+    },
+    {
+      "sequence": 58,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684258,
+      "kind": "message.accepted",
+      "subject": "5f3ed3b4-1ad4-4de0-b7c4-59e25f3c56d7",
+      "detail": "{\"sequence\":6,\"senderKind\":\"daemon\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"kind\":\"ordinary\",\"delivery\":\"after_turn\"}"
+    },
+    {
+      "sequence": 59,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684258,
+      "kind": "ticket.assigned",
+      "subject": "1",
+      "detail": "{\"assignment\":\"89d89d1e-ed81-4971-9268-a1166dc2401a\",\"stage\":\"gate\",\"slotId\":\"dev/1\",\"contextMessage\":\"5f3ed3b4-1ad4-4de0-b7c4-59e25f3c56d7\"}"
+    },
+    {
+      "sequence": 60,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684265,
+      "kind": "message.bound",
+      "subject": "5f3ed3b4-1ad4-4de0-b7c4-59e25f3c56d7",
+      "detail": "{\"sequence\":6,\"slotId\":\"dev/1\"}"
+    },
+    {
+      "sequence": 61,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684268,
+      "kind": "message.injected",
+      "subject": "3defe10e-bc7d-490c-8733-1c1737ee6108",
+      "detail": "{\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"injectedAt\":1795661684258}"
+    },
+    {
+      "sequence": 62,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684273,
+      "kind": "message.acknowledged",
+      "subject": "3defe10e-bc7d-490c-8733-1c1737ee6108",
+      "detail": "{\"attemptId\":\"c6e111d9-c2fd-41cc-956c-9f80978e3656\",\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\"}"
+    },
+    {
+      "sequence": 63,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684277,
+      "kind": "message.sent",
+      "subject": "5f3ed3b4-1ad4-4de0-b7c4-59e25f3c56d7",
+      "detail": "{\"attemptId\":\"588802d2-c080-4796-b474-3513e00efebe\",\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"connectionId\":\"793def40-89bf-4baa-91de-a9081994d36a\"}"
+    },
+    {
+      "sequence": 64,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684282,
+      "kind": "message.injected",
+      "subject": "5f3ed3b4-1ad4-4de0-b7c4-59e25f3c56d7",
+      "detail": "{\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"injectedAt\":1795661684281}"
+    },
+    {
+      "sequence": 65,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684288,
+      "kind": "message.acknowledged",
+      "subject": "5f3ed3b4-1ad4-4de0-b7c4-59e25f3c56d7",
+      "detail": "{\"attemptId\":\"588802d2-c080-4796-b474-3513e00efebe\",\"slotId\":\"dev/1\",\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\"}"
+    },
+    {
+      "sequence": 66,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684300,
+      "kind": "ticket.transitioned",
+      "subject": "2",
+      "detail": "{\"assignment\":\"f0c38843-3ebd-4abe-ad76-cb984d28f35f\",\"outcome\":\"done\",\"fromStage\":\"implement\",\"stage\":\"gate\",\"status\":\"queued\"}"
+    },
+    {
+      "sequence": 67,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684300,
+      "kind": "submission.recorded",
+      "subject": "dev/2",
+      "detail": "{\"launchId\":\"a1fa8c0d-919d-4efe-bbc7-ea855745c8e8\",\"callId\":\"crash124-a1fa8c0d-919d-4efe-bbc7-ea855745c8e8-f0c38843-3ebd-4abe-ad76-cb984d28f35f-1\",\"tool\":\"task_transition\"}"
+    },
+    {
+      "sequence": 68,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684308,
+      "kind": "message.accepted",
+      "subject": "c97d61f3-6785-4526-84d1-284e68367f71",
+      "detail": "{\"sequence\":7,\"senderKind\":\"daemon\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"kind\":\"ordinary\",\"delivery\":\"after_turn\"}"
+    },
+    {
+      "sequence": 69,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684309,
+      "kind": "ticket.assigned",
+      "subject": "2",
+      "detail": "{\"assignment\":\"f6ca2bb8-5337-4cb8-a523-66e695ea2ea2\",\"stage\":\"gate\",\"slotId\":\"dev/2\",\"contextMessage\":\"c97d61f3-6785-4526-84d1-284e68367f71\"}"
+    },
+    {
+      "sequence": 70,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684312,
+      "kind": "message.bound",
+      "subject": "c97d61f3-6785-4526-84d1-284e68367f71",
+      "detail": "{\"sequence\":7,\"slotId\":\"dev/2\"}"
+    },
+    {
+      "sequence": 71,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684316,
+      "kind": "message.sent",
+      "subject": "c97d61f3-6785-4526-84d1-284e68367f71",
+      "detail": "{\"attemptId\":\"30692391-84e5-4a75-a0e4-239c69149d82\",\"slotId\":\"dev/2\",\"launchId\":\"a1fa8c0d-919d-4efe-bbc7-ea855745c8e8\",\"connectionId\":\"2d17863d-b41a-4bb0-8cae-902ae119d497\"}"
+    },
+    {
+      "sequence": 72,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684321,
+      "kind": "ticket.transitioned",
+      "subject": "1",
+      "detail": "{\"assignment\":\"89d89d1e-ed81-4971-9268-a1166dc2401a\",\"outcome\":\"done\",\"fromStage\":\"gate\",\"stage\":\"gate\",\"status\":\"awaiting_approval\",\"approvalId\":1}"
+    },
+    {
+      "sequence": 73,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684321,
+      "kind": "approval.requested",
+      "subject": "1",
+      "detail": "{\"kind\":\"stage_gate\",\"ticket\":1,\"transition\":9}"
+    },
+    {
+      "sequence": 74,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684321,
+      "kind": "submission.recorded",
+      "subject": "dev/1",
+      "detail": "{\"launchId\":\"a61cd388-9f8c-425c-9e5b-5eeda85a33fa\",\"callId\":\"crash124-a61cd388-9f8c-425c-9e5b-5eeda85a33fa-89d89d1e-ed81-4971-9268-a1166dc2401a-0\",\"tool\":\"task_transition\"}"
+    },
+    {
+      "sequence": 75,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684326,
+      "kind": "message.injected",
+      "subject": "c97d61f3-6785-4526-84d1-284e68367f71",
+      "detail": "{\"slotId\":\"dev/2\",\"launchId\":\"a1fa8c0d-919d-4efe-bbc7-ea855745c8e8\",\"injectedAt\":1795661684320}"
+    },
+    {
+      "sequence": 76,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684330,
+      "kind": "message.acknowledged",
+      "subject": "c97d61f3-6785-4526-84d1-284e68367f71",
+      "detail": "{\"attemptId\":\"30692391-84e5-4a75-a0e4-239c69149d82\",\"slotId\":\"dev/2\",\"launchId\":\"a1fa8c0d-919d-4efe-bbc7-ea855745c8e8\"}"
+    },
+    {
+      "sequence": 77,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684344,
+      "kind": "ticket.transitioned",
+      "subject": "2",
+      "detail": "{\"assignment\":\"f6ca2bb8-5337-4cb8-a523-66e695ea2ea2\",\"outcome\":\"done\",\"fromStage\":\"gate\",\"stage\":\"gate\",\"status\":\"awaiting_approval\",\"approvalId\":2}"
+    },
+    {
+      "sequence": 78,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684344,
+      "kind": "approval.requested",
+      "subject": "2",
+      "detail": "{\"kind\":\"stage_gate\",\"ticket\":2,\"transition\":10}"
+    },
+    {
+      "sequence": 79,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684345,
+      "kind": "submission.recorded",
+      "subject": "dev/2",
+      "detail": "{\"launchId\":\"a1fa8c0d-919d-4efe-bbc7-ea855745c8e8\",\"callId\":\"crash124-a1fa8c0d-919d-4efe-bbc7-ea855745c8e8-f6ca2bb8-5337-4cb8-a523-66e695ea2ea2-0\",\"tool\":\"task_transition\"}"
+    },
+    {
+      "sequence": 80,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684793,
+      "kind": "factory.stopping",
+      "subject": "alpha",
+      "detail": "{\"force\":false}"
+    },
+    {
+      "sequence": 81,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684808,
+      "kind": "launch.ended",
+      "subject": "a61cd388-9f8c-425c-9e5b-5eeda85a33fa",
+      "detail": "{\"slotId\":\"dev/1\",\"reason\":\"requested\",\"unexpected\":false,\"code\":143,\"signal\":null}"
+    },
+    {
+      "sequence": 82,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684812,
+      "kind": "launch.ended",
+      "subject": "a1fa8c0d-919d-4efe-bbc7-ea855745c8e8",
+      "detail": "{\"slotId\":\"dev/2\",\"reason\":\"requested\",\"unexpected\":false,\"code\":143,\"signal\":null}"
+    },
+    {
+      "sequence": 83,
+      "factory_id": "alpha",
+      "recorded_at": 1795661684820,
+      "kind": "factory.stopped",
+      "subject": "alpha",
+      "detail": "{\"force\":false,\"launches\":2}"
+    }
+  ],
+  "submission": [
+    {
+      "launch_id": "a61cd388-9f8c-425c-9e5b-5eeda85a33fa",
+      "call_id": "crash124-a61cd388-9f8c-425c-9e5b-5eeda85a33fa-e4a0b237-3f3c-41e3-9605-5800af21935d-1",
+      "factory_id": "alpha",
+      "slot_id": "dev/1",
+      "tool": "task_transition",
+      "result": "{\"assignmentId\":\"e4a0b237-3f3c-41e3-9605-5800af21935d\",\"ticket\":1,\"stage\":\"gate\",\"status\":\"queued\"}",
+      "committed_at": 1795661684236
+    },
+    {
+      "launch_id": "a1fa8c0d-919d-4efe-bbc7-ea855745c8e8",
+      "call_id": "crash124-a1fa8c0d-919d-4efe-bbc7-ea855745c8e8-f0c38843-3ebd-4abe-ad76-cb984d28f35f-1",
+      "factory_id": "alpha",
+      "slot_id": "dev/2",
+      "tool": "task_transition",
+      "result": "{\"assignmentId\":\"f0c38843-3ebd-4abe-ad76-cb984d28f35f\",\"ticket\":2,\"stage\":\"gate\",\"status\":\"queued\"}",
+      "committed_at": 1795661684300
+    },
+    {
+      "launch_id": "a61cd388-9f8c-425c-9e5b-5eeda85a33fa",
+      "call_id": "crash124-a61cd388-9f8c-425c-9e5b-5eeda85a33fa-89d89d1e-ed81-4971-9268-a1166dc2401a-0",
+      "factory_id": "alpha",
+      "slot_id": "dev/1",
+      "tool": "task_transition",
+      "result": "{\"assignmentId\":\"89d89d1e-ed81-4971-9268-a1166dc2401a\",\"ticket\":1,\"stage\":\"gate\",\"status\":\"awaiting_approval\",\"approvalId\":1}",
+      "committed_at": 1795661684321
+    },
+    {
+      "launch_id": "a1fa8c0d-919d-4efe-bbc7-ea855745c8e8",
+      "call_id": "crash124-a1fa8c0d-919d-4efe-bbc7-ea855745c8e8-f6ca2bb8-5337-4cb8-a523-66e695ea2ea2-0",
+      "factory_id": "alpha",
+      "slot_id": "dev/2",
+      "tool": "task_transition",
+      "result": "{\"assignmentId\":\"f6ca2bb8-5337-4cb8-a523-66e695ea2ea2\",\"ticket\":2,\"stage\":\"gate\",\"status\":\"awaiting_approval\",\"approvalId\":2}",
+      "committed_at": 1795661684344
+    }
+  ],
+  "approval": [
+    {
+      "id": 1,
+      "factory_id": "alpha",
+      "ticket_number": 1,
+      "assignment_id": "89d89d1e-ed81-4971-9268-a1166dc2401a",
+      "transition_sequence": 9,
+      "kind": "stage_gate",
+      "state": "open",
+      "raised_at": 1795661684320,
+      "closed_at": null,
+      "request_body": null,
+      "request_stage": null,
+      "decision": null,
+      "resolution_transition": null
+    },
+    {
+      "id": 2,
+      "factory_id": "alpha",
+      "ticket_number": 2,
+      "assignment_id": "f6ca2bb8-5337-4cb8-a523-66e695ea2ea2",
+      "transition_sequence": 10,
+      "kind": "stage_gate",
+      "state": "open",
+      "raised_at": 1795661684344,
+      "closed_at": null,
+      "request_body": null,
+      "request_stage": null,
+      "decision": null,
+      "resolution_transition": null
+    }
+  ]
+}

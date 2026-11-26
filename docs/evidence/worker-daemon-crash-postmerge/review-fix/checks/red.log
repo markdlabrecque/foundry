@@ -1,0 +1,834 @@
+TAP version 13
+# Subtest: restored custom_message history remains observed history, not a new fresh assignment
+ok 1 - restored custom_message history remains observed history, not a new fresh assignment
+  ---
+  duration_ms: 0.860735
+  type: 'test'
+  ...
+# Subtest: ownership observation accepts real tab-delimited proc Uid and rejects missing/different uid
+ok 2 - ownership observation accepts real tab-delimited proc Uid and rejects missing/different uid
+  ---
+  duration_ms: 0.178765
+  type: 'test'
+  ...
+# Subtest: completed independent Git effects plus actual continuation/store outcomes satisfy the observation oracle
+ok 3 - completed independent Git effects plus actual continuation/store outcomes satisfy the observation oracle
+  ---
+  duration_ms: 1.10865
+  type: 'test'
+  ...
+# Subtest: lost accepted message
+ok 4 - lost accepted message
+  ---
+  duration_ms: 0.267521
+  type: 'test'
+  ...
+# Subtest: changed accepted body
+ok 5 - changed accepted body
+  ---
+  duration_ms: 0.267723
+  type: 'test'
+  ...
+# Subtest: rerouted existing binding
+ok 6 - rerouted existing binding
+  ---
+  duration_ms: 0.14424
+  type: 'test'
+  ...
+# Subtest: unacknowledged retained row
+ok 7 - unacknowledged retained row
+  ---
+  duration_ms: 0.190147
+  type: 'test'
+  ...
+# Subtest: duplicate ordinary effect
+ok 8 - duplicate ordinary effect
+  ---
+  duration_ms: 0.096832
+  type: 'test'
+  ...
+# Subtest: no actual ordinary processing
+ok 9 - no actual ordinary processing
+  ---
+  duration_ms: 0.200336
+  type: 'test'
+  ...
+# Subtest: changed artifact
+ok 10 - changed artifact
+  ---
+  duration_ms: 0.219331
+  type: 'test'
+  ...
+# Subtest: lost original assignment
+ok 11 - lost original assignment
+  ---
+  duration_ms: 0.142197
+  type: 'test'
+  ...
+# Subtest: rerouted original assignment
+ok 12 - rerouted original assignment
+  ---
+  duration_ms: 0.091372
+  type: 'test'
+  ...
+# Subtest: ticket never progresses
+ok 13 - ticket never progresses
+  ---
+  duration_ms: 0.065302
+  type: 'test'
+  ...
+# Subtest: duplicate outcome transition
+ok 14 - duplicate outcome transition
+  ---
+  duration_ms: 0.058921
+  type: 'test'
+  ...
+# Subtest: no operator handoff
+ok 15 - no operator handoff
+  ---
+  duration_ms: 0.04774
+  type: 'test'
+  ...
+# Subtest: duplicate actual Git commit
+ok 16 - duplicate actual Git commit
+  ---
+  duration_ms: 0.044474
+  type: 'test'
+  ...
+# Subtest: duplicate committed file effect
+ok 17 - duplicate committed file effect
+  ---
+  duration_ms: 0.044885
+  type: 'test'
+  ...
+# Subtest: duplicate external commit attempt
+ok 18 - duplicate external commit attempt
+  ---
+  duration_ms: 0.098695
+  type: 'test'
+  ...
+# Subtest: wrong committed SHA
+ok 19 - wrong committed SHA
+  ---
+  duration_ms: 0.070132
+  type: 'test'
+  ...
+# Subtest: duplicate daemon tool commit
+ok 20 - duplicate daemon tool commit
+  ---
+  duration_ms: 0.059482
+  type: 'test'
+  ...
+# Subtest: no actual held tool continuation
+ok 21 - no actual held tool continuation
+  ---
+  duration_ms: 0.056536
+  type: 'test'
+  ...
+# Subtest: tool failure despite stored rows
+ok 22 - tool failure despite stored rows
+  ---
+  duration_ms: 0.054913
+  type: 'test'
+  ...
+# Subtest: missing Git observations
+ok 23 - missing Git observations
+  ---
+  duration_ms: 0.045666
+  type: 'test'
+  ...
+# Subtest: foreign untracked commit effect
+ok 24 - foreign untracked commit effect
+  ---
+  duration_ms: 0.050414
+  type: 'test'
+  ...
+# Subtest: continuation before post-reconnect release
+ok 25 - continuation before post-reconnect release
+  ---
+  duration_ms: 0.05889
+  type: 'test'
+  ...
+# Subtest: continuation on a replacement after daemon restart
+ok 26 - continuation on a replacement after daemon restart
+  ---
+  duration_ms: 0.049854
+  type: 'test'
+  ...
+# Subtest: additional launch after continuation
+ok 27 - additional launch after continuation
+  ---
+  duration_ms: 0.044864
+  type: 'test'
+  ...
+# Subtest: relationship mutation rejected: stripped committed submission identities/results
+not ok 28 - relationship mutation rejected: stripped committed submission identities/results
+  ---
+  duration_ms: 0.487665
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: unknown tool-result launch/call/assignment
+not ok 29 - relationship mutation rejected: unknown tool-result launch/call/assignment
+  ---
+  duration_ms: 0.231073
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: invalid approval assignment/transition references
+not ok 30 - relationship mutation rejected: invalid approval assignment/transition references
+  ---
+  duration_ms: 0.153568
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: wrong committed transition Git heads
+not ok 31 - relationship mutation rejected: wrong committed transition Git heads
+  ---
+  duration_ms: 0.118252
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: wrong independently observed Git base
+not ok 32 - relationship mutation rejected: wrong independently observed Git base
+  ---
+  duration_ms: 0.115707
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: missing both downstream assignment contexts
+not ok 33 - relationship mutation rejected: missing both downstream assignment contexts
+  ---
+  duration_ms: 0.120145
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: new accepted but unprocessed message
+not ok 34 - relationship mutation rejected: new accepted but unprocessed message
+  ---
+  duration_ms: 0.148438
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: submission launch mismatch
+not ok 35 - relationship mutation rejected: submission launch mismatch
+  ---
+  duration_ms: 0.142838
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: submission call mismatch
+not ok 36 - relationship mutation rejected: submission call mismatch
+  ---
+  duration_ms: 0.182563
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: submission slot mismatch
+not ok 37 - relationship mutation rejected: submission slot mismatch
+  ---
+  duration_ms: 0.134823
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: submission factory mismatch
+not ok 38 - relationship mutation rejected: submission factory mismatch
+  ---
+  duration_ms: 0.11167
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: submission result assigned to another ticket
+not ok 39 - relationship mutation rejected: submission result assigned to another ticket
+  ---
+  duration_ms: 0.187993
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: unparseable submission result
+not ok 40 - relationship mutation rejected: unparseable submission result
+  ---
+  duration_ms: 0.226545
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: event slot mismatch
+not ok 41 - relationship mutation rejected: event slot mismatch
+  ---
+  duration_ms: 0.120125
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: event input Git mismatch
+not ok 42 - relationship mutation rejected: event input Git mismatch
+  ---
+  duration_ms: 0.105247
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: event details result mismatch
+not ok 43 - relationship mutation rejected: event details result mismatch
+  ---
+  duration_ms: 0.110417
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: event text result mismatch
+not ok 44 - relationship mutation rejected: event text result mismatch
+  ---
+  duration_ms: 0.109836
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: duplicate approval IDs
+not ok 45 - relationship mutation rejected: duplicate approval IDs
+  ---
+  duration_ms: 0.107582
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: wrong approval reference in committed result
+not ok 46 - relationship mutation rejected: wrong approval reference in committed result
+  ---
+  duration_ms: 0.118483
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: transition actor mismatch
+not ok 47 - relationship mutation rejected: transition actor mismatch
+  ---
+  duration_ms: 0.097713
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: recorded start commit differs from original ticket
+not ok 48 - relationship mutation rejected: recorded start commit differs from original ticket
+  ---
+  duration_ms: 0.09072
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: gate context binding mismatch
+not ok 49 - relationship mutation rejected: gate context binding mismatch
+  ---
+  duration_ms: 0.385013
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: gate context not acknowledged
+not ok 50 - relationship mutation rejected: gate context not acknowledged
+  ---
+  duration_ms: 0.130064
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: gate context body assignment mismatch
+not ok 51 - relationship mutation rejected: gate context body assignment mismatch
+  ---
+  duration_ms: 0.096381
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: relationship mutation rejected: unexpected extra acknowledged accepted work
+not ok 52 - relationship mutation rejected: unexpected extra acknowledged accepted work
+  ---
+  duration_ms: 0.093876
+  type: 'test'
+  location: '<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:123:3'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly equal:
+
+    0 !== 1
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected: 1
+  actual: 0
+  operator: 'strictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<USER_HOME>/f124rv-GYWJQo/red/verify.test.mjs:126:12)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.processPendingSubtests (node:internal/test_runner/test:744:18)
+    Test.postRun (node:internal/test_runner/test:1173:19)
+    Test.run (node:internal/test_runner/test:1101:12)
+    async Test.processPendingSubtests (node:internal/test_runner/test:744:7)
+  ...
+# Subtest: initially unbound acceptance may bind once, but never change an existing binding
+ok 53 - initially unbound acceptance may bind once, but never change an existing binding
+  ---
+  duration_ms: 0.070503
+  type: 'test'
+  ...
+# Subtest: every missing/false observation and incomplete journey fails closed even when reconnect is true
+ok 54 - every missing/false observation and incomplete journey fails closed even when reconnect is true
+  ---
+  duration_ms: 0.204493
+  type: 'test'
+  ...
+1..54
+# tests 54
+# suites 0
+# pass 29
+# fail 25
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 46.895337

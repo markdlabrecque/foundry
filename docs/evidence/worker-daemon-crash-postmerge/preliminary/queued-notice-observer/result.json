@@ -1,0 +1,358 @@
+{
+  "result": "unmet-or-unverified",
+  "failed": [
+    "workerReplacementRecovered",
+    "sameHostAndSurvivingLaunches",
+    "survivingWorkersReconnected",
+    "channelTrafficResumed",
+    "noDaemonRestartWorkReplay",
+    "acceptedWorkRetained",
+    "ordinaryMessagesProcessed",
+    "artifactBindingsUnchanged",
+    "originalAssignmentsHonored",
+    "trackedTicketsContinued",
+    "noDuplicateCommittedEffects",
+    "actualWorkContinued",
+    "realToolResultsSucceeded",
+    "orderlyCleanup"
+  ],
+  "exitCode": 1,
+  "productionBase": "089ab52ac2deeeac53c59e8597605bcad309127a",
+  "journeyCompleted": false,
+  "checks": {
+    "freshProtocol5Host": true,
+    "originalWorkActive": true,
+    "privateTempPropagated": true,
+    "orderlyCleanup": false,
+    "cleanup": true,
+    "cleanupPhasesSucceeded": true
+  },
+  "cleanupErrors": [],
+  "events": [
+    {
+      "at": "2026-11-26T02:50:12.750Z",
+      "event": "versions",
+      "detail": {
+        "node": "v22.23.2",
+        "platform": "linux x64",
+        "kernel": "7.2.15-1-omarchy",
+        "pi": "1.6.0",
+        "productionBase": "089ab52ac2deeeac53c59e8597605bcad309127a",
+        "sourceBase": "0a660ded84b2a94bf3462710273fbcf31b8e912f",
+        "fixture": {
+          "driver": "<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/worker.mjs",
+          "yaml": "version: 1\nname: alpha\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\nworktrees:\n  root: \"<USER_HOME>/f124a-cr7eV2/worktrees\"\nrooms:\n  eng:\n    stations:\n      dev:\n        instances: 2\n        isolation: worktree\n        model: crash-124/scripted\n        extensions: [{ path: \"<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/worker.mjs\", tools: [fixture_work] }]\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: implement\n        station: eng.dev\n        writing: true\n      - id: gate\n        station: eng.dev\n        approval: true\n        on_rejection: implement\n",
+          "env": {
+            "PATH":"<REDACTED inherited PATH>",
+            "HOME": "<USER_HOME>/f124a-cr7eV2/user",
+            "TMPDIR": "<USER_HOME>/f124a-cr7eV2/t",
+            "XDG_CONFIG_HOME": "<USER_HOME>/f124a-cr7eV2/user/.config",
+            "XDG_DATA_HOME": "<USER_HOME>/f124a-cr7eV2/user/.local/share",
+            "XDG_CACHE_HOME": "<USER_HOME>/f124a-cr7eV2/user/.cache",
+            "PI_CODING_AGENT_DIR": "<USER_HOME>/f124a-cr7eV2/agent",
+            "PI_OFFLINE": "1",
+            "PI_TELEMETRY": "0",
+            "PROBE_DIR": "<USER_HOME>/f124a-cr7eV2/probe",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_AUTHOR_NAME": "Foundry Fixture",
+            "GIT_AUTHOR_EMAIL": "fixture@foundry.invalid",
+            "GIT_COMMITTER_NAME": "Foundry Fixture",
+            "GIT_COMMITTER_EMAIL": "fixture@foundry.invalid",
+            "FOUNDRY_HOME": "<USER_HOME>/f124a-cr7eV2/unused",
+            "FOUNDRY_WORKER_RUNTIME": "rpc"
+          },
+          "FOUNDRY_PI_BIN": "UNSET; no shim"
+        },
+        "evidenceSourceSha256": {
+          "worker-daemon-crash-postmerge/run-probe.mjs": "f68c336912a49198f00f0e311cde02e5c74d94a3cd7f954615227528ce49b507",
+          "worker-daemon-crash-postmerge/worker.mjs": "e5e8ba31302cd07f5925121b3ebf209ece54b70a39ce519e18e386e5dcbbf1a2",
+          "worker-daemon-crash-postmerge/verify.mjs": "74ff7feccdea0ff04ef340c433f8ebd9b850795bc11715a771421da7becbe90d",
+          "worker-daemon-crash-linux/verdict.mjs": "23f4ec633a6a14f7b66a8a063417bf0df7458fefb5f30e7385bb9418f1372630",
+          "worker-daemon-crash-linux/normalize.mjs": "fbe4e0c480e15a9a0a179f9c8d372a9d56f9dafff1bc9a9b23d0a42d15df5849"
+        }
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:13.152Z",
+      "event": "daemon serving",
+      "detail": {
+        "pid": 3201622,
+        "args": [
+          "<CHECKOUT>/packages/daemon/dist/main.js",
+          "--home",
+          "<USER_HOME>/f124a-cr7eV2/home",
+          "--log-level",
+          "debug",
+          "<USER_HOME>/f124a-cr7eV2/factory.yaml"
+        ],
+        "stderr": "{\"time\":\"2026-11-26T02:50:12.984Z\",\"level\":\"info\",\"runId\":\"b560677d-e4f2-49ae-b083-fade5b865413\",\"msg\":\"factory clone created\",\"factoryId\":\"alpha\",\"detail\":{\"path\":\"<USER_HOME>/f124a-cr7eV2/home/clones/alpha\",\"source\":\"<USER_HOME>/f124a-cr7eV2/repo\"}}\n{\"time\":\"2026-11-26T02:50:12.999Z\",\"level\":\"info\",\"runId\":\"b560677d-e4f2-49ae-b083-fade5b865413\",\"msg\":\"factory configuration loaded\",\"factoryId\":\"alpha\",\"detail\":{\"loadId\":1,\"configHash\":\"sha256:64a3f5dd50556591014cd4c2a08e33abeeafc5551faa2982bdd73143073bc0fb\"}}\n{\"time\":\"2026-11-26T02:50:13.132Z\",\"level\":\"info\",\"runId\":\"b560677d-e4f2-49ae-b083-fade5b865413\",\"msg\":\"slot started\",\"factoryId\":\"alpha\",\"slotId\":\"dev/1\",\"launchId\":\"3f76bb16-2950-482b-ae53-a3a8180c81d6\"}\n{\"time\":\"2026-11-26T02:50:13.132Z\",\"level\":\"info\",\"runId\":\"b560677d-e4f2-49ae-b083-fade5b865413\",\"msg\":\"slot started\",\"factoryId\":\"alpha\",\"slotId\":\"dev/2\",\"launchId\":\"e15dc58b-2389-4f09-bfed-615a4fe421fb\"}\n{\"time\":\"2026-11-26T02:50:13.135Z\",\"level\":\"info\",\"runId\":\"b560677d-e4f2-49ae-b083-fade5b865413\",\"msg\":\"daemon started\",\"detail\":{\"pid\":3201622,\"stateRoot\":\"<USER_HOME>/f124a-cr7eV2/home\",\"socket\":\"<USER_HOME>/f124a-cr7eV2/home/management.sock\",\"logLevel\":\"debug\"}}\n"
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:13.436Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "submit",
+          "<USER_HOME>/f124a-cr7eV2/spec-1.md",
+          "--home",
+          "<USER_HOME>/f124a-cr7eV2/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":1,\"title\":\"Crash durability 1\",\"slug\":\"crash-durability-1\",\"line\":\"f\",\"state\":\"backlog\",\"stage\":null,\"status\":null,\"submittedAt\":\"2026-11-26T02:50:13.421Z\",\"directory\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/1\",\"specPath\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/1/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/1/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":null},\"transitions\":[{\"at\":\"2026-11-26T02:50:13.421Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:13.722Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "submit",
+          "<USER_HOME>/f124a-cr7eV2/spec-2.md",
+          "--home",
+          "<USER_HOME>/f124a-cr7eV2/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":2,\"title\":\"Crash durability 2\",\"slug\":\"crash-durability-2\",\"line\":\"f\",\"state\":\"backlog\",\"stage\":null,\"status\":null,\"submittedAt\":\"2026-11-26T02:50:13.697Z\",\"directory\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/2\",\"specPath\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/2/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/2/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":null},\"transitions\":[{\"at\":\"2026-11-26T02:50:13.697Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:14.005Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "show",
+          "2",
+          "--home",
+          "<USER_HOME>/f124a-cr7eV2/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":2,\"title\":\"Crash durability 2\",\"slug\":\"crash-durability-2\",\"line\":\"f\",\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\",\"submittedAt\":\"2026-11-26T02:50:13.697Z\",\"directory\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/2\",\"specPath\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/2/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/2/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":{\"path\":\"<USER_HOME>/f124a-cr7eV2/worktrees/alpha/2-crash-durability-2\",\"branch\":\"ticket/2-crash-durability-2\",\"startCommit\":\"0a660ded84b2a94bf3462710273fbcf31b8e912f\"}},\"transitions\":[{\"at\":\"2026-11-26T02:50:13.697Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T02:50:13.735Z\",\"actor\":\"daemon\",\"from\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"to\":{\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\"},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:14.018Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "show",
+          "1",
+          "--home",
+          "<USER_HOME>/f124a-cr7eV2/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":1,\"title\":\"Crash durability 1\",\"slug\":\"crash-durability-1\",\"line\":\"f\",\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\",\"submittedAt\":\"2026-11-26T02:50:13.421Z\",\"directory\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/1\",\"specPath\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/1/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/1/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":{\"path\":\"<USER_HOME>/f124a-cr7eV2/worktrees/alpha/1-crash-durability-1\",\"branch\":\"ticket/1-crash-durability-1\",\"startCommit\":\"0a660ded84b2a94bf3462710273fbcf31b8e912f\"}},\"transitions\":[{\"at\":\"2026-11-26T02:50:13.421Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T02:50:13.492Z\",\"actor\":\"daemon\",\"from\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"to\":{\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\"},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:14.024Z",
+      "event": "before worker kill",
+      "detail": {
+        "first": {
+          "identity": {
+            "hostId": "af8f922d-2c11-4296-975f-03b3573dbda5",
+            "pid": 3201637,
+            "startedAt": "2026-11-26T02:50:13.105Z",
+            "stateRoot": "<USER_HOME>/f124a-cr7eV2/home",
+            "controlVersion": 5,
+            "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110"
+          },
+          "launches": [
+            {
+              "launchId": "3f76bb16-2950-482b-ae53-a3a8180c81d6",
+              "factoryId": "alpha",
+              "slotId": "dev/1",
+              "pid": 3201648,
+              "pgid": 3201648,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T02:50:13.119Z",
+              "liveness": "live"
+            },
+            {
+              "launchId": "e15dc58b-2389-4f09-bfed-615a4fe421fb",
+              "factoryId": "alpha",
+              "slotId": "dev/2",
+              "pid": 3201654,
+              "pgid": 3201654,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T02:50:13.128Z",
+              "liveness": "live"
+            }
+          ]
+        },
+        "tempPropagation": [
+          {
+            "pid": 3201622,
+            "tmpdir": "<USER_HOME>/f124a-cr7eV2/t"
+          },
+          {
+            "pid": 3201637,
+            "tmpdir": "<USER_HOME>/f124a-cr7eV2/t"
+          },
+          {
+            "pid": 3201648,
+            "tmpdir": "<USER_HOME>/f124a-cr7eV2/t"
+          },
+          {
+            "pid": 3201654,
+            "tmpdir": "<USER_HOME>/f124a-cr7eV2/t"
+          }
+        ],
+        "artifactsBefore": [
+          {
+            "number": 1,
+            "directory": "<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/1",
+            "specPath": "<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/1/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/1/evidence",
+            "worktree": {
+              "path": "<USER_HOME>/f124a-cr7eV2/worktrees/alpha/1-crash-durability-1",
+              "branch": "ticket/1-crash-durability-1",
+              "startCommit": "0a660ded84b2a94bf3462710273fbcf31b8e912f"
+            },
+            "specHash": "1378b063df8e1245f53569ae3fc5dec980fb3302421b33ff4ffe5d409f2435b5",
+            "body": "COMMITTED_EFFECT ticket=1 assignment=72a36cc8-5e9c-433f-9c95-2cb28e28d2c4\n",
+            "head": "5acce9fca6689803de8a8fdaaaff4a8a9dd89591"
+          },
+          {
+            "number": 2,
+            "directory": "<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/2",
+            "specPath": "<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/2/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-cr7eV2/home/tickets/alpha/2/evidence",
+            "worktree": {
+              "path": "<USER_HOME>/f124a-cr7eV2/worktrees/alpha/2-crash-durability-2",
+              "branch": "ticket/2-crash-durability-2",
+              "startCommit": "0a660ded84b2a94bf3462710273fbcf31b8e912f"
+            },
+            "specHash": "b9cd3922b0d9990c76a07153eb1e4dd2693d00561b93f581e7fbadf93d586aa3",
+            "body": "COMMITTED_EFFECT ticket=2 assignment=253d99e1-24d3-48d7-8348-34bcdb2add6c\n",
+            "head": "e330c74dd61ae39db36abf59306947de4fb615c8"
+          }
+        ],
+        "checks": {
+          "freshProtocol5Host": true,
+          "originalWorkActive": true,
+          "privateTempPropagated": true
+        }
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:14.289Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "message",
+          "send",
+          "eng.dev",
+          "FOU124_BEFORE_WORKER",
+          "--delivery",
+          "when_idle",
+          "--home",
+          "<USER_HOME>/f124a-cr7eV2/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"id\":\"2b64cdd4-c10d-4023-a643-1eaf2b653f34\",\"sequence\":3,\"factoryId\":\"alpha\",\"senderKind\":\"operator\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"body\":\"FOU124_BEFORE_WORKER\",\"delivery\":\"when_idle\",\"kind\":\"ordinary\",\"ticket\":null,\"requestId\":null,\"delegationId\":null,\"status\":\"unbound\"}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:14.295Z",
+      "event": "worker group SIGKILL",
+      "detail": {
+        "launchId": "3f76bb16-2950-482b-ae53-a3a8180c81d6",
+        "factoryId": "alpha",
+        "slotId": "dev/1",
+        "pid": 3201648,
+        "pgid": 3201648,
+        "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+        "startedAt": "2026-11-26T02:50:13.119Z",
+        "liveness": "live"
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:59.341Z",
+      "event": "first failure",
+      "detail": {
+        "stack": "Error: replacement inspects prior commit and holds the same assignment: not observed within 45000ms\n    at until (file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:63:9)\n    at async file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:224:3"
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:59.358Z",
+      "event": "pre-fallback cleanup",
+      "detail": {
+        "shutdownSucceeded": false,
+        "markedPids": [
+          3201622,
+          3201637,
+          3201654,
+          3201936
+        ],
+        "groups": [
+          {
+            "pgid": 3201648,
+            "liveMembers": []
+          },
+          {
+            "pgid": 3201654,
+            "liveMembers": [
+              3201654
+            ]
+          }
+        ],
+        "orderly": false
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:59.361Z",
+      "event": "daemon SIGKILL",
+      "detail": {
+        "code": null,
+        "signal": "SIGKILL"
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:59.508Z",
+      "event": "marker sweep",
+      "detail": {
+        "survivors": [],
+        "groups": [
+          {
+            "pgid": 3201648,
+            "liveMembers": []
+          },
+          {
+            "pgid": 3201654,
+            "liveMembers": []
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-11-26T02:50:59.518Z",
+      "event": "cleanup",
+      "detail": {
+        "survivors": [],
+        "rootRemoved": true
+      }
+    }
+  ]
+}

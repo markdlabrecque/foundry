@@ -1,0 +1,27 @@
+version: 1
+name: alpha
+repository:
+  source: ./repo
+  default_branch: main
+default_production_line: f
+worktrees:
+  root: "<USER_HOME>/f124a-3kftxW/worktrees"
+rooms:
+  eng:
+    stations:
+      dev:
+        instances: 2
+        isolation: worktree
+        model: crash-124/scripted
+        extensions: [{ path: "<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/worker.mjs", tools: [fixture_work] }]
+production_lines:
+  f:
+    verify: ["true"]
+    stages:
+      - id: implement
+        station: eng.dev
+        writing: true
+      - id: gate
+        station: eng.dev
+        approval: true
+        on_rejection: implement
