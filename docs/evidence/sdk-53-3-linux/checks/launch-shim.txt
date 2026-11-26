@@ -1,0 +1,4 @@
+#!/bin/sh
+# Only restore private TMPDIR in Pi children whose testkit env drops it.
+export TMPDIR='<CHECK_ROOT>/t'
+exec '<NODE>' '<REPO>/node_modules/@earendil-works/pi-coding-agent/dist/cli.js' "$@"

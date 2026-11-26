@@ -1,0 +1,11 @@
+{
+  "selectedRecordedObservationsChecked": true,
+  "zeroFetch": true,
+  "cleanupVerified": true,
+  "missingNamedHold": "verified",
+  "reservedNamedHold": "verified",
+  "clearedAndInheritedControl": "verified",
+  "agentCollisionRefusedWithSource": "verified",
+  "agentNamedMismatchHold": "unmet: early loader refusal then parked_slot",
+  "qualification": "blocked on tested implementation; not passed"
+}

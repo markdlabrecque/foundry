@@ -1,0 +1,20 @@
+{
+  pi: '1.6.0',
+  node: 'v22.23.2',
+  platform: 'linux 7.2.15-1-omarchy',
+  foundry: '9a82105'
+}
+missing: written <REPO>/docs/evidence/sdk-53-3-linux/results/missing.json
+reserved: written <REPO>/docs/evidence/sdk-53-3-linux/results/reserved.json
+cleared: written <REPO>/docs/evidence/sdk-53-3-linux/results/cleared.json
+foundry: /api/v1/slots unavailable: Expected "normal" | "frozen"
+foundry: /api/v1/slots/dev/1 unavailable: Expected "normal" | "frozen"
+agent-name: written <REPO>/docs/evidence/sdk-53-3-linux/results/agent-name.json
+file://<REPO>/docs/evidence/sdk-53-3-linux/.generated-2830073.mjs:264
+  if (result.observationError || result.cleanupError) throw new Error(`Stopped at ${name}; see retained result`);
+                                                            ^
+
+Error: Stopped at agent-name; see retained result
+    at file://<REPO>/docs/evidence/sdk-53-3-linux/.generated-2830073.mjs:264:61
+
+Node.js v22.23.2

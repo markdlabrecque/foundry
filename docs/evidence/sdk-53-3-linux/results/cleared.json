@@ -1,0 +1,273 @@
+{
+  "variant": "cleared",
+  "root": "<PROBE_TMP>/fou153-cleared-1yYHo3",
+  "factoryYaml": "version: 1\nname: probe\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\ndefaults:\n  extensions: [{ path: \"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts\", tools: [probe_named] }]\nrooms:\n  eng:\n    stations:\n      inherit:\n        isolation: worktree\n        model: openai/gpt-4.1-mini\n      cleared:\n        isolation: worktree\n        model: openai/gpt-4.1-mini\n        extensions: []\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: s0\n        station: eng.inherit\n        writing: true\n      - id: s1\n        station: eng.cleared\n        writing: false\n      - id: approve\n        station: eng.inherit\n        approval: true\n        on_rejection: s0\n",
+  "validate": {
+    "code": 0,
+    "out": "<PROBE_TMP>/fou153-cleared-1yYHo3/factory.yaml: factory \"probe\" is valid\nTool Set for eng.inherit (13 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\n  probe_named      extension <REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts\nTool Set for eng.cleared (12 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\nExtension tools are listed as configured; whether each extension registers them is not checked.\n"
+  },
+  "daemonLog": [
+    {
+      "level": "info",
+      "runId": "d3386a50-2f7d-40a6-8ff4-a22c331cc5ad",
+      "msg": "channel accepted",
+      "factoryId": "probe",
+      "slotId": "cleared/1",
+      "launchId": "6b84355f-4e3b-44b9-87d0-856d2acf25d1",
+      "detail": {
+        "mode": "headless",
+        "tools": 12
+      }
+    },
+    {
+      "level": "info",
+      "runId": "d3386a50-2f7d-40a6-8ff4-a22c331cc5ad",
+      "msg": "channel accepted",
+      "factoryId": "probe",
+      "slotId": "inherit/1",
+      "launchId": "5ff5dae7-4803-4f68-ae5e-61bef299a26f",
+      "detail": {
+        "mode": "headless",
+        "tools": 13
+      }
+    }
+  ],
+  "holdList": {
+    "code": 0,
+    "out": "no open holds\n"
+  },
+  "holdShow": [],
+  "slotList": {
+    "code": 0,
+    "out": "probe  inherit/1  eng.inherit  normal  launch 5ff5dae7-4803-4f68-ae5e-61bef299a26f live (pid 2830517)\nprobe  cleared/1  eng.cleared  normal  launch 6b84355f-4e3b-44b9-87d0-856d2acf25d1 live (pid 2830523)\n"
+  },
+  "slotShow": [
+    {
+      "code": 0,
+      "out": "slot        inherit/1\nfactory     probe\nstation     eng.inherit\ncondition   normal\nlaunches\n  5ff5dae7-4803-4f68-ae5e-61bef299a26f  started  started 2026-11-26T01:19:21.931Z  pid 2830517  live\n"
+    },
+    {
+      "code": 0,
+      "out": "slot        cleared/1\nfactory     probe\nstation     eng.cleared\ncondition   normal\nlaunches\n  6b84355f-4e3b-44b9-87d0-856d2acf25d1  started  started 2026-11-26T01:19:21.940Z  pid 2830523  live\n"
+    }
+  ],
+  "markers": {
+    "5ff5dae7-4803-4f68-ae5e-61bef299a26f.network.json": {
+      "fetchCalls": 0,
+      "denied": true
+    },
+    "5ff5dae7-4803-4f68-ae5e-61bef299a26f.process.json": {
+      "pid": 2830517,
+      "pgid": 2830517,
+      "launchId": "5ff5dae7-4803-4f68-ae5e-61bef299a26f",
+      "slot": "inherit/1",
+      "runtime": "sdk"
+    },
+    "6b84355f-4e3b-44b9-87d0-856d2acf25d1.network.json": {
+      "fetchCalls": 0,
+      "denied": true
+    },
+    "6b84355f-4e3b-44b9-87d0-856d2acf25d1.process.json": {
+      "pid": 2830523,
+      "pgid": 2830523,
+      "launchId": "6b84355f-4e3b-44b9-87d0-856d2acf25d1",
+      "slot": "cleared/1",
+      "runtime": "sdk"
+    },
+    "cleared_1.launch.6b84355f-4e3b-44b9-87d0-856d2acf25d1.json": {
+      "execPath": "<NODE>",
+      "argv": [
+        "<REPO>/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "ae79b7a7-ef8a-4aa2-a7f7-c26b1ecff892",
+        "--model",
+        "openai/gpt-4.1-mini",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request",
+        "--extension",
+        "<REPO>/packages/extension/dist/index.js"
+      ],
+      "cwd": "<PROBE_TMP>/fou153-cleared-1yYHo3/home/slots/probe/cleared-1"
+    },
+    "cleared_1.launch.6b84355f-4e3b-44b9-87d0-856d2acf25d1.stderr.log": "",
+    "cleared_1.launch.6b84355f-4e3b-44b9-87d0-856d2acf25d1.stdout.log": "",
+    "inherit_1.launch.5ff5dae7-4803-4f68-ae5e-61bef299a26f.json": {
+      "execPath": "<NODE>",
+      "argv": [
+        "<REPO>/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "17b60991-32d0-45a7-a438-2d6ca0518e1e",
+        "--model",
+        "openai/gpt-4.1-mini",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_named",
+        "--extension",
+        "<REPO>/packages/extension/dist/index.js",
+        "--extension",
+        "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts"
+      ],
+      "cwd": "<PROBE_TMP>/fou153-cleared-1yYHo3/home/slots/probe/inherit-1"
+    },
+    "inherit_1.launch.5ff5dae7-4803-4f68-ae5e-61bef299a26f.stderr.log": "",
+    "inherit_1.launch.5ff5dae7-4803-4f68-ae5e-61bef299a26f.stdout.log": "",
+    "inherit_1.named.loaded.json": {
+      "argv": [
+        "<NODE>",
+        "<REPO>/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "17b60991-32d0-45a7-a438-2d6ca0518e1e",
+        "--model",
+        "openai/gpt-4.1-mini",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_named",
+        "--extension",
+        "<REPO>/packages/extension/dist/index.js",
+        "--extension",
+        "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts"
+      ],
+      "registers": [
+        "probe_named"
+      ],
+      "launchId": "5ff5dae7-4803-4f68-ae5e-61bef299a26f"
+    },
+    "inherit_1.named.session.json": {
+      "all": [
+        {
+          "name": "read",
+          "source": "builtin:read"
+        },
+        {
+          "name": "bash",
+          "source": "builtin:bash"
+        },
+        {
+          "name": "edit",
+          "source": "builtin:edit"
+        },
+        {
+          "name": "write",
+          "source": "builtin:write"
+        },
+        {
+          "name": "agent_discover",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_status",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_message",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_request",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_delegate",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_reply",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "task_transition",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "human_request",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "probe_named",
+          "source": "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts"
+        }
+      ],
+      "active": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "agent_discover",
+        "agent_status",
+        "agent_message",
+        "agent_request",
+        "agent_reply",
+        "agent_delegate",
+        "task_transition",
+        "human_request",
+        "probe_named"
+      ]
+    }
+  },
+  "ownedProcesses": [
+    {
+      "pid": 2830517,
+      "pgid": 2830517,
+      "launchId": "5ff5dae7-4803-4f68-ae5e-61bef299a26f",
+      "slot": "inherit/1",
+      "runtime": "sdk"
+    },
+    {
+      "pid": 2830523,
+      "pgid": 2830523,
+      "launchId": "6b84355f-4e3b-44b9-87d0-856d2acf25d1",
+      "slot": "cleared/1",
+      "runtime": "sdk"
+    }
+  ],
+  "shutdown": {
+    "code": 0,
+    "out": "factory probe stopped (2 worker(s))\nworker host stopped\nshutdown complete (forced)\n"
+  },
+  "cleanup": {
+    "ownedGroups": [
+      2830517,
+      2830523
+    ],
+    "remaining": [],
+    "daemonExited": true,
+    "rootRemoved": true
+  }
+}
