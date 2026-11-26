@@ -1,0 +1,217 @@
+{
+  "variant": "missing",
+  "root": "/tmp/fou153-missing-dNpnTI",
+  "factoryYaml": "version: 1\nname: probe\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\nrooms:\n  eng:\n    stations:\n      dev:\n        isolation: worktree\n        model: probe-local/inert\n        extensions: [{ path: \"/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/docs/evidence/rpc-53-3-linux/fixtures/missing.ts\", tools: [probe_absent] }]\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: s0\n        station: eng.dev\n        writing: true\n      - id: approve\n        station: eng.dev\n        approval: true\n        on_rejection: s0\n",
+  "validate": {
+    "code": 0,
+    "out": "/tmp/fou153-missing-dNpnTI/factory.yaml: factory \"probe\" is valid\nTool Set for eng.dev (13 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\n  probe_absent     extension /home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/docs/evidence/rpc-53-3-linux/fixtures/missing.ts\nExtension tools are listed as configured; whether each extension registers them is not checked.\n"
+  },
+  "observationError": "Error: timed out waiting for every slot's hello",
+  "daemonOutput": "{\"time\":\"2026-11-26T00:47:38.682Z\",\"level\":\"info\",\"runId\":\"96a38761-fb6a-4ef8-bb98-2b38e2bbe3bf\",\"msg\":\"factory clone created\",\"factoryId\":\"probe\",\"detail\":{\"path\":\"/tmp/fou153-missing-dNpnTI/home/clones/probe\",\"source\":\"/tmp/fou153-missing-dNpnTI/repo\"}}\n{\"time\":\"2026-11-26T00:47:38.683Z\",\"level\":\"info\",\"runId\":\"96a38761-fb6a-4ef8-bb98-2b38e2bbe3bf\",\"msg\":\"factory configuration loaded\",\"factoryId\":\"probe\",\"detail\":{\"loadId\":1,\"configHash\":\"sha256:665cc80ed60376aa5a12f9fd65e764bd586dd18502077dbcfd5f066b5e008e5f\"}}\n{\"time\":\"2026-11-26T00:47:38.795Z\",\"level\":\"info\",\"runId\":\"96a38761-fb6a-4ef8-bb98-2b38e2bbe3bf\",\"msg\":\"slot started\",\"factoryId\":\"probe\",\"slotId\":\"dev/1\",\"launchId\":\"0ec00b97-4fc3-4684-8c31-cf54cd73ebbf\"}\n{\"time\":\"2026-11-26T00:47:38.798Z\",\"level\":\"info\",\"runId\":\"96a38761-fb6a-4ef8-bb98-2b38e2bbe3bf\",\"msg\":\"daemon started\",\"detail\":{\"pid\":2409904,\"stateRoot\":\"/tmp/fou153-missing-dNpnTI/home\",\"socket\":\"/tmp/fou153-missing-dNpnTI/home/management.sock\",\"logLevel\":\"info\"}}\nfoundry daemon: state root /tmp/fou153-missing-dNpnTI/home claimed (pid 2409904)\nfoundry daemon: management API on /tmp/fou153-missing-dNpnTI/home/management.sock\n{\"time\":\"2026-11-26T00:47:39.139Z\",\"level\":\"info\",\"runId\":\"96a38761-fb6a-4ef8-bb98-2b38e2bbe3bf\",\"msg\":\"launch ended\",\"factoryId\":\"probe\",\"slotId\":\"dev/1\",\"launchId\":\"0ec00b97-4fc3-4684-8c31-cf54cd73ebbf\"}\n{\"time\":\"2026-11-26T00:47:39.139Z\",\"level\":\"info\",\"runId\":\"96a38761-fb6a-4ef8-bb98-2b38e2bbe3bf\",\"msg\":\"slot relaunched\",\"factoryId\":\"probe\",\"slotId\":\"dev/1\",\"launchId\":\"78754600-ca0a-441c-998d-096553a8f5ae\"}\n{\"time\":\"2026-11-26T00:47:39.481Z\",\"level\":\"info\",\"runId\":\"96a38761-fb6a-4ef8-bb98-2b38e2bbe3bf\",\"msg\":\"launch ended\",\"factoryId\":\"probe\",\"slotId\":\"dev/1\",\"launchId\":\"78754600-ca0a-441c-998d-096553a8f5ae\"}\n{\"time\":\"2026-11-26T00:47:39.482Z\",\"level\":\"info\",\"runId\":\"96a38761-fb6a-4ef8-bb98-2b38e2bbe3bf\",\"msg\":\"slot relaunched\",\"factoryId\":\"probe\",\"slotId\":\"dev/1\",\"launchId\":\"5ca96963-7fc0-41bc-b4b0-399acf33075e\"}\n{\"time\":\"2026-11-26T00:47:39.829Z\",\"level\":\"info\",\"runId\":\"96a38761-fb6a-4ef8-bb98-2b38e2bbe3bf\",\"msg\":\"launch ended\",\"factoryId\":\"probe\",\"slotId\":\"dev/1\",\"launchId\":\"5ca96963-7fc0-41bc-b4b0-399acf33075e\"}\n",
+  "holdList": {
+    "code": 0,
+    "out": "1  parked_slot  dev/1  raised 2026-11-26T00:47:39.828Z\n"
+  },
+  "slotList": {
+    "code": 1,
+    "out": "foundry: /api/v1/slots unavailable: Expected \"normal\" | \"frozen\"\n"
+  },
+  "slotShow": [
+    {
+      "code": 1,
+      "out": "foundry: /api/v1/slots/dev/1 unavailable: Expected \"normal\" | \"frozen\"\n"
+    }
+  ],
+  "markers": {
+    "0ec00b97-4fc3-4684-8c31-cf54cd73ebbf.exception.log": "Error: SDK model is not registered: probe-local/inert\n    at createSdkSession (file:///home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/host/dist/sdk-session.js:53:19)\n    at async file:///home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/host/dist/sdk-worker.js:10:21",
+    "0ec00b97-4fc3-4684-8c31-cf54cd73ebbf.process.json": {
+      "pid": 2409930,
+      "pgid": 2409930,
+      "launchId": "0ec00b97-4fc3-4684-8c31-cf54cd73ebbf",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    },
+    "5ca96963-7fc0-41bc-b4b0-399acf33075e.exception.log": "Error: SDK model is not registered: probe-local/inert\n    at createSdkSession (file:///home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/host/dist/sdk-session.js:53:19)\n    at async file:///home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/host/dist/sdk-worker.js:10:21",
+    "5ca96963-7fc0-41bc-b4b0-399acf33075e.process.json": {
+      "pid": 2409960,
+      "pgid": 2409960,
+      "launchId": "5ca96963-7fc0-41bc-b4b0-399acf33075e",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    },
+    "78754600-ca0a-441c-998d-096553a8f5ae.exception.log": "Error: SDK model is not registered: probe-local/inert\n    at createSdkSession (file:///home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/host/dist/sdk-session.js:53:19)\n    at async file:///home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/host/dist/sdk-worker.js:10:21",
+    "78754600-ca0a-441c-998d-096553a8f5ae.process.json": {
+      "pid": 2409945,
+      "pgid": 2409945,
+      "launchId": "78754600-ca0a-441c-998d-096553a8f5ae",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    },
+    "dev_1.launch.0ec00b97-4fc3-4684-8c31-cf54cd73ebbf.json": {
+      "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+      "argv": [
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "275dcea4-95b1-4ef5-9ca8-51c6c6e956c0",
+        "--model",
+        "probe-local/inert",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_absent",
+        "--extension",
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/extension/dist/index.js",
+        "--extension",
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/docs/evidence/rpc-53-3-linux/fixtures/missing.ts"
+      ],
+      "cwd": "/tmp/fou153-missing-dNpnTI/home/slots/probe/dev-1"
+    },
+    "dev_1.launch.0ec00b97-4fc3-4684-8c31-cf54cd73ebbf.stderr.log": "",
+    "dev_1.launch.0ec00b97-4fc3-4684-8c31-cf54cd73ebbf.stdout.log": "",
+    "dev_1.launch.5ca96963-7fc0-41bc-b4b0-399acf33075e.json": {
+      "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+      "argv": [
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "275dcea4-95b1-4ef5-9ca8-51c6c6e956c0",
+        "--model",
+        "probe-local/inert",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_absent",
+        "--extension",
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/extension/dist/index.js",
+        "--extension",
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/docs/evidence/rpc-53-3-linux/fixtures/missing.ts"
+      ],
+      "cwd": "/tmp/fou153-missing-dNpnTI/home/slots/probe/dev-1"
+    },
+    "dev_1.launch.5ca96963-7fc0-41bc-b4b0-399acf33075e.stderr.log": "",
+    "dev_1.launch.5ca96963-7fc0-41bc-b4b0-399acf33075e.stdout.log": "",
+    "dev_1.launch.78754600-ca0a-441c-998d-096553a8f5ae.json": {
+      "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+      "argv": [
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "275dcea4-95b1-4ef5-9ca8-51c6c6e956c0",
+        "--model",
+        "probe-local/inert",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_absent",
+        "--extension",
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/extension/dist/index.js",
+        "--extension",
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/docs/evidence/rpc-53-3-linux/fixtures/missing.ts"
+      ],
+      "cwd": "/tmp/fou153-missing-dNpnTI/home/slots/probe/dev-1"
+    },
+    "dev_1.launch.78754600-ca0a-441c-998d-096553a8f5ae.stderr.log": "",
+    "dev_1.launch.78754600-ca0a-441c-998d-096553a8f5ae.stdout.log": "",
+    "dev_1.missing.loaded.json": {
+      "argv": [
+        "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "275dcea4-95b1-4ef5-9ca8-51c6c6e956c0",
+        "--model",
+        "probe-local/inert",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_absent",
+        "--extension",
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/packages/extension/dist/index.js",
+        "--extension",
+        "/home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc/docs/evidence/rpc-53-3-linux/fixtures/missing.ts"
+      ],
+      "registers": [
+        "probe_unnamed"
+      ],
+      "launchId": "5ca96963-7fc0-41bc-b4b0-399acf33075e"
+    }
+  },
+  "ownedProcesses": [
+    {
+      "pid": 2409930,
+      "pgid": 2409930,
+      "launchId": "0ec00b97-4fc3-4684-8c31-cf54cd73ebbf",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    },
+    {
+      "pid": 2409960,
+      "pgid": 2409960,
+      "launchId": "5ca96963-7fc0-41bc-b4b0-399acf33075e",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    },
+    {
+      "pid": 2409945,
+      "pgid": 2409945,
+      "launchId": "78754600-ca0a-441c-998d-096553a8f5ae",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    }
+  ],
+  "shutdown": {
+    "code": 0,
+    "out": "factory probe stopped (0 worker(s))\nworker host stopped\nshutdown complete (forced)\n"
+  },
+  "cleanup": {
+    "ownedGroups": [
+      2409930,
+      2409960,
+      2409945
+    ],
+    "remaining": [],
+    "daemonExited": true,
+    "rootRemoved": true
+  }
+}

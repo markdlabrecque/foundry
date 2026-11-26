@@ -1,0 +1,37 @@
+
+ RUN  v5.1.1 /home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc
+
+(node:2422014) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421999) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/e2e/worker-channel.e2e.test.ts (3 tests | 1 failed) 13405ms
+   × a launched faux-provider Pi worker authenticates and discovers its configured station and slot 501ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  packages/daemon/e2e/worker-channel.e2e.test.ts > a launched faux-provider Pi worker authenticates and discovers its configured station and slot
+AssertionError: expected undefined to be 'dev/1' // Object.is equality
+
+- Expected:
+"dev/1"
+
++ Received:
+undefined
+
+ ❯ packages/daemon/e2e/worker-channel.e2e.test.ts:147:24
+    145|   const launchId = slot?.launch?.launchId;
+    146|
+    147|   expect(slot?.slotId).toBe("dev/1");
+       |                        ^
+    148|   expect(launchId).toBeDefined();
+    149|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 4 passed (5)
+   Start at  16:48:39
+   Duration  15.19s (tests 78%, import 14%, transform 8%)
+
