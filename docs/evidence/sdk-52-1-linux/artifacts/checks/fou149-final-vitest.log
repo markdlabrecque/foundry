@@ -1,0 +1,1028 @@
+
+ RUN  v5.1.1 /home/mark/worktress/develop/t3-d84b1553-64f16b707698faba
+
+(node:2420449) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420510) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420504) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420434) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420495) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420477) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420471) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420531) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420483) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420465) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420517) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420525) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420494) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420453) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2420459) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421054) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421111) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421098) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421170) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421448) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421132) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421571) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421499) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421202) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2422136) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421361) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421832) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2422027) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2421983) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2422118) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2422701) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2422416) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2423749) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2422918) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2423106) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2423950) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2423462) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2424081) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+fatal: Unable to create '/tmp/foundry-transition-UIo12N/repository/.git/worktrees/worktree/index.lock': No space left on device
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-commit.sample' to '/tmp/foundry-transition-XIrTVf/repository/.git/hooks/pre-commit.sample': No space left on device
+(node:2424412) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+fatal: could not open '.git/worktrees/worktree/locked' for writing: No space left on device
+(node:2424304) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2424427) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+fatal: cannot lock ref 'refs/heads/ticket/1': unable to create directory for .git/refs/heads/ticket/1
+ ❯ packages/daemon/test/daemon-log.test.ts (5 tests | 2 failed) 20ms
+   × the daemon log rotates by size and keeps a fixed number of files 5ms
+   × the foreground daemon writes its run to logs/daemon.log and stderr, and nothing to the host log 1ms
+(node:2424584) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/sync-recovery.test.ts (4 tests | 3 failed) 597ms
+   × a half-finished merge is aborted, the recorded head restored, the sync marked interrupted with a hold, and nothing fetched 173ms
+   × a default branch that moved off the recorded head is not reset, nothing is recorded and the queue stays closed 48ms
+   × running the sync again resolves the interrupted-sync hold 35ms
+(node:2424923) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2424890) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2424397) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/interrupt.test.ts (6 tests | 1 failed) 45ms
+   × an interrupt is acknowledged only after the aborted run settles, once, on the same channel 20ms
+(node:2424938) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/shutdown.test.ts (3 tests | 1 failed) 1445ms
+   × a group that cannot be confirmed gone fails the shutdown and keeps the Worker Host running 468ms
+(node:2425120) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+foundry: channel not reached at /tmp/foundry-tool-set-2X2NqR/unused.sock: Error: connect ENOENT /tmp/foundry-tool-set-2X2NqR/unused.sock
+(node:2424868) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/sdk-worker.test.ts (1 test | 1 failed) 13ms
+   × SDK worker preserves explicit resources, host identity and authenticated allowed tool traffic 11ms
+ ❯ test/slots.test.ts (2 tests | 2 failed) 524ms
+   × a persistent and a pooled station get one launch per slot, however often scheduling runs 11ms
+   × a live launch nobody requested is frozen, never adopted nor joined; an ended one is not relaunched 512ms
+(node:2425400) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2425568) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2425468) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2425762) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+/tmp/foundry-transition-D28hjF/source.git/objects/pack: No space left on device
+(node:2425795) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2426193) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-push.sample' to '/tmp/foundry-transition-bD5WGs/source.git/hooks/pre-push.sample': No space left on device
+(node:2426269) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-receive.sample' to '/tmp/foundry-transition-gOx9kf/source.git/hooks/pre-receive.sample': No space left on device
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-push.sample' to '/tmp/foundry-transition-DVzieI/source.git/hooks/pre-push.sample': No space left on device
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-push.sample' to '/tmp/foundry-transition-wI8luk/source.git/hooks/pre-push.sample': No space left on device
+/tmp/foundry-transition-VdgFEt/source.git/refs/tags: No space left on device
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-receive.sample' to '/tmp/foundry-transition-gSUY9R/source.git/hooks/pre-receive.sample': No space left on device
+fatal: cannot copy '/usr/share/git-core/templates/hooks/update.sample' to '/tmp/foundry-transition-8ghbJR/source.git/hooks/update.sample': No space left on device
+error: update_ref failed for ref 'ORIG_HEAD': cannot lock ref 'ORIG_HEAD': Unable to create '/tmp/foundry-transition-wNUv9z/repository/.git/worktrees/worktree/ORIG_HEAD.lock': No space left on device
+error: update_ref failed for ref 'HEAD': cannot lock ref 'HEAD': Unable to create '/tmp/foundry-transition-wNUv9z/repository/.git/worktrees/worktree/HEAD.lock': No space left on device
+error: cannot lock ref 'AUTO_MERGE': Unable to create '/tmp/foundry-transition-wNUv9z/repository/.git/worktrees/worktree/AUTO_MERGE.lock': No space left on device
+error: cannot lock ref 'AUTO_MERGE': Unable to create '/tmp/foundry-transition-wNUv9z/repository/.git/worktrees/worktree/AUTO_MERGE.lock': No space left on device
+error: cannot update the ref 'HEAD': unable to append to '.git/worktrees/worktree/logs/HEAD': No space left on device
+fatal: Unable to create '/tmp/foundry-transition-NPxOTg/repository/.git/worktrees/worktree/index.lock': No space left on device
+error: unable to create temporary file: No space left on device
+error: Error building trees
+(node:2427015) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/factory-clone.test.ts (7 tests | 3 failed) 7200ms
+   × daemon start creates the clone and foundry factory path prints it; a restart does not fetch, an explicit sync does 4966ms
+   × restart completes a previously queued sync without another operator request 694ms
+   × a factory whose clone path is not Foundry's is refused alone; the daemon serves the other 1334ms
+(node:2427001) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2426922) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2427574) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+foundry: channel hello refused (terminal launch_not_current)
+foundry: channel hello refused (retryable host_unreachable)
+(node:2427772) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2427814) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2427925) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/worktrees.test.ts (44 tests | 7 failed) 8359ms
+   × cleanup refuses whitespace-ignored work and requires confirmation of the current losses 77ms
+   × cleanup refuses changes hidden by --skip-worktree unless confirmed force 83ms
+   × inspection safely refuses fifo entries without deleting work 56ms
+   × inspection safely refuses oversized entries without deleting work 95ms
+   × hook-created files are preserved instead of discarded after a successful hook 63ms
+   × missing before_remove executable raises a failure hold and confirmed force skips it 70ms
+   × log write failure still records a failed hook and allows confirmed force 74ms
+ ❯ packages/daemon/test/task-transition.test.ts (99 tests | 18 failed) 9988ms
+   × real Git clean (writing=false) preserves assignment on refusal 89ms
+   × real Git untracked (writing=false) preserves assignment on refusal 53ms
+   × real Git new commit (writing=true) preserves assignment on refusal 121ms
+   × final approval wakes the durable integration queue after commit 37ms
+   × approved integration: merge 255ms
+   × approved integration: moved 158ms
+   × approved integration: verify-pass 42ms
+   × approved integration: verify-spawn-error 50ms
+   × approved integration: setup-fail 63ms
+   × approved integration: conflict 59ms
+   × approved integration: conflict-limit 71ms
+   × approved integration: dirty 74ms
+   × approved integration: cancelled 68ms
+   × approved integration: merge-error 72ms
+   × approved integration: stale 49ms
+   × integration after_create failure and retry preserve the approval 33ms
+   × integration after_create failure and unchecked preserve the approval 39ms
+   × integration after_create failure and cancel preserve the approval 185ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 38 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/interrupt.test.ts > an interrupt is acknowledged only after the aborted run settles, once, on the same channel
+Error: listen ENOSPC: no space left on device /tmp/foundry-interrupt-QqcuiN/.channel.sock-9CZIl0/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ connect test/interrupt.test.ts:78:12
+     76| const connect = async (interrupter: RunInterrupter, frames: Array<Work…
+     77|   let accepted = 0;
+     78|   server = await startChannelServer({
+       |            ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/interrupt.test.ts:114:41
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/38]⎯
+
+ FAIL  test/sdk-worker.test.ts > SDK worker preserves explicit resources, host identity and authenticated allowed tool traffic
+Error: ENOSPC: no space left on device, mkdtemp '/tmp/foundry-sdk-HR9T4w'
+ ❯ test/sdk-worker.test.ts:21:16
+     19|
+     20| test("SDK worker preserves explicit resources, host identity and authe…
+     21|   const root = await mkdtemp(join(tmpdir(), "foundry-sdk-"));
+       |                ^
+     22|   cleanups.push(() => rm(root, { recursive: true, force: true }));
+     23|   const home = join(root, "home");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/38]⎯
+
+ FAIL  test/shutdown.test.ts > a group that cannot be confirmed gone fails the shutdown and keeps the Worker Host running
+AssertionError: expected [ 'refused', 'refused', 'refused' ] to deeply equal [ 'started', 'started', 'started' ]
+
+- Expected
++ Received
+
+  [
+-   "started",
+-   "started",
+-   "started",
++   "refused",
++   "refused",
++   "refused",
+  ]
+
+ ❯ fixture test/shutdown.test.ts:122:62
+    120|   });
+    121|
+    122|   expect((await scheduler.schedule()).map((r) => r.outcome)).toEqual([…
+       |                                                              ^
+    123|   const launches = (await host.inventory()).filter((l) => l.liveness =…
+    124|
+ ❯ test/shutdown.test.ts:183:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/38]⎯
+
+ FAIL  test/slots.test.ts > a persistent and a pooled station get one launch per slot, however often scheduling runs
+Error: ENOSPC: no space left on device, mkdtemp '/tmp/foundry-stub-pi-XXXXXX'
+ ❯ fixture test/slots.test.ts:49:19
+     47|   const stateRoot = mkdtempSync(join(tmpdir(), "foundry-slots-"));
+     48|   cleanups.push(() => rmSync(stateRoot, { recursive: true, force: true…
+     49|   const stubDir = mkdtempSync(join(tmpdir(), "foundry-stub-pi-"));
+       |                   ^
+     50|   cleanups.push(() => rmSync(stubDir, { recursive: true, force: true }…
+     51|   const pi = resolvePiExecutable({ [PI_BIN_ENV]: writeStubPi(stubDir) …
+ ❯ test/slots.test.ts:84:19
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/38]⎯
+
+ FAIL  test/slots.test.ts > a live launch nobody requested is frozen, never adopted nor joined; an ended one is not relaunched
+AssertionError: expected [ { …(8) }, { …(8) }, { …(8) } ] to have a length of 4 but got 3
+
+- Expected
++ Received
+
+- 4
++ 3
+
+ ❯ test/slots.test.ts:135:36
+    133|   const results = await scheduler.schedule();
+    134|   expect(results.find((r) => r.slotId === "dev/2")).toMatchObject({ ou…
+    135|   expect(await f.host.inventory()).toHaveLength(4);
+       |                                    ^
+    136|   expect(await Effect.runPromise(listOpenHolds(f.store))).toMatchObjec…
+    137|     { kind: "frozen_slot", subject: "dev/2", evidence: { cause: "unkno…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/38]⎯
+
+ FAIL  packages/daemon/test/daemon-log.test.ts > the daemon log rotates by size and keeps a fixed number of files
+AssertionError: expected [ 'daemon.log.1' ] to deeply equal [ 'daemon.log', 'daemon.log.1', …(1) ]
+
+- Expected
++ Received
+
+  [
+-   "daemon.log",
+    "daemon.log.1",
+-   "daemon.log.2",
+  ]
+
+ ❯ packages/daemon/test/daemon-log.test.ts:96:50
+     94|   log.close();
+     95|
+     96|   expect(readdirSync(join(root, "logs")).sort()).toEqual(["daemon.log"…
+       |                                                  ^
+     97|
+     98|   for (const name of ["daemon.log", "daemon.log.1", "daemon.log.2"]) {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/38]⎯
+
+ FAIL  packages/daemon/test/daemon-log.test.ts > the foreground daemon writes its run to logs/daemon.log and stderr, and nothing to the host log
+Error: ENOSPC: no space left on device, mkdtemp '/tmp/foundry-log-XXXXXX'
+ ❯ tempRoot packages/daemon/test/daemon-log.test.ts:26:16
+     24|
+     25| const tempRoot = (): string => {
+     26|   const root = mkdtempSync(join(tmpdir(), "foundry-log-"));
+       |                ^
+     27|   roots.push(root);
+     28|
+ ❯ packages/daemon/test/daemon-log.test.ts:128:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/38]⎯
+
+ FAIL  packages/daemon/test/factory-clone.test.ts > daemon start creates the clone and foundry factory path prints it; a restart does not fetch, an explicit sync does
+AssertionError: expected 1 to be +0 // Object.is equality
+
+- Expected
++ Received
+
+- 0
++ 1
+
+ ❯ packages/daemon/test/factory-clone.test.ts:265:23
+    263|   // Only the operator's explicit sync contacts the source, and it adv…
+    264|   const synced = await foundry(["factory", "sync", "alpha", "--wait", …
+    265|   expect(synced.code).toBe(0);
+       |                       ^
+    266|   expect(JSON.parse(synced.stdout)).toMatchObject({
+    267|     ok: true,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/38]⎯
+
+ FAIL  packages/daemon/test/factory-clone.test.ts > restart completes a previously queued sync without another operator request
+Error: spawnSync git ENOENT
+ ❯ git packages/testkit/src/git-source.ts:24:3
+ ❯ packages/daemon/test/factory-clone.test.ts:281:20
+    279|   const path = factoryClonePath(f.home, "alpha");
+    280|   expect(await stop(await startDaemon(f.home, f.yamlFile))).toBe(0);
+    281|   const previous = git(path, ["rev-parse", "main"]);
+       |                    ^
+    282|   const fetched = advanceSource(f);
+    283|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/38]⎯
+
+ FAIL  packages/daemon/test/factory-clone.test.ts > a factory whose clone path is not Foundry's is refused alone; the daemon serves the other
+AssertionError: expected { code: 1, stdout: '', …(1) } to match object { code: +0, …(1) }
+(1 matching property omitted from actual)
+
+- Expected
++ Received
+
+  {
+-   "code": 0,
+-   "stdout": "/tmp/foundry-clone-yonPU1/home/clones/alpha
+- ",
++   "code": 1,
++   "stdout": "",
+  }
+
+ ❯ packages/daemon/test/factory-clone.test.ts:318:67
+    316|
+    317|   const daemon = await startDaemon(alpha.home, alpha.yamlFile, beta.ya…
+    318|   expect(await foundry(["factory", "path", "alpha"], alpha.home)).toMa…
+       |                                                                   ^
+    319|     code: 0,
+    320|     stdout: `${factoryClonePath(alpha.home, "alpha")}\n`,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/38]⎯
+
+ FAIL  packages/daemon/test/sync-recovery.test.ts > a half-finished merge is aborted, the recorded head restored, the sync marked interrupted with a hold, and nothing fetched
+StoreError: Could not open /tmp/foundry-sync-recovery-vbb6Yr/foundry.db: unable to open database file
+ ❯ packages/daemon/src/store.ts:848:3
+    846|
+    847| const sqlFailure = (reason: StoreErrorReason, message: string) => (cau…
+    848|   new StoreError({ reason, message: `${message}: ${describe(cause)}`, …
+       |   ^
+    849|
+    850| const describe = (cause: unknown): string =>
+ ❯ node_modules/effect/src/internal/effect.ts:281:25
+ ❯ node_modules/effect/src/internal/effect.ts:278:35
+ ❯ node_modules/effect/src/Function.ts:253:18
+ ❯ OnFailureImpl.~effect/Effect/failureCont node_modules/effect/src/internal/effect.ts:3479:71
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/core.ts:628:20
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ node_modules/effect/src/internal/effect.ts:5797:9
+
+Caused by: effect/sql/SqlError: Failed to configure database
+ ❯ catch node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:91:25
+ ❯ node_modules/effect/dist/internal/effect.js:813:19
+ ❯ ~effect/Effect/evaluate node_modules/effect/dist/internal/effect.js:768:12
+ ❯ FiberImpl.runLoop node_modules/effect/dist/internal/effect.js:495:99
+ ❯ FiberImpl.evaluate node_modules/effect/dist/internal/effect.js:426:23
+ ❯ node_modules/effect/dist/internal/effect.js:2551:9
+ ❯ node_modules/effect/dist/internal/effect.js:2603:19
+ ❯ Module.<anonymous> node_modules/effect/dist/internal/effect.js:2614:31
+ ❯ withStore packages/daemon/test/sync-recovery.test.ts:64:10
+ ❯ crashMidSync packages/daemon/test/sync-recovery.test.ts:80:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { _tag: 'SqlError', reason: { _tag: 'ConnectionError', cause: { stack: 'Error: unable to open database file
+    at try (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:90:60)
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:811:22
+    at ~effect/Effect/evaluate (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:768:12)
+    at FiberImpl.runLoop (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:495:99)
+    at FiberImpl.evaluate (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:426:23)
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2551:9
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2603:19
+    at Module.<anonymous> (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2614:31)
+    at withStore (/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/daemon/test/sync-recovery.test.ts:64:10)
+    at crashMidSync (/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/daemon/test/sync-recovery.test.ts:80:29)', message: 'unable to open database file', code: 'ERR_SQLITE_ERROR', errcode: 14, errstr: 'unable to open database file', errno: 14, constructor: 'Function<Error>', name: 'Error', toString: 'Function<toString>' }, message: 'Failed to configure database', operation: 'connect', '~effect/sql/SqlError/Reason': '~effect/sql/SqlError/Reason', stack: 'effect/sql/SqlError/ConnectionError: Failed to configure database
+    at classifySqliteError (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/sql/SqlError.js:484:16)
+    at classifyError (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:261:54)
+    at catch (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:92:19)
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:813:19
+    at ~effect/Effect/evaluate (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:768:12)
+    at FiberImpl.runLoop (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:495:99)
+    at FiberImpl.evaluate (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:426:23)
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2551:9
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2603:19
+    at Module.<anonymous> (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2614:31)', name: 'effect/sql/SqlError/ConnectionError' }, '~effect/sql/SqlError': '~effect/sql/SqlError' }
+Caused by: effect/sql/SqlError/ConnectionError: Failed to configure database
+ ❯ classifySqliteError node_modules/effect/dist/sql/SqlError.js:484:16
+ ❯ classifyError node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:261:54
+ ❯ catch node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:92:19
+ ❯ node_modules/effect/dist/internal/effect.js:813:19
+ ❯ ~effect/Effect/evaluate node_modules/effect/dist/internal/effect.js:768:12
+ ❯ FiberImpl.runLoop node_modules/effect/dist/internal/effect.js:495:99
+ ❯ FiberImpl.evaluate node_modules/effect/dist/internal/effect.js:426:23
+ ❯ node_modules/effect/dist/internal/effect.js:2551:9
+ ❯ node_modules/effect/dist/internal/effect.js:2603:19
+ ❯ Module.<anonymous> node_modules/effect/dist/internal/effect.js:2614:31
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { _tag: 'ConnectionError', operation: 'connect', '~effect/sql/SqlError/Reason': '~effect/sql/SqlError/Reason' }
+Caused by: Error: unable to open database file
+ ❯ try node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:90:60
+ ❯ node_modules/effect/dist/internal/effect.js:811:22
+ ❯ ~effect/Effect/evaluate node_modules/effect/dist/internal/effect.js:768:12
+ ❯ FiberImpl.runLoop node_modules/effect/dist/internal/effect.js:495:99
+ ❯ FiberImpl.evaluate node_modules/effect/dist/internal/effect.js:426:23
+ ❯ node_modules/effect/dist/internal/effect.js:2551:9
+ ❯ node_modules/effect/dist/internal/effect.js:2603:19
+ ❯ Module.<anonymous> node_modules/effect/dist/internal/effect.js:2614:31
+ ❯ withStore packages/daemon/test/sync-recovery.test.ts:64:10
+ ❯ crashMidSync packages/daemon/test/sync-recovery.test.ts:80:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'ERR_SQLITE_ERROR', errcode: 14, errstr: 'unable to open database file', errno: 14 }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/38]⎯
+
+ FAIL  packages/daemon/test/sync-recovery.test.ts > a default branch that moved off the recorded head is not reset, nothing is recorded and the queue stays closed
+Error: Command failed: git clone --quiet source.git clone
+error: cannot lock ref 'HEAD': Unable to create '/tmp/foundry-sync-recovery-bNx6mr/clone/.git/HEAD.lock': No space left on device
+fatal: unable to update HEAD
+
+ ❯ git packages/testkit/src/git-source.ts:24:3
+ ❯ fixture packages/daemon/test/sync-recovery.test.ts:46:3
+     44|   makeGitSource(seed);
+     45|   git(dir, ["clone", "--quiet", "--bare", "seed", "source.git"]);
+     46|   git(dir, ["clone", "--quiet", "source.git", "clone"]);
+       |   ^
+     47|
+     48|   return { dir, seed, source: join(dir, "source.git"), clone: join(dir…
+ ❯ packages/daemon/test/sync-recovery.test.ts:175:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/38]⎯
+
+ FAIL  packages/daemon/test/sync-recovery.test.ts > running the sync again resolves the interrupted-sync hold
+Error: Command failed: git clone --quiet source.git clone
+fatal: cannot copy '/usr/share/git-core/templates/hooks/fsmonitor-watchman.sample' to '/tmp/foundry-sync-recovery-RxszV2/clone/.git/hooks/fsmonitor-watchman.sample': No space left on device
+
+ ❯ git packages/testkit/src/git-source.ts:24:3
+ ❯ fixture packages/daemon/test/sync-recovery.test.ts:46:3
+     44|   makeGitSource(seed);
+     45|   git(dir, ["clone", "--quiet", "--bare", "seed", "source.git"]);
+     46|   git(dir, ["clone", "--quiet", "source.git", "clone"]);
+       |   ^
+     47|
+     48|   return { dir, seed, source: join(dir, "source.git"), clone: join(dir…
+ ❯ packages/daemon/test/sync-recovery.test.ts:196:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > real Git clean (writing=false) preserves assignment on refusal
+Error: Command failed: git -c core.hooksPath=/dev/null worktree add --quiet -b ticket/1 /tmp/foundry-transition-UIo12N/worktree
+fatal: Unable to create '/tmp/foundry-transition-UIo12N/repository/.git/worktrees/worktree/index.lock': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:889:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > real Git untracked (writing=false) preserves assignment on refusal
+Error: Command failed: git -c core.hooksPath=/dev/null init --quiet --initial-branch=main /tmp/foundry-transition-XIrTVf/repository
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-commit.sample' to '/tmp/foundry-transition-XIrTVf/repository/.git/hooks/pre-commit.sample': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:880:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > real Git new commit (writing=true) preserves assignment on refusal
+Error: Command failed: git -c core.hooksPath=/dev/null worktree add --quiet -b ticket/1 /tmp/foundry-transition-GHFsbq/worktree
+fatal: could not open '.git/worktrees/worktree/locked' for writing: No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:889:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > final approval wakes the durable integration queue after commit
+Error: Command failed: git -c core.hooksPath=/dev/null worktree add --quiet -b ticket/1 /tmp/foundry-transition-AgA4Wt/worktree
+fatal: cannot lock ref 'refs/heads/ticket/1': unable to create directory for .git/refs/heads/ticket/1
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1186:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: merge
+StoreError: Could not open /tmp/foundry-transition-BNs6lI/foundry.db: unable to open database file
+ ❯ packages/daemon/src/store.ts:848:3
+    846|
+    847| const sqlFailure = (reason: StoreErrorReason, message: string) => (cau…
+    848|   new StoreError({ reason, message: `${message}: ${describe(cause)}`, …
+       |   ^
+    849|
+    850| const describe = (cause: unknown): string =>
+ ❯ node_modules/effect/src/internal/effect.ts:281:25
+ ❯ node_modules/effect/src/internal/effect.ts:278:35
+ ❯ node_modules/effect/src/Function.ts:253:18
+ ❯ OnFailureImpl.~effect/Effect/failureCont node_modules/effect/src/internal/effect.ts:3479:71
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/core.ts:628:20
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ node_modules/effect/src/internal/effect.ts:5797:9
+
+Caused by: effect/sql/SqlError: Failed to configure database
+ ❯ catch node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:91:25
+ ❯ node_modules/effect/dist/internal/effect.js:813:19
+ ❯ ~effect/Effect/evaluate node_modules/effect/dist/internal/effect.js:768:12
+ ❯ FiberImpl.runLoop node_modules/effect/dist/internal/effect.js:495:99
+ ❯ FiberImpl.evaluate node_modules/effect/dist/internal/effect.js:426:23
+ ❯ node_modules/effect/dist/internal/effect.js:2551:9
+ ❯ node_modules/effect/dist/internal/effect.js:2603:19
+ ❯ Module.<anonymous> node_modules/effect/dist/internal/effect.js:2614:31
+ ❯ packages/daemon/test/task-transition.test.ts:1332:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { _tag: 'SqlError', reason: { _tag: 'ConnectionError', cause: { stack: 'Error: unable to open database file
+    at try (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:90:23)
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:811:22
+    at ~effect/Effect/evaluate (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:768:12)
+    at FiberImpl.runLoop (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:495:99)
+    at FiberImpl.evaluate (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:426:23)
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2551:9
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2603:19
+    at Module.<anonymous> (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2614:31)
+    at /home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/daemon/test/task-transition.test.ts:1332:16
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)', message: 'unable to open database file', code: 'ERR_SQLITE_ERROR', errcode: 14, errstr: 'unable to open database file', errno: 14, constructor: 'Function<Error>', name: 'Error', toString: 'Function<toString>' }, message: 'Failed to configure database', operation: 'connect', '~effect/sql/SqlError/Reason': '~effect/sql/SqlError/Reason', stack: 'effect/sql/SqlError/ConnectionError: Failed to configure database
+    at classifySqliteError (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/sql/SqlError.js:484:16)
+    at classifyError (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:261:54)
+    at catch (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:92:19)
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:813:19
+    at ~effect/Effect/evaluate (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:768:12)
+    at FiberImpl.runLoop (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:495:99)
+    at FiberImpl.evaluate (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:426:23)
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2551:9
+    at file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2603:19
+    at Module.<anonymous> (file:///home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/node_modules/effect/dist/internal/effect.js:2614:31)', name: 'effect/sql/SqlError/ConnectionError' }, '~effect/sql/SqlError': '~effect/sql/SqlError' }
+Caused by: effect/sql/SqlError/ConnectionError: Failed to configure database
+ ❯ classifySqliteError node_modules/effect/dist/sql/SqlError.js:484:16
+ ❯ classifyError node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:261:54
+ ❯ catch node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:92:19
+ ❯ node_modules/effect/dist/internal/effect.js:813:19
+ ❯ ~effect/Effect/evaluate node_modules/effect/dist/internal/effect.js:768:12
+ ❯ FiberImpl.runLoop node_modules/effect/dist/internal/effect.js:495:99
+ ❯ FiberImpl.evaluate node_modules/effect/dist/internal/effect.js:426:23
+ ❯ node_modules/effect/dist/internal/effect.js:2551:9
+ ❯ node_modules/effect/dist/internal/effect.js:2603:19
+ ❯ Module.<anonymous> node_modules/effect/dist/internal/effect.js:2614:31
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { _tag: 'ConnectionError', operation: 'connect', '~effect/sql/SqlError/Reason': '~effect/sql/SqlError/Reason' }
+Caused by: Error: unable to open database file
+ ❯ try node_modules/@effect/sql-sqlite-node/dist/SqliteClient.js:90:23
+ ❯ node_modules/effect/dist/internal/effect.js:811:22
+ ❯ ~effect/Effect/evaluate node_modules/effect/dist/internal/effect.js:768:12
+ ❯ FiberImpl.runLoop node_modules/effect/dist/internal/effect.js:495:99
+ ❯ FiberImpl.evaluate node_modules/effect/dist/internal/effect.js:426:23
+ ❯ node_modules/effect/dist/internal/effect.js:2551:9
+ ❯ node_modules/effect/dist/internal/effect.js:2603:19
+ ❯ Module.<anonymous> node_modules/effect/dist/internal/effect.js:2614:31
+ ❯ packages/daemon/test/task-transition.test.ts:1332:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯
+Serialized Error: { code: 'ERR_SQLITE_ERROR', errcode: 14, errstr: 'unable to open database file', errno: 14 }
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: moved
+Error: ENOSPC: no space left on device, open '/tmp/foundry-transition-xV4e4B/repository/default.txt'
+ ❯ packages/daemon/test/task-transition.test.ts:1285:7
+    1283|
+    1284|     if (scenario === "moved" || scenario.startsWith("verify-") || scen…
+    1285|       writeFileSync(join(repository, scenario === "conflict" || scenar…
+       |       ^
+    1286|       git(repository, "add", ".");
+    1287|       git(repository, "commit", "--quiet", "-m", "default advanced");
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/core.ts:586:30
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: verify-pass
+Error: Command failed: git -c core.hooksPath=/dev/null clone --quiet --bare /tmp/foundry-transition-D28hjF/repository /tmp/foundry-transition-D28hjF/source.git
+/tmp/foundry-transition-D28hjF/source.git/objects/pack: No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1247:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: verify-spawn-error
+Error: Command failed: git -c core.hooksPath=/dev/null clone --quiet --bare /tmp/foundry-transition-bD5WGs/repository /tmp/foundry-transition-bD5WGs/source.git
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-push.sample' to '/tmp/foundry-transition-bD5WGs/source.git/hooks/pre-push.sample': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1247:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: setup-fail
+Error: Command failed: git -c core.hooksPath=/dev/null clone --quiet --bare /tmp/foundry-transition-gOx9kf/repository /tmp/foundry-transition-gOx9kf/source.git
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-receive.sample' to '/tmp/foundry-transition-gOx9kf/source.git/hooks/pre-receive.sample': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1247:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: conflict
+Error: Command failed: git -c core.hooksPath=/dev/null clone --quiet --bare /tmp/foundry-transition-DVzieI/repository /tmp/foundry-transition-DVzieI/source.git
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-push.sample' to '/tmp/foundry-transition-DVzieI/source.git/hooks/pre-push.sample': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1247:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: conflict-limit
+Error: Command failed: git -c core.hooksPath=/dev/null clone --quiet --bare /tmp/foundry-transition-wI8luk/repository /tmp/foundry-transition-wI8luk/source.git
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-push.sample' to '/tmp/foundry-transition-wI8luk/source.git/hooks/pre-push.sample': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1247:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: dirty
+Error: Command failed: git -c core.hooksPath=/dev/null clone --quiet --bare /tmp/foundry-transition-VdgFEt/repository /tmp/foundry-transition-VdgFEt/source.git
+/tmp/foundry-transition-VdgFEt/source.git/refs/tags: No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1247:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: cancelled
+Error: Command failed: git -c core.hooksPath=/dev/null clone --quiet --bare /tmp/foundry-transition-gSUY9R/repository /tmp/foundry-transition-gSUY9R/source.git
+fatal: cannot copy '/usr/share/git-core/templates/hooks/pre-receive.sample' to '/tmp/foundry-transition-gSUY9R/source.git/hooks/pre-receive.sample': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1247:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: merge-error
+Error: Command failed: git -c core.hooksPath=/dev/null clone --quiet --bare /tmp/foundry-transition-8ghbJR/repository /tmp/foundry-transition-8ghbJR/source.git
+fatal: cannot copy '/usr/share/git-core/templates/hooks/update.sample' to '/tmp/foundry-transition-8ghbJR/source.git/hooks/update.sample': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1247:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > approved integration: stale
+Error: Command failed: git -c core.hooksPath=/dev/null worktree add --quiet -b ticket/1 /tmp/foundry-transition-wNUv9z/worktree
+error: update_ref failed for ref 'ORIG_HEAD': cannot lock ref 'ORIG_HEAD': Unable to create '/tmp/foundry-transition-wNUv9z/repository/.git/worktrees/worktree/ORIG_HEAD.lock': No space left on device
+error: update_ref failed for ref 'HEAD': cannot lock ref 'HEAD': Unable to create '/tmp/foundry-transition-wNUv9z/repository/.git/worktrees/worktree/HEAD.lock': No space left on device
+error: cannot lock ref 'AUTO_MERGE': Unable to create '/tmp/foundry-transition-wNUv9z/repository/.git/worktrees/worktree/AUTO_MERGE.lock': No space left on device
+error: cannot lock ref 'AUTO_MERGE': Unable to create '/tmp/foundry-transition-wNUv9z/repository/.git/worktrees/worktree/AUTO_MERGE.lock': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1186:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > integration after_create failure and retry preserve the approval
+Error: Command failed: git -c core.hooksPath=/dev/null worktree add --quiet -b ticket/1 /tmp/foundry-transition-2G4lU0/worktree
+error: cannot update the ref 'HEAD': unable to append to '.git/worktrees/worktree/logs/HEAD': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1186:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > integration after_create failure and unchecked preserve the approval
+Error: Command failed: git -c core.hooksPath=/dev/null worktree add --quiet -b ticket/1 /tmp/foundry-transition-NPxOTg/worktree
+fatal: Unable to create '/tmp/foundry-transition-NPxOTg/repository/.git/worktrees/worktree/index.lock': No space left on device
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1186:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[30/38]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > integration after_create failure and cancel preserve the approval
+Error: Command failed: git -c core.hooksPath=/dev/null commit --quiet -m reviewed
+error: unable to create temporary file: No space left on device
+error: Error building trees
+
+ ❯ git packages/daemon/test/task-transition.test.ts:45:54
+     43| const byteFilename = (directory: string) => Buffer.concat([Buffer.from…
+     44|
+     45| const git = (cwd: string, ...args: Array<string>) => execFileSync("git…
+       |                                                      ^
+     46|   cwd, encoding: "utf8", env: { ...process.env, GIT_CONFIG_GLOBAL: "/d…
+     47|     GIT_AUTHOR_NAME: "Fixture", GIT_AUTHOR_EMAIL: "fixture@example.tes…
+ ❯ packages/daemon/test/task-transition.test.ts:1519:5
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1510:25
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[31/38]⎯
+
+ FAIL  packages/daemon/test/worktrees.test.ts > cleanup refuses whitespace-ignored work and requires confirmation of the current losses
+Error: ENOENT: no such file or directory, open '/tmp/foundry-worktrees-GjP8qa/worktrees/shop/1-build-widget/.gitignore'
+ ❯ packages/daemon/test/worktrees.test.ts:589:7
+    587|     else if (kind === "ignored" || kind === "whitespace-ignored") {
+    588|       const name = kind === "ignored" ? "ignored" : " ignored ";
+    589|       writeFileSync(join(path, ".gitignore"), kind === "ignored" ? "ig…
+       |       ^
+    590|       git(path, ["add", ".gitignore"]);
+    591|       writeFileSync(join(path, name), "work");
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ FiberImpl.succeedWith node_modules/effect/src/internal/effect.ts:769:30
+ ❯ ContImpl.succeedPayload [as ~effect/Effect/successCont] node_modules/effect/src/internal/effect.ts:1582:16
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1043:30
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[32/38]⎯
+
+ FAIL  packages/daemon/test/worktrees.test.ts > cleanup refuses changes hidden by --skip-worktree unless confirmed force
+TicketError: cannot write ticket directory /tmp/foundry-worktrees-E0tVGX/tickets/shop/1: Error: ENOSPC: no space left on device, mkdir '/tmp/foundry-worktrees-E0tVGX/tickets/shop/1/evidence'
+ ❯ catch packages/daemon/src/tickets.ts:257:7
+    255|     },
+    256|     catch: (cause) =>
+    257|       new TicketError({ code: "internal", message: `cannot write ticke…
+       |       ^
+    258|   });
+    259|
+ ❯ node_modules/effect/src/internal/effect.ts:1147:19
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1055:12
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ Array.<anonymous> node_modules/effect/src/internal/effect.ts:780:12
+ ❯ MixedSchedulerDispatcher.runTasks node_modules/effect/src/Scheduler.ts:254:17
+ ❯ Immediate.afterScheduled node_modules/effect/src/Scheduler.ts:243:10
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[33/38]⎯
+
+ FAIL  packages/daemon/test/worktrees.test.ts > inspection safely refuses fifo entries without deleting work
+FactoryCloneError: cannot clone /tmp/foundry-worktrees-iNIOTj/source (branch main) for factory "shop": fatal: unable to update HEAD
+ ❯ ensureFactoryClone packages/daemon/src/factory-clone.ts:250:11
+    248|     renameSync(target, path);
+    249|   } catch (error) {
+    250|     throw new FactoryCloneError(
+       |           ^
+    251|       factory.factoryId,
+    252|       path,
+ ❯ fixture packages/daemon/test/worktrees.test.ts:68:17
+ ❯ packages/daemon/test/worktrees.test.ts:636:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[34/38]⎯
+
+ FAIL  packages/daemon/test/worktrees.test.ts > inspection safely refuses oversized entries without deleting work
+Error: ENOENT: no such file or directory, open '/tmp/foundry-worktrees-bkI8VR/worktrees/shop/1-build-widget/unsafe-entry'
+ ❯ packages/daemon/test/worktrees.test.ts:643:11
+    641|
+    642|     if (kind === "fifo") {execFileSync("mkfifo", [file]);}
+    643|     else {writeFileSync(file, ""); truncateSync(file, 16 * 1024 * 1024…
+       |           ^
+    644|
+    645|     expect((yield* Effect.result(worktrees.inspect(undefined, 1)))._ta…
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ FiberImpl.succeedWith node_modules/effect/src/internal/effect.ts:769:30
+ ❯ ContImpl.succeedPayload [as ~effect/Effect/successCont] node_modules/effect/src/internal/effect.ts:1582:16
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1043:30
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[35/38]⎯
+
+ FAIL  packages/daemon/test/worktrees.test.ts > hook-created files are preserved instead of discarded after a successful hook
+AssertionError: expected 'ticket has no worktree' to contain 'before_remove left'
+
+Expected: "before_remove left"
+Received: "ticket has no worktree"
+
+ ❯ packages/daemon/test/worktrees.test.ts:751:149
+    749|     yield* finishTicket(store);
+    750|     const path = join(root, "worktrees/shop/1-build-widget");
+    751|     expect(yield* worktrees.clean(undefined, 1).pipe(Effect.match({ on…
+       |                                                                                                                                                     ^
+    752|     expect(readFileSync(join(path, "artifact"), "utf8")).toBe("preserv…
+    753|   }), `root: ./worktrees, before_remove: [${JSON.stringify(process.exe…
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ FiberImpl.succeedWith node_modules/effect/src/internal/effect.ts:769:30
+ ❯ MatchImpl.~effect/Effect/failureCont node_modules/effect/src/internal/effect.ts:3728:16
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/core.ts:628:20
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[36/38]⎯
+
+ FAIL  packages/daemon/test/worktrees.test.ts > missing before_remove executable raises a failure hold and confirmed force skips it
+AssertionError: expected 'ticket has no worktree' to contain 'ENOENT'
+
+Expected: "ENOENT"
+Received: "ticket has no worktree"
+
+ ❯ packages/daemon/test/worktrees.test.ts:760:149
+    758|     yield* scheduler.schedule();
+    759|     yield* finishTicket(store);
+    760|     expect(yield* worktrees.clean(undefined, 1).pipe(Effect.match({ on…
+       |                                                                                                                                                     ^
+    761|     expect(existsSync(join(root, "worktrees/shop/1-build-widget"))).to…
+    762|     expect(yield* store.read(`SELECT state FROM operator_hold`)).toEqu…
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ FiberImpl.succeedWith node_modules/effect/src/internal/effect.ts:769:30
+ ❯ MatchImpl.~effect/Effect/failureCont node_modules/effect/src/internal/effect.ts:3728:16
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/core.ts:628:20
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[37/38]⎯
+
+ FAIL  packages/daemon/test/worktrees.test.ts > log write failure still records a failed hook and allows confirmed force
+AssertionError: expected 'ticket has no worktree' to contain 'log write failed'
+
+Expected: "log write failed"
+Received: "ticket has no worktree"
+
+ ❯ packages/daemon/test/worktrees.test.ts:816:19
+    814|     yield* finishTicket(store);
+    815|     const error = yield* worktrees.clean(undefined, 1).pipe(Effect.mat…
+    816|     expect(error).toContain(`log ${failure} failed`);
+       |                   ^
+    817|     expect(existsSync(join(root, "worktrees/shop/1-build-widget"))).to…
+    818|     expect((yield* listOperations(store, "shop")).filter((operation) =…
+ ❯ ~effect/Effect/successCont node_modules/effect/src/internal/effect.ts:1498:28
+ ❯ FiberImpl.succeedWith node_modules/effect/src/internal/effect.ts:769:30
+ ❯ MatchImpl.~effect/Effect/failureCont node_modules/effect/src/internal/effect.ts:3728:16
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/core.ts:628:20
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[38/38]⎯
+
+
+ Test Files  9 failed | 91 passed (100)
+      Tests  38 failed | 799 passed (837)
+   Start at  16:48:36
+   Duration  11.64s (tests 54%, import 38%, transform 7%)
+

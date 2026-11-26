@@ -141,6 +141,32 @@ signal 0 only and never terminate unrelated groups.
 
 ## Repository health and handoff
 
-Regression results are recorded separately below after rebasing to latest develop.
+Fetched/rebased before validation: latest `origin/develop` remained
+`050145655c76a722afc6bce70ae422397e49872c`; no product changes were introduced.
+Retained command output is in `sdk-52-1-linux/artifacts/checks/`.
+
+| Check | Exit and result |
+|---|---|
+| `npm run build` | 0 |
+| `npm run typecheck` | 0 |
+| Direct `./node_modules/.bin/oxlint` | 0, empty diagnostic output |
+| Full direct `vitest run`, default temp | 1: 799 passed, 38 failed / 100 files; explicit `ENOSPC` Git failures. `/tmp` had 1,048,576/1,048,576 inodes allocated, despite free byte capacity. |
+| Full direct `vitest run`, owned isolated `TMPDIR` | **0: 837 tests / 100 files passed.** |
+| Separate direct `vitest run --config vitest.e2e.config.ts`, default temp | 1: 3 passed, 2 failed / 3 files (Git ENOSPC and interrupt timeout). |
+| Separate e2e with owned isolated `TMPDIR` | **1: 4 passed, 1 failed / 3 files**; existing interrupt journey timed out at 60 seconds. |
+
+The rerun used a fresh `/home/mark/.f149-xnQEp2` temp directory, removed after
+retaining logs. No unrelated temp files were deleted. The interrupt timeout's
+precise cause is **unverified**: the helper's child environment does not forward
+TMPDIR, so a parent temp override does not isolate every child cache. Do not
+assert a proven environmental cause for that remaining timeout or report the e2e
+suite green. It is separate from the complete SDK gate observation, which ran
+before inode exhaustion and has successful initial-channel and socket controls.
+No tests/configuration or product code were changed to force passing checks.
+
+Per criterion: unchanged launch IDs and no replacement **verified**; resumed
+channel traffic/reconnect **unmet**; entire passing criterion **unmet**. Other SDK
+qualification gates and macOS are **unverified**, outside scope.
+
 A fresh independent review remains required. No PR, merge, tracker mutation or
 product-code fix was made; passing acceptance remains open.
