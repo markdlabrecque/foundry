@@ -1,0 +1,17 @@
+
+> foundry@0.0.0 test:e2e
+> vitest run --config vitest.e2e.config.ts
+
+
+ RUN  v5.1.1 <repo>
+
+
+ Test Files  3 passed (3)
+      Tests  5 passed (5)
+   Start at  19:01:46
+   Duration  7.44s (tests 86%, import 13%, transform 2%)
+
+(node:3274049) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:3274047) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)

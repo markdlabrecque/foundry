@@ -1,0 +1,43 @@
+(node:3209452) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+fresh idle negative control
+fresh prime in actual model history
+restoration without automatic execution replay
+recovery prime and working authenticated channel
+in-place compaction prime in model context
+{
+  "outcome": "supported-on-tested-linux-implementation",
+  "cleanup": {
+    "orderly": true,
+    "errors": [],
+    "fallbackUsed": false,
+    "rootRemoved": true,
+    "before": {
+      "owned": [],
+      "groups": [
+        {
+          "pgid": 3209536,
+          "members": []
+        },
+        {
+          "pgid": 3209600,
+          "members": []
+        }
+      ]
+    },
+    "after": {
+      "owned": [],
+      "groups": [
+        {
+          "pgid": 3209536,
+          "members": []
+        },
+        {
+          "pgid": 3209600,
+          "members": []
+        }
+      ]
+    }
+  },
+  "artifact": "<private-tmp>/restore/result.json"
+}
