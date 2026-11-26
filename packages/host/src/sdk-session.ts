@@ -2,6 +2,8 @@
  * it does not add reconnect behaviour or qualify the SDK launcher (PRD §17.2).
  */
 import { join } from "node:path";
+import { agentToolCollisions } from "./sdk-diagnostic.js";
+import type { StartupDiagnostic } from "./sdk-diagnostic.js";
 import { createAgentSession, DefaultResourceLoader, ModelRuntime, SessionManager, SettingsManager } from "@earendil-works/pi-coding-agent";
 
 export interface SdkSessionInputs {
@@ -17,7 +19,7 @@ export interface SdkSessionInputs {
 /** Explicit resources only: never load settings, instructions, MCP or ambient packages.
  * The host still passes its full environment; credential isolation is not claimed here.
  */
-export async function createSdkSession(inputs: SdkSessionInputs) {
+export async function createSdkSession(inputs: SdkSessionInputs, reportStartupCollision?: (diagnostic: StartupDiagnostic) => void) {
   const settingsManager = SettingsManager.inMemory();
 
   const resourceLoader = new DefaultResourceLoader({
@@ -37,9 +39,15 @@ export async function createSdkSession(inputs: SdkSessionInputs) {
   });
 
   await resourceLoader.reload();
-  const errors = resourceLoader.getExtensions().errors;
+  const loaded = resourceLoader.getExtensions();
+  const collisions = agentToolCollisions(loaded.extensions);
 
-  if (errors.length > 0) {throw new Error(`SDK extension load failed: ${errors.map((error) => error.path).join(", ")}`);}
+  if (collisions.length > 0) {
+    reportStartupCollision?.({ version: 1, kind: "agent_tool_collision", collisions });
+    throw new Error(`SDK agent tool collision: ${collisions.map((c) => `${c.name}: ${c.sources.join(", ")}`).join("; ")}`);
+  }
+
+  if (loaded.errors.length > 0) {throw new Error(`SDK extension load failed: ${loaded.errors.map((error) => error.path).join(", ")}`);}
 
   const modelRuntime = await ModelRuntime.create({ authPath: join(inputs.agentDir, "auth.json"), modelsPath: null });
   const sessionDir = join(inputs.cwd, "sessions");

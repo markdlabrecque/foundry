@@ -148,6 +148,8 @@ export interface ToolSetGuard extends SlotClaim {
    * its unfreeze is the one waiting). Returns a function that stops waiting.
    */
   nextHello(slot: SlotRef): { readonly checked: Promise<HelloCheck>; readonly cancel: () => void };
+  /** A host-confirmed pre-session mismatch can satisfy an unfreeze's pending check. */
+  startupMismatch(slot: SlotRef, launchId: string, evidence: HoldEvidence): boolean;
 }
 
 const keyOf = (slot: SlotRef): string => JSON.stringify([slot.factoryId, slot.slotId]);
@@ -201,6 +203,16 @@ export const createToolSetGuard = (options: ToolSetGuardOptions): ToolSetGuard =
       stop(result.slot.launchId);
 
       return { accepted: false, reason: { kind: "terminal", code: TOOL_SET_MISMATCH, detail: describe(discrepancy) } };
+    },
+    startupMismatch(slot, launchId, evidence) {
+      const waiter = waiters.get(keyOf(slot));
+
+      if (waiter === undefined) {return false;}
+
+      waiters.delete(keyOf(slot));
+      waiter({ matched: false, launchId, evidence });
+
+      return true;
     },
     nextHello(slot) {
       const key = keyOf(slot);

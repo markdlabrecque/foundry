@@ -576,6 +576,7 @@ const main = async (): Promise<void> => {
         foundryExtension: foundryExtensionPath(),
         slots: plannedSlots,
         freezer,
+        startupMismatch: (slot, launchId, evidence) => guard.startupMismatch(slot, launchId, evidence),
         recoveryLimit: (factoryId) => factories.find((f) => f.factoryId === factoryId)?.config.recovery_limit ?? 3,
         configLoad: (factoryId) => loadIds.get(factoryId),
         inScope: (factoryId) => factoryStates.isRunning(factoryId),

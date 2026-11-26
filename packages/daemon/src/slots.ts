@@ -44,6 +44,8 @@ import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { FreezeCause, SLOT_INTERRUPT_ACK_TIMEOUT_MS, SlotCondition, slotIdOf } from "@foundry/protocol/slots-api";
 import type { LaunchEndReason, SlotLaunch, SlotLaunchHistoryEntry, SlotSummary } from "@foundry/protocol/slots-api";
 import { SlotsError } from "./slots-error.js";
+import { canonicalSource, expectedToolSet } from "./tool-set-check.js";
+import type { HoldEvidence } from "@foundry/protocol/holds";
 import type { SlotInterrupter, SlotsReader } from "./slots-error.js";
 import { ChannelUnavailableError } from "./channel/server.js";
 import type { ChannelServer } from "./channel/server.js";
@@ -428,6 +430,8 @@ export interface SlotSchedulerOptions {
   /** Factory configuration for idle-slot accounting; assignment ceilings are already stored. */
   readonly recoveryLimit?: (factoryId: string) => number;
   readonly configLoad?: (factoryId: string) => string | undefined;
+  /** Resolves a pending unfreeze recheck; true means it owns writing the hold. */
+  readonly startupMismatch?: (slot: SlotRef, launchId: string, evidence: HoldEvidence) => boolean;
 }
 
 /** What handling a host-reported launch exit did. */
@@ -553,6 +557,18 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
         return relaunchIfUnexpected(ownership.launchId);
       case "claimed":
+        // Same-host pending request whose reply was lost: establish current ownership
+        // before classifying the retained diagnostic, and before crash accounting.
+        if (ownership.launch.startupDiagnostic !== undefined) {
+          await Effect.runPromise(recordLaunch(store, slot, ownership.launch));
+
+          if (await checkStartupCollision(ownership.launch, onUnproven)) {
+            await recordGone(ownership.launch);
+
+            return result("held", ownership.launch.launchId);
+          }
+        }
+
         // This same host started it for the daemon's pending request; record it, and its end if gone.
         await applyOwnership(store, slot, ownership, options.recoveryLimit?.(slot.factoryId) ?? 3, options.configLoad?.(slot.factoryId) ?? null);
 
@@ -634,10 +650,60 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
     return result(outcome, launched.launchId);
   };
 
+  type DeferFreeze = (request: FreezeRequest, slot: PlannedSlot) => void;
+
+  const collisionLaunches = new Set<string>();
+
+  const checkStartupCollision = async (launch: LaunchRecord, defer: DeferFreeze): Promise<boolean> => {
+    if (launch.startupDiagnostic === undefined || launch.liveness !== "gone") {return false;}
+
+    const slot = options.slots.find((s) => s.factoryId === launch.factoryId && s.slotId === launch.slotId);
+
+    if (slot === undefined || launch.bootId !== options.bootId) {return false;}
+
+    const row = await Effect.runPromise(readSlot(store, slot.factoryId, slot.slotId));
+    const recorded = await Effect.runPromise(readLaunch(store, launch.launchId));
+
+    if (row?.current_launch !== launch.launchId || recorded?.factory_id !== slot.factoryId
+      || recorded.slot_id !== slot.slotId || recorded.boot_id !== launch.bootId || recorded.pid !== launch.pid) {return false;}
+
+    const expected = expectedToolSet(slot.station, options.foundryExtension);
+    const configured = new Set(slot.station.extensions.map((e) => canonicalSource(e.path)));
+
+    const replaced = launch.startupDiagnostic.collisions.flatMap((collision) => {
+      const wanted = expected.find((tool) => tool.name === collision.name);
+
+      if (wanted === undefined || canonicalSource(wanted.source) !== canonicalSource(options.foundryExtension)
+        || !collision.sources.some((source) => canonicalSource(source) === canonicalSource(wanted.source))) {return [];}
+
+      return collision.sources.filter((source) => configured.has(canonicalSource(source))
+        && canonicalSource(source) !== canonicalSource(wanted.source))
+        .map((actual) => ({ name: collision.name, expected: wanted.source, actual }));
+    });
+
+    if (replaced.length === 0) {return false;}
+
+    collisionLaunches.add(launch.launchId);
+    const conversationRef = await Effect.runPromise(readConversation(store, slot.factoryId, slot.slotId));
+    const evidence: HoldEvidence = { launchId: launch.launchId, conversationRef: conversationRef ?? "", missing: [], extra: [], replaced };
+
+    if (!options.startupMismatch?.(slot, launch.launchId, evidence)) {
+      defer({ ...slot, cause: "tool_set_mismatch", evidence }, slot);
+    }
+
+    options.revokeSlot?.(slot.factoryId, slot.slotId);
+    // Only the current, host-owned group. Termination still checks descendants
+    // after an early loader exit; a reaped leader alone is not group cleanup.
+    await options.terminate?.(launch.launchId);
+
+    return true;
+  };
+
   const recordGone = async (launch: LaunchRecord): Promise<boolean> => {
     const end = endOf(launch);
 
-    return end === undefined ? false : Effect.runPromise(recordEnd(store, launch.launchId, end,
+    return end === undefined ? false : Effect.runPromise(recordEnd(store, launch.launchId,
+      collisionLaunches.has(launch.launchId) ? { ...end, reason: "requested" } : end,
       options.recoveryLimit?.(launch.factoryId) ?? 3, options.configLoad?.(launch.factoryId) ?? null));
   };
 
@@ -648,7 +714,10 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
 
         // Ends the host reported while no daemon was listening.
         for (const launch of inventory) {
-          if (launch.liveness === "gone") {await recordGone(launch);}
+          if (launch.liveness === "gone") {
+            await checkStartupCollision(launch, defer);
+            await recordGone(launch);
+          }
         }
 
         const results: Array<SlotScheduleResult> = [];
@@ -691,7 +760,20 @@ export const createSlotScheduler = (options: SlotSchedulerOptions): SlotSchedule
     recordExit: (launch) => serial(() => recordGone(launch)),
     launchExited: (launch) =>
       scheduleWithFreezes(async (defer): Promise<LaunchExitResult> => {
-        const ended = await recordGone(launch);
+        // Re-read the current host's inventory: a delayed event is not authority
+        // for a different launch, factory, slot or host boot.
+        const confirmed = launch.startupDiagnostic === undefined ? launch : (await host.inventory()).find(
+          (l) => l.launchId === launch.launchId && l.factoryId === launch.factoryId
+            && l.slotId === launch.slotId && l.bootId === launch.bootId,
+        );
+
+        if (confirmed === undefined) {return { ended: false };}
+
+        const collision = await checkStartupCollision(confirmed, defer);
+        const ended = await recordGone(confirmed);
+
+        if (collision) {return { ended };}
+
         const slot = options.slots.find((s) => s.factoryId === launch.factoryId && s.slotId === launch.slotId);
 
         if (!ended || launch.exit === undefined || !exitWasUnexpected(launch.exit) || slot === undefined) {return { ended };}
