@@ -1,0 +1,570 @@
+{
+  "result": "failed",
+  "checks": {
+    "fixtureShape": true,
+    "childrenInWorkerGroups": true,
+    "stopSucceeded": true,
+    "stopNamedOnlyAlpha": true,
+    "escalatedEveryAlphaLaunch": true,
+    "alphaChildOutlivedLeader": false,
+    "alphaGroupsGone": true,
+    "betaSurvivesBeforeShutdown": true,
+    "shutdownSucceeded": true,
+    "betaChildOutlivedLeader": false,
+    "noOwnedGroupsAfterShutdown": true,
+    "hostAndDaemonGone": true,
+    "noRunProcessLeft": true
+  },
+  "log": [
+    {
+      "at": "2026-11-26T00:45:44.675Z",
+      "event": "versions",
+      "runtime": "sdk",
+      "node": "v22.23.2",
+      "pi": "1.6.0",
+      "platform": "linux x64",
+      "kernel": "7.2.15-1-omarchy",
+      "foundryCommit": "0501456",
+      "uncommitted": [
+        " M docs/evidence/rpc-54-4-linux/run-probe.mjs",
+        "?? docs/evidence/sdk-54-4-linux/"
+      ]
+    },
+    {
+      "at": "2026-11-26T00:45:45.017Z",
+      "event": "daemon serving",
+      "pid": 2393594
+    },
+    {
+      "at": "2026-11-26T00:45:47.039Z",
+      "event": "before stop",
+      "hostPid": 2393616,
+      "launches": [
+        {
+          "launchId": "55b356c9-bbbc-4ad2-b756-9fd4ef87bbf6",
+          "factoryId": "alpha",
+          "slotId": "hold/1",
+          "pid": 2393627,
+          "pgid": 2393627,
+          "liveness": "live"
+        },
+        {
+          "launchId": "3bf93098-b6fa-4d4d-9638-9e074ac435c7",
+          "factoryId": "alpha",
+          "slotId": "hold/2",
+          "pid": 2393629,
+          "pgid": 2393629,
+          "liveness": "live"
+        },
+        {
+          "launchId": "18f02b05-29e4-4412-8e60-7eab32e16fd0",
+          "factoryId": "beta",
+          "slotId": "hold/1",
+          "pid": 2393635,
+          "pgid": 2393635,
+          "liveness": "live"
+        }
+      ],
+      "holds": [
+        {
+          "factoryId": "alpha",
+          "slotId": "hold/1",
+          "launchId": "55b356c9-bbbc-4ad2-b756-9fd4ef87bbf6",
+          "workerPid": 2393627,
+          "childPid": 2393743,
+          "at": "2026-11-26T00:45:46.987Z",
+          "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+          "argv": [
+            "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/packages/host/dist/sdk-worker.js",
+            "--mode",
+            "rpc",
+            "--system-prompt",
+            "",
+            "--append-system-prompt",
+            "",
+            "--no-extensions",
+            "--no-mcp",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--session-id",
+            "c00f8bfd-a7df-4a40-9b9c-832d7f31964c",
+            "--model",
+            "probe/busy",
+            "--tools",
+            "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
+            "--extension",
+            "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/packages/extension/dist/index.js",
+            "--extension",
+            "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/docs/evidence/rpc-54-4-linux/probe-extension.ts"
+          ],
+          "cwd": "/tmp/fou122-EL6FrC/home/slots/alpha/hold-1"
+        },
+        {
+          "factoryId": "alpha",
+          "slotId": "hold/2",
+          "launchId": "3bf93098-b6fa-4d4d-9638-9e074ac435c7",
+          "workerPid": 2393629,
+          "childPid": 2393737,
+          "at": "2026-11-26T00:45:46.984Z",
+          "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+          "argv": [
+            "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/packages/host/dist/sdk-worker.js",
+            "--mode",
+            "rpc",
+            "--system-prompt",
+            "",
+            "--append-system-prompt",
+            "",
+            "--no-extensions",
+            "--no-mcp",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--session-id",
+            "7823bcae-f266-488b-94c2-6aea0011a75f",
+            "--model",
+            "probe/busy",
+            "--tools",
+            "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
+            "--extension",
+            "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/packages/extension/dist/index.js",
+            "--extension",
+            "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/docs/evidence/rpc-54-4-linux/probe-extension.ts"
+          ],
+          "cwd": "/tmp/fou122-EL6FrC/home/slots/alpha/hold-2"
+        },
+        {
+          "factoryId": "beta",
+          "slotId": "hold/1",
+          "launchId": "18f02b05-29e4-4412-8e60-7eab32e16fd0",
+          "workerPid": 2393635,
+          "childPid": 2393749,
+          "at": "2026-11-26T00:45:46.990Z",
+          "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+          "argv": [
+            "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/packages/host/dist/sdk-worker.js",
+            "--mode",
+            "rpc",
+            "--system-prompt",
+            "",
+            "--append-system-prompt",
+            "",
+            "--no-extensions",
+            "--no-mcp",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--session-id",
+            "06c92435-c817-40d8-99b2-54dfb84a39bf",
+            "--model",
+            "probe/busy",
+            "--tools",
+            "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
+            "--extension",
+            "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/packages/extension/dist/index.js",
+            "--extension",
+            "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/docs/evidence/rpc-54-4-linux/probe-extension.ts"
+          ],
+          "cwd": "/tmp/fou122-EL6FrC/home/slots/beta/hold-1"
+        }
+      ],
+      "groupMembers": [
+        {
+          "pid": 2393627,
+          "pgid": 2393627,
+          "ppid": 2393616,
+          "stat": "Ssl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/packages/host/dist/sdk-worker.js --mo"
+        },
+        {
+          "pid": 2393629,
+          "pgid": 2393629,
+          "ppid": 2393616,
+          "stat": "Ssl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/packages/host/dist/sdk-worker.js --mo"
+        },
+        {
+          "pid": 2393635,
+          "pgid": 2393635,
+          "ppid": 2393616,
+          "stat": "Ssl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/packages/host/dist/sdk-worker.js --mo"
+        },
+        {
+          "pid": 2393737,
+          "pgid": 2393629,
+          "ppid": 2393629,
+          "stat": "Sl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node -e process.on('SIGTERM', () => {}); setInterval(() => {}, 60000);"
+        },
+        {
+          "pid": 2393743,
+          "pgid": 2393627,
+          "ppid": 2393627,
+          "stat": "Sl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node -e process.on('SIGTERM', () => {}); setInterval(() => {}, 60000);"
+        },
+        {
+          "pid": 2393749,
+          "pgid": 2393635,
+          "ppid": 2393635,
+          "stat": "Sl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node -e process.on('SIGTERM', () => {}); setInterval(() => {}, 60000);"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-26T00:45:57.350Z",
+      "event": "factory stop alpha",
+      "argv": [
+        "foundry",
+        "factory",
+        "stop",
+        "alpha",
+        "--home",
+        "<home>",
+        "--json"
+      ],
+      "startedAt": "2026-11-26T00:45:47.039Z",
+      "exitCode": 0,
+      "signal": null,
+      "ms": 10310,
+      "body": {
+        "ok": true,
+        "result": {
+          "factoryId": "alpha",
+          "state": "stopped",
+          "force": false,
+          "launches": [
+            {
+              "launchId": "55b356c9-bbbc-4ad2-b756-9fd4ef87bbf6",
+              "slotId": "hold/1",
+              "drained": false,
+              "escalated": true
+            },
+            {
+              "launchId": "3bf93098-b6fa-4d4d-9638-9e074ac435c7",
+              "slotId": "hold/2",
+              "drained": false,
+              "escalated": true
+            }
+          ]
+        }
+      },
+      "stderr": "",
+      "samples": [
+        {
+          "ms": 10,
+          "members": [
+            {
+              "pid": 2393627,
+              "pgid": 2393627,
+              "ppid": 2393616,
+              "stat": "Ssl"
+            },
+            {
+              "pid": 2393629,
+              "pgid": 2393629,
+              "ppid": 2393616,
+              "stat": "Ssl"
+            },
+            {
+              "pid": 2393635,
+              "pgid": 2393635,
+              "ppid": 2393616,
+              "stat": "Ssl"
+            },
+            {
+              "pid": 2393737,
+              "pgid": 2393629,
+              "ppid": 2393629,
+              "stat": "Sl"
+            },
+            {
+              "pid": 2393743,
+              "pgid": 2393627,
+              "ppid": 2393627,
+              "stat": "Sl"
+            },
+            {
+              "pid": 2393749,
+              "pgid": 2393635,
+              "ppid": 2393635,
+              "stat": "Sl"
+            }
+          ]
+        },
+        {
+          "ms": 10299,
+          "members": [
+            {
+              "pid": 2393635,
+              "pgid": 2393635,
+              "ppid": 2393616,
+              "stat": "Ssl"
+            },
+            {
+              "pid": 2393749,
+              "pgid": 2393635,
+              "ppid": 2393635,
+              "stat": "Sl"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "at": "2026-11-26T00:45:57.629Z",
+      "event": "after stop",
+      "escalation": [
+        {
+          "slot": "alpha/hold/1",
+          "pgid": 2393627,
+          "leader": 2393627,
+          "child": 2393743,
+          "leaderGoneAtMs": 10299,
+          "groupEmptyAtMs": 10299,
+          "childOutlivedLeader": false
+        },
+        {
+          "slot": "alpha/hold/2",
+          "pgid": 2393629,
+          "leader": 2393629,
+          "child": 2393737,
+          "leaderGoneAtMs": 10299,
+          "groupEmptyAtMs": 10299,
+          "childOutlivedLeader": false
+        }
+      ],
+      "hostRecords": [
+        {
+          "factoryId": "alpha",
+          "slotId": "hold/1",
+          "pgid": 2393627,
+          "liveness": "gone",
+          "exit": {
+            "code": null,
+            "signal": "SIGKILL",
+            "endedAt": "2026-11-26T00:45:57.303Z",
+            "requested": true
+          }
+        },
+        {
+          "factoryId": "alpha",
+          "slotId": "hold/2",
+          "pgid": 2393629,
+          "liveness": "gone",
+          "exit": {
+            "code": null,
+            "signal": "SIGKILL",
+            "endedAt": "2026-11-26T00:45:57.303Z",
+            "requested": true
+          }
+        },
+        {
+          "factoryId": "beta",
+          "slotId": "hold/1",
+          "pgid": 2393635,
+          "liveness": "live"
+        }
+      ],
+      "alphaGroupsAlive": [
+        {
+          "pgid": 2393627,
+          "alive": false
+        },
+        {
+          "pgid": 2393629,
+          "alive": false
+        }
+      ],
+      "alphaChildrenAlive": [
+        {
+          "pid": 2393743,
+          "alive": false
+        },
+        {
+          "pid": 2393737,
+          "alive": false
+        }
+      ],
+      "betaGroupsAlive": [
+        {
+          "pgid": 2393635,
+          "alive": true
+        }
+      ],
+      "betaChildrenAlive": [
+        {
+          "pid": 2393749,
+          "alive": true
+        }
+      ],
+      "groupMembers": [
+        {
+          "pid": 2393635,
+          "pgid": 2393635,
+          "ppid": 2393616,
+          "stat": "Ssl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/packages/host/dist/sdk-worker.js --mo"
+        },
+        {
+          "pid": 2393749,
+          "pgid": 2393635,
+          "ppid": 2393635,
+          "stat": "Sl",
+          "args": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node -e process.on('SIGTERM', () => {}); setInterval(() => {}, 60000);"
+        }
+      ],
+      "factories": {
+        "ok": true,
+        "result": {
+          "runId": "8ff6f064-56ba-44cf-943e-0bdb87ee83e9",
+          "loadedAt": "2026-11-26T00:45:44.883Z",
+          "factories": [
+            {
+              "factoryId": "alpha",
+              "state": "stopped",
+              "loadId": 1,
+              "yamlFile": "/tmp/fou122-EL6FrC/alpha.yaml",
+              "configHash": "sha256:c24860a96371870846ed4dd6348997be8efd622bab560196538810af6053e8cb",
+              "knowledgeRoot": "/tmp/fou122-EL6FrC/knowledge"
+            },
+            {
+              "factoryId": "beta",
+              "state": "running",
+              "loadId": 2,
+              "yamlFile": "/tmp/fou122-EL6FrC/beta.yaml",
+              "configHash": "sha256:7e7e2370ace427df4ab932a8a0c569629cb6e73fcec166a5519eb3b382fb4847",
+              "knowledgeRoot": "/tmp/fou122-EL6FrC/knowledge"
+            }
+          ]
+        }
+      }
+    },
+    {
+      "at": "2026-11-26T00:46:07.970Z",
+      "event": "shutdown",
+      "argv": [
+        "foundry",
+        "shutdown",
+        "--home",
+        "<home>",
+        "--json"
+      ],
+      "startedAt": "2026-11-26T00:45:57.629Z",
+      "exitCode": 0,
+      "signal": null,
+      "ms": 10341,
+      "body": {
+        "ok": true,
+        "result": {
+          "force": false,
+          "factories": [
+            {
+              "factoryId": "beta",
+              "state": "stopped",
+              "force": false,
+              "launches": [
+                {
+                  "launchId": "18f02b05-29e4-4412-8e60-7eab32e16fd0",
+                  "slotId": "hold/1",
+                  "drained": false,
+                  "escalated": true
+                }
+              ]
+            }
+          ],
+          "hostStopped": true
+        }
+      },
+      "stderr": "",
+      "samples": [
+        {
+          "ms": 12,
+          "members": [
+            {
+              "pid": 2393635,
+              "pgid": 2393635,
+              "ppid": 2393616,
+              "stat": "Ssl"
+            },
+            {
+              "pid": 2393749,
+              "pgid": 2393635,
+              "ppid": 2393635,
+              "stat": "Sl"
+            }
+          ]
+        },
+        {
+          "ms": 10341,
+          "members": []
+        }
+      ]
+    },
+    {
+      "at": "2026-11-26T00:46:07.986Z",
+      "event": "after shutdown",
+      "escalation": [
+        {
+          "slot": "beta/hold/1",
+          "pgid": 2393635,
+          "leader": 2393635,
+          "child": 2393749,
+          "leaderGoneAtMs": 10341,
+          "groupEmptyAtMs": 10341,
+          "childOutlivedLeader": false
+        }
+      ],
+      "daemonExit": 0,
+      "hostAlive": false,
+      "groupsAlive": [
+        {
+          "pgid": 2393627,
+          "alive": false
+        },
+        {
+          "pgid": 2393629,
+          "alive": false
+        },
+        {
+          "pgid": 2393635,
+          "alive": false
+        }
+      ],
+      "childrenAlive": [
+        {
+          "pid": 2393743,
+          "alive": false
+        },
+        {
+          "pid": 2393737,
+          "alive": false
+        },
+        {
+          "pid": 2393749,
+          "alive": false
+        }
+      ],
+      "groupMembers": [],
+      "runProcessesLeft": []
+    },
+    {
+      "at": "2026-11-26T00:46:07.992Z",
+      "event": "state root logs",
+      "files": [
+        "daemon.log",
+        "host.log"
+      ],
+      "copiedTo": "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/docs/evidence/sdk-54-4-linux"
+    }
+  ]
+}

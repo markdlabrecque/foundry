@@ -1,0 +1,29 @@
+version: 1
+name: beta
+repository:
+  source: ./repo-beta
+  default_branch: main
+default_production_line: f
+worktrees:
+  root: "/tmp/fou122-EL6FrC/worktrees-beta"
+rooms:
+  eng:
+    stations:
+      hold:
+        model: probe/busy
+        isolation: worktree
+        instances: 1
+        extensions:
+          - path: "/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/docs/evidence/rpc-54-4-linux/probe-extension.ts"
+            tools: [probe_hold]
+production_lines:
+  f:
+    verify: ["true"]
+    stages:
+      - id: a
+        station: eng.hold
+        writing: true
+      - id: b
+        station: eng.hold
+        approval: true
+        on_rejection: a

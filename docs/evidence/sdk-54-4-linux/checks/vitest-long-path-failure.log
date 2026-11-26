@@ -1,0 +1,2412 @@
+
+ RUN  v5.1.1 /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4
+
+(node:2440416) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440434) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440448) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440386) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440404) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440450) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440454) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440402) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440430) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440428) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440383) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440422) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440409) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2440463) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/instance-lock.test.ts (6 tests | 1 failed) 1225ms
+   × a second daemon cannot take the state root while the first owns it 898ms
+(node:2441003) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/logs.test.ts (2 tests | 1 failed) 2860ms
+   × the logs API selects fixture lines by reference across rotated files, oldest first, and nothing unrelated 88ms
+ ❯ packages/cli/test/messages.test.ts (3 tests | 1 failed) 3121ms
+   × operator sends commit in the shared log with operator attribution, no assignment/budget, and survive reopen 350ms
+(node:2442080) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/factory-stop.test.ts (2 tests | 2 failed) 2189ms
+   × stopping one factory drains and ends only its process groups; the other factory keeps running 1082ms
+   × a stop that cannot confirm a group gone fails, keeps the factory stopping and leaves the other factory alone 1105ms
+ ❯ packages/cli/test/status.test.ts (2 tests | 1 failed) 4064ms
+   × foundry status shows the running daemon's instance, and --json prints the API body 804ms
+(node:2442210) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/factory-loads.test.ts (2 tests | 1 failed) 2631ms
+   × a valid start records the run and its load and creates the empty knowledge layout; the hash follows the resolved config 1916ms
+(node:2442387) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/cli/test/tickets.test.ts (4 tests | 2 failed) 4273ms
+   × ticket submit copies the file into the ticket directory; list and show print it back 384ms
+   × resume forwards daemon refusals without changing a backlog ticket 262ms
+(node:2442475) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2442544) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2442596) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/daemon-restart-ownership.test.ts (1 test | 1 failed) 1296ms
+   × a restarted daemon keeps a proven launch and freezes a slot holding an orphan instead of adopting it 1294ms
+(node:2444044) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/relaunch.test.ts (3 tests | 3 failed) 1041ms
+   × a launch that dies unasked is relaunched in the same slot and conversation; a live one without a channel is kept 364ms
+   × operator restart replaces only the owned launch, reconciles its existing conversation and keeps its counter 406ms
+   × a launch the host stops on request is not relaunched 270ms
+(node:2444921) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2445032) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2444840) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/shutdown.test.ts (3 tests | 3 failed) 1184ms
+   × shutdown with force=false ends every factory's groups, then the Worker Host 424ms
+   × shutdown with force=true ends every factory's groups, then the Worker Host 376ms
+   × a group that cannot be confirmed gone fails the shutdown and keeps the Worker Host running 378ms
+ ❯ packages/cli/test/factories.test.ts (3 tests | 2 failed) 1761ms
+   × factory list answers from the served run's recorded configuration loads 510ms
+   × a served run with no record is refused, not answered with an empty list 407ms
+ ❯ packages/cli/test/slots.test.ts (3 tests | 2 failed) 2246ms
+   × slot list shows every configured slot with its condition and latest launch 744ms
+   × slot show prints the launch history with exit reasons; a bad address or unknown slot is refused 698ms
+(node:2446205) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/host/test/launch-logs.test.ts (1 test | 1 failed) 397ms
+   × the host logs launches with references and keeps stderr only for unexpected ends, separately per launch 397ms
+(node:2446035) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2446581) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/sdk-worker.test.ts (1 test | 1 failed) 621ms
+   × SDK worker preserves explicit resources, host identity and authenticated allowed tool traffic 612ms
+ ❯ packages/daemon/test/daemon-log.test.ts (5 tests | 1 failed) 1756ms
+   × the foreground daemon writes its run to logs/daemon.log and stderr, and nothing to the host log 1408ms
+(node:2447316) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2447699) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2447963) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2447822) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2448143) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2447892) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/message-delivery.test.ts (29 tests | 11 failed) 13212ms
+   × bound messages go in acceptance order without waiting for receipts; commits never reinject and reconnect never blindly retries 379ms
+   × reconnect compares a lost receipt and a held copy against real Pi without reinjecting either 524ms
+   × reconcile before priming and delivery: persisted receipt 484ms
+   × reconcile before priming and delivery: lost receipt recovered by comparison 436ms
+   × reconcile before priming and delivery: no prior receipt or history 278ms
+   × reconcile before priming and delivery: recoverable conversation without a prim… 350ms
+   × reconcile before priming and delivery: lost acknowledged history on replacement 247ms
+   × reconcile before priming and delivery: lost acknowledged history on reconnect 356ms
+   × reconcile before priming and delivery: same-launch reconnect 610ms
+   × ambiguous delivery survives restart and gates only its slot until operator resend 700ms
+   × ambiguous delivery survives restart and gates only its slot until operator drop 861ms
+ ❯ packages/daemon/test/factory-clone.test.ts (7 tests | 3 failed) 11531ms
+   × daemon start creates the clone and foundry factory path prints it; a restart does not fetch, an explicit sync does 1998ms
+   × restart completes a previously queued sync without another operator request 2527ms
+   × a factory whose clone path is not Foundry's is refused alone; the daemon serves the other 3480ms
+(node:2449625) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2449165) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/tickets.test.ts (7 tests | 5 failed) 2610ms
+   × submitted tickets, their transitions and ticket directories survive a daemon restart 660ms
+   × an unknown production line is refused and writes no ticket, transition, history or directory 381ms
+   × with two factories loaded, submit and show need one named and numbers are per factory 460ms
+   × malformed submit requests are refused before anything is written 328ms
+   × ticket transitions cannot be updated or deleted 330ms
+ ❯ test/freeze.test.ts (6 tests | 4 failed) 4332ms
+   × slot reset CLI refuses an unconfirmed group, force replaces the conversation and the new launch receives a fresh prime 590ms
+   × a frozen slot is sent nothing while the other slot carries on, and stays frozen while its cause persists 697ms
+   × a connection that ends while its slot is frozen is never primed; the live launch is, once unfrozen 755ms
+   × an instruction file missing at priming freezes the slot, and no work goes out until it is restored and unfrozen 704ms
+ ❯ test/fresh-prime.test.ts (6 tests | 3 failed) 3403ms
+   × the fresh prime is recorded unacknowledged and reaches the worker before any later frame on that connection 577ms
+   × a reconnect from the same launch is not primed again, and a missing instruction file sends and records nothing 570ms
+   × the prime alone starts no turn; once it is in the session file its receipt is persisted as acknowledgement 493ms
+ ❯ test/agent-discover.test.ts (3 tests | 3 failed) 1493ms
+   × agent_discover returns the sender factory's configured stations and slots and none of another factory's 497ms
+   × agent_status reports capacity and non-eligible slots, scopes observations, and replays its committed snapshot 644ms
+   × Pi can discover and inspect its factory and submit a durable message through registered tools 351ms
+(node:2450098) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/slot-interrupt.test.ts (8 tests | 8 failed) 3977ms
+   × pausing an assigned ticket waits for settlement, suspends without abandoning records and frees capacity 640ms
+   × retry through the CLI waits for the worker acknowledgement, then queues a new assignment on the same launch 559ms
+   × pause refusals and a failed commit preserve all durable state 493ms
+   × an assignment replaced during interruption is not suspended and gets no pause transition 445ms
+   × interrupting a slot aborts its run and keeps the same slot, launch and conversation 443ms
+   × a slot with no live launch is refused, and nothing is launched into it 594ms
+   × a worker that never acknowledges is refused with its code, and the launch is left alone 586ms
+   × a channel lost before the ack is refused with its code, and the launch is left alone 216ms
+ ❯ test/agent-request.test.ts (4 tests | 4 failed) 80ms
+   × Pi advertises agent_delegate, forwards its arguments and returns the committed result 32ms
+   × Pi advertises agent_request, forwards its arguments and returns the committed result 12ms
+   × Pi advertises agent_reply, forwards its arguments and returns the committed result 31ms
+   × Pi advertises task_transition, forwards its arguments and returns the committed result 4ms
+(node:2450733) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2450292) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2450411) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/ticket-retry.test.ts (5 tests | 1 failed) 4219ms
+   × CLI/API retry on a parked slot succeeds without interrupt; hook-failure pause refuses 335ms
+(node:2450683) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2450927) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2450327) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/daemon-restart-notice.test.ts (2 tests | 2 failed) 869ms
+   × a worker that survives a daemon restart is not re-primed or replayed: still-active assignment gets one notice 469ms
+   × a worker that survives a daemon restart is not re-primed or replayed: assignment it ended before the restart … 399ms
+(node:2451010) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/tool-set-freeze.test.ts (2 tests | 2 failed) 528ms
+   × a matched hello continues; a mismatched one freezes its slot with the discrepancy and stops its launch 251ms
+   × unfreeze relaunches in the same conversation: still mismatched stays frozen, corrected unfreezes 275ms
+ ❯ test/compaction-prime.test.ts (2 tests | 1 failed) 666ms
+   × a compaction prime reaches the same launch's conversation at the next tool-round boundary, ahead of held work 253ms
+ ❯ packages/daemon/test/events.test.ts (4 tests | 4 failed) 968ms
+   × a followed stream replays only after the cursor, then sees one newly appended event in sequence 248ms
+   × an unfollowed read filters by factory and ticket, ends after replay, and refuses a bad cursor 197ms
+   × a row committed while a followed replay is being read is sent once, in sequence 298ms
+   × a client that disconnects from a followed stream stops listening for commits 224ms
+ ❯ test/tool-calls.test.ts (6 tests | 6 failed) 1779ms
+   × a tool result reaches the worker only after its submission and effects commit 434ms
+   × a handler that refuses after writing rolls its effect back and reports nothing committed 313ms
+   × a call whose result was lost with its channel is answered from the stored result on the next channel 253ms
+   × a call re-sent while its original is still committing waits for that commit and replays its result 218ms
+   × two calls with equal arguments and distinct call IDs are two submissions with two effects 274ms
+   × a frozen slot's calls are refused with nothing committed, while a call committed before the freeze still replays 285ms
+ ❯ packages/daemon/test/integration-recovery.test.ts (8 tests | 3 failed) 15687ms
+   × an indeterminate integration declared landed without its approved commit on the default branch is refused; not landed reruns it from the current head 2328ms
+   × not landed is refused while the clone has a leftover Git index lock, leaving the hold's evidence in place 1460ms
+   × an indeterminate integration whose approved commit is on the default branch can be declared landed: it completes, cleans up and reopens the queue 1149ms
+(node:2451739) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2451929) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2451718) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/management-api.test.ts (12 tests | 12 failed) 70ms
+   × status is served in the envelope on an owner-only socket, which close removes 11ms
+   × a stale socket left by a dead daemon is replaced 48ms
+   × a socket another daemon answers on is refused and left serving 3ms
+   × a file that is not a socket is refused and never removed 3ms
+   × a factory path request with a malformed name answers 400; an unknown factory 404 0ms
+   × the slot routes refuse a malformed slot address with its code 0ms
+   × the slot routes refuse an empty factory with its code 0ms
+   × the slot routes refuse an unknown factory with its code 0ms
+   × the slot routes refuse no factory with several loaded with its code 1ms
+   × the slot routes refuse a slot the factory does not have with its code 0ms
+   × the slot interrupt route answers only POST, and a bare /interrupt is no slot route 0ms
+   × the slot routes answer 503 when the daemon serves no slots 1ms
+ ❯ test/worker-refusal.test.ts (2 tests | 2 failed) 99ms
+   × terminal hello refusal reaches Pi tools and survives later session starts without redial 59ms
+   × retryable hello refusal permits a later session start to dial 39ms
+(node:2452019) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2452062) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+foundry: channel not reached at /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tool-set-czUBHn/unused.sock: Error: connect ENOENT /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tool-set-czUBHn/unused.sock
+(node:2451974) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2452246) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/cli/test/holds.test.ts (1 test | 1 failed) 310ms
+   × a repeated hold keeps one open record, refreshes its evidence, and shows it with its commands 309ms
+(node:2452318) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2452506) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/worktree-recovery.test.ts (11 tests | 1 failed) 17189ms
+   × discard refuses to drop a branch with commits until confirmed, then recreates the worktree from the default branch 1464ms
+ ❯ packages/cli/test/events.test.ts (3 tests | 1 failed) 424ms
+   × foundry events prints history after --since, as text or JSON, and ends 362ms
+(node:2452635) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/channel.test.ts (13 tests | 13 failed) 656ms
+   × reconnecting the same launch closes its earlier channel and reset revokes the remaining one 62ms
+   × reset revocation invalidates a hello claim already in flight 51ms
+   × a valid hello is accepted, and heartbeats arrive attributed to the claimed slot 34ms
+   × a version mismatch is rejected with a terminal reason and never reaches the slot claim or slot work 57ms
+   × a missing launch ID is rejected with a terminal reason and never reaches the slot claim or slot work 76ms
+   × a non-JSON line is rejected with a terminal reason and never reaches the slot claim or slot work 45ms
+   × a heartbeat before hello is rejected with a terminal reason and never reaches the slot claim or slot work 52ms
+   × a refused slot claim is relayed to the worker and its later frames reach no slot work 17ms
+   × a connection that never sends a hello is dropped on the lapse deadline without reporting a slot 29ms
+   × a heartbeat lapse reports only channel loss and closes the connection 41ms
+   × a slot claim that throws is refused as retryable 4ms
+   × an invalid frame after acceptance closes the connection as a protocol error 105ms
+   × an oversize line after acceptance closes the connection as a protocol error 81ms
+ ❯ test/slot-claim.test.ts (10 tests | 7 failed) 27ms
+   × a hello from the slot's current launch is accepted and its frames speak for the host's record 17ms
+   × a stale launch the host reports gone is refused terminally and reaches no slot work 1ms
+   × a launch the host has in another slot is refused terminally and reaches no slot work 1ms
+   × a launch the host has in another factory is refused terminally and reaches no slot work 1ms
+   × a launch the host does not know is refused terminally and reaches no slot work 1ms
+   × a reconnect with an unchanged conversation is accepted; a changed conversation is refused 1ms
+   × a host that cannot answer gets a retryable refusal 1ms
+(node:2452637) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ test/compaction-report.test.ts (1 test | 1 failed) 66ms
+   × compactions while the channel is down are reported exactly once after reconnect 65ms
+ ❯ test/interrupt.test.ts (6 tests | 6 failed) 421ms
+   × an interrupt is acknowledged only after the aborted run settles, once, on the same channel 99ms
+   × an interrupt with no active run is acknowledged as idle without aborting 98ms
+   × a drain is acknowledged once the run settles, without aborting it 159ms
+   × a drain is refused if the channel is lost before the ack 31ms
+   × an interrupt for a launch with no accepted channel is refused 5ms
+   × an interrupt is refused if the channel is lost before the ack 27ms
+(node:2452669) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2452902) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2453000) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2452913) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2453067) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2452849) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2453298) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/worktrees.test.ts (44 tests | 3 failed) 28030ms
+   × compaction restores full unchanged worktree context over the channel only while assigned 1316ms
+   × compaction restores full unchanged none context over the channel only while assigned 958ms
+   × CLI list and confirmed force traverse the management socket without deleting cancelled work automatically 125ms
+ ❯ packages/daemon/test/task-transition.test.ts (99 tests | 11 failed) 32547ms
+   × ticket cancel CLI discloses, refuses nonterminal use without --yes, and cancels backlog through the API 359ms
+   × CLI answer commits one resolution and an exact-slot budget-exempt answer, or neither 248ms
+   × blocked pauses atomically, frees capacity and survives replay/restart with its true outcome 114ms
+   × rejected pauses atomically, frees capacity and survives replay/restart with its true outcome 89ms
+   × integration after_create failure and retry preserve the approval 263ms
+   × integration after_create failure and unchecked preserve the approval 255ms
+   × gate approve (final=false routed=true) is operator-only and bound to evaluated commit 97ms
+   × gate approve (final=true routed=true) is operator-only and bound to evaluated commit 98ms
+   × gate reject (final=false routed=true) is operator-only and bound to evaluated commit 111ms
+   × gate reject (final=true routed=true) is operator-only and bound to evaluated commit 91ms
+   × gate reject (final=false routed=false) is operator-only and bound to evaluated commit 101ms
+
+⎯⎯⎯⎯⎯⎯ Failed Tests 141 ⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/agent-discover.test.ts > agent_discover returns the sender factory's configured stations and slots and none of another factory's
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-discover-8tCb6p/.channel.sock-8uVFVR/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ startDiscovery test/agent-discover.test.ts:51:18
+     49|   const store: Store = await Effect.runPromise(Scope.provide(scope)(op…
+     50|
+     51|   const server = await startChannelServer({
+       |                  ^
+     52|     socketPath: join(dir, "channel.sock"),
+     53|     slotClaim: createHostSlotClaim({ host: { inventory: async () => la…
+ ❯ test/agent-discover.test.ts:99:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/141]⎯
+
+ FAIL  test/agent-discover.test.ts > agent_status reports capacity and non-eligible slots, scopes observations, and replays its committed snapshot
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-discover-5vJgsz/.channel.sock-NwL8yn/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ startDiscovery test/agent-discover.test.ts:51:18
+     49|   const store: Store = await Effect.runPromise(Scope.provide(scope)(op…
+     50|
+     51|   const server = await startChannelServer({
+       |                  ^
+     52|     socketPath: join(dir, "channel.sock"),
+     53|     slotClaim: createHostSlotClaim({ host: { inventory: async () => la…
+ ❯ test/agent-discover.test.ts:117:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/141]⎯
+
+ FAIL  test/agent-discover.test.ts > Pi can discover and inspect its factory and submit a durable message through registered tools
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-discover-7ZJWoD/.channel.sock-EXU19W/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ startDiscovery test/agent-discover.test.ts:51:18
+     49|   const store: Store = await Effect.runPromise(Scope.provide(scope)(op…
+     50|
+     51|   const server = await startChannelServer({
+       |                  ^
+     52|     socketPath: join(dir, "channel.sock"),
+     53|     slotClaim: createHostSlotClaim({ host: { inventory: async () => la…
+ ❯ test/agent-discover.test.ts:173:31
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/141]⎯
+
+ FAIL  test/agent-request.test.ts > Pi advertises agent_delegate, forwards its arguments and returns the committed result
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-request-wiring-XEjFeb/.channel.sock-IWgoYO/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/agent-request.test.ts:34:18
+     32|   const outcome = { status: "committed", value } as const;
+     33|
+     34|   const server = await startChannelServer({
+       |                  ^
+     35|     socketPath: join(dir, "channel.sock"),
+     36|     slotClaim: { claim: async (hello) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[4/141]⎯
+
+ FAIL  test/agent-request.test.ts > Pi advertises agent_request, forwards its arguments and returns the committed result
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-request-wiring-cOTLon/.channel.sock-HSjHhL/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/agent-request.test.ts:34:18
+     32|   const outcome = { status: "committed", value } as const;
+     33|
+     34|   const server = await startChannelServer({
+       |                  ^
+     35|     socketPath: join(dir, "channel.sock"),
+     36|     slotClaim: { claim: async (hello) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[5/141]⎯
+
+ FAIL  test/agent-request.test.ts > Pi advertises agent_reply, forwards its arguments and returns the committed result
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-request-wiring-RKrPxy/.channel.sock-9mUvA9/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/agent-request.test.ts:34:18
+     32|   const outcome = { status: "committed", value } as const;
+     33|
+     34|   const server = await startChannelServer({
+       |                  ^
+     35|     socketPath: join(dir, "channel.sock"),
+     36|     slotClaim: { claim: async (hello) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[6/141]⎯
+
+ FAIL  test/agent-request.test.ts > Pi advertises task_transition, forwards its arguments and returns the committed result
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-request-wiring-pVk200/.channel.sock-1sQvBc/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/agent-request.test.ts:34:18
+     32|   const outcome = { status: "committed", value } as const;
+     33|
+     34|   const server = await startChannelServer({
+       |                  ^
+     35|     socketPath: join(dir, "channel.sock"),
+     36|     slotClaim: { claim: async (hello) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[7/141]⎯
+
+ FAIL  test/channel.test.ts > reconnecting the same launch closes its earlier channel and reset revokes the remaining one
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-6gorcm/.channel.sock-E78YI6/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:95:12
+     93| test("reconnecting the same launch closes its earlier channel and rese…
+     94|   const frames: Array<WorkerFrame> = [];
+     95|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+     96|     onFrame: (_slot, frame) => { frames.push(frame); } });
+     97|   const first = await openChannel({ socketPath: server.socketPath, hel…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[8/141]⎯
+
+ FAIL  test/channel.test.ts > reset revocation invalidates a hello claim already in flight
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-jWkBSs/.channel.sock-MMpTeS/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:115:12
+    113|   let finish!: () => void;
+    114|   const continueClaim = waitFor<void>((resolve) => { finish = resolve;…
+    115|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+    116|     claim: async (h) => {
+    117|       claimed();
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[9/141]⎯
+
+ FAIL  test/channel.test.ts > a valid hello is accepted, and heartbeats arrive attributed to the claimed slot
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-olrzTH/.channel.sock-S3S41M/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:135:12
+    133|   const heartbeat = waitFor<void>((r) => (gotHeartbeat = r));
+    134|   const claimed: Array<Hello> = [];
+    135|   server = await startChannelServer({
+       |            ^
+    136|     socketPath: join(dir, "channel.sock"),
+    137|     slotClaim: {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[10/141]⎯
+
+ FAIL  test/channel.test.ts > a version mismatch is rejected with a terminal reason and never reaches the slot claim or slot work
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-Shylde/.channel.sock-alS68T/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:171:12
+    169|   let claims = 0;
+    170|   const frames: Array<WorkerFrame> = [];
+    171|   server = await startChannelServer({
+       |            ^
+    172|     socketPath: join(dir, "channel.sock"),
+    173|     slotClaim: { claim: async (h) => (claims++, acceptAll.claim(h)) },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[11/141]⎯
+
+ FAIL  test/channel.test.ts > a missing launch ID is rejected with a terminal reason and never reaches the slot claim or slot work
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-dOkzrm/.channel.sock-0gSqmp/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:171:12
+    169|   let claims = 0;
+    170|   const frames: Array<WorkerFrame> = [];
+    171|   server = await startChannelServer({
+       |            ^
+    172|     socketPath: join(dir, "channel.sock"),
+    173|     slotClaim: { claim: async (h) => (claims++, acceptAll.claim(h)) },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[12/141]⎯
+
+ FAIL  test/channel.test.ts > a non-JSON line is rejected with a terminal reason and never reaches the slot claim or slot work
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-hRvdAy/.channel.sock-Dmt2wh/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:171:12
+    169|   let claims = 0;
+    170|   const frames: Array<WorkerFrame> = [];
+    171|   server = await startChannelServer({
+       |            ^
+    172|     socketPath: join(dir, "channel.sock"),
+    173|     slotClaim: { claim: async (h) => (claims++, acceptAll.claim(h)) },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[13/141]⎯
+
+ FAIL  test/channel.test.ts > a heartbeat before hello is rejected with a terminal reason and never reaches the slot claim or slot work
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-h2aEq9/.channel.sock-7IApYM/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:171:12
+    169|   let claims = 0;
+    170|   const frames: Array<WorkerFrame> = [];
+    171|   server = await startChannelServer({
+       |            ^
+    172|     socketPath: join(dir, "channel.sock"),
+    173|     slotClaim: { claim: async (h) => (claims++, acceptAll.claim(h)) },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[14/141]⎯
+
+ FAIL  test/channel.test.ts > a refused slot claim is relayed to the worker and its later frames reach no slot work
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-dNY0oA/.channel.sock-dXK82L/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:188:12
+    186|   const reason: HelloRejectReason = { kind: "retryable", code: "host_u…
+    187|   const frames: Array<WorkerFrame> = [];
+    188|   server = await startChannelServer({
+       |            ^
+    189|     socketPath: join(dir, "channel.sock"),
+    190|     slotClaim: { claim: async () => ({ accepted: false, reason }) },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[15/141]⎯
+
+ FAIL  test/channel.test.ts > a connection that never sends a hello is dropped on the lapse deadline without reporting a slot
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-XQyFqg/.channel.sock-DywYDc/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:209:12
+    207|   const lapse = manualTimer();
+    208|   const lost: Array<ClaimedSlot> = [];
+    209|   server = await startChannelServer({
+       |            ^
+    210|     socketPath: join(dir, "channel.sock"),
+    211|     slotClaim: acceptAll,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[16/141]⎯
+
+ FAIL  test/channel.test.ts > a heartbeat lapse reports only channel loss and closes the connection
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-NufFKP/.channel.sock-2QlMY3/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:236:12
+    234|   const heartbeat = waitFor<void>((r) => (gotHeartbeat = r));
+    235|   let armsAtAccept = -1;
+    236|   server = await startChannelServer({
+       |            ^
+    237|     socketPath: join(dir, "channel.sock"),
+    238|     slotClaim: acceptAll,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[17/141]⎯
+
+ FAIL  test/channel.test.ts > a slot claim that throws is refused as retryable
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-czyxkP/.channel.sock-KqD0T1/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:261:12
+    259|
+    260| test("a slot claim that throws is refused as retryable", async () => {
+    261|   server = await startChannelServer({
+       |            ^
+    262|     socketPath: join(dir, "channel.sock"),
+    263|     slotClaim: { claim: async () => { throw new Error("host gone"); } …
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[18/141]⎯
+
+ FAIL  test/channel.test.ts > an invalid frame after acceptance closes the connection as a protocol error
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-J34Sbw/.channel.sock-Xx2pTS/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:280:12
+    278|   let lost!: (cause: ChannelLostCause) => void;
+    279|   const channelLost = waitFor<ChannelLostCause>((r) => (lost = r));
+    280|   server = await startChannelServer({
+       |            ^
+    281|     socketPath: join(dir, "channel.sock"),
+    282|     slotClaim: acceptAll,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[19/141]⎯
+
+ FAIL  test/channel.test.ts > an oversize line after acceptance closes the connection as a protocol error
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-channel-9UPAqw/.channel.sock-UeYBKd/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/channel.test.ts:280:12
+    278|   let lost!: (cause: ChannelLostCause) => void;
+    279|   const channelLost = waitFor<ChannelLostCause>((r) => (lost = r));
+    280|   server = await startChannelServer({
+       |            ^
+    281|     socketPath: join(dir, "channel.sock"),
+    282|     slotClaim: acceptAll,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[20/141]⎯
+
+ FAIL  test/compaction-prime.test.ts > a compaction prime reaches the same launch's conversation at the next tool-round boundary, ahead of held work
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-compaction-prime-s4xVpq/.channel.sock-aJLTxw/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/compaction-prime.test.ts:119:12
+    117|   // Wrapped, so the signal settles when the frame arrives rather than…
+    118|   const compaction = signal<{ readonly outcome: Promise<CompactionPrim…
+    119|   server = await startChannelServer({
+       |            ^
+    120|     socketPath: join(dir, "channel.sock"),
+    121|     slotClaim: acceptAll,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[21/141]⎯
+
+ FAIL  test/compaction-report.test.ts > compactions while the channel is down are reported exactly once after reconnect
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-compaction-7v0iSM/.channel.sock-iDqmSU/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/compaction-report.test.ts:70:12
+     68|   const endedWaits: Array<Promise<void>> = [];
+     69|   const compactedSeen: Array<() => void> = [];
+     70|   server = await startChannelServer({
+       |            ^
+     71|     socketPath: join(dir, "channel.sock"),
+     72|     slotClaim: acceptAll,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[22/141]⎯
+
+ FAIL  test/daemon-restart-notice.test.ts > a worker that survives a daemon restart is not re-primed or replayed: still-active assignment gets one notice
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-restart-notice-OWgSHw/.channel.sock-26hSFQ/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ startDaemon test/daemon-restart-notice.test.ts:102:33
+    100|   const receiptWaiters: Array<{ count: number; resolve: () => void }> …
+    101|
+    102|   const server: ChannelServer = await startChannelServer({
+       |                                 ^
+    103|     socketPath: join(dir, "channel.sock"),
+    104|     slotClaim: { claim: async () => ({ accepted: true, slot }) },
+ ❯ test/daemon-restart-notice.test.ts:215:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[23/141]⎯
+
+ FAIL  test/daemon-restart-notice.test.ts > a worker that survives a daemon restart is not re-primed or replayed: assignment it ended before the restart …
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-restart-notice-Vw6ALC/.channel.sock-t8DRuB/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ startDaemon test/daemon-restart-notice.test.ts:102:33
+    100|   const receiptWaiters: Array<{ count: number; resolve: () => void }> …
+    101|
+    102|   const server: ChannelServer = await startChannelServer({
+       |                                 ^
+    103|     socketPath: join(dir, "channel.sock"),
+    104|     slotClaim: { claim: async () => ({ accepted: true, slot }) },
+ ❯ test/daemon-restart-notice.test.ts:215:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[24/141]⎯
+
+ FAIL  test/daemon-restart-ownership.test.ts > a restarted daemon keeps a proven launch and freezes a slot holding an orphan instead of adopting it
+Error: daemon exited 1: {"time":"2026-11-26T00:49:38.724Z","level":"info","runId":"df2bf81f-5d03-4503-9246-93ec8c281193","msg":"factory clone created","factoryId":"alpha","detail":{"path":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-restart-6OsplW/clones/alpha","source":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-restart-factory-rHTV2f/repo"}}
+{"time":"2026-11-26T00:49:38.736Z","level":"info","runId":"df2bf81f-5d03-4503-9246-93ec8c281193","msg":"factory configuration loaded","factoryId":"alpha","detail":{"loadId":1,"configHash":"sha256:981056e4e8142f14680d3d4b86a0416d17b7dda2e68585d47646a11e42e1ad1d"}}
+{"time":"2026-11-26T00:49:38.945Z","level":"error","runId":"df2bf81f-5d03-4503-9246-93ec8c281193","msg":"slots not scheduled","detail":{"error":"worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-restart-6OsplW/logs/host.log"}}
+foundry daemon: cannot start the slots in /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-restart-6OsplW: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-restart-6OsplW/logs/host.log
+
+ ❯ test/daemon-restart-ownership.test.ts:80:37
+     78|       if (stdout.includes("management API on")) {done();}
+     79|     });
+     80|     void exited.then((code) => fail(new Error(`daemon exited ${code}: …
+       |                                     ^
+     81|   });
+     82|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[25/141]⎯
+
+ FAIL  test/factory-stop.test.ts > stopping one factory drains and ends only its process groups; the other factory keeps running
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-stop-mwFsWt is too long for a Unix socket: 118 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serve test/factory-stop.test.ts:135:21
+ ❯ test/factory-stop.test.ts:158:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[26/141]⎯
+
+ FAIL  test/factory-stop.test.ts > a stop that cannot confirm a group gone fails, keeps the factory stopping and leaves the other factory alone
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-stop-715AeW is too long for a Unix socket: 118 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serve test/factory-stop.test.ts:135:21
+ ❯ test/factory-stop.test.ts:213:9
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[27/141]⎯
+
+ FAIL  test/freeze.test.ts > slot reset CLI refuses an unconfirmed group, force replaces the conversation and the new launch receives a fresh prime
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-freeze-wGnCx7 is too long for a Unix socket: 120 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ test/freeze.test.ts:143:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[28/141]⎯
+
+ FAIL  test/freeze.test.ts > a frozen slot is sent nothing while the other slot carries on, and stays frozen while its cause persists
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-freeze-0UC6j7/.channel.sock-jNn9b8/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/freeze.test.ts:243:18
+    241|   const bothAccepted = signal();
+    242|
+    243|   const server = await startChannelServer({
+       |                  ^
+    244|     socketPath: join(dir, "channel.sock"),
+    245|     slotClaim: acceptAll,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[29/141]⎯
+
+ FAIL  test/freeze.test.ts > a connection that ends while its slot is frozen is never primed; the live launch is, once unfrozen
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-freeze-Sai58i/.channel.sock-RDXvoZ/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/freeze.test.ts:389:18
+    387|   const waiters: Array<(c: PrimedConnection) => void> = [];
+    388|
+    389|   const server = await startChannelServer({
+       |                  ^
+    390|     socketPath: join(dir, "channel.sock"),
+    391|     slotClaim: acceptAll,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[30/141]⎯
+
+ FAIL  test/freeze.test.ts > an instruction file missing at priming freezes the slot, and no work goes out until it is restored and unfrozen
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-freeze-Sgf7GQ/.channel.sock-iZwflo/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/freeze.test.ts:555:18
+    553|   const accepted = signal<PrimedConnection>();
+    554|
+    555|   const server = await startChannelServer({
+       |                  ^
+    556|     socketPath: join(dir, "channel.sock"),
+    557|     slotClaim: acceptAll,
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[31/141]⎯
+
+ FAIL  test/fresh-prime.test.ts > the fresh prime is recorded unacknowledged and reaches the worker before any later frame on that connection
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-prime-msoOEn/.channel.sock-sgS1oZ/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ serveDaemon test/fresh-prime.test.ts:78:12
+     76|   const receipts: Array<Promise<AcknowledgeOutcome>> = [];
+     77|   const receiptWaiters: Array<(o: Promise<AcknowledgeOutcome>) => void…
+     78|   server = await startChannelServer({
+       |            ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/fresh-prime.test.ts:138:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[32/141]⎯
+
+ FAIL  test/fresh-prime.test.ts > a reconnect from the same launch is not primed again, and a missing instruction file sends and records nothing
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-prime-4EH3Fx/.channel.sock-st7yXg/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ serveDaemon test/fresh-prime.test.ts:78:12
+     76|   const receipts: Array<Promise<AcknowledgeOutcome>> = [];
+     77|   const receiptWaiters: Array<(o: Promise<AcknowledgeOutcome>) => void…
+     78|   server = await startChannelServer({
+       |            ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/fresh-prime.test.ts:175:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[33/141]⎯
+
+ FAIL  test/fresh-prime.test.ts > the prime alone starts no turn; once it is in the session file its receipt is persisted as acknowledgement
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-prime-CirTqZ/.channel.sock-5G4EPu/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ serveDaemon test/fresh-prime.test.ts:78:12
+     76|   const receipts: Array<Promise<AcknowledgeOutcome>> = [];
+     77|   const receiptWaiters: Array<(o: Promise<AcknowledgeOutcome>) => void…
+     78|   server = await startChannelServer({
+       |            ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/fresh-prime.test.ts:202:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[34/141]⎯
+
+ FAIL  test/interrupt.test.ts > an interrupt is acknowledged only after the aborted run settles, once, on the same channel
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-interrupt-x4Mf6v/.channel.sock-HHCTD3/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ connect test/interrupt.test.ts:78:12
+     76| const connect = async (interrupter: RunInterrupter, frames: Array<Work…
+     77|   let accepted = 0;
+     78|   server = await startChannelServer({
+       |            ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/interrupt.test.ts:114:41
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[35/141]⎯
+
+ FAIL  test/interrupt.test.ts > an interrupt with no active run is acknowledged as idle without aborting
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-interrupt-1WPCLB/.channel.sock-RnqpRB/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ connect test/interrupt.test.ts:78:12
+     76| const connect = async (interrupter: RunInterrupter, frames: Array<Work…
+     77|   let accepted = 0;
+     78|   server = await startChannelServer({
+       |            ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/interrupt.test.ts:138:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[36/141]⎯
+
+ FAIL  test/interrupt.test.ts > a drain is acknowledged once the run settles, without aborting it
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-interrupt-5Xuxm3/.channel.sock-Sizif1/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ connect test/interrupt.test.ts:78:12
+     76| const connect = async (interrupter: RunInterrupter, frames: Array<Work…
+     77|   let accepted = 0;
+     78|   server = await startChannelServer({
+       |            ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/interrupt.test.ts:149:22
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[37/141]⎯
+
+ FAIL  test/interrupt.test.ts > a drain is refused if the channel is lost before the ack
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-interrupt-xU4WLb/.channel.sock-wILhD2/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ connect test/interrupt.test.ts:78:12
+     76| const connect = async (interrupter: RunInterrupter, frames: Array<Work…
+     77|   let accepted = 0;
+     78|   server = await startChannelServer({
+       |            ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/interrupt.test.ts:167:31
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[38/141]⎯
+
+ FAIL  test/interrupt.test.ts > an interrupt for a launch with no accepted channel is refused
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-interrupt-GKiWNL/.channel.sock-XEJJ9P/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/interrupt.test.ts:176:12
+    174|
+    175| test("an interrupt for a launch with no accepted channel is refused", …
+    176|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+    177|
+    178|   await expect(server.interrupt("launch-1")).rejects.toBeInstanceOf(Ch…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[39/141]⎯
+
+ FAIL  test/interrupt.test.ts > an interrupt is refused if the channel is lost before the ack
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-interrupt-0BxCUX/.channel.sock-pOkoAk/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ connect test/interrupt.test.ts:78:12
+     76| const connect = async (interrupter: RunInterrupter, frames: Array<Work…
+     77|   let accepted = 0;
+     78|   server = await startChannelServer({
+       |            ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/interrupt.test.ts:185:31
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[40/141]⎯
+
+ FAIL  test/logs.test.ts > the logs API selects fixture lines by reference across rotated files, oldest first, and nothing unrelated
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-logs-QKWNZE is too long for a Unix socket: 118 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ test/logs.test.ts:90:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[41/141]⎯
+
+ FAIL  test/message-delivery.test.ts > bound messages go in acceptance order without waiting for receipts; commits never reinject and reconnect never blindly retries
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-qWzGjR/.channel.sock-zur1UF/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/message-delivery.test.ts:83:12
+     81|   let attached = noop;
+     82|
+     83|   server = await startChannelServer({
+       |            ^
+     84|     socketPath: join(dir, "channel.sock"),
+     85|     slotClaim: { claim: async () => ({ accepted: true, slot }) },
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[42/141]⎯
+
+ FAIL  test/message-delivery.test.ts > reconnect compares a lost receipt and a held copy against real Pi without reinjecting either
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-kVJ16g/.channel.sock-khkANA/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/message-delivery.test.ts:218:12
+    216|   };
+    217|
+    218|   server = await start();
+       |            ^
+    219|   const first = await connect();
+    220|   await attachment;
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[43/141]⎯
+
+ FAIL  test/message-delivery.test.ts > reconcile before priming and delivery: persisted receipt
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-vsPjEN/.channel.sock-FDGpCR/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/message-delivery.test.ts:287:12
+    285|   const work = new Promise<void>((resolve) => { seeWork = resolve; });
+    286|   const frames: Array<DaemonFrame> = [];
+    287|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+    288|     slotClaim: { claim: async () => ({ accepted: true, slot: current }…
+    289|     onAccepted: (claimed, greeting, connection) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[44/141]⎯
+
+ FAIL  test/message-delivery.test.ts > reconcile before priming and delivery: lost receipt recovered by comparison
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-5QGBsh/.channel.sock-h0fiZK/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/message-delivery.test.ts:287:12
+    285|   const work = new Promise<void>((resolve) => { seeWork = resolve; });
+    286|   const frames: Array<DaemonFrame> = [];
+    287|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+    288|     slotClaim: { claim: async () => ({ accepted: true, slot: current }…
+    289|     onAccepted: (claimed, greeting, connection) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[45/141]⎯
+
+ FAIL  test/message-delivery.test.ts > reconcile before priming and delivery: no prior receipt or history
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-HvfeCw/.channel.sock-cyIA0a/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/message-delivery.test.ts:287:12
+    285|   const work = new Promise<void>((resolve) => { seeWork = resolve; });
+    286|   const frames: Array<DaemonFrame> = [];
+    287|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+    288|     slotClaim: { claim: async () => ({ accepted: true, slot: current }…
+    289|     onAccepted: (claimed, greeting, connection) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[46/141]⎯
+
+ FAIL  test/message-delivery.test.ts > reconcile before priming and delivery: recoverable conversation without a prim…
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-GKTaS1/.channel.sock-ytJUBH/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/message-delivery.test.ts:287:12
+    285|   const work = new Promise<void>((resolve) => { seeWork = resolve; });
+    286|   const frames: Array<DaemonFrame> = [];
+    287|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+    288|     slotClaim: { claim: async () => ({ accepted: true, slot: current }…
+    289|     onAccepted: (claimed, greeting, connection) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[47/141]⎯
+
+ FAIL  test/message-delivery.test.ts > reconcile before priming and delivery: lost acknowledged history on replacement
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-vQpCA6/.channel.sock-IXqmVw/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/message-delivery.test.ts:287:12
+    285|   const work = new Promise<void>((resolve) => { seeWork = resolve; });
+    286|   const frames: Array<DaemonFrame> = [];
+    287|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+    288|     slotClaim: { claim: async () => ({ accepted: true, slot: current }…
+    289|     onAccepted: (claimed, greeting, connection) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[48/141]⎯
+
+ FAIL  test/message-delivery.test.ts > reconcile before priming and delivery: lost acknowledged history on reconnect
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-HY9jJT/.channel.sock-KXeFKg/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/message-delivery.test.ts:287:12
+    285|   const work = new Promise<void>((resolve) => { seeWork = resolve; });
+    286|   const frames: Array<DaemonFrame> = [];
+    287|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+    288|     slotClaim: { claim: async () => ({ accepted: true, slot: current }…
+    289|     onAccepted: (claimed, greeting, connection) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[49/141]⎯
+
+ FAIL  test/message-delivery.test.ts > reconcile before priming and delivery: same-launch reconnect
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-Yo47y9/.channel.sock-Xu3dKD/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/message-delivery.test.ts:287:12
+    285|   const work = new Promise<void>((resolve) => { seeWork = resolve; });
+    286|   const frames: Array<DaemonFrame> = [];
+    287|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+    288|     slotClaim: { claim: async () => ({ accepted: true, slot: current }…
+    289|     onAccepted: (claimed, greeting, connection) => {
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[50/141]⎯
+
+ FAIL  test/message-delivery.test.ts > ambiguous delivery survives restart and gates only its slot until operator resend
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-HxoAHg is too long for a Unix socket: 122 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ test/message-delivery.test.ts:549:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[51/141]⎯
+
+ FAIL  test/message-delivery.test.ts > ambiguous delivery survives restart and gates only its slot until operator drop
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-delivery-wfAv5K is too long for a Unix socket: 122 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ test/message-delivery.test.ts:549:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[52/141]⎯
+
+ FAIL  test/relaunch.test.ts > a launch that dies unasked is relaunched in the same slot and conversation; a live one without a channel is kept
+Error: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-relaunch-Aqkxjl/logs/host.log
+ ❯ ChildProcess.onExit packages/host/src/client.ts:78:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[53/141]⎯
+
+ FAIL  test/relaunch.test.ts > operator restart replaces only the owned launch, reconciles its existing conversation and keeps its counter
+Error: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-relaunch-NwRJ8I/logs/host.log
+ ❯ ChildProcess.onExit packages/host/src/client.ts:78:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[54/141]⎯
+
+ FAIL  test/relaunch.test.ts > a launch the host stops on request is not relaunched
+Error: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-relaunch-m3Uuk9/logs/host.log
+ ❯ ChildProcess.onExit packages/host/src/client.ts:78:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[55/141]⎯
+
+ FAIL  test/sdk-worker.test.ts > SDK worker preserves explicit resources, host identity and authenticated allowed tool traffic
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-sdk-8yK6hx/.channel.sock-GrbjQQ/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ test/sdk-worker.test.ts:60:18
+     58|   const submissions = createSubmissions({ store, handlers: new Map([[A…
+     59|
+     60|   const server = await startChannelServer({
+       |                  ^
+     61|     socketPath: join(root, "channel.sock"),
+     62|     slotClaim: createHostSlotClaim({ host: { inventory: async () => re…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[56/141]⎯
+
+ FAIL  test/shutdown.test.ts > shutdown with force=false ends every factory's groups, then the Worker Host
+Error: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-shutdown-KWMs4y/logs/host.log
+ ❯ ChildProcess.onExit packages/host/src/client.ts:78:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[57/141]⎯
+
+ FAIL  test/shutdown.test.ts > shutdown with force=true ends every factory's groups, then the Worker Host
+Error: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-shutdown-L27lE9/logs/host.log
+ ❯ ChildProcess.onExit packages/host/src/client.ts:78:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[58/141]⎯
+
+ FAIL  test/shutdown.test.ts > a group that cannot be confirmed gone fails the shutdown and keeps the Worker Host running
+Error: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-shutdown-JruKoq/logs/host.log
+ ❯ ChildProcess.onExit packages/host/src/client.ts:78:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[59/141]⎯
+
+ FAIL  test/slot-claim.test.ts > a hello from the slot's current launch is accepted and its frames speak for the host's record
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-claim-oMlSwR/.channel.sock-Kdmrse/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ serve test/slot-claim.test.ts:73:12
+     71|
+     72| const serve = async (slotClaim: SlotClaim, onFrame?: (slot: ClaimedSlo…
+     73|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+     74|
+     75|   return server;
+ ❯ test/slot-claim.test.ts:90:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[60/141]⎯
+
+ FAIL  test/slot-claim.test.ts > a stale launch the host reports gone is refused terminally and reaches no slot work
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-claim-7ey408/.channel.sock-5LPqOI/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ serve test/slot-claim.test.ts:73:12
+     71|
+     72| const serve = async (slotClaim: SlotClaim, onFrame?: (slot: ClaimedSlo…
+     73|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+     74|
+     75|   return server;
+ ❯ test/slot-claim.test.ts:105:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[61/141]⎯
+
+ FAIL  test/slot-claim.test.ts > a launch the host has in another slot is refused terminally and reaches no slot work
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-claim-dDspNL/.channel.sock-pCoKDM/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ serve test/slot-claim.test.ts:73:12
+     71|
+     72| const serve = async (slotClaim: SlotClaim, onFrame?: (slot: ClaimedSlo…
+     73|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+     74|
+     75|   return server;
+ ❯ test/slot-claim.test.ts:105:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[62/141]⎯
+
+ FAIL  test/slot-claim.test.ts > a launch the host has in another factory is refused terminally and reaches no slot work
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-claim-R6s3Pp/.channel.sock-zv2oOt/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ serve test/slot-claim.test.ts:73:12
+     71|
+     72| const serve = async (slotClaim: SlotClaim, onFrame?: (slot: ClaimedSlo…
+     73|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+     74|
+     75|   return server;
+ ❯ test/slot-claim.test.ts:105:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[63/141]⎯
+
+ FAIL  test/slot-claim.test.ts > a launch the host does not know is refused terminally and reaches no slot work
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-claim-nwbNqv/.channel.sock-mMNJTf/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ serve test/slot-claim.test.ts:73:12
+     71|
+     72| const serve = async (slotClaim: SlotClaim, onFrame?: (slot: ClaimedSlo…
+     73|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+     74|
+     75|   return server;
+ ❯ test/slot-claim.test.ts:105:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[64/141]⎯
+
+ FAIL  test/slot-claim.test.ts > a reconnect with an unchanged conversation is accepted; a changed conversation is refused
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-claim-d6KIpb/.channel.sock-UNf2Ad/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ serve test/slot-claim.test.ts:73:12
+     71|
+     72| const serve = async (slotClaim: SlotClaim, onFrame?: (slot: ClaimedSlo…
+     73|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+     74|
+     75|   return server;
+ ❯ test/slot-claim.test.ts:114:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[65/141]⎯
+
+ FAIL  test/slot-claim.test.ts > a host that cannot answer gets a retryable refusal
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-claim-uXtfHo/.channel.sock-awO3li/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ serve test/slot-claim.test.ts:73:12
+     71|
+     72| const serve = async (slotClaim: SlotClaim, onFrame?: (slot: ClaimedSlo…
+     73|   server = await startChannelServer({ socketPath: join(dir, "channel.s…
+       |            ^
+     74|
+     75|   return server;
+ ❯ test/slot-claim.test.ts:133:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[66/141]⎯
+
+ FAIL  test/slot-interrupt.test.ts > pausing an assigned ticket waits for settlement, suspends without abandoning records and frees capacity
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-interrupt-j22Cv2/.channel.sock-OaIiAA/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ daemonWithWorker test/slot-interrupt.test.ts:113:19
+    111|   let hellos = 0;
+    112|
+    113|   const channel = await startChannelServer({
+       |                   ^
+    114|     socketPath: join(home, "channel.sock"),
+    115|     slotClaim: createHostSlotClaim({ host, conversations }),
+ ❯ test/slot-interrupt.test.ts:207:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[67/141]⎯
+
+ FAIL  test/slot-interrupt.test.ts > retry through the CLI waits for the worker acknowledgement, then queues a new assignment on the same launch
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-interrupt-FmVtrH/.channel.sock-fzmPXn/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ daemonWithWorker test/slot-interrupt.test.ts:113:19
+    111|   let hellos = 0;
+    112|
+    113|   const channel = await startChannelServer({
+       |                   ^
+    114|     socketPath: join(home, "channel.sock"),
+    115|     slotClaim: createHostSlotClaim({ host, conversations }),
+ ❯ test/slot-interrupt.test.ts:255:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[68/141]⎯
+
+ FAIL  test/slot-interrupt.test.ts > pause refusals and a failed commit preserve all durable state
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-interrupt-mc64dp/.channel.sock-h6kw7F/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ daemonWithWorker test/slot-interrupt.test.ts:113:19
+    111|   let hellos = 0;
+    112|
+    113|   const channel = await startChannelServer({
+       |                   ^
+    114|     socketPath: join(home, "channel.sock"),
+    115|     slotClaim: createHostSlotClaim({ host, conversations }),
+ ❯ test/slot-interrupt.test.ts:284:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[69/141]⎯
+
+ FAIL  test/slot-interrupt.test.ts > an assignment replaced during interruption is not suspended and gets no pause transition
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-interrupt-393uaz/.channel.sock-LyQ0bJ/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ daemonWithWorker test/slot-interrupt.test.ts:113:19
+    111|   let hellos = 0;
+    112|
+    113|   const channel = await startChannelServer({
+       |                   ^
+    114|     socketPath: join(home, "channel.sock"),
+    115|     slotClaim: createHostSlotClaim({ host, conversations }),
+ ❯ test/slot-interrupt.test.ts:317:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[70/141]⎯
+
+ FAIL  test/slot-interrupt.test.ts > interrupting a slot aborts its run and keeps the same slot, launch and conversation
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-interrupt-Q4jxyJ/.channel.sock-nkVFEP/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ daemonWithWorker test/slot-interrupt.test.ts:113:19
+    111|   let hellos = 0;
+    112|
+    113|   const channel = await startChannelServer({
+       |                   ^
+    114|     socketPath: join(home, "channel.sock"),
+    115|     slotClaim: createHostSlotClaim({ host, conversations }),
+ ❯ test/slot-interrupt.test.ts:343:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[71/141]⎯
+
+ FAIL  test/slot-interrupt.test.ts > a slot with no live launch is refused, and nothing is launched into it
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-interrupt-WiVU86/.channel.sock-7tqsg7/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ daemonWithWorker test/slot-interrupt.test.ts:113:19
+    111|   let hellos = 0;
+    112|
+    113|   const channel = await startChannelServer({
+       |                   ^
+    114|     socketPath: join(home, "channel.sock"),
+    115|     slotClaim: createHostSlotClaim({ host, conversations }),
+ ❯ test/slot-interrupt.test.ts:375:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[72/141]⎯
+
+ FAIL  test/slot-interrupt.test.ts > a worker that never acknowledges is refused with its code, and the launch is left alone
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-interrupt-VdOFyU/.channel.sock-m6m1Uv/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ daemonWithWorker test/slot-interrupt.test.ts:113:19
+    111|   let hellos = 0;
+    112|
+    113|   const channel = await startChannelServer({
+       |                   ^
+    114|     socketPath: join(home, "channel.sock"),
+    115|     slotClaim: createHostSlotClaim({ host, conversations }),
+ ❯ test/slot-interrupt.test.ts:387:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[73/141]⎯
+
+ FAIL  test/slot-interrupt.test.ts > a channel lost before the ack is refused with its code, and the launch is left alone
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-interrupt-nSZSGH/.channel.sock-pSfZ2k/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ daemonWithWorker test/slot-interrupt.test.ts:113:19
+    111|   let hellos = 0;
+    112|
+    113|   const channel = await startChannelServer({
+       |                   ^
+    114|     socketPath: join(home, "channel.sock"),
+    115|     slotClaim: createHostSlotClaim({ host, conversations }),
+ ❯ test/slot-interrupt.test.ts:387:13
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[74/141]⎯
+
+ FAIL  test/tool-calls.test.ts > a tool result reaches the worker only after its submission and effects commit
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tool-calls-42K1Bd/.channel.sock-ks90HO/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ fixture test/tool-calls.test.ts:78:18
+     76|   const frameWaiters: Array<{ count: number; resolve: () => void }> = …
+     77|
+     78|   const server = await startChannelServer({
+       |                  ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/tool-calls.test.ts:135:60
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[75/141]⎯
+
+ FAIL  test/tool-calls.test.ts > a handler that refuses after writing rolls its effect back and reports nothing committed
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tool-calls-xOCXE6/.channel.sock-DaInvI/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ fixture test/tool-calls.test.ts:78:18
+     76|   const frameWaiters: Array<{ count: number; resolve: () => void }> = …
+     77|
+     78|   const server = await startChannelServer({
+       |                  ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/tool-calls.test.ts:162:53
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[76/141]⎯
+
+ FAIL  test/tool-calls.test.ts > a call whose result was lost with its channel is answered from the stored result on the next channel
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tool-calls-Dr86WX/.channel.sock-eNZc3x/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ fixture test/tool-calls.test.ts:78:18
+     76|   const frameWaiters: Array<{ count: number; resolve: () => void }> = …
+     77|
+     78|   const server = await startChannelServer({
+       |                  ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/tool-calls.test.ts:175:47
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[77/141]⎯
+
+ FAIL  test/tool-calls.test.ts > a call re-sent while its original is still committing waits for that commit and replays its result
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tool-calls-INvUUn/.channel.sock-3GsMVz/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ fixture test/tool-calls.test.ts:78:18
+     76|   const frameWaiters: Array<{ count: number; resolve: () => void }> = …
+     77|
+     78|   const server = await startChannelServer({
+       |                  ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/tool-calls.test.ts:211:68
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[78/141]⎯
+
+ FAIL  test/tool-calls.test.ts > two calls with equal arguments and distinct call IDs are two submissions with two effects
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tool-calls-whrnpc/.channel.sock-f72UR5/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ fixture test/tool-calls.test.ts:78:18
+     76|   const frameWaiters: Array<{ count: number; resolve: () => void }> = …
+     77|
+     78|   const server = await startChannelServer({
+       |                  ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/tool-calls.test.ts:237:53
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[79/141]⎯
+
+ FAIL  test/tool-calls.test.ts > a frozen slot's calls are refused with nothing committed, while a call committed before the freeze still replays
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tool-calls-nT4P8L/.channel.sock-dEPyUK/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ fixture test/tool-calls.test.ts:78:18
+     76|   const frameWaiters: Array<{ count: number; resolve: () => void }> = …
+     77|
+     78|   const server = await startChannelServer({
+       |                  ^
+     79|     socketPath: join(dir, "channel.sock"),
+     80|     slotClaim: acceptAll,
+ ❯ test/tool-calls.test.ts:253:40
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[80/141]⎯
+
+ FAIL  test/tool-set-freeze.test.ts > a matched hello continues; a mismatched one freezes its slot with the discrepancy and stops its launch
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tool-set-hklmAQ/.channel.sock-qXyLZ7/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ fixture test/tool-set-freeze.test.ts:163:18
+    161|   });
+    162|
+    163|   const server = await startChannelServer({ socketPath: join(dir, "cha…
+       |                  ^
+    164|   cleanups.push(() => server.close());
+    165|
+ ❯ test/tool-set-freeze.test.ts:200:63
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[81/141]⎯
+
+ FAIL  test/tool-set-freeze.test.ts > unfreeze relaunches in the same conversation: still mismatched stays frozen, corrected unfreezes
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tool-set-zmToX9/.channel.sock-2eHdFv/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ fixture test/tool-set-freeze.test.ts:163:18
+    161|   });
+    162|
+    163|   const server = await startChannelServer({ socketPath: join(dir, "cha…
+       |                  ^
+    164|   cleanups.push(() => server.close());
+    165|
+ ❯ test/tool-set-freeze.test.ts:234:63
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[82/141]⎯
+
+ FAIL  test/worker-refusal.test.ts > terminal hello refusal reaches Pi tools and survives later session starts without redial
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-worker-refusal-DpbMDr/.channel.sock-p50BQ6/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ fixture test/worker-refusal.test.ts:25:18
+     23|   let toolFrames = 0;
+     24|
+     25|   const server = await startChannelServer({
+       |                  ^
+     26|     socketPath: join(dir, "channel.sock"),
+     27|     slotClaim: {
+ ❯ test/worker-refusal.test.ts:58:42
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[83/141]⎯
+
+ FAIL  test/worker-refusal.test.ts > retryable hello refusal permits a later session start to dial
+Error: listen EADDRINUSE: address already in use /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-worker-refusal-GarFSM/.channel.sock-6brqr3/s
+ ❯ packages/daemon/src/channel/server.ts:433:14
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:431:11
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ fixture test/worker-refusal.test.ts:25:18
+     23|   let toolFrames = 0;
+     24|
+     25|   const server = await startChannelServer({
+       |                  ^
+     26|     socketPath: join(dir, "channel.sock"),
+     27|     slotClaim: {
+ ❯ test/worker-refusal.test.ts:78:30
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[84/141]⎯
+
+ FAIL  packages/cli/test/events.test.ts > foundry events prints history after --since, as text or JSON, and ends
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-cli-events-iuRkVA is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/cli/test/events.test.ts:57:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[85/141]⎯
+
+ FAIL  packages/cli/test/factories.test.ts > factory list answers from the served run's recorded configuration loads
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-factories-cALeiQ is too long for a Unix socket: 123 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/cli/test/factories.test.ts:66:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[86/141]⎯
+
+ FAIL  packages/cli/test/factories.test.ts > a served run with no record is refused, not answered with an empty list
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-factories-q7J38l is too long for a Unix socket: 123 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/cli/test/factories.test.ts:121:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[87/141]⎯
+
+ FAIL  packages/cli/test/holds.test.ts > a repeated hold keeps one open record, refreshes its evidence, and shows it with its commands
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-holds-NX6dya is too long for a Unix socket: 119 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serveHolds packages/cli/test/holds.test.ts:33:21
+ ❯ packages/cli/test/holds.test.ts:43:27
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[88/141]⎯
+
+ FAIL  packages/cli/test/messages.test.ts > operator sends commit in the shared log with operator attribution, no assignment/budget, and survive reopen
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-msg-jnblAi is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/cli/test/messages.test.ts:59:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[89/141]⎯
+
+ FAIL  packages/cli/test/slots.test.ts > slot list shows every configured slot with its condition and latest launch
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-cli-qGOf4Y is too long for a Unix socket: 122 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serveSlots packages/cli/test/slots.test.ts:104:21
+ ❯ packages/cli/test/slots.test.ts:111:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[90/141]⎯
+
+ FAIL  packages/cli/test/slots.test.ts > slot show prints the launch history with exit reasons; a bad address or unknown slot is refused
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-slot-cli-WiRQRk is too long for a Unix socket: 122 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serveSlots packages/cli/test/slots.test.ts:104:21
+ ❯ packages/cli/test/slots.test.ts:132:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[91/141]⎯
+
+ FAIL  packages/cli/test/status.test.ts > foundry status shows the running daemon's instance, and --json prints the API body
+Error: daemon exited 1 before serving: {"time":"2026-11-26T00:49:32.982Z","level":"error","runId":"94e86391-649f-4bda-932a-eef1602484cd","msg":"management API refused","detail":{"reason":"path-too-long","socket":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-cli-gUldB2/management.sock"}}
+foundry daemon: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-cli-gUldB2 is too long for a Unix socket: 117 bytes, limit 107 on linux
+
+ ❯ ChildProcess.<anonymous> packages/cli/test/status.test.ts:52:39
+     50|       if (stdout.includes("management API on")) {resolve(child);}
+     51|     });
+     52|     child.on("exit", (code) => reject(new Error(`daemon exited ${code}…
+       |                                       ^
+     53|   });
+     54| };
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[92/141]⎯
+
+ FAIL  packages/cli/test/tickets.test.ts > ticket submit copies the file into the ticket directory; list and show print it back
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-cli-tickets-dEQ6wF is too long for a Unix socket: 125 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serve packages/cli/test/tickets.test.ts:52:21
+ ❯ packages/cli/test/tickets.test.ts:63:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[93/141]⎯
+
+ FAIL  packages/cli/test/tickets.test.ts > resume forwards daemon refusals without changing a backlog ticket
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-cli-tickets-34gjve is too long for a Unix socket: 125 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serve packages/cli/test/tickets.test.ts:52:21
+ ❯ packages/cli/test/tickets.test.ts:88:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[94/141]⎯
+
+ FAIL  packages/daemon/test/daemon-log.test.ts > the foreground daemon writes its run to logs/daemon.log and stderr, and nothing to the host log
+Error: daemon exited 1: {"time":"2026-11-26T00:49:45.532Z","level":"error","runId":"d68109f1-690a-48e9-a535-16bbf5298743","msg":"management API refused","detail":{"reason":"path-too-long","socket":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-log-mzYxOS/management.sock"}}
+foundry daemon: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-log-mzYxOS is too long for a Unix socket: 117 bytes, limit 107 on linux
+
+ ❯ packages/daemon/test/daemon-log.test.ts:143:37
+    141|   await new Promise<void>((done, fail) => {
+    142|     child.stdout.on("data", () => stdout.includes("claimed") && done()…
+    143|     void exited.then((code) => fail(new Error(`daemon exited ${code}: …
+       |                                     ^
+    144|   });
+    145|   child.kill("SIGTERM");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[95/141]⎯
+
+ FAIL  packages/daemon/test/events.test.ts > a followed stream replays only after the cursor, then sees one newly appended event in sequence
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-events-wRE5FX is too long for a Unix socket: 120 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serveStore packages/daemon/test/events.test.ts:35:21
+ ❯ packages/daemon/test/events.test.ts:108:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[96/141]⎯
+
+ FAIL  packages/daemon/test/events.test.ts > an unfollowed read filters by factory and ticket, ends after replay, and refuses a bad cursor
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-events-P1WpXR is too long for a Unix socket: 120 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serveStore packages/daemon/test/events.test.ts:35:21
+ ❯ packages/daemon/test/events.test.ts:147:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[97/141]⎯
+
+ FAIL  packages/daemon/test/events.test.ts > a row committed while a followed replay is being read is sent once, in sequence
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-events-NOOcVl is too long for a Unix socket: 120 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serveStore packages/daemon/test/events.test.ts:35:21
+ ❯ packages/daemon/test/events.test.ts:172:33
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[98/141]⎯
+
+ FAIL  packages/daemon/test/events.test.ts > a client that disconnects from a followed stream stops listening for commits
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-events-86LJNe is too long for a Unix socket: 120 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serveStore packages/daemon/test/events.test.ts:35:21
+ ❯ packages/daemon/test/events.test.ts:202:26
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[99/141]⎯
+
+ FAIL  packages/daemon/test/factory-clone.test.ts > daemon start creates the clone and foundry factory path prints it; a restart does not fetch, an explicit sync does
+Error: daemon exited 1 before serving: {"time":"2026-11-26T00:49:42.510Z","level":"info","runId":"de787239-a6e4-4287-8606-c9743034bcf1","msg":"factory clone created","factoryId":"alpha","detail":{"path":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-tLiQbe/home/clones/alpha","source":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-tLiQbe/source.git"}}
+{"time":"2026-11-26T00:49:42.519Z","level":"info","runId":"de787239-a6e4-4287-8606-c9743034bcf1","msg":"factory configuration loaded","factoryId":"alpha","detail":{"loadId":1,"configHash":"sha256:83c6272402c797348a03f38a69126323162ee324a330500b320a67827f5edf4a"}}
+{"time":"2026-11-26T00:49:42.787Z","level":"error","runId":"de787239-a6e4-4287-8606-c9743034bcf1","msg":"slots not scheduled","detail":{"error":"worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-tLiQbe/home/logs/host.log"}}
+foundry daemon: cannot start the slots in /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-tLiQbe/home: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-tLiQbe/home/logs/host.log
+
+ ❯ ChildProcess.<anonymous> packages/daemon/test/factory-clone.test.ts:229:39
+    227|       if (stdout.includes("management API on")) {resolve(child);}
+    228|     });
+    229|     child.on("exit", (code) => reject(new Error(`daemon exited ${code}…
+       |                                       ^
+    230|   });
+    231| };
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[100/141]⎯
+
+ FAIL  packages/daemon/test/factory-clone.test.ts > restart completes a previously queued sync without another operator request
+Error: daemon exited 1 before serving: {"time":"2026-11-26T00:49:44.466Z","level":"info","runId":"ff33a295-2c76-44b5-981c-e5b107ffe5ea","msg":"factory clone created","factoryId":"alpha","detail":{"path":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-YoLI11/home/clones/alpha","source":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-YoLI11/source.git"}}
+{"time":"2026-11-26T00:49:44.494Z","level":"info","runId":"ff33a295-2c76-44b5-981c-e5b107ffe5ea","msg":"factory configuration loaded","factoryId":"alpha","detail":{"loadId":1,"configHash":"sha256:83c6272402c797348a03f38a69126323162ee324a330500b320a67827f5edf4a"}}
+{"time":"2026-11-26T00:49:44.938Z","level":"error","runId":"ff33a295-2c76-44b5-981c-e5b107ffe5ea","msg":"slots not scheduled","detail":{"error":"worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-YoLI11/home/logs/host.log"}}
+foundry daemon: cannot start the slots in /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-YoLI11/home: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-YoLI11/home/logs/host.log
+
+ ❯ ChildProcess.<anonymous> packages/daemon/test/factory-clone.test.ts:229:39
+    227|       if (stdout.includes("management API on")) {resolve(child);}
+    228|     });
+    229|     child.on("exit", (code) => reject(new Error(`daemon exited ${code}…
+       |                                       ^
+    230|   });
+    231| };
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[101/141]⎯
+
+ FAIL  packages/daemon/test/factory-clone.test.ts > a factory whose clone path is not Foundry's is refused alone; the daemon serves the other
+Error: daemon exited 1 before serving: {"time":"2026-11-26T00:49:48.136Z","level":"info","runId":"f4dc21f0-aecb-4fe4-8b6e-0fa5739d0196","msg":"factory clone created","factoryId":"alpha","detail":{"path":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-DWdFTj/home/clones/alpha","source":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-DWdFTj/source.git"}}
+{"time":"2026-11-26T00:49:48.213Z","level":"info","runId":"f4dc21f0-aecb-4fe4-8b6e-0fa5739d0196","msg":"factory configuration loaded","factoryId":"alpha","detail":{"loadId":1,"configHash":"sha256:83c6272402c797348a03f38a69126323162ee324a330500b320a67827f5edf4a"}}
+{"time":"2026-11-26T00:49:48.217Z","level":"info","runId":"f4dc21f0-aecb-4fe4-8b6e-0fa5739d0196","msg":"factory configuration loaded","factoryId":"beta","detail":{"loadId":2,"configHash":"sha256:90373a4c153e9fa825dd2d18f3fdd237716d2decfea5c561274d405ebfde51f7"}}
+{"time":"2026-11-26T00:49:48.226Z","level":"warn","runId":"f4dc21f0-aecb-4fe4-8b6e-0fa5739d0196","msg":"factory start refused","factoryId":"beta","detail":{"reason":"clone_refused","clonePath":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-DWdFTj/home/clones/beta","error":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-DWdFTj/home/clones/beta exists but is not a Foundry-owned clone; move it aside so Foundry can create its own"}}
+{"time":"2026-11-26T00:49:48.595Z","level":"error","runId":"f4dc21f0-aecb-4fe4-8b6e-0fa5739d0196","msg":"slots not scheduled","detail":{"error":"worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-DWdFTj/home/logs/host.log"}}
+foundry daemon: cannot start the slots in /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-DWdFTj/home: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-clone-DWdFTj/home/logs/host.log
+
+ ❯ ChildProcess.<anonymous> packages/daemon/test/factory-clone.test.ts:229:39
+    227|       if (stdout.includes("management API on")) {resolve(child);}
+    228|     });
+    229|     child.on("exit", (code) => reject(new Error(`daemon exited ${code}…
+       |                                       ^
+    230|   });
+    231| };
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[102/141]⎯
+
+ FAIL  packages/daemon/test/factory-loads.test.ts > a valid start records the run and its load and creates the empty knowledge layout; the hash follows the resolved config
+Error: daemon exited 1: {"time":"2026-11-26T00:49:35.899Z","level":"info","runId":"155e5bfb-7532-4258-be95-39f19ee8a0cd","msg":"factory clone created","factoryId":"alpha","detail":{"path":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-load-6ybWrB/clones/alpha","source":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-load-lzpfcD/repo"}}
+{"time":"2026-11-26T00:49:35.915Z","level":"info","runId":"155e5bfb-7532-4258-be95-39f19ee8a0cd","msg":"factory configuration loaded","factoryId":"alpha","detail":{"loadId":1,"configHash":"sha256:8f32b6f1c55db7115ab9777b5c0fa5138bfddd0cebc66e1e2f80d037d1839282"}}
+{"time":"2026-11-26T00:49:36.222Z","level":"error","runId":"155e5bfb-7532-4258-be95-39f19ee8a0cd","msg":"slots not scheduled","detail":{"error":"ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-load-6ybWrB/.channel.sock-Uf0r6W/s'"}}
+foundry daemon: cannot start the slots in /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-load-6ybWrB: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-load-6ybWrB/.channel.sock-Uf0r6W/s'
+
+ ❯ packages/daemon/test/factory-loads.test.ts:125:41
+    123|   const serving = new Promise<void>((done, fail) => {
+    124|     child.stdout.on("data", () => stdout.includes("management API on")…
+    125|     void exited.then(({ code }) => fail(new Error(`daemon exited ${cod…
+       |                                         ^
+    126|   });
+    127|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[103/141]⎯
+
+ FAIL  packages/daemon/test/instance-lock.test.ts > a second daemon cannot take the state root while the first owns it
+Error: daemon exited 1 before claiming: {"time":"2026-11-26T00:49:33.398Z","level":"error","runId":"9cd3276c-1432-4742-9263-b97eb180e64f","msg":"management API refused","detail":{"reason":"path-too-long","socket":"/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-lock-wq6XTb/management.sock"}}
+foundry daemon: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-lock-wq6XTb is too long for a Unix socket: 118 bytes, limit 107 on linux
+
+ ❯ packages/daemon/test/instance-lock.test.ts:48:41
+     46|   const claimed = new Promise<void>((done, fail) => {
+     47|     child.stdout.on("data", () => stdout.includes("claimed") && done()…
+     48|     void exited.then(({ code }) => fail(new Error(`daemon exited ${cod…
+       |                                         ^
+     49|   });
+     50|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[104/141]⎯
+
+ FAIL  packages/daemon/test/integration-recovery.test.ts > an indeterminate integration declared landed without its approved commit on the default branch is refused; not landed reruns it from the current head
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-integration-recovery-7WkBtH is too long for a Unix socket: 134 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/integration-recovery.test.ts:264:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[105/141]⎯
+
+ FAIL  packages/daemon/test/integration-recovery.test.ts > not landed is refused while the clone has a leftover Git index lock, leaving the hold's evidence in place
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-integration-recovery-qzGdLo is too long for a Unix socket: 134 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/integration-recovery.test.ts:264:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[106/141]⎯
+
+ FAIL  packages/daemon/test/integration-recovery.test.ts > an indeterminate integration whose approved commit is on the default branch can be declared landed: it completes, cleans up and reopens the queue
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-integration-recovery-B1BlmA is too long for a Unix socket: 134 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/integration-recovery.test.ts:264:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[107/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > status is served in the envelope on an owner-only socket, which close removes
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-wBEw09 is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serve packages/daemon/test/management-api.test.ts:29:21
+ ❯ packages/daemon/test/management-api.test.ts:70:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[108/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > a stale socket left by a dead daemon is replaced
+Error: ENOENT: no such file or directory, lstat '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-E0kR0s/management.sock'
+ ❯ leaveStaleSocket packages/daemon/test/management-api.test.ts:65:10
+     63|   const result = spawnSync(process.execPath, ["-e", script, path], { t…
+     64|   expect(result.signal).toBe("SIGKILL");
+     65|   expect(lstatSync(path).isSocket()).toBe(true);
+       |          ^
+     66| };
+     67|
+ ❯ packages/daemon/test/management-api.test.ts:85:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[109/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > a socket another daemon answers on is refused and left serving
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-EsQmTu is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serve packages/daemon/test/management-api.test.ts:29:21
+ ❯ packages/daemon/test/management-api.test.ts:92:23
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[110/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > a file that is not a socket is refused and never removed
+AssertionError: expected 'path-too-long' to be 'not-a-socket' // Object.is equality
+
+Expected: "not-a-socket"
+Received: "path-too-long"
+
+ ❯ packages/daemon/test/management-api.test.ts:101:97
+     99|   const path = managementSocketPath(root);
+    100|   writeFileSync(path, "operator data");
+    101|   expect((await refusal(serveManagementApi({ stateRoot: root, status: …
+       |                                                                                                 ^
+    102|   expect(readFileSync(path, "utf8")).toBe("operator data");
+    103| });
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[111/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > a factory path request with a malformed name answers 400; an unknown factory 404
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-yQb5jx is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/management-api.test.ts:106:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[112/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > the slot routes refuse a malformed slot address with its code
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-dbZJmF is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/management-api.test.ts:130:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[113/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > the slot routes refuse an empty factory with its code
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-wNKZt7 is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/management-api.test.ts:130:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[114/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > the slot routes refuse an unknown factory with its code
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-gCDFgF is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/management-api.test.ts:130:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[115/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > the slot routes refuse no factory with several loaded with its code
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-241Dm3 is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/management-api.test.ts:130:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[116/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > the slot routes refuse a slot the factory does not have with its code
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-p1DWOj is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/management-api.test.ts:130:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[117/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > the slot interrupt route answers only POST, and a bare /interrupt is no slot route
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-PsvMP7 is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serve packages/daemon/test/management-api.test.ts:29:21
+ ❯ packages/daemon/test/management-api.test.ts:136:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[118/141]⎯
+
+ FAIL  packages/daemon/test/management-api.test.ts > the slot routes answer 503 when the daemon serves no slots
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-api-uCzoRQ is too long for a Unix socket: 117 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ serve packages/daemon/test/management-api.test.ts:29:21
+ ❯ packages/daemon/test/management-api.test.ts:142:21
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[119/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > ticket cancel CLI discloses, refuses nonterminal use without --yes, and cancels backlog through the API
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-eSFCjG is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:297:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ Array.<anonymous> node_modules/effect/src/internal/effect.ts:780:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[120/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > CLI answer commits one resolution and an exact-slot budget-exempt answer, or neither
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-lAltv6 is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:372:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[121/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > blocked pauses atomically, frees capacity and survives replay/restart with its true outcome
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-l2nLf1 is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:1050:25
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[122/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > rejected pauses atomically, frees capacity and survives replay/restart with its true outcome
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-kEQQwN is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:1050:25
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[123/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > integration after_create failure and retry preserve the approval
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-vnMhn7 is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:1640:47
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[124/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > integration after_create failure and unchecked preserve the approval
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-SamNTu is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:1640:47
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[125/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > gate approve (final=false routed=true) is operator-only and bound to evaluated commit
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-6cUFWd is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:1844:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[126/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > gate approve (final=true routed=true) is operator-only and bound to evaluated commit
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-VdLSe5 is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:1844:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[127/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > gate reject (final=false routed=true) is operator-only and bound to evaluated commit
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-QvvyM0 is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:1844:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[128/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > gate reject (final=true routed=true) is operator-only and bound to evaluated commit
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-tPXvFp is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:1844:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[129/141]⎯
+
+ FAIL  packages/daemon/test/task-transition.test.ts > gate reject (final=false routed=false) is operator-only and bound to evaluated commit
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-transition-4fy0pf is too long for a Unix socket: 124 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/task-transition.test.ts:1844:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[130/141]⎯
+
+ FAIL  packages/daemon/test/ticket-retry.test.ts > CLI/API retry on a parked slot succeeds without interrupt; hook-failure pause refuses
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-retry-neTnYm is too long for a Unix socket: 119 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/ticket-retry.test.ts:324:25
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ Array.<anonymous> node_modules/effect/src/internal/effect.ts:780:12
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[131/141]⎯
+
+ FAIL  packages/daemon/test/tickets.test.ts > submitted tickets, their transitions and ticket directories survive a daemon restart
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tickets-XYlNt2 is too long for a Unix socket: 121 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ start packages/daemon/test/tickets.test.ts:54:21
+ ❯ packages/daemon/test/tickets.test.ts:90:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[132/141]⎯
+
+ FAIL  packages/daemon/test/tickets.test.ts > an unknown production line is refused and writes no ticket, transition, history or directory
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tickets-sP58q6 is too long for a Unix socket: 121 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ start packages/daemon/test/tickets.test.ts:54:21
+ ❯ packages/daemon/test/tickets.test.ts:142:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[133/141]⎯
+
+ FAIL  packages/daemon/test/tickets.test.ts > with two factories loaded, submit and show need one named and numbers are per factory
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tickets-Pg4joM is too long for a Unix socket: 121 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ start packages/daemon/test/tickets.test.ts:54:21
+ ❯ packages/daemon/test/tickets.test.ts:165:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[134/141]⎯
+
+ FAIL  packages/daemon/test/tickets.test.ts > malformed submit requests are refused before anything is written
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tickets-u61eIP is too long for a Unix socket: 121 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ start packages/daemon/test/tickets.test.ts:54:21
+ ❯ packages/daemon/test/tickets.test.ts:191:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[135/141]⎯
+
+ FAIL  packages/daemon/test/tickets.test.ts > ticket transitions cannot be updated or deleted
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-tickets-Wm7xPV is too long for a Unix socket: 121 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ start packages/daemon/test/tickets.test.ts:54:21
+ ❯ packages/daemon/test/tickets.test.ts:217:18
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[136/141]⎯
+
+ FAIL  packages/daemon/test/worktree-recovery.test.ts > discard refuses to drop a branch with commits until confirmed, then recreates the worktree from the default branch
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-worktree-recovery-cnCfGt is too long for a Unix socket: 131 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/worktree-recovery.test.ts:265:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[137/141]⎯
+
+ FAIL  packages/daemon/test/worktrees.test.ts > compaction restores full unchanged worktree context over the channel only while assigned
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-worktrees-HGGwMx/.channel.sock-rwVWe6/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[138/141]⎯
+
+ FAIL  packages/daemon/test/worktrees.test.ts > compaction restores full unchanged none context over the channel only while assigned
+Error: ENOENT: no such file or directory, chmod '/home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-worktrees-01NKyH/.channel.sock-1IRvY0/s'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:438:5
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[139/141]⎯
+
+ FAIL  packages/daemon/test/worktrees.test.ts > CLI list and confirmed force traverse the management socket without deleting cancelled work automatically
+ManagementSocketError: state root /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-worktrees-Fn8S0A is too long for a Unix socket: 123 bytes, limit 107 on linux
+ ❯ checkPathLength packages/daemon/src/management-api.ts:155:11
+    153|
+    154|   if (longest > SOCKET_PATH_LIMIT) {
+    155|     throw new ManagementSocketError(
+       |           ^
+    156|       "path-too-long",
+    157|       socketPath,
+ ❯ serveManagementApi packages/daemon/src/management-api.ts:183:3
+ ❯ packages/daemon/test/worktrees.test.ts:775:45
+ ❯ MixedScheduler.<anonymous> node_modules/effect/src/internal/effect.ts:1159:5
+ ❯ ~effect/Effect/evaluate node_modules/effect/src/internal/effect.ts:1222:38
+ ❯ FiberImpl.runLoop node_modules/effect/src/internal/effect.ts:711:43
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:637:23
+ ❯ FiberImpl.evaluate node_modules/effect/src/internal/effect.ts:626:29
+ ❯ node_modules/effect/src/internal/effect.ts:1226:17
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[140/141]⎯
+
+ FAIL  packages/host/test/launch-logs.test.ts > the host logs launches with references and keeps stderr only for unexpected ends, separately per launch
+Error: worker host exited before ready (code 1, signal null); see /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4/.scratch/155-n6lS09/foundry-host-logs-IVOTKq/logs/host.log
+ ❯ ChildProcess.onExit packages/host/src/client.ts:78:16
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[141/141]⎯
+
+
+ Test Files  41 failed | 59 passed (100)
+      Tests  141 failed | 696 passed (837)
+   Start at  16:49:31
+   Duration  35.36s (tests 78%, import 20%, transform 2%)
+

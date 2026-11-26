@@ -1,0 +1,68 @@
+
+ RUN  v5.1.1 /home/mark/worktress/develop/t3-f172784f-648f1e4550390ef4
+
+(node:2439193) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2439200) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/e2e/worker-channel.e2e.test.ts (3 tests | 3 failed) 23ms
+   × a launched faux-provider Pi worker authenticates and discovers its configured station and slot 11ms
+   × concurrent tickets keep isolated artifacts and the other Pi progresses during pause/resume 6ms
+   × a scripted ticket crosses separate Pi stages and lands only after CLI operator approval 6ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  packages/daemon/e2e/worker-channel.e2e.test.ts > a launched faux-provider Pi worker authenticates and discovers its configured station and slot
+Error: Command failed: git commit --quiet --no-verify -m fixture
+fatal: cannot update the ref 'refs/heads/main': unable to create directory for '.git/logs/refs/heads/main': No such file or directory
+
+ ❯ git packages/testkit/src/git-source.ts:24:3
+ ❯ makeGitSource packages/testkit/src/git-source.ts:32:3
+ ❯ packages/daemon/e2e/worker-channel.e2e.test.ts:125:3
+    123|   // Registered after the root's removal so it runs first: the host st…
+    124|   cleanups.push(() => stopHost(home));
+    125|   makeGitSource(join(root, "repo"));
+       |   ^
+    126|   const factory = join(root, "factory.yaml");
+    127|   writeFileSync(factory, factoryYaml);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  packages/daemon/e2e/worker-channel.e2e.test.ts > concurrent tickets keep isolated artifacts and the other Pi progresses during pause/resume
+Error: Command failed: git commit --quiet --no-verify -m fixture
+fatal: cannot update the ref 'refs/heads/main': unable to create directory for '.git/logs/refs/heads/main': No such file or directory
+
+ ❯ git packages/testkit/src/git-source.ts:24:3
+ ❯ makeGitSource packages/testkit/src/git-source.ts:32:3
+ ❯ packages/daemon/e2e/worker-channel.e2e.test.ts:187:3
+    185|   const home = join(root, "home");
+    186|   cleanups.push(() => stopHost(home));
+    187|   makeGitSource(join(root, "repo"));
+       |   ^
+    188|   const driver = join(import.meta.dirname, "fixtures", "concurrent-wor…
+    189|   const factory = join(root, "factory.yaml");
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  packages/daemon/e2e/worker-channel.e2e.test.ts > a scripted ticket crosses separate Pi stages and lands only after CLI operator approval
+Error: Command failed: git commit --quiet --no-verify -m fixture
+fatal: cannot update the ref 'refs/heads/main': unable to create directory for '.git/logs/refs/heads/main': No such file or directory
+
+ ❯ git packages/testkit/src/git-source.ts:24:3
+ ❯ makeGitSource packages/testkit/src/git-source.ts:32:3
+ ❯ packages/daemon/e2e/worker-channel.e2e.test.ts:261:19
+    259|   const home = join(root, "home");
+    260|   cleanups.push(() => stopHost(home));
+    261|   const initial = makeGitSource(join(root, "repo"));
+       |                   ^
+    262|   const driver = join(import.meta.dirname, "fixtures", "ticket-line-wo…
+    263|
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  3 failed | 2 passed (5)
+   Start at  16:49:06
+   Duration  747ms (import 64%, tests 29%, transform 7%)
+

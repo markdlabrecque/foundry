@@ -37,6 +37,9 @@ const CLI = join(repo, "packages/cli/dist/main.js");
 const PROBE_EXTENSION = join(here, "probe-extension.ts");
 const PI_CLI = join(repo, "node_modules/@earendil-works/pi-coding-agent/dist/cli.js");
 
+// Optional explicit selector lets the SDK sibling reuse this exact process/cleanup probe.
+const runtime = process.argv[3] ?? "rpc";
+if (!["rpc", "sdk"].includes(runtime)) {throw new Error(`unknown runtime: ${runtime}`);}
 const outDir = resolve(process.argv[2] ?? mkdtempSync(join(tmpdir(), "fou122-out-")));
 mkdirSync(outDir, { recursive: true });
 
@@ -57,6 +60,7 @@ const env = {
   XDG_DATA_HOME: join(user, ".local/share"),
   XDG_CACHE_HOME: join(user, ".cache"),
   PI_CODING_AGENT_DIR: agentDir,
+  FOUNDRY_WORKER_RUNTIME: runtime,
   PI_OFFLINE: "1",
   PI_TELEMETRY: "0",
   FOUNDRY_HOME: join(root, "not-this-one"),
@@ -307,6 +311,7 @@ const checks = {};
 
 try {
   note("versions", {
+    runtime,
     node: process.version,
     pi: execFileSync(process.execPath, [PI_CLI, "--version"], { env, encoding: "utf8" }).trim(),
     platform: `${process.platform} ${process.arch}`,
