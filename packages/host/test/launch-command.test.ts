@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { expect, test } from "vitest";
 import { parseArgs } from "@earendil-works/pi-coding-agent";
-import { FIXED_TOOLS, buildLaunchCommand, resolvePiExecutable } from "@foundry/host";
+import { FIXED_TOOLS, buildLaunchCommand, resolvePiExecutable, resolveWorkerExecutable } from "@foundry/host";
 import type { LaunchInputs, PiExecutable } from "@foundry/host";
 
 // Unit tier: the launch command is a pure mapping, so Pi's own argument parser
@@ -26,6 +26,27 @@ function inputs(overrides: Partial<LaunchInputs> = {}): LaunchInputs {
     ...overrides,
   };
 }
+
+test("SDK selection is explicit and preserves the same resource argv and environment contract", () => {
+  expect(resolveWorkerExecutable({})).toEqual(resolvePiExecutable({}));
+  const sdk = resolveWorkerExecutable({ FOUNDRY_WORKER_RUNTIME: "sdk" });
+  const launch = buildLaunchCommand(inputs(), sdk, { KEEP: "host-value" });
+  const parsed = parseArgs(launch.args.slice(sdk.args.length));
+
+  expect(sdk.command).toBe(process.execPath);
+  expect(sdk.args[0]).toMatch(/sdk-worker\.js$/);
+  expect(parsed.model).toBe("faux/scripted");
+  expect(parsed.skills).toEqual(inputs().skills);
+  expect(parsed.extensions).toEqual([inputs().foundryExtension, ...inputs().extensions.map((extension) => extension.path)]);
+  expect(parsed.tools).toEqual([...FIXED_TOOLS, "web_fetch", "jira_get"]);
+  expect(launch.env).toMatchObject({ KEEP: "host-value", FOUNDRY_LAUNCH_ID: "launch-7", FOUNDRY_SLOT: "developer/1" });
+  const cleared = parseArgs(buildLaunchCommand(inputs({ skills: [], extensions: [] }), sdk, {}).args.slice(sdk.args.length));
+  expect(cleared.skills).toBeUndefined();
+  expect(cleared.extensions).toEqual([inputs().foundryExtension]);
+  expect(cleared.tools).toEqual([...FIXED_TOOLS]);
+  expect(() => resolveWorkerExecutable({ FOUNDRY_WORKER_RUNTIME: "other" })).toThrow(/unknown/);
+  expect(() => resolveWorkerExecutable({ FOUNDRY_WORKER_RUNTIME: "sdk", FOUNDRY_PI_BIN: "/override" })).toThrow(/cannot override/);
+});
 
 test("maps effective station inputs literally onto Pi's RPC argv", () => {
   const launch = buildLaunchCommand(inputs(), pi, {});

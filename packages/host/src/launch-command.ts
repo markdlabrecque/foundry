@@ -119,6 +119,22 @@ export function resolvePiExecutable(env: Readonly<Record<string, string | undefi
   return { command: process.execPath, args: [entry] };
 }
 
+/** Explicit trial selector. RPC remains the default; neither route is qualified here. */
+export const WORKER_RUNTIME_ENV = "FOUNDRY_WORKER_RUNTIME";
+
+export function resolveWorkerExecutable(env: Readonly<Record<string, string | undefined>>): PiExecutable {
+  const runtime = env[WORKER_RUNTIME_ENV];
+
+  if (runtime === undefined || runtime === "" || runtime === "rpc") {return resolvePiExecutable(env);}
+
+  if (runtime !== "sdk") {throw new Error(`unknown Foundry worker runtime: ${runtime}`);}
+
+  if (env[PI_BIN_ENV]) {throw new Error("FOUNDRY_PI_BIN cannot override the SDK adapter");}
+
+  // The SDK entry accepts the exact resource argv built below, but starts no RPC server.
+  return { command: process.execPath, args: [fileURLToPath(new URL("./sdk-worker.js", import.meta.url))] };
+}
+
 /** Builds the literal launch command. Throws on inputs that cannot map to argv safely. */
 export function buildLaunchCommand(
   inputs: LaunchInputs,
