@@ -1,5 +1,13 @@
 # FOU-124 post-merge positive combined-crash journey — Linux RPC
 
+## Current correction — read first
+
+Independent review returned **REQUESTCHANGES on the pre-review oracle**, while confirming the actual journey's relationships were correct. The revised oracle now enforces submission/tool-result/assignment/approval/Git bijections and all final acknowledged context/work relationships. **25 new negative corruptions fail against the old oracle; all 54 pure tests pass against the corrected oracle.** Both strengthened read-only replay of retained evidence and a fresh actual journey pass all 20 observations. Normal checks pass 862 Vitest tests and 5 separate E2E tests.
+
+**The current canonical report is [review-fix/REPORT.md](worker-daemon-crash-postmerge/review-fix/REPORT.md). NEW independent review remains required before any PR.** Captured execution HEAD is `f380cd2c6c1161c04d30498c655000f0b8a16437`, with the exact revised source bytes runtime-hashed; fetched develop base remains `a61daf0913331e83cb111c6b6572a8a3bba2f434`. No product change or tracker action. Old artifacts/failures remain preserved, and pre-review source/report snapshots are archived under `review-fix/before-review/`.
+
+## Pre-review report (retained historical run, not the current oracle qualification)
+
 ## Contract and disposition
 
 [FOU-124](https://linear.app/foundry-mdl/issue/FOU-124/prove-worker-and-daemon-crash-durability-together), PRD §18.1(4): killing a worker and restarting the daemon mid-run loses no accepted messages or tracked work. The live issue's original checkbox remains open; its failure-evidence merge explicitly did not satisfy positive acceptance. It still owns the stronger successful-continuation/no-lost-work/no-duplicate-committed-effects proof and blocks [FOU-140](https://linear.app/foundry-mdl/issue/FOU-140). Live discussion comments were empty when read. Its listed dependencies FOU-162, FOU-70, FOU-95, FOU-94, FOU-64 and FOU-35 were all Done; FOU-162's shared implementation is now merged.

@@ -1,0 +1,990 @@
+{
+  "result": "supported-disposable-combined-crash-journey",
+  "failed": [],
+  "exitCode": 0,
+  "productionBase": "f380cd2c6c1161c04d30498c655000f0b8a16437",
+  "journeyCompleted": true,
+  "checks": {
+    "freshProtocol5Host": true,
+    "originalWorkActive": true,
+    "privateTempPropagated": true,
+    "workerReplacementRecovered": true,
+    "survivingWorkersReconnected": true,
+    "channelTrafficResumed": true,
+    "sameHostAndSurvivingLaunches": true,
+    "noDaemonRestartWorkReplay": true,
+    "acceptedWorkRetained": true,
+    "ordinaryMessagesProcessed": true,
+    "artifactBindingsUnchanged": true,
+    "originalAssignmentsHonored": true,
+    "trackedTicketsContinued": true,
+    "noAdditionalLaunches": true,
+    "noDuplicateCommittedEffects": true,
+    "actualWorkContinued": true,
+    "realToolResultsSucceeded": true,
+    "orderlyCleanup": true,
+    "cleanup": true,
+    "cleanupPhasesSucceeded": true
+  },
+  "cleanupErrors": [],
+  "events": [
+    {
+      "at": "2026-11-26T03:15:41.374Z",
+      "event": "versions",
+      "detail": {
+        "node": "v22.23.2",
+        "platform": "linux x64",
+        "kernel": "7.2.15-1-omarchy",
+        "pi": "1.6.0",
+        "productionBase": "f380cd2c6c1161c04d30498c655000f0b8a16437",
+        "sourceBase": "43e991faca95f09ab75497740edbc1d90908cc4e",
+        "fixture": {
+          "driver": "<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/worker.mjs",
+          "yaml": "version: 1\nname: alpha\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\nworktrees:\n  root: \"<USER_HOME>/f124a-lfvVgj/worktrees\"\nrooms:\n  eng:\n    stations:\n      dev:\n        instances: 2\n        isolation: worktree\n        model: crash-124/scripted\n        extensions: [{ path: \"<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/worker.mjs\", tools: [fixture_work] }]\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: implement\n        station: eng.dev\n        writing: true\n      - id: gate\n        station: eng.dev\n        approval: true\n        on_rejection: implement\n",
+          "env": {
+            "PATH":"<REDACTED inherited PATH>",
+            "HOME": "<USER_HOME>/f124a-lfvVgj/user",
+            "TMPDIR": "<USER_HOME>/f124a-lfvVgj/t",
+            "XDG_CONFIG_HOME": "<USER_HOME>/f124a-lfvVgj/user/.config",
+            "XDG_DATA_HOME": "<USER_HOME>/f124a-lfvVgj/user/.local/share",
+            "XDG_CACHE_HOME": "<USER_HOME>/f124a-lfvVgj/user/.cache",
+            "PI_CODING_AGENT_DIR": "<USER_HOME>/f124a-lfvVgj/agent",
+            "PI_OFFLINE": "1",
+            "PI_TELEMETRY": "0",
+            "PROBE_DIR": "<USER_HOME>/f124a-lfvVgj/probe",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_AUTHOR_NAME": "Foundry Fixture",
+            "GIT_AUTHOR_EMAIL": "fixture@foundry.invalid",
+            "GIT_COMMITTER_NAME": "Foundry Fixture",
+            "GIT_COMMITTER_EMAIL": "fixture@foundry.invalid",
+            "FOUNDRY_HOME": "<USER_HOME>/f124a-lfvVgj/unused",
+            "FOUNDRY_WORKER_RUNTIME": "rpc"
+          },
+          "FOUNDRY_PI_BIN": "UNSET; no shim"
+        },
+        "evidenceSourceSha256": {
+          "worker-daemon-crash-postmerge/run-probe.mjs": "9772ee1f7465e22977578ed3b13f6a03532329f445d02a4c555ec9157032bb37",
+          "worker-daemon-crash-postmerge/worker.mjs": "9e856c03f79b1b05effd2e5230a3614465f22bc6c1f3c127a943f7434bff44b6",
+          "worker-daemon-crash-postmerge/verify.mjs": "d25b36e7d8a95b04944ed015fee04c092fe27d976d9bd4318985c3c505beaf9c",
+          "worker-daemon-crash-postmerge/history.mjs": "168cfda4dca284966c7f10c942823b188b12fed0d3e145667ce0d06d3b98252a",
+          "worker-daemon-crash-linux/verdict.mjs": "23f4ec633a6a14f7b66a8a063417bf0df7458fefb5f30e7385bb9418f1372630",
+          "worker-daemon-crash-linux/normalize.mjs": "fbe4e0c480e15a9a0a179f9c8d372a9d56f9dafff1bc9a9b23d0a42d15df5849"
+        }
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:41.777Z",
+      "event": "daemon serving",
+      "detail": {
+        "pid": 3334858,
+        "args": [
+          "<CHECKOUT>/packages/daemon/dist/main.js",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--log-level",
+          "debug",
+          "<USER_HOME>/f124a-lfvVgj/factory.yaml"
+        ],
+        "stderr": "{\"time\":\"2026-11-26T03:15:41.604Z\",\"level\":\"info\",\"runId\":\"cf062de1-540d-4cbe-a740-f751fc8afd9f\",\"msg\":\"factory clone created\",\"factoryId\":\"alpha\",\"detail\":{\"path\":\"<USER_HOME>/f124a-lfvVgj/home/clones/alpha\",\"source\":\"<USER_HOME>/f124a-lfvVgj/repo\"}}\n{\"time\":\"2026-11-26T03:15:41.609Z\",\"level\":\"info\",\"runId\":\"cf062de1-540d-4cbe-a740-f751fc8afd9f\",\"msg\":\"factory configuration loaded\",\"factoryId\":\"alpha\",\"detail\":{\"loadId\":1,\"configHash\":\"sha256:7290a06b22088c2abbad8c8098878c003ae53d848779331bada3f1120b08522f\"}}\n{\"time\":\"2026-11-26T03:15:41.740Z\",\"level\":\"info\",\"runId\":\"cf062de1-540d-4cbe-a740-f751fc8afd9f\",\"msg\":\"slot started\",\"factoryId\":\"alpha\",\"slotId\":\"dev/1\",\"launchId\":\"66905230-6b02-4115-84e2-d0124b50bb84\"}\n{\"time\":\"2026-11-26T03:15:41.740Z\",\"level\":\"info\",\"runId\":\"cf062de1-540d-4cbe-a740-f751fc8afd9f\",\"msg\":\"slot started\",\"factoryId\":\"alpha\",\"slotId\":\"dev/2\",\"launchId\":\"7a464177-4c5e-4d98-8082-1dede748ccbc\"}\n{\"time\":\"2026-11-26T03:15:41.744Z\",\"level\":\"info\",\"runId\":\"cf062de1-540d-4cbe-a740-f751fc8afd9f\",\"msg\":\"daemon started\",\"detail\":{\"pid\":3334858,\"stateRoot\":\"<USER_HOME>/f124a-lfvVgj/home\",\"socket\":\"<USER_HOME>/f124a-lfvVgj/home/management.sock\",\"logLevel\":\"debug\"}}\n"
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:42.141Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "submit",
+          "<USER_HOME>/f124a-lfvVgj/spec-1.md",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":1,\"title\":\"Crash durability 1\",\"slug\":\"crash-durability-1\",\"line\":\"f\",\"state\":\"backlog\",\"stage\":null,\"status\":null,\"submittedAt\":\"2026-11-26T03:15:42.116Z\",\"directory\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1\",\"specPath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":null},\"transitions\":[{\"at\":\"2026-11-26T03:15:42.116Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:42.515Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "submit",
+          "<USER_HOME>/f124a-lfvVgj/spec-2.md",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":2,\"title\":\"Crash durability 2\",\"slug\":\"crash-durability-2\",\"line\":\"f\",\"state\":\"backlog\",\"stage\":null,\"status\":null,\"submittedAt\":\"2026-11-26T03:15:42.491Z\",\"directory\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2\",\"specPath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":null},\"transitions\":[{\"at\":\"2026-11-26T03:15:42.491Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:42.915Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "show",
+          "2",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":2,\"title\":\"Crash durability 2\",\"slug\":\"crash-durability-2\",\"line\":\"f\",\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\",\"submittedAt\":\"2026-11-26T03:15:42.491Z\",\"directory\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2\",\"specPath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":{\"path\":\"<USER_HOME>/f124a-lfvVgj/worktrees/alpha/2-crash-durability-2\",\"branch\":\"ticket/2-crash-durability-2\",\"startCommit\":\"43e991faca95f09ab75497740edbc1d90908cc4e\"}},\"transitions\":[{\"at\":\"2026-11-26T03:15:42.491Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T03:15:42.517Z\",\"actor\":\"daemon\",\"from\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"to\":{\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\"},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:42.915Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "show",
+          "1",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":1,\"title\":\"Crash durability 1\",\"slug\":\"crash-durability-1\",\"line\":\"f\",\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\",\"submittedAt\":\"2026-11-26T03:15:42.116Z\",\"directory\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1\",\"specPath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":{\"path\":\"<USER_HOME>/f124a-lfvVgj/worktrees/alpha/1-crash-durability-1\",\"branch\":\"ticket/1-crash-durability-1\",\"startCommit\":\"43e991faca95f09ab75497740edbc1d90908cc4e\"}},\"transitions\":[{\"at\":\"2026-11-26T03:15:42.116Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T03:15:42.145Z\",\"actor\":\"daemon\",\"from\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"to\":{\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\"},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:42.922Z",
+      "event": "before worker kill",
+      "detail": {
+        "first": {
+          "identity": {
+            "hostId": "a92aae81-f75b-4e29-a5a4-8f0fd128b66a",
+            "pid": 3334872,
+            "startedAt": "2026-11-26T03:15:41.714Z",
+            "stateRoot": "<USER_HOME>/f124a-lfvVgj/home",
+            "controlVersion": 5,
+            "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110"
+          },
+          "launches": [
+            {
+              "launchId": "66905230-6b02-4115-84e2-d0124b50bb84",
+              "factoryId": "alpha",
+              "slotId": "dev/1",
+              "pid": 3334884,
+              "pgid": 3334884,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T03:15:41.727Z",
+              "liveness": "live"
+            },
+            {
+              "launchId": "7a464177-4c5e-4d98-8082-1dede748ccbc",
+              "factoryId": "alpha",
+              "slotId": "dev/2",
+              "pid": 3334891,
+              "pgid": 3334891,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T03:15:41.736Z",
+              "liveness": "live"
+            }
+          ]
+        },
+        "tempPropagation": [
+          {
+            "pid": 3334858,
+            "tmpdir": "<USER_HOME>/f124a-lfvVgj/t"
+          },
+          {
+            "pid": 3334872,
+            "tmpdir": "<USER_HOME>/f124a-lfvVgj/t"
+          },
+          {
+            "pid": 3334884,
+            "tmpdir": "<USER_HOME>/f124a-lfvVgj/t"
+          },
+          {
+            "pid": 3334891,
+            "tmpdir": "<USER_HOME>/f124a-lfvVgj/t"
+          }
+        ],
+        "artifactsBefore": [
+          {
+            "number": 1,
+            "directory": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1",
+            "specPath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/evidence",
+            "worktree": {
+              "path": "<USER_HOME>/f124a-lfvVgj/worktrees/alpha/1-crash-durability-1",
+              "branch": "ticket/1-crash-durability-1",
+              "startCommit": "43e991faca95f09ab75497740edbc1d90908cc4e"
+            },
+            "specHash": "1378b063df8e1245f53569ae3fc5dec980fb3302421b33ff4ffe5d409f2435b5",
+            "body": "COMMITTED_EFFECT ticket=1 assignment=41bb91ef-e0bb-4633-b6fa-81a522893138\n",
+            "head": "02727e388994a1e4ab90959770f21402189b7216"
+          },
+          {
+            "number": 2,
+            "directory": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2",
+            "specPath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/evidence",
+            "worktree": {
+              "path": "<USER_HOME>/f124a-lfvVgj/worktrees/alpha/2-crash-durability-2",
+              "branch": "ticket/2-crash-durability-2",
+              "startCommit": "43e991faca95f09ab75497740edbc1d90908cc4e"
+            },
+            "specHash": "b9cd3922b0d9990c76a07153eb1e4dd2693d00561b93f581e7fbadf93d586aa3",
+            "body": "COMMITTED_EFFECT ticket=2 assignment=a3028642-279e-4cf0-8810-f4b8dea25cb1\n",
+            "head": "180231ecc0d2a473be2b2d1ddaca0b90a84faf75"
+          }
+        ],
+        "checks": {
+          "freshProtocol5Host": true,
+          "originalWorkActive": true,
+          "privateTempPropagated": true
+        }
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:43.230Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "message",
+          "send",
+          "eng.dev",
+          "FOU124_BEFORE_WORKER",
+          "--delivery",
+          "when_idle",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"id\":\"5c660f0d-23e5-485a-ad88-cfb2cc4d95d2\",\"sequence\":3,\"factoryId\":\"alpha\",\"senderKind\":\"operator\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"body\":\"FOU124_BEFORE_WORKER\",\"delivery\":\"when_idle\",\"kind\":\"ordinary\",\"ticket\":null,\"requestId\":null,\"delegationId\":null,\"status\":\"unbound\"}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:43.238Z",
+      "event": "worker group SIGKILL",
+      "detail": {
+        "launchId": "66905230-6b02-4115-84e2-d0124b50bb84",
+        "factoryId": "alpha",
+        "slotId": "dev/1",
+        "pid": 3334884,
+        "pgid": 3334884,
+        "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+        "startedAt": "2026-11-26T03:15:41.727Z",
+        "liveness": "live"
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:43.921Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "message",
+          "send",
+          "eng.dev",
+          "FOU124_BEFORE_DAEMON",
+          "--delivery",
+          "when_idle",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"id\":\"9628c527-36b3-4285-9047-9585d3411a41\",\"sequence\":5,\"factoryId\":\"alpha\",\"senderKind\":\"operator\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"body\":\"FOU124_BEFORE_DAEMON\",\"delivery\":\"when_idle\",\"kind\":\"ordinary\",\"ticket\":null,\"requestId\":null,\"delegationId\":null,\"status\":\"unbound\"}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:43.925Z",
+      "event": "daemon SIGKILL",
+      "detail": {
+        "code": null,
+        "signal": "SIGKILL"
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:43.928Z",
+      "event": "before daemon restart",
+      "detail": {
+        "preCrash": {
+          "identity": {
+            "hostId": "a92aae81-f75b-4e29-a5a4-8f0fd128b66a",
+            "pid": 3334872,
+            "startedAt": "2026-11-26T03:15:41.714Z",
+            "stateRoot": "<USER_HOME>/f124a-lfvVgj/home",
+            "controlVersion": 5,
+            "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110"
+          },
+          "launches": [
+            {
+              "launchId": "66905230-6b02-4115-84e2-d0124b50bb84",
+              "factoryId": "alpha",
+              "slotId": "dev/1",
+              "pid": 3334884,
+              "pgid": 3334884,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T03:15:41.727Z",
+              "liveness": "gone",
+              "exit": {
+                "code": null,
+                "signal": "SIGKILL",
+                "endedAt": "2026-11-26T03:15:43.245Z"
+              }
+            },
+            {
+              "launchId": "7a464177-4c5e-4d98-8082-1dede748ccbc",
+              "factoryId": "alpha",
+              "slotId": "dev/2",
+              "pid": 3334891,
+              "pgid": 3334891,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T03:15:41.736Z",
+              "liveness": "live"
+            },
+            {
+              "launchId": "ad1f0356-6607-4d7b-aac8-5f0bdb15604a",
+              "factoryId": "alpha",
+              "slotId": "dev/1",
+              "pid": 3335077,
+              "pgid": 3335077,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T03:15:43.257Z",
+              "liveness": "live"
+            }
+          ]
+        },
+        "workCallsBeforeRestart": 3,
+        "continuedBeforeRestart": 0,
+        "acceptedRows": [
+          {
+            "id": "5a7d9783-9732-4c0c-b0b0-fbf82b2370ed",
+            "factory_id": "alpha",
+            "sequence": 1,
+            "sender_kind": "daemon",
+            "sender_slot": null,
+            "recipient": "eng.dev",
+            "body": "Ticket 1: Crash durability 1\nProduction line: f\nStage: implement\nAssignment: 41bb91ef-e0bb-4633-b6fa-81a522893138\nSlot: dev/1\nSpecification: <USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/spec.md\nEvidence: <USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/evidence\nWorktree: <USER_HOME>/f124a-lfvVgj/worktrees/alpha/1-crash-durability-1\n\n# Repository Context\nRoot: <USER_HOME>/f124a-lfvVgj/worktrees/alpha/1-crash-durability-1\n\n## Repository skills (read bodies on demand)\nNo repository context files or indexed skills.",
+            "delivery": "after_turn",
+            "kind": "ordinary",
+            "ticket_number": 1,
+            "request_id": null,
+            "delegation_id": null,
+            "status": "acknowledged",
+            "accepted_at": 1795662942146,
+            "bound_slot": "dev/1",
+            "bound_at": 1795662942151,
+            "acknowledged_at": 1795662943588
+          },
+          {
+            "id": "9c2b9458-4fb5-47a9-81e9-bfb2f36f2267",
+            "factory_id": "alpha",
+            "sequence": 2,
+            "sender_kind": "daemon",
+            "sender_slot": null,
+            "recipient": "eng.dev",
+            "body": "Ticket 2: Crash durability 2\nProduction line: f\nStage: implement\nAssignment: a3028642-279e-4cf0-8810-f4b8dea25cb1\nSlot: dev/2\nSpecification: <USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/spec.md\nEvidence: <USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/evidence\nWorktree: <USER_HOME>/f124a-lfvVgj/worktrees/alpha/2-crash-durability-2\n\n# Repository Context\nRoot: <USER_HOME>/f124a-lfvVgj/worktrees/alpha/2-crash-durability-2\n\n## Repository skills (read bodies on demand)\nNo repository context files or indexed skills.",
+            "delivery": "after_turn",
+            "kind": "ordinary",
+            "ticket_number": 2,
+            "request_id": null,
+            "delegation_id": null,
+            "status": "sent",
+            "accepted_at": 1795662942518,
+            "bound_slot": "dev/2",
+            "bound_at": 1795662942522,
+            "acknowledged_at": null
+          },
+          {
+            "id": "5c660f0d-23e5-485a-ad88-cfb2cc4d95d2",
+            "factory_id": "alpha",
+            "sequence": 3,
+            "sender_kind": "operator",
+            "sender_slot": null,
+            "recipient": "eng.dev",
+            "body": "FOU124_BEFORE_WORKER",
+            "delivery": "when_idle",
+            "kind": "ordinary",
+            "ticket_number": null,
+            "request_id": null,
+            "delegation_id": null,
+            "status": "acknowledged",
+            "accepted_at": 1795662943210,
+            "bound_slot": "dev/1",
+            "bound_at": 1795662943213,
+            "acknowledged_at": 1795662943625
+          },
+          {
+            "id": "45394bfb-5961-496d-8858-9e53aef49462",
+            "factory_id": "alpha",
+            "sequence": 4,
+            "sender_kind": "daemon",
+            "sender_slot": null,
+            "recipient": "eng.dev",
+            "body": "Ticket 1\nStage: implement\nAssignment: 41bb91ef-e0bb-4633-b6fa-81a522893138\nThe worker was interrupted or the daemon was unavailable. The last tool call may or may not have completed. Inspect the worktree and ticket directory before continuing; do not replay tool calls blindly.\nReported outcome: none\nOpen requests: none\nOpen delegations: none",
+            "delivery": "after_turn",
+            "kind": "resume_notice",
+            "ticket_number": 1,
+            "request_id": null,
+            "delegation_id": null,
+            "status": "acknowledged",
+            "accepted_at": 1795662943609,
+            "bound_slot": "dev/1",
+            "bound_at": 1795662943609,
+            "acknowledged_at": 1795662943632
+          },
+          {
+            "id": "9628c527-36b3-4285-9047-9585d3411a41",
+            "factory_id": "alpha",
+            "sequence": 5,
+            "sender_kind": "operator",
+            "sender_slot": null,
+            "recipient": "eng.dev",
+            "body": "FOU124_BEFORE_DAEMON",
+            "delivery": "when_idle",
+            "kind": "ordinary",
+            "ticket_number": null,
+            "request_id": null,
+            "delegation_id": null,
+            "status": "sent",
+            "accepted_at": 1795662943905,
+            "bound_slot": "dev/1",
+            "bound_at": 1795662943909,
+            "acknowledged_at": null
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:44.330Z",
+      "event": "daemon serving",
+      "detail": {
+        "pid": 3335103,
+        "args": [
+          "<CHECKOUT>/packages/daemon/dist/main.js",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--log-level",
+          "debug",
+          "<USER_HOME>/f124a-lfvVgj/factory.yaml"
+        ],
+        "stderr": "{\"time\":\"2026-11-26T03:15:44.140Z\",\"level\":\"info\",\"runId\":\"6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a\",\"msg\":\"factory clone reused\",\"factoryId\":\"alpha\",\"detail\":{\"path\":\"<USER_HOME>/f124a-lfvVgj/home/clones/alpha\",\"source\":\"<USER_HOME>/f124a-lfvVgj/repo\"}}\n{\"time\":\"2026-11-26T03:15:44.198Z\",\"level\":\"info\",\"runId\":\"6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a\",\"msg\":\"factory configuration loaded\",\"factoryId\":\"alpha\",\"detail\":{\"loadId\":2,\"configHash\":\"sha256:7290a06b22088c2abbad8c8098878c003ae53d848779331bada3f1120b08522f\"}}\n{\"time\":\"2026-11-26T03:15:44.207Z\",\"level\":\"info\",\"runId\":\"6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a\",\"msg\":\"slot running\",\"factoryId\":\"alpha\",\"slotId\":\"dev/1\",\"launchId\":\"ad1f0356-6607-4d7b-aac8-5f0bdb15604a\"}\n{\"time\":\"2026-11-26T03:15:44.207Z\",\"level\":\"info\",\"runId\":\"6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a\",\"msg\":\"slot running\",\"factoryId\":\"alpha\",\"slotId\":\"dev/2\",\"launchId\":\"7a464177-4c5e-4d98-8082-1dede748ccbc\"}\n{\"time\":\"2026-11-26T03:15:44.211Z\",\"level\":\"info\",\"runId\":\"6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a\",\"msg\":\"daemon started\",\"detail\":{\"pid\":3335103,\"stateRoot\":\"<USER_HOME>/f124a-lfvVgj/home\",\"socket\":\"<USER_HOME>/f124a-lfvVgj/home/management.sock\",\"logLevel\":\"debug\"}}\n"
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:49.744Z",
+      "event": "surviving workers reconnected while still active",
+      "detail": {
+        "observedMs": 5413,
+        "after": {
+          "identity": {
+            "hostId": "a92aae81-f75b-4e29-a5a4-8f0fd128b66a",
+            "pid": 3334872,
+            "startedAt": "2026-11-26T03:15:41.714Z",
+            "stateRoot": "<USER_HOME>/f124a-lfvVgj/home",
+            "controlVersion": 5,
+            "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110"
+          },
+          "launches": [
+            {
+              "launchId": "66905230-6b02-4115-84e2-d0124b50bb84",
+              "factoryId": "alpha",
+              "slotId": "dev/1",
+              "pid": 3334884,
+              "pgid": 3334884,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T03:15:41.727Z",
+              "liveness": "gone",
+              "exit": {
+                "code": null,
+                "signal": "SIGKILL",
+                "endedAt": "2026-11-26T03:15:43.245Z"
+              }
+            },
+            {
+              "launchId": "7a464177-4c5e-4d98-8082-1dede748ccbc",
+              "factoryId": "alpha",
+              "slotId": "dev/2",
+              "pid": 3334891,
+              "pgid": 3334891,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T03:15:41.736Z",
+              "liveness": "live"
+            },
+            {
+              "launchId": "ad1f0356-6607-4d7b-aac8-5f0bdb15604a",
+              "factoryId": "alpha",
+              "slotId": "dev/1",
+              "pid": 3335077,
+              "pgid": 3335077,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T03:15:43.257Z",
+              "liveness": "live"
+            }
+          ]
+        },
+        "checks": {
+          "freshProtocol5Host": true,
+          "originalWorkActive": true,
+          "privateTempPropagated": true,
+          "workerReplacementRecovered": true,
+          "survivingWorkersReconnected": true,
+          "channelTrafficResumed": true,
+          "sameHostAndSurvivingLaunches": true,
+          "noDaemonRestartWorkReplay": true
+        },
+        "channelLines": [
+          {
+            "time": "2026-11-26T03:15:44.140Z",
+            "level": "info",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "factory clone reused",
+            "factoryId": "alpha",
+            "detail": {
+              "path": "<USER_HOME>/f124a-lfvVgj/home/clones/alpha",
+              "source": "<USER_HOME>/f124a-lfvVgj/repo"
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:44.198Z",
+            "level": "info",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "factory configuration loaded",
+            "factoryId": "alpha",
+            "detail": {
+              "loadId": 2,
+              "configHash": "sha256:7290a06b22088c2abbad8c8098878c003ae53d848779331bada3f1120b08522f"
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:44.207Z",
+            "level": "info",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "slot running",
+            "factoryId": "alpha",
+            "slotId": "dev/1",
+            "launchId": "ad1f0356-6607-4d7b-aac8-5f0bdb15604a"
+          },
+          {
+            "time": "2026-11-26T03:15:44.207Z",
+            "level": "info",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "slot running",
+            "factoryId": "alpha",
+            "slotId": "dev/2",
+            "launchId": "7a464177-4c5e-4d98-8082-1dede748ccbc"
+          },
+          {
+            "time": "2026-11-26T03:15:44.211Z",
+            "level": "info",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "daemon started",
+            "detail": {
+              "pid": 3335103,
+              "stateRoot": "<USER_HOME>/f124a-lfvVgj/home",
+              "socket": "<USER_HOME>/f124a-lfvVgj/home/management.sock",
+              "logLevel": "debug"
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:44.681Z",
+            "level": "info",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "channel accepted",
+            "factoryId": "alpha",
+            "slotId": "dev/1",
+            "launchId": "ad1f0356-6607-4d7b-aac8-5f0bdb15604a",
+            "detail": {
+              "mode": "headless",
+              "tools": 13
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:44.682Z",
+            "level": "info",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "channel accepted",
+            "factoryId": "alpha",
+            "slotId": "dev/2",
+            "launchId": "7a464177-4c5e-4d98-8082-1dede748ccbc",
+            "detail": {
+              "mode": "headless",
+              "tools": 13
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:44.683Z",
+            "level": "debug",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "channel frame",
+            "factoryId": "alpha",
+            "slotId": "dev/1",
+            "launchId": "ad1f0356-6607-4d7b-aac8-5f0bdb15604a",
+            "detail": {
+              "frame": "reconciliation_answer"
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:44.683Z",
+            "level": "debug",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "channel frame",
+            "factoryId": "alpha",
+            "slotId": "dev/2",
+            "launchId": "7a464177-4c5e-4d98-8082-1dede748ccbc",
+            "detail": {
+              "frame": "message_injected"
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:44.684Z",
+            "level": "debug",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "channel frame",
+            "factoryId": "alpha",
+            "slotId": "dev/2",
+            "launchId": "7a464177-4c5e-4d98-8082-1dede748ccbc",
+            "detail": {
+              "frame": "reconciliation_answer"
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:44.693Z",
+            "level": "debug",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "channel frame",
+            "factoryId": "alpha",
+            "slotId": "dev/1",
+            "launchId": "ad1f0356-6607-4d7b-aac8-5f0bdb15604a",
+            "detail": {
+              "frame": "reconciliation_answer"
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:44.693Z",
+            "level": "debug",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "channel frame",
+            "factoryId": "alpha",
+            "slotId": "dev/2",
+            "launchId": "7a464177-4c5e-4d98-8082-1dede748ccbc",
+            "detail": {
+              "frame": "reconciliation_answer"
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:49.681Z",
+            "level": "debug",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "channel frame",
+            "factoryId": "alpha",
+            "slotId": "dev/1",
+            "launchId": "ad1f0356-6607-4d7b-aac8-5f0bdb15604a",
+            "detail": {
+              "frame": "heartbeat"
+            }
+          },
+          {
+            "time": "2026-11-26T03:15:49.683Z",
+            "level": "debug",
+            "runId": "6e24d788-a3ec-4f76-a78c-c4ba8a5a7e9a",
+            "msg": "channel frame",
+            "factoryId": "alpha",
+            "slotId": "dev/2",
+            "launchId": "7a464177-4c5e-4d98-8082-1dede748ccbc",
+            "detail": {
+              "frame": "heartbeat"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:49.744Z",
+      "event": "release actual active tools",
+      "detail": {
+        "releasedAt": "2026-11-26T03:15:49.744Z"
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:50.040Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "show",
+          "1",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":1,\"title\":\"Crash durability 1\",\"slug\":\"crash-durability-1\",\"line\":\"f\",\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"awaiting_approval\",\"submittedAt\":\"2026-11-26T03:15:42.116Z\",\"directory\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1\",\"specPath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":{\"path\":\"<USER_HOME>/f124a-lfvVgj/worktrees/alpha/1-crash-durability-1\",\"branch\":\"ticket/1-crash-durability-1\",\"startCommit\":\"43e991faca95f09ab75497740edbc1d90908cc4e\"}},\"transitions\":[{\"at\":\"2026-11-26T03:15:42.116Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T03:15:42.145Z\",\"actor\":\"daemon\",\"from\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"to\":{\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\"},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T03:15:49.810Z\",\"actor\":\"dev/1\",\"from\":{\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\"},\"to\":{\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"queued\"},\"outcome\":\"done\",\"reason\":\"FOU124 actual implement continuation\",\"commit\":\"02727e388994a1e4ab90959770f21402189b7216\",\"evidence\":[\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/evidence/continued.json\"],\"configLoad\":\"2\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T03:15:49.816Z\",\"actor\":\"daemon\",\"from\":{\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"queued\"},\"to\":{\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"assigned\"},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"2\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T03:15:49.909Z\",\"actor\":\"dev/1\",\"from\":{\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"assigned\"},\"to\":{\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"awaiting_approval\"},\"outcome\":\"done\",\"reason\":\"FOU124 actual gate continuation\",\"commit\":\"02727e388994a1e4ab90959770f21402189b7216\",\"evidence\":[\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/evidence/continued.json\"],\"configLoad\":\"2\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:50.042Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "show",
+          "2",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":2,\"title\":\"Crash durability 2\",\"slug\":\"crash-durability-2\",\"line\":\"f\",\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"awaiting_approval\",\"submittedAt\":\"2026-11-26T03:15:42.491Z\",\"directory\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2\",\"specPath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":{\"path\":\"<USER_HOME>/f124a-lfvVgj/worktrees/alpha/2-crash-durability-2\",\"branch\":\"ticket/2-crash-durability-2\",\"startCommit\":\"43e991faca95f09ab75497740edbc1d90908cc4e\"}},\"transitions\":[{\"at\":\"2026-11-26T03:15:42.491Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T03:15:42.517Z\",\"actor\":\"daemon\",\"from\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"to\":{\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\"},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T03:15:49.770Z\",\"actor\":\"dev/2\",\"from\":{\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\"},\"to\":{\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"queued\"},\"outcome\":\"done\",\"reason\":\"FOU124 actual implement continuation\",\"commit\":\"180231ecc0d2a473be2b2d1ddaca0b90a84faf75\",\"evidence\":[\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/evidence/continued.json\"],\"configLoad\":\"2\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T03:15:49.777Z\",\"actor\":\"daemon\",\"from\":{\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"queued\"},\"to\":{\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"assigned\"},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"2\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T03:15:49.887Z\",\"actor\":\"dev/2\",\"from\":{\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"assigned\"},\"to\":{\"state\":\"stage\",\"stage\":\"gate\",\"status\":\"awaiting_approval\"},\"outcome\":\"done\",\"reason\":\"FOU124 actual gate continuation\",\"commit\":\"180231ecc0d2a473be2b2d1ddaca0b90a84faf75\",\"evidence\":[\"<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/evidence/continued.json\"],\"configLoad\":\"2\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:50.053Z",
+      "event": "actual tracked continuation and committed effects",
+      "detail": {
+        "artifactsBefore": [
+          {
+            "number": 1,
+            "directory": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1",
+            "specPath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/evidence",
+            "worktree": {
+              "path": "<USER_HOME>/f124a-lfvVgj/worktrees/alpha/1-crash-durability-1",
+              "branch": "ticket/1-crash-durability-1",
+              "startCommit": "43e991faca95f09ab75497740edbc1d90908cc4e"
+            },
+            "specHash": "1378b063df8e1245f53569ae3fc5dec980fb3302421b33ff4ffe5d409f2435b5",
+            "body": "COMMITTED_EFFECT ticket=1 assignment=41bb91ef-e0bb-4633-b6fa-81a522893138\n",
+            "head": "02727e388994a1e4ab90959770f21402189b7216"
+          },
+          {
+            "number": 2,
+            "directory": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2",
+            "specPath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/evidence",
+            "worktree": {
+              "path": "<USER_HOME>/f124a-lfvVgj/worktrees/alpha/2-crash-durability-2",
+              "branch": "ticket/2-crash-durability-2",
+              "startCommit": "43e991faca95f09ab75497740edbc1d90908cc4e"
+            },
+            "specHash": "b9cd3922b0d9990c76a07153eb1e4dd2693d00561b93f581e7fbadf93d586aa3",
+            "body": "COMMITTED_EFFECT ticket=2 assignment=a3028642-279e-4cf0-8810-f4b8dea25cb1\n",
+            "head": "180231ecc0d2a473be2b2d1ddaca0b90a84faf75"
+          }
+        ],
+        "artifactsAfter": [
+          {
+            "number": 1,
+            "directory": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1",
+            "specPath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/evidence",
+            "worktree": {
+              "path": "<USER_HOME>/f124a-lfvVgj/worktrees/alpha/1-crash-durability-1",
+              "branch": "ticket/1-crash-durability-1",
+              "startCommit": "43e991faca95f09ab75497740edbc1d90908cc4e"
+            },
+            "specHash": "1378b063df8e1245f53569ae3fc5dec980fb3302421b33ff4ffe5d409f2435b5",
+            "body": "COMMITTED_EFFECT ticket=1 assignment=41bb91ef-e0bb-4633-b6fa-81a522893138\n",
+            "head": "02727e388994a1e4ab90959770f21402189b7216"
+          },
+          {
+            "number": 2,
+            "directory": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2",
+            "specPath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/evidence",
+            "worktree": {
+              "path": "<USER_HOME>/f124a-lfvVgj/worktrees/alpha/2-crash-durability-2",
+              "branch": "ticket/2-crash-durability-2",
+              "startCommit": "43e991faca95f09ab75497740edbc1d90908cc4e"
+            },
+            "specHash": "b9cd3922b0d9990c76a07153eb1e4dd2693d00561b93f581e7fbadf93d586aa3",
+            "body": "COMMITTED_EFFECT ticket=2 assignment=a3028642-279e-4cf0-8810-f4b8dea25cb1\n",
+            "head": "180231ecc0d2a473be2b2d1ddaca0b90a84faf75"
+          }
+        ],
+        "git": [
+          {
+            "number": 1,
+            "base": "43e991faca95f09ab75497740edbc1d90908cc4e",
+            "head": "02727e388994a1e4ab90959770f21402189b7216",
+            "commits": [
+              "02727e388994a1e4ab90959770f21402189b7216"
+            ],
+            "body": "COMMITTED_EFFECT ticket=1 assignment=41bb91ef-e0bb-4633-b6fa-81a522893138\n",
+            "log": "commit 02727e388994a1e4ab90959770f21402189b7216\nAuthor:     Foundry Fixture <fixture@foundry.invalid>\nAuthorDate: Wed Nov 25 20:15:42 2026 -0700\nCommit:     Foundry Fixture <fixture@foundry.invalid>\nCommitDate: Wed Nov 25 20:15:42 2026 -0700\n\n    FOU124 disposable effect ticket 1",
+            "diff": "diff --git a/effect-1.txt b/effect-1.txt\nnew file mode 100644\nindex 0000000..b0aea3b\n--- /dev/null\n+++ b/effect-1.txt\n@@ -0,0 +1 @@\n+COMMITTED_EFFECT ticket=1 assignment=41bb91ef-e0bb-4633-b6fa-81a522893138"
+          },
+          {
+            "number": 2,
+            "base": "43e991faca95f09ab75497740edbc1d90908cc4e",
+            "head": "180231ecc0d2a473be2b2d1ddaca0b90a84faf75",
+            "commits": [
+              "180231ecc0d2a473be2b2d1ddaca0b90a84faf75"
+            ],
+            "body": "COMMITTED_EFFECT ticket=2 assignment=a3028642-279e-4cf0-8810-f4b8dea25cb1\n",
+            "log": "commit 180231ecc0d2a473be2b2d1ddaca0b90a84faf75\nAuthor:     Foundry Fixture <fixture@foundry.invalid>\nAuthorDate: Wed Nov 25 20:15:42 2026 -0700\nCommit:     Foundry Fixture <fixture@foundry.invalid>\nCommitDate: Wed Nov 25 20:15:42 2026 -0700\n\n    FOU124 disposable effect ticket 2",
+            "diff": "diff --git a/effect-2.txt b/effect-2.txt\nnew file mode 100644\nindex 0000000..b96887e\n--- /dev/null\n+++ b/effect-2.txt\n@@ -0,0 +1 @@\n+COMMITTED_EFFECT ticket=2 assignment=a3028642-279e-4cf0-8810-f4b8dea25cb1"
+          }
+        ],
+        "releasedAt": "2026-11-26T03:15:49.744Z",
+        "liveLaunchIds": [
+          "7a464177-4c5e-4d98-8082-1dede748ccbc",
+          "ad1f0356-6607-4d7b-aac8-5f0bdb15604a"
+        ],
+        "finalTickets": [
+          {
+            "factory": "alpha",
+            "number": 1,
+            "title": "Crash durability 1",
+            "slug": "crash-durability-1",
+            "line": "f",
+            "state": "stage",
+            "stage": "gate",
+            "status": "awaiting_approval",
+            "submittedAt": "2026-11-26T03:15:42.116Z",
+            "directory": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1",
+            "specPath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/1/evidence",
+            "rejections": {
+              "spent": 0,
+              "ceiling": 3
+            },
+            "messages": {
+              "spent": 0,
+              "ceiling": 100
+            },
+            "worktree": {
+              "path": "<USER_HOME>/f124a-lfvVgj/worktrees/alpha/1-crash-durability-1",
+              "branch": "ticket/1-crash-durability-1",
+              "startCommit": "43e991faca95f09ab75497740edbc1d90908cc4e"
+            }
+          },
+          {
+            "factory": "alpha",
+            "number": 2,
+            "title": "Crash durability 2",
+            "slug": "crash-durability-2",
+            "line": "f",
+            "state": "stage",
+            "stage": "gate",
+            "status": "awaiting_approval",
+            "submittedAt": "2026-11-26T03:15:42.491Z",
+            "directory": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2",
+            "specPath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-lfvVgj/home/tickets/alpha/2/evidence",
+            "rejections": {
+              "spent": 0,
+              "ceiling": 3
+            },
+            "messages": {
+              "spent": 0,
+              "ceiling": 100
+            },
+            "worktree": {
+              "path": "<USER_HOME>/f124a-lfvVgj/worktrees/alpha/2-crash-durability-2",
+              "branch": "ticket/2-crash-durability-2",
+              "startCommit": "43e991faca95f09ab75497740edbc1d90908cc4e"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:50.363Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "shutdown",
+          "--home",
+          "<USER_HOME>/f124a-lfvVgj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"force\":false,\"factories\":[{\"factoryId\":\"alpha\",\"state\":\"stopped\",\"force\":false,\"launches\":[{\"launchId\":\"7a464177-4c5e-4d98-8082-1dede748ccbc\",\"slotId\":\"dev/2\",\"drained\":true,\"escalated\":false},{\"launchId\":\"ad1f0356-6607-4d7b-aac8-5f0bdb15604a\",\"slotId\":\"dev/1\",\"drained\":true,\"escalated\":false}]}],\"hostStopped\":true}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:50.366Z",
+      "event": "fresh host orderly shutdown",
+      "detail": {
+        "exit": {
+          "code": 0,
+          "signal": null
+        },
+        "shutdownSucceeded": true
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:50.390Z",
+      "event": "pre-fallback cleanup",
+      "detail": {
+        "shutdownSucceeded": true,
+        "markedPids": [],
+        "groups": [
+          {
+            "pgid": 3334884,
+            "liveMembers": []
+          },
+          {
+            "pgid": 3334891,
+            "liveMembers": []
+          },
+          {
+            "pgid": 3335077,
+            "liveMembers": []
+          }
+        ],
+        "orderly": true
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:50.421Z",
+      "event": "marker sweep",
+      "detail": {
+        "survivors": [],
+        "groups": [
+          {
+            "pgid": 3334884,
+            "liveMembers": []
+          },
+          {
+            "pgid": 3334891,
+            "liveMembers": []
+          },
+          {
+            "pgid": 3335077,
+            "liveMembers": []
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-11-26T03:15:50.425Z",
+      "event": "cleanup",
+      "detail": {
+        "survivors": [],
+        "rootRemoved": true
+      }
+    }
+  ]
+}

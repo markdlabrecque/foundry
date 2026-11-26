@@ -1,0 +1,46 @@
+{
+  "capturedCheckoutHead": "f380cd2c6c1161c04d30498c655000f0b8a16437",
+  "replayOracleSha256": "d25b36e7d8a95b04944ed015fee04c092fe27d976d9bd4318985c3c505beaf9c",
+  "continuationChecks": {
+    "acceptedWorkRetained": true,
+    "ordinaryMessagesProcessed": true,
+    "artifactBindingsUnchanged": true,
+    "originalAssignmentsHonored": true,
+    "trackedTicketsContinued": true,
+    "noAdditionalLaunches": true,
+    "noDuplicateCommittedEffects": true,
+    "actualWorkContinued": true,
+    "realToolResultsSucceeded": true
+  },
+  "verdict": {
+    "result": "supported-disposable-combined-crash-journey",
+    "failed": [],
+    "exitCode": 0
+  },
+  "capturedRuntimeSources": {
+    "worker-daemon-crash-postmerge/run-probe.mjs": {
+      "sha256": "9772ee1f7465e22977578ed3b13f6a03532329f445d02a4c555ec9157032bb37",
+      "archivedBeforeReview": false
+    },
+    "worker-daemon-crash-postmerge/worker.mjs": {
+      "sha256": "9e856c03f79b1b05effd2e5230a3614465f22bc6c1f3c127a943f7434bff44b6",
+      "archivedBeforeReview": false
+    },
+    "worker-daemon-crash-postmerge/verify.mjs": {
+      "sha256": "d25b36e7d8a95b04944ed015fee04c092fe27d976d9bd4318985c3c505beaf9c",
+      "archivedBeforeReview": false
+    },
+    "worker-daemon-crash-postmerge/history.mjs": {
+      "sha256": "168cfda4dca284966c7f10c942823b188b12fed0d3e145667ce0d06d3b98252a",
+      "archivedBeforeReview": false
+    },
+    "worker-daemon-crash-linux/verdict.mjs": {
+      "sha256": "23f4ec633a6a14f7b66a8a063417bf0df7458fefb5f30e7385bb9418f1372630",
+      "archivedBeforeReview": false
+    },
+    "worker-daemon-crash-linux/normalize.mjs": {
+      "sha256": "fbe4e0c480e15a9a0a179f9c8d372a9d56f9dafff1bc9a9b23d0a42d15df5849",
+      "archivedBeforeReview": false
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "docs/evidence/worker-daemon-crash-postmerge/worker.mjs": "9e856c03f79b1b05effd2e5230a3614465f22bc6c1f3c127a943f7434bff44b6",
+  "docs/evidence/worker-daemon-crash-postmerge/verify.mjs": "d25b36e7d8a95b04944ed015fee04c092fe27d976d9bd4318985c3c505beaf9c",
+  "docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs": "9772ee1f7465e22977578ed3b13f6a03532329f445d02a4c555ec9157032bb37",
+  "docs/evidence/worker-daemon-crash-postmerge/verify.test.mjs": "7af5d73f5fbaab4a60bce38640a285fcaaf8369cb7c94b93a21af4e51f4d6e47",
+  "docs/evidence/worker-daemon-crash-postmerge/history.mjs": "168cfda4dca284966c7f10c942823b188b12fed0d3e145667ce0d06d3b98252a",
+  "docs/evidence/worker-daemon-crash-postmerge/review-fix/replay.mjs": "cf557c3a57c300bcc6d0b26830432028804966a72a6334962fda4eec12e42920"
+}

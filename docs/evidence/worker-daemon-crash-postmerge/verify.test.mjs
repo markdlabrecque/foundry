@@ -28,13 +28,35 @@ function observed() {
     ticket: [1, 2].map((number) => ({ number, state: 'stage', stage: 'gate', status: 'awaiting_approval' })),
     ticket_transition: [1, 2].flatMap((ticket_number) => ['implement', 'gate'].map((from_stage) => ({ ticket_number, from_stage, outcome: 'done' }))),
     approval: [1, 2].map((ticket_number) => ({ ticket_number, kind: 'stage_gate', state: 'open' })),
-    submission: [1, 2, 3, 4].map(() => ({ tool: 'task_transition' })),
+    submission: [],
   };
   const workerEvents = [1, 2].flatMap((ticket) => ['commit-attempt', 'commit', 'continued'].map((kind) => ({ kind, ticket, assignmentId: `a${ticket}`, sha: `sha${ticket}`, at: '2026-11-26T00:00:02Z', launch: ticket === 1 ? 'replacement' : 'survivor' })));
   workerEvents.push(...before.message.slice(2).map((m) => ({ kind: 'incoming', text: m.body })), ...[1, 2, 3, 4].map(() => ({ kind: 'tool-result', event: { toolName: 'task_transition', isError: false } })));
   const git = [1, 2].map((number) => ({ number, base: 'base', head: `sha${number}`, commits: [`sha${number}`], body: `COMMITTED_EFFECT ticket=${number} assignment=a${number}\n` }));
-  const artifactsBefore = [1, 2].map((number) => ({ number, specHash: `spec${number}`, worktree: `path${number}`, head: `sha${number}` }));
-  return { before, after, workerEvents, git, artifactsBefore, artifactsAfter: structuredClone(artifactsBefore), releasedAt: '2026-11-26T00:00:01Z', liveLaunchIds: ['survivor', 'replacement'] };
+  const artifactsBefore = [1, 2].map((number) => ({ number, specHash: `spec${number}`, worktree: { path: `path${number}`, startCommit: 'base' }, head: `sha${number}` }));
+  for (const a of before.assignment) { a.factory_id = 'alpha'; }
+  before.ticket = [1, 2].map((number) => ({ number, factory_id: 'alpha', start_commit: 'base' }));
+  for (const launch of [...before.launch, ...after.launch]) { Object.assign(launch, { factory_id: 'alpha', slot_id: launch.launch_id === 'survivor' ? 'dev/2' : 'dev/1' }); }
+  for (const ticket of after.ticket) { Object.assign(ticket, { factory_id: 'alpha', start_commit: 'base' }); }
+  after.message.push(...[1, 2].map((n) => ({ id: `gm${n}`, body: `Ticket ${n}\nStage: gate\nAssignment: gate${n}\nSlot: dev/${n}`, recipient: 'eng.dev', bound_slot: `dev/${n}`, status: 'acknowledged' })));
+  for (const a of after.assignment) {
+    const n = a.ticket_number; Object.assign(a, { factory_id: 'alpha', slot_id: `dev/${n}`, context_message: a.stage === 'gate' ? `gm${n}` : `m${n}` });
+    const message = after.message.find((m) => m.id === a.context_message);
+    Object.assign(message, { factory_id: 'alpha', ticket_number: n, body: `Ticket ${n}\nStage: ${a.stage}\nAssignment: ${a.id}\nSlot: ${a.slot_id}` });
+    const initialMessage = before.message.find((m) => m.id === message.id);
+    if (initialMessage) { Object.assign(initialMessage, { ...message, status: 'sent' }); }
+    const transition = after.ticket_transition.find((t) => t.ticket_number === n && t.from_stage === a.stage);
+    Object.assign(transition, { sequence: a.stage === 'implement' ? n : n + 2, factory_id: 'alpha', actor: a.slot_id, git_commit: `sha${n}`, to_state: 'stage', to_stage: 'gate', to_status: a.stage === 'implement' ? 'queued' : 'awaiting_approval' });
+    const approval = after.approval.find((r) => r.ticket_number === n);
+    Object.assign(approval, { id: n, factory_id: 'alpha', assignment_id: `gate${n}`, transition_sequence: n + 2 });
+    const value = { assignmentId: a.id, ticket: n, stage: 'gate', status: transition.to_status, ...(a.stage === 'gate' ? { approvalId: n } : {}) };
+    const launch = n === 1 ? 'replacement' : 'survivor'; const callId = `call-${a.id}`;
+    after.submission.push({ tool: 'task_transition', launch_id: launch, call_id: callId, factory_id: 'alpha', slot_id: a.slot_id, result: JSON.stringify(value) });
+    workerEvents.push({ kind: 'tool-result', launch, slot: a.slot_id, event: { toolName: 'task_transition', toolCallId: callId, input: { assignmentId: a.id, outcome: 'done', gitCommit: `sha${n}` }, details: { status: 'committed', value }, content: [{ type: 'text', text: JSON.stringify(value) }], isError: false } });
+  }
+  // Replace the old count-only placeholders with faithful real tool-result observations.
+  const events = workerEvents.filter((e) => e.kind !== 'tool-result' || e.event.toolCallId);
+  return { before, after, workerEvents: events, git, artifactsBefore, artifactsAfter: structuredClone(artifactsBefore), releasedAt: '2026-11-26T00:00:01Z', liveLaunchIds: ['survivor', 'replacement'] };
 }
 test('completed independent Git effects plus actual continuation/store outcomes satisfy the observation oracle', () => {
   const checks = continuationChecks(observed());
@@ -69,6 +91,40 @@ const negatives = [
 ];
 for (const [name, mutate, check] of negatives) {
   test(name, () => { const input = observed(); mutate(input); assert.equal(continuationChecks(input)[check], false); });
+}
+const relationshipNegatives = [
+  ['stripped committed submission identities/results', (x) => { x.after.submission = x.after.submission.map(() => ({ tool: 'task_transition' })); }],
+  ['unknown tool-result launch/call/assignment', (x) => { for (const e of x.workerEvents.filter((e) => e.event?.toolName === 'task_transition')) { e.launch = 'unknown'; e.event.toolCallId = 'unknown'; e.event.input.assignmentId = 'unknown'; } }],
+  ['invalid approval assignment/transition references', (x) => { for (const a of x.after.approval) { a.assignment_id = 'unknown'; a.transition_sequence = -1; } }],
+  ['wrong committed transition Git heads', (x) => { for (const t of x.after.ticket_transition) { t.git_commit = 'WRONG'; } }],
+  ['wrong independently observed Git base', (x) => { for (const g of x.git) { g.base = 'WRONG'; } }],
+  ['missing both downstream assignment contexts', (x) => { x.after.message = x.after.message.filter((m) => !m.id.startsWith('gm')); }],
+  ['new accepted but unprocessed message', (x) => x.after.message.push({ ...x.after.message[2], id: 'new-pending', body: 'unexpected pending work', status: 'sent' })],
+  ['submission launch mismatch', (x) => { x.after.submission[0].launch_id = 'unknown'; }],
+  ['submission call mismatch', (x) => { x.after.submission[0].call_id = 'unknown'; }],
+  ['submission slot mismatch', (x) => { x.after.submission[0].slot_id = 'dev/2'; }],
+  ['submission factory mismatch', (x) => { x.after.submission[0].factory_id = 'wrong'; }],
+  ['submission result assigned to another ticket', (x) => { const s = x.after.submission[0]; s.result = JSON.stringify({ ...JSON.parse(s.result), ticket: 99 }); }],
+  ['unparseable submission result', (x) => { x.after.submission[0].result = 'invalid'; }],
+  ['event slot mismatch', (x) => { x.workerEvents.find((e) => e.event?.toolName === 'task_transition').slot = 'wrong'; }],
+  ['event input Git mismatch', (x) => { x.workerEvents.find((e) => e.event?.toolName === 'task_transition').event.input.gitCommit = 'WRONG'; }],
+  ['event details result mismatch', (x) => { x.workerEvents.find((e) => e.event?.toolName === 'task_transition').event.details = { status: 'committed', value: {} }; }],
+  ['event text result mismatch', (x) => { x.workerEvents.find((e) => e.event?.toolName === 'task_transition').event.content = [{ type: 'text', text: '{}' }]; }],
+  ['duplicate approval IDs', (x) => { x.after.approval[1].id = x.after.approval[0].id; }],
+  ['wrong approval reference in committed result', (x) => { const s = x.after.submission[2]; s.result = JSON.stringify({ ...JSON.parse(s.result), approvalId: 99 }); }],
+  ['transition actor mismatch', (x) => { x.after.ticket_transition[0].actor = 'wrong'; }],
+  ['recorded start commit differs from original ticket', (x) => { x.after.ticket[0].start_commit = 'WRONG'; }],
+  ['gate context binding mismatch', (x) => { x.after.message.find((m) => m.id === 'gm1').bound_slot = 'dev/2'; }],
+  ['gate context not acknowledged', (x) => { x.after.message.find((m) => m.id === 'gm1').status = 'sent'; }],
+  ['gate context body assignment mismatch', (x) => { x.after.message.find((m) => m.id === 'gm1').body = 'Assignment: wrong'; }],
+  ['unexpected extra acknowledged accepted work', (x) => x.after.message.push({ ...x.after.message[2], id: 'unexpected', body: 'unknown work' })],
+];
+for (const [name, mutate] of relationshipNegatives) {
+  test(`relationship mutation rejected: ${name}`, () => {
+    const input = observed(); mutate(input);
+    const checks = { ...Object.fromEntries(requiredChecks.map((key) => [key, true])), ...continuationChecks(input) };
+    assert.equal(verdict(checks, true).exitCode, 1);
+  });
 }
 test('initially unbound acceptance may bind once, but never change an existing binding', () => {
   const input = observed(); input.before.message[3].bound_slot = null;
