@@ -68,4 +68,3 @@ fatal: cannot lock ref 'HEAD': Unable to create '/tmp/foundry-restart-factory-DW
 
     Isolate  100 workers spawned · ~178ms startup each (spawn + environment, per file)
              at least ~1.01s faster with isolate: false — reuses workers across files instead of one per file
-

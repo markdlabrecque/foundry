@@ -62,4 +62,3 @@ foundry daemon: cannot record the run in /tmp/foundry-ticket-line-H95qUr/home: E
       Tests  3 failed | 2 passed (5)
    Start at  16:49:04
    Duration  1.40s (tests 43%, import 36%, transform 21%)
-

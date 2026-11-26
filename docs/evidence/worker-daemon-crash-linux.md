@@ -2,7 +2,7 @@
 
 Ticket: [FOU-124](https://linear.app/foundry-mdl/issue/FOU-124/prove-worker-and-daemon-crash-durability-together). Contract: PRD §18.1(4): killing a worker and restarting the daemon mid-run loses no accepted messages or tracked work.
 
-**Still blocked, not accepted.** After the evidence-fixture review fixes, a fresh real-Pi journey on latest develop again reaches the missing-reconnect boundary: the killed worker is replaced successfully, then the daemon is SIGKILLed/restarted while both workers are active. Both surviving workers retain their launch identities but neither reconnects or sends channel frames within **45,324 ms**. Persisted records are not a proof of recovered execution or exactly-once committed effects. The live criterion remains unchecked/In Progress; dependent [FOU-140](https://linear.app/foundry-mdl/issue/FOU-140) is not unblocked. No PR, tracker state, shared testkit or production runtime change was made.
+**Still blocked, not accepted.** After the evidence-fixture review fixes, a fresh real-Pi journey on the captured `6dc2a5b` base again reaches the missing-reconnect boundary: the killed worker is replaced successfully, then the daemon is SIGKILLed/restarted while both workers are active. Both surviving workers retain their launch identities but neither reconnects or sends channel frames within **45,324 ms**. Persisted records are not a proof of recovered execution or exactly-once committed effects. The live criterion remains unchecked/In Progress; dependent [FOU-140](https://linear.app/foundry-mdl/issue/FOU-140) is not unblocked. This evidence-only branch changes no tracker state, shared testkit or production runtime. Final regression checks were rerun after rebasing onto `d6a3856`, without a Pi shim. The original product criterion remains unmet.
 
 ## Evidence handling — normalized, not byte-for-byte raw
 
@@ -32,7 +32,9 @@ node docs/evidence/worker-daemon-crash-linux/run-probe.mjs "$OUT"
 
 The standalone runner supplies its own private HOME/XDG/Pi/Foundry/temp directories and credential-free faux model. It does not need an outer TMPDIR, wrapper, operator configuration, credential, paid provider or network model call. Fresh retained invocation used output `<USER_HOME>/f124-results/fresh-latest`; its child root was `<USER_HOME>/f124-4aOzN4` and was removed.
 
-For reproducible ordinary regression checks despite the testkit's child allowlist dropping outer TMPDIR:
+### Historical workaround (retained for provenance, no longer required)
+
+Before the shared testkit temp-isolation fix in `d6a3856`, ordinary regression checks needed this temporary wrapper:
 
 ```sh
 node docs/evidence/worker-daemon-crash-linux/run-checks.mjs "$CHECK_OUT"
@@ -49,11 +51,11 @@ node docs/evidence/worker-daemon-crash-linux/run-checks.mjs "$CHECK_OUT"
 
 The command environment is an explicit allowlist: inherited PATH (not published), private HOME, `TMPDIR=<private-root>/t`, `FOUNDRY_PI_BIN=<private-root>/pi`. The generated shell wrapper exports `<private-root>/p` as TMPDIR and `exec`s the unchanged pinned Pi CLI using the exact Node executable and original ordered `"$@"` arguments. This is supported by existing testkit `resolvePiBin()` and host `resolvePiExecutable()` override seams; it does **not** patch shared helpers or bypass Pi/Foundry logic. The generated normalized wrapper and exact environment/commands/exits are retained in `checks-review/`. Wrapper invocations are observed and checked against the private temp directory. After all commands, only exact private TMPDIR markers are eligible for cleanup; the private root is removed only with no survivors.
 
-The independent review's ordinary interrupt E2E timeout was accompanied by an explicit extension-load failure writing `/tmp/jiti/fixtures-interrupt-worker...mjs`; an outer disk-backed TMPDIR alone did not reach that child. The supported wrapper restores only this missing environment variable. This diagnosis applies to those retained diagnostics, **not to every historical timeout**.
+The independent review's ordinary interrupt E2E timeout was accompanied by an explicit extension-load failure writing `/tmp/jiti/fixtures-interrupt-worker...mjs`; an outer disk-backed TMPDIR alone did not reach that child. The historical supported wrapper restored only this missing environment variable. This diagnosis applies to those retained diagnostics, **not to every historical timeout**. Latest develop now isolates testkit child temp output beneath its disposable root; final ordinary E2E below uses the normal pinned launcher with `FOUNDRY_PI_BIN` absent.
 
 ## Fresh journey: versions and observations
 
-Fresh run: **2026-11-26 UTC**, Linux x64, kernel `7.2.15-1-omarchy`, Node **v22.23.2**, pinned Pi **1.6.0**. Latest develop/production-code base: **`6dc2a5b5f01b9be13d465bccecedc67f04e8410c`**. Version record identifies rebased branch head `f184e23eeb272c672ee4e035d8bc006aaa35a1b2` plus the uncommitted evidence-fixture changes; that head has the same production code as latest develop. SHA-256 digests pin the exact runner/observer/verdict/normalizer sources. Latest develop advanced with evidence-only work while review corrections were underway, so the final checks and representative full crash journey were rerun on that latest base; the earlier fixed run is summarized in `run-current/reproduction-history.json`. The real default **RPC** launcher was used, not the SDK trial. Actual ordered argv/executable/cwd and private TMPDIR values are in `run-current/worker-events/worker.jsonl`.
+Fresh run: **2026-11-26 UTC**, Linux x64, kernel `7.2.15-1-omarchy`, Node **v22.23.2**, pinned Pi **1.6.0**. Captured crash-run base (latest develop at execution): **`6dc2a5b5f01b9be13d465bccecedc67f04e8410c`**. Version record identifies rebased branch head `f184e23eeb272c672ee4e035d8bc006aaa35a1b2` plus the uncommitted evidence-fixture changes; that head had the same production code as the captured develop base. SHA-256 digests pin the exact runner/observer/verdict/normalizer sources. Develop had advanced with evidence-only work while review corrections were underway, so that representative full crash journey was rerun on `6dc2a5b`; the earlier fixed run is summarized in `run-current/reproduction-history.json`. The subsequent final rebase onto `d6a3856` adds shared testkit temp isolation, not a production worker-redial change. The 45-second crash probe was therefore not repeated merely for that rebase; its base, source hashes and **45,324 ms** timing remain the historical captured facts. The real default **RPC** launcher was used, not the SDK trial. Actual ordered argv/executable/cwd and private TMPDIR values are in `run-current/worker-events/worker.jsonl`.
 
 Effective fixture: one disposable factory `alpha`, two instances of station `eng.dev`, model `foundry-faux/scripted` from the existing testkit faux provider, existing `concurrent-worker.ts` held-work tool wrapped only by the evidence observer. Two tickets have independent worktrees in writing stage `a`; stage `b` is an operator approval gate. Production daemon → detached Worker Host → pinned Pi `dist/bundle/rpc-entry.js --mode rpc` → production Foundry extension carries assignments, notices and channel frames. Full launch argv retains explicit tool set, model, resource flags, conversation ID and extension paths. Ambient extensions/MCP/skills/templates/themes/context files/approval prompts are disabled by the unchanged launcher. No ticket is released for completion/integration.
 
@@ -79,9 +81,40 @@ All four accepted message rows preserve IDs, bodies and slot bindings; both acti
 
 **Disposition:** resume the existing ticket's evidence corrections, then wait on the existing reconnect prerequisite; do not create a duplicate reconnect investigation or expand this evidence ticket into shared recovery implementation. [FOU-94's connected-channel notice proof](https://github.com/markdlabrecque/foundry/pull/135) is not an extension reconnect fix. [FOU-147's explicitly selected SDK trial](sdk-147-trial.md) leaves shared extension redial unchanged. Neither the green ordinary suite nor the evidence-only branch is permission to mark this criterion Done or unblock FOU-140.
 
-## Artifacts and final regression results
+## Final regression on develop `d6a3856` — no shim
+
+Base: `d6a3856ed8f5c7d6f151279dd2e66c2a01ac5a69` (includes the shared testkit temp-isolation fix). The independently approved evidence-only branch was rebased, six historical check logs had cosmetic trailing blank lines removed, and final checks ran through the **normal pinned Pi path**, with `FOUNDRY_PI_BIN` absent and no shim/wrapper. No crash recovery behavior was changed by that base update.
+
+Exact reproducible command pattern from the repository root:
+
+```sh
+CHECK_ROOT=$(mktemp -d "$HOME/f124fin-XXXXXX")
+mkdir "$CHECK_ROOT/t" "$CHECK_ROOT/user"
+check() { env -i PATH="$PATH" HOME="$CHECK_ROOT/user" TMPDIR="$CHECK_ROOT/t" "$@"; }
+check npm run build
+check npm run typecheck
+check ./node_modules/.bin/oxlint
+check npm test
+check npm run test:e2e
+check node --test docs/evidence/worker-daemon-crash-linux/verdict.test.mjs
+```
+
+The `env -i` allowlist ensures `FOUNDRY_PI_BIN` and runtime overrides are **unset**. Only PATH is inherited, and its unrelated value is not published. Child temp directories are now managed by the shared testkit fix; there is no temporary Pi wrapper in this invocation. After the checks, `/proc` inspection found zero processes with HOME/TMPDIR under this exact private root, and the root was removed. Full normalized output, exact environment/argv, exits and cleanup are under `checks-final/`.
+
+| Final command | Result |
+|---|---|
+| `npm run build` | Exit 0 |
+| `npm run typecheck` | Exit 0 |
+| Direct `./node_modules/.bin/oxlint` | Exit 0, empty diagnostics |
+| `npm test` | Exit 0, **101 files / 839 tests passed** |
+| Normal `npm run test:e2e` | Exit 0, **3 files / 5 tests passed**, no shim |
+| Plain Node evidence unit tests | Exit 0, **16 passed** |
+
+The coordinating agent reported fresh independent re-review approval of the evidence-only changes with no must-fix findings, including an independent crash reproduction blocked at **45,317 ms** with 9 passing / 2 failed observations, plus 16 unit tests and 94 negative assertions. Those independent observations are review evidence reported by the coordinator, not relabeled as this checkout's captured run. Neither that approval nor green final ordinary checks satisfies the original successful-continuation/exactly-once-effects criterion. The PR is evidence-only; no launcher qualification, merge or ticket completion is implied.
+
+## Artifacts and historical regression results
 
 - Current probe and normalized evidence: `worker-daemon-crash-linux/run-current/`: `result.json`, `stdout.log`, effective `factory.yaml`, launcher/tool journal, daemon/host logs, before/after row snapshots and copied ticket specs/evidence. `NORMALIZATION.md` labels transformed output.
 - Evidence code: `run-probe.mjs`, `worker.ts`, `verdict.mjs`, `verdict.test.mjs`, `normalize.mjs`; reproducible regression wrapper generator: `run-checks.mjs`.
-- Final develop-base checks under `checks-review/`: **build exit 0; typecheck exit 0; direct oxlint exit 0 (empty diagnostics); 16 plain Node evidence unit tests passed; full Vitest exit 0, 100 files / 837 tests passed; separate ordinary E2E exit 0, 3 files / 5 tests passed**. Private wrapper invocations, cleanup observations and exact commands/env are in `checks-review/status.json`. These do not override the blocked requested crash journey. `unit-nested-home-before-fix.log` preserves an intermediate normalization unit failure under the check runner's nested private HOME; the path normalizer was corrected and all 16 final unit tests pass.
+- Reviewed crash-base checks under `checks-review/` (historical wrapper invocation, not the latest final checks): **build exit 0; typecheck exit 0; direct oxlint exit 0 (empty diagnostics); 16 plain Node evidence unit tests passed; full Vitest exit 0, 100 files / 837 tests passed; separate ordinary E2E exit 0, 3 files / 5 tests passed**. Private wrapper invocations, cleanup observations and exact commands/env are in `checks-review/status.json`. These do not override the blocked requested crash journey. `unit-nested-home-before-fix.log` preserves an intermediate normalization unit failure under the check runner's nested private HOME; the path normalizer was corrected and all 16 final unit tests pass.
 - Historical run `run/` remains valid on base `40ea1faff294990789b3fd92119c10146bc8978a`: worker replacement succeeds, daemon reconnect fails over 45,308 ms. Its paths/transcripts are now consistently normalized. `preliminary/` preserves the earlier incorrect activity-frame observer attempt (fixture error, not a product gate result). `checks/` preserves original checks/counts with a trimmed representative ENOSPC log. Historical ordinary-suite results were 837 commit-tier tests and 5 E2E tests passing after using outer disk TMPDIR; that past success alone was not reproducibility proof for children that drop TMPDIR.
