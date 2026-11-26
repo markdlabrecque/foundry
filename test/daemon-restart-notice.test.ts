@@ -9,11 +9,11 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, test } from "vitest";
-import { Effect, Exit, Predicate, Schema, Scope } from "effect";
+import { Effect, Exit, Schema, Scope } from "effect";
 import {
-  acknowledgeMessage, createAssignmentScheduler, createMessageDelivery, createPrimer, createReconciler,
+  acknowledgeMessage, createAssignmentScheduler, createChannelAssignmentGate, createMessageDelivery, createPrimer, createReconciler,
   createSubmissions, createTicketService, openSlotGate, openStore, planSlots, startChannelServer,
-  taskTransitionHandler, ticketFactoryFrom,
+  recoverConnection, taskTransitionHandler, ticketFactoryFrom,
 } from "@foundry/daemon";
 import type { ChannelServer, Store, ToolHandler } from "@foundry/daemon";
 import { FactoryConfig } from "@foundry/daemon/config";
@@ -76,7 +76,7 @@ afterEach(async () => {
   await rm(dir, { recursive: true, force: true });
 });
 
-/** One daemon run over the shared store, wired as main.ts `onAccepted`: reconcile, prime, resume, deliver. */
+/** One daemon run over the shared store using the production accepted-connection recovery barrier. */
 const startDaemon = async () => {
   const reconciler = createReconciler(store);
   let primeIds = 0;
@@ -86,8 +86,16 @@ const startDaemon = async () => {
 
   const errors: Array<unknown> = [];
   const delivery = createMessageDelivery({ store, gate: openSlotGate, onError: (cause) => errors.push(cause) });
-  let ready!: (outcome: string) => void;
-  const primed = new Promise<string>((resolve) => { ready = resolve; });
+  const gate = createChannelAssignmentGate();
+  const stages: Array<{ stage: string; open: boolean }> = [];
+  const stage = (name: string) => { stages.push({ stage: name, open: gate.isOpen(slot.factoryId, slot.slotId) }); };
+
+  gate.onOpened(() => stage("opened"));
+  let ready!: () => void;
+  const recovered = new Promise<void>((resolve) => { ready = resolve; });
+  let toolCalls = 0;
+  let heartbeat!: () => void;
+  const workerBarrier = new Promise<void>((resolve) => { heartbeat = resolve; });
   let receipts = 0;
   const receiptWaiters: Array<{ count: number; resolve: () => void }> = [];
 
@@ -97,19 +105,43 @@ const startDaemon = async () => {
     toolCalls: createSubmissions({ store, handlers: new Map([["echo", echo],
       [TASK_TRANSITION, taskTransitionHandler({ factories: [{ factoryId: "shop", config }] })]]) }),
     onAccepted: (claimed, greeting, connection) => {
-      void reconciler.reconcile(claimed, greeting, connection).then(async (comparison) => {
-        const priming = primer.prime(claimed, greeting, connection);
-        const outcome = await priming.outcome;
+      void recoverConnection({
+        gate,
+        reconciler: {
+          reconcile: async (...args) => {
+            stage("reconciling");
+            const comparison = await reconciler.reconcile(...args);
+            stage("reconciled");
 
-        if (Predicate.isTagged(outcome, "Sent") || Predicate.isTagged(outcome, "Reconnect")) {
-          await reconciler.resumeAssignment(claimed, priming.connection, comparison.interruptedAssignmentId);
-          delivery.attach(claimed, priming.connection);
-        }
+            return comparison;
+          },
+          resumeAssignment: async (...args) => {
+            stage("resuming");
+            const notice = await reconciler.resumeAssignment(...args);
+            stage("resumed");
 
-        ready(outcome._tag);
-      }).catch((cause: unknown) => { errors.push(cause); ready("error"); });
+            return notice;
+          },
+        },
+        primer: { prime: (...args) => {
+          stage("priming");
+
+          return primer.prime(...args);
+        } },
+        delivery: { attach: (...args) => {
+          stage("attaching");
+          delivery.attach(...args);
+          stage("attached");
+        } },
+        notTakingWork: (reason) => errors.push(reason),
+        onError: (cause) => errors.push(cause),
+      }, claimed, greeting, connection).then(ready);
     },
     onFrame: (claimed, frame) => {
+      if (frame.type === "tool_call") {toolCalls += 1;}
+
+      if (frame.type === "heartbeat") {heartbeat();}
+
       if (frame.type === "reconciliation_answer") {
         reconciler.receive(claimed, frame);
       } else if (frame.type === "receipt") {
@@ -132,7 +164,8 @@ const startDaemon = async () => {
   cleanups.push(stop);
 
   return {
-    server, primed, delivery, errors, stop,
+    server, recovered, delivery, errors, stop, gate, stages, workerBarrier,
+    toolCalls: () => toolCalls,
     /** Resolves once this daemon has recorded at least `count` receipts. */
     receipts: (count: number) => receipts >= count ? Promise.resolve()
       : new Promise<void>((resolve) => { receiptWaiters.push({ count, resolve }); }),
@@ -182,7 +215,7 @@ test.each([
   const first = await startDaemon();
   const before: Array<DaemonFrame> = [];
   const firstChannel = await connect(first.server, before, false);
-  expect(await first.primed).toBe("Sent");
+  await within("first recovery", first.recovered);
   await first.receipts(2);
   const args = call.args ?? { assignmentId, outcome: "done", reason: "finished before the daemon died", evidence: [] };
   expect(await client.call("call-1", call.tool, args)).toMatchObject({ status: "committed" });
@@ -193,9 +226,19 @@ test.each([
   await firstChannel.closed;
   const second = await startDaemon();
   const after: Array<DaemonFrame> = [];
-  await connect(second.server, after, true);
-  expect(await second.primed).toBe("Reconnect");
+  const secondChannel = await connect(second.server, after, true);
+  await within("restart recovery", second.recovered);
   await second.delivery.idle();
+  // attach() replays pending calls synchronously. A later worker frame on the same stream
+  // is a deterministic barrier: the daemon has observed any replay, including cached same-ID calls.
+  await secondChannel.send({ type: "heartbeat" });
+  await within("worker recovery barrier", second.workerBarrier);
+  expect(second.toolCalls()).toBe(0);
+  expect(second.stages).toEqual([
+    ...["reconciling", "reconciled", "priming", "resuming", "resumed", "attaching", "attached"]
+      .map((stage) => ({ stage, open: false })),
+    { stage: "opened", open: true },
+  ]);
 
   const notices = await read<{ id: string; body: string }>(`SELECT id, body FROM message WHERE kind = 'resume_notice'`);
 
@@ -214,9 +257,11 @@ test.each([
     expect(after).toEqual([]);
   }
 
-  // The tool call committed once, under the surviving launch, and was not run again.
+  // Preserve the committed tool effects without duplication, under the surviving launch.
   expect(await read(`SELECT launch_id, call_id, tool FROM submission`)).toEqual([{ launch_id: slot.launchId, call_id: "call-1", tool: call.tool }]);
   expect(await read(`SELECT subject FROM history WHERE kind IN ('test.effect', 'ticket.transitioned')`)).toHaveLength(1);
   expect(await read(`SELECT id, situation FROM prime`)).toEqual([{ id: "prime-1", situation: "fresh" }]);
   expect([...first.errors, ...second.errors]).toEqual([]);
+  await second.stop();
+  expect(second.gate.isOpen(slot.factoryId, slot.slotId)).toBe(false);
 });

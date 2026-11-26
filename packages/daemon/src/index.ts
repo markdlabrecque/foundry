@@ -164,6 +164,8 @@ export * from "./factory-recovery.js";
 
 export * from "./channel-assignment-gate.js";
 
+export * from "./connection-recovery.js";
+
 export { listLoadedFactories, RunNotRecordedError, storeFactoriesReader, type FactoriesReader } from "./factories.js";
 
 export {

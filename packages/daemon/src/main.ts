@@ -32,13 +32,14 @@ import { startAfterCreateRecovery } from "./after-create-recovery.js";
 import { startFactoryRecovery } from "./factory-recovery.js";
 import type { FactoryRecovery } from "./factory-recovery.js";
 import { createChannelAssignmentGate } from "./channel-assignment-gate.js";
+import { recoverConnection } from "./connection-recovery.js";
 import { createTicketWorktrees } from "./worktrees.js";
 import { createWorktreeService } from "./worktree-cleanup.js";
 import { reconcileInterruptedCleanups } from "./cleanup-recovery.js";
 import { createWorktreeRecovery } from "./worktree-recovery.js";
 import { decideFactoryStarts, describeBlocker } from "./start-refusal.js";
 import type { StartBlocker, StartDecision } from "./start-refusal.js";
-import { Cause, Effect, Exit, Predicate, Schema, Scope } from "effect";
+import { Cause, Effect, Exit, Schema, Scope } from "effect";
 import { storeEventSource } from "./events.js";
 import { storeHoldsReader } from "./holds.js";
 import { storeApprovalsReader } from "./approvals.js";
@@ -527,8 +528,6 @@ const main = async (): Promise<void> => {
           channelEvents.onAccepted(slot, hello, accepted);
           const lost = stuckWorkers.accepted(slot);
           void accepted.closed?.then(lost);
-          const gated = channelGate.accepted(slot);
-          void accepted.closed?.then(gated.closed);
 
           // A connection that never opens its gate gets one warning, unless a freeze already explains it.
           const notTakingWork = (reason: string): void => {
@@ -537,21 +536,13 @@ const main = async (): Promise<void> => {
             }
           };
 
-          void reconciler.reconcile(slot, hello, accepted).then(async (comparison) => {
-            const primed = primer.prime(slot, hello, accepted);
-            const outcome = await primed.outcome;
-
-            if (Predicate.isTagged(outcome, "Sent") || Predicate.isTagged(outcome, "Reconnect")) {
-              await reconciler.resumeAssignment(slot, primed.connection, comparison.interruptedAssignmentId);
-              delivery.attach(slot, primed.connection);
-              gated.reconciled();
-            } else if (!Predicate.isTagged(outcome, "Closed")) {
-              notTakingWork(outcome._tag);
-            }
-          }).catch((cause: unknown) => {
-            log.error("connection priming failed", { detail: { error: messageOf(cause) } });
-            notTakingWork(`reconciliation failed: ${messageOf(cause)}`);
-          });
+          void recoverConnection({
+            gate: channelGate, reconciler, primer, delivery, notTakingWork,
+            onError: (cause) => {
+              log.error("connection priming failed", { detail: { error: messageOf(cause) } });
+              notTakingWork(`reconciliation failed: ${messageOf(cause)}`);
+            },
+          }, slot, hello, accepted);
         },
         onFrame: (slot, frame) => {
           channelEvents.onFrame(slot, frame);
