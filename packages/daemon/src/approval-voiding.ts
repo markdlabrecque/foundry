@@ -32,8 +32,9 @@ export interface ApprovalVoidingOptions {
   readonly inScope?: (factory: string) => boolean;
   /** Sweep callers isolate and report a failure; direct operator calls fail closed. */
   readonly onUnverified?: (factory: string, ticket: number, cause: unknown) => void;
-  /** Scheduling has no future commit to wake it after a competing read-only sweep. Wait
-   * outside the store transaction, then re-read eligibility under the approval lock. */
+  /** Scheduling and direct operator decisions wait for competing read-only sweeps rather than
+   * losing their wakeup or spuriously refusing. Wait outside the store transaction, then re-read
+   * eligibility under the approval lock; cancellation releases the permit through withPermit. */
   readonly waitForLock?: boolean;
   /** Assignment scheduling only needs to validate tickets it could actually assign. */
   readonly queuedOnly?: boolean;
