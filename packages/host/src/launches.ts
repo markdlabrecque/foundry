@@ -3,6 +3,8 @@
  * group, owns it as the parent, and reports what it knows about every launch.
  */
 import { spawn } from "node:child_process";
+import { decodeStartupDiagnostic, STARTUP_DIAGNOSTIC_BYTES } from "./sdk-diagnostic.js";
+import type { StartupDiagnostic } from "./sdk-diagnostic.js";
 import { codeOf, messageOf } from "@foundry/protocol/errors";
 import { randomUUID } from "node:crypto";
 import { LAUNCH_ENV } from "./launch-command.js";
@@ -46,6 +48,8 @@ export type LaunchRecord = {
   readonly pgid: number;
   readonly bootId: string;
   readonly startedAt: string;
+  /** Positive pre-session evidence read only from this child's dedicated pipe. */
+  readonly startupDiagnostic?: StartupDiagnostic;
 } & (
   | { readonly liveness: "live"; readonly exit?: undefined }
   | { readonly liveness: "gone"; readonly exit: LaunchExit }
@@ -180,7 +184,7 @@ export function createLaunchRegistry(options: {
         // Its own session and process group, so it is stoppable as a group
         // and outlives nothing but the host's own decisions.
         detached: true,
-        stdio: ["pipe", "pipe", "pipe"],
+        stdio: ["pipe", "pipe", "pipe", "pipe"],
       });
 
       try {
@@ -236,6 +240,25 @@ export function createLaunchRegistry(options: {
 
       child.stderr.on("error", () => {}).on("data", (chunk: Buffer) => tail.push(chunk));
 
+      // Dedicated pipe, not stdout/stderr. Discard oversized payloads entirely.
+      const diagnosticPipe = child.stdio[3];
+
+      if (diagnosticPipe === null || diagnosticPipe === undefined) {throw new Error("missing host diagnostic pipe");}
+
+      const diagnosticChunks: Array<Buffer> = [];
+      let diagnosticBytes = 0;
+      diagnosticPipe.on("error", () => {});
+      diagnosticPipe.on("data", (chunk: Buffer) => {
+        diagnosticBytes += chunk.length;
+
+        if (diagnosticBytes <= STARTUP_DIAGNOSTIC_BYTES) {diagnosticChunks.push(chunk);}
+        else {diagnosticChunks.length = 0;}
+      });
+
+      const diagnosticEnded = new Promise<void>((resolve) => {
+        diagnosticPipe.once("end", resolve).once("close", resolve);
+      });
+
       child.once("exit", (code, signal) => {
         child.stdin.destroy();
         const endedAt = new Date().toISOString();
@@ -246,26 +269,38 @@ export function createLaunchRegistry(options: {
           exit: terminations.has(launchId) ? { code, signal, endedAt, requested: true } : { code, signal, endedAt },
         };
 
-        launches.set(launchId, ended);
-
         // Learn now, while the ID cannot yet have been reused, whether the
         // group emptied with its leader; if not, keep watching until it does,
         // so a later reuse of the ID is never mistaken for this group.
         // The slot stays occupied until then.
-        if (!signalGroup(pid, 0)) {markEmpty(ended);}
-        else {watchUntilEmpty(ended);}
+        const groupEmptyAtExit = !signalGroup(pid, 0);
+
+        // Never signal a group ID observed empty, even during diagnostic drain:
+        // the OS may reuse it. Keep the slot reserved until the report is complete.
+        if (groupEmptyAtExit) {emptyGroups.add(launchId);}
 
         // Let the last stderr bytes arrive before reporting; a descendant
         // still holding the pipe open must not delay the report for long.
         let drainTimer: NodeJS.Timeout | undefined;
         void Promise.race([
-          stderrEnded,
+          Promise.all([stderrEnded, diagnosticEnded]),
           new Promise<void>((resolve) => {
             drainTimer = setTimeout(resolve, STDERR_DRAIN_MS);
           }),
         ]).then(() => {
           clearTimeout(drainTimer);
-          options.onExit(ended, tail.contents());
+
+          const startupDiagnostic = diagnosticBytes <= STARTUP_DIAGNOSTIC_BYTES
+            ? decodeStartupDiagnostic(Buffer.concat(diagnosticChunks).toString("utf8")) : undefined;
+
+          const reported = startupDiagnostic === undefined ? ended : { ...ended, startupDiagnostic };
+          launches.set(launchId, reported);
+
+          if (groupEmptyAtExit) {occupied.delete(key);}
+          else {watchUntilEmpty(reported);}
+
+          diagnosticPipe.destroy();
+          options.onExit(reported, tail.contents());
         });
       });
 

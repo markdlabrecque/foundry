@@ -1,0 +1,50 @@
+
+ RUN  v5.1.1 <REPO>
+
+(node:2978893) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/test/slot-scheduler.test.ts (28 tests | 1 failed | 27 skipped) 85ms
+   × host-confirmed loader collision freezes only its current slot without generic recovery; stale and unrelated failures do not 84ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  packages/daemon/test/slot-scheduler.test.ts > host-confirmed loader collision freezes only its current slot without generic recovery; stale and unrelated failures do not
+AssertionError: expected [] to match object [ { kind: 'frozen_slot', …(2) } ]
+
+- Expected
++ Received
+
+- [
+-   {
+-     "evidence": {
+-       "cause": "tool_set_mismatch",
+-       "launchId": "boot-1-launch-1",
+-       "replaced": [
+-         {
+-           "actual": "/project.ts",
+-           "expected": "/opt/foundry/extension.js",
+-           "name": "agent_message",
+-         },
+-       ],
+-     },
+-     "kind": "frozen_slot",
+-     "subject": "dev/1",
+-   },
+- ]
++ []
+
+ ❯ packages/daemon/test/slot-scheduler.test.ts:138:57
+    136|   inventory[0] = failed;
+    137|   await run.launchExited(failed);
+    138|   expect(await Effect.runPromise(listOpenHolds(store))).toMatchObject([
+       |                                                         ^
+    139|     { kind: "frozen_slot", subject: "dev/1", evidence: { cause: "tool_…
+    140|       replaced: [{ name: "agent_message", expected: "/opt/foundry/exte…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 27 skipped (28)
+   Start at  18:09:50
+   Duration  414ms (import 53%, tests 24%, transform 23%, worker 1%)

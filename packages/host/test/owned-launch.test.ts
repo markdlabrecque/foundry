@@ -28,6 +28,9 @@ const STUB = `
     slotId: process.env.${LAUNCH_ENV.slotId},
     launchId: process.env.${LAUNCH_ENV.launchId},
   }));
+  fs.writeSync(3, JSON.stringify({version: 1, kind: "agent_tool_collision", collisions: [
+    {name: "agent_message", sources: ["/foundry.js", "/project.ts"]}
+  ]}));
   setInterval(() => { if (fs.existsSync("release")) process.exit(7); }, 20);
 `;
 
@@ -107,6 +110,9 @@ test("the host owns a launched process group through launch and exit, across a l
   await writeFile(join(launchDir, "release"), "");
   const reported = await exited;
   expect(reported).toMatchObject({ launchId: launched.launchId, liveness: "gone", exit: { code: 7, signal: null } });
+  expect(reported.startupDiagnostic).toEqual({ version: 1, kind: "agent_tool_collision", collisions: [
+    { name: "agent_message", sources: ["/foundry.js", "/project.ts"] },
+  ] });
   expect(await second.inventory()).toEqual([reported]);
   second.close();
 

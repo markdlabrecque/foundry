@@ -101,6 +101,59 @@ const scheduler = async (
     freezer: freezer ?? await createSlotFreezer({ store, checks: {} }),
   });
 
+test("host-confirmed loader collision freezes only its current slot without generic recovery; stale and unrelated failures do not", async () => {
+  const { stateRoot, store } = await openTempStore();
+  const inventory: Array<LaunchRecord> = [];
+  const { host, asked } = fakeHost(inventory);
+  const terminated: Array<string> = [];
+
+  const run = await scheduler(store, stateRoot, host, "host-1", [
+    station("dev", 2, [{ path: "/project.ts", tools: [] }]),
+  ], "boot-1", undefined, 3, {
+    terminate: async (id) => {
+      terminated.push(id);
+      const launch = inventory.find((l) => l.launchId === id);
+
+      if (launch === undefined) {throw new Error("unknown launch");}
+
+      return { outcome: "gone", escalated: false, launch };
+    },
+  });
+
+  await run.schedule();
+  const first = inventory[0]!;
+  const neighbor = inventory[1]!;
+
+  const diagnostic = { version: 1, kind: "agent_tool_collision", collisions: [
+    { name: "agent_message", sources: ["/opt/foundry/extension.js", "/project.ts"] },
+  ] } as const;
+
+  const failed: LaunchRecord = { ...first, liveness: "gone", exit: { code: 1, signal: null, endedAt: "2026-01-01T00:01:00Z" }, startupDiagnostic: diagnostic };
+  // An invented/stale event not in the current host inventory is ignored.
+  await run.launchExited({ ...failed, launchId: "stale" });
+  await run.launchExited({ ...failed, factoryId: "other" });
+  expect(await Effect.runPromise(listOpenHolds(store))).toEqual([]);
+  inventory[0] = failed;
+  await run.launchExited(failed);
+  expect(await Effect.runPromise(listOpenHolds(store))).toMatchObject([
+    { kind: "frozen_slot", subject: "dev/1", evidence: { cause: "tool_set_mismatch", launchId: first.launchId,
+      replaced: [{ name: "agent_message", expected: "/opt/foundry/extension.js", actual: "/project.ts" }] } },
+  ]);
+  expect(terminated).toEqual([first.launchId]);
+  expect(asked).toHaveLength(2);
+  expect(await Effect.runPromise(store.read<{ recovery_count: number }>("SELECT recovery_count FROM slot WHERE slot_id = 'dev/1'")))
+    .toEqual([{ recovery_count: 0 }]);
+  // A late collision report for a superseded launch cannot freeze its neighbor.
+  const unrelated: LaunchRecord = { ...neighbor, liveness: "gone", exit: { code: 1, signal: null, endedAt: "2026-01-01T00:01:00Z" } };
+  inventory[1] = unrelated;
+  await run.launchExited(unrelated);
+  expect(asked).toHaveLength(3);
+  inventory[1] = { ...unrelated, startupDiagnostic: diagnostic };
+  await run.launchExited(inventory[1]);
+  expect((await Effect.runPromise(listOpenHolds(store))).map((h) => h.subject)).toEqual(["dev/1"]);
+  expect(terminated).toEqual([first.launchId]);
+});
+
 test("a launch requested of an earlier host in this boot is never requested again; the slot freezes as host lost", async () => {
   const { stateRoot, store } = await openTempStore();
   // The first host's answer is lost: the request stays pending.

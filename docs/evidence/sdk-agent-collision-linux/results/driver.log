@@ -1,0 +1,11 @@
+{
+  pi: '1.6.0',
+  node: 'v22.23.2',
+  platform: 'linux 7.2.15-1-omarchy',
+  foundry: 'ef1d079'
+}
+missing: written <REPO>/docs/evidence/sdk-agent-collision-linux/results/missing.json
+reserved: written <REPO>/docs/evidence/sdk-agent-collision-linux/results/reserved.json
+cleared: written <REPO>/docs/evidence/sdk-agent-collision-linux/results/cleared.json
+foundry: Slot dev/1 stays frozen: tool_set_mismatch still fails its check (hold 1, evidence refreshed)
+agent-name: written <REPO>/docs/evidence/sdk-agent-collision-linux/results/agent-name.json
