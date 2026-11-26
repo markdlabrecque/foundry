@@ -6,26 +6,31 @@
 import { execFileSync, spawn } from "node:child_process";
 import { createHash } from "node:crypto";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { connectHost } from "@foundry/host";
 import { FAUX_PROVIDER_EXTENSION, makeGitSource } from "@foundry/testkit";
+import { boundedVerdict, guardedPhases } from "./verdict.mjs";
+import { normalizeText, normalizeTree } from "./normalize.mjs";
 
 if (process.platform !== "linux") {throw new Error("Linux /proc cleanup required");}
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
-const out = resolve(process.argv[2] ?? mkdtempSync(join(tmpdir(), "fou124-out-")));
+const out = resolve(process.argv[2] ?? mkdtempSync(join(homedir(), "f124out-")));
 mkdirSync(out, { recursive: true });
-const root = mkdtempSync(join(tmpdir(), "fou124-"));
+// A short, private, home-backed root avoids shared /tmp inode exhaustion and long Unix paths.
+// Do not trust an outer TMPDIR: each launch receives this exact directory in its allowlist.
+const root = mkdtempSync(join(homedir(), "f124-"));
+const privateTmp = join(root, "t");
 const home = join(root, "home");
 const user = join(root, "user");
 const marker = join(root, "probe");
 const agent = join(root, "agent");
-for (const dir of [user, marker, agent]) {mkdirSync(dir, { recursive: true });}
+for (const dir of [user, marker, agent, privateTmp]) {mkdirSync(dir, { recursive: true });}
 writeFileSync(join(agent, "settings.json"), JSON.stringify({ enableInstallTelemetry: false }));
 const env = {
-  PATH: process.env.PATH ?? "", HOME: user,
+  PATH: process.env.PATH ?? "", HOME: user, TMPDIR: privateTmp,
   XDG_CONFIG_HOME: join(user, ".config"), XDG_DATA_HOME: join(user, ".local/share"), XDG_CACHE_HOME: join(user, ".cache"),
   PI_CODING_AGENT_DIR: agent, PI_OFFLINE: "1", PI_TELEMETRY: "0", PROBE_DIR: marker,
   GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1", GIT_TERMINAL_PROMPT: "0",
@@ -36,10 +41,11 @@ const env = {
 const sleep = (ms) => new Promise((done) => setTimeout(done, ms));
 const events = [];
 const checks = {};
-let outcome = "inconclusive";
+let journeyCompleted = false;
 let activeDaemon;
+writeFileSync(join(out, "NORMALIZATION.md"), "Normalized evidence, not byte-for-byte raw output. Unrelated inherited PATH is redacted. Real user-home and T3 checkout prefixes are consistently replaced by <USER_HOME> and <CHECKOUT>. Versions, executable suffixes, ordered arguments, IDs, times and fixture-relative relationships are preserved. Binary DB/WAL copies are local-only.\n");
 const note = (event, detail) => {
-  const entry = { at: new Date().toISOString(), event, detail };
+  const entry = JSON.parse(normalizeText(JSON.stringify({ at: new Date().toISOString(), event, detail })));
   events.push(entry);
   console.log(JSON.stringify(entry));
 };
@@ -132,6 +138,7 @@ const stopDaemon = async () => {
   kill(activeDaemon.pid);
   note("daemon SIGKILL", await activeDaemon.finished);
 };
+const processTmpdir = (pid) => readFileSync(`/proc/${pid}/environ`, "utf8").split("\0").find((entry) => entry.startsWith("TMPDIR="))?.slice(7);
 const inventory = async () => {
   const host = await connectHost(home);
   try {return { identity: await host.identify(), launches: await host.inventory() };}
@@ -169,7 +176,10 @@ try {
     kernel: execFileSync("uname", ["-r"], { encoding: "utf8" }).trim(),
     pi: execFileSync(process.execPath, [join(repo, "node_modules/@earendil-works/pi-coding-agent/dist/cli.js"), "--version"], { env, encoding: "utf8" }).trim(),
     foundry: execFileSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).trim(),
-    fixture: { driver, faux: FAUX_PROVIDER_EXTENSION, yaml, env },
+    fixture: { driver, faux: FAUX_PROVIDER_EXTENSION, yaml, env: { ...env, PATH: "<REDACTED inherited PATH>" } },
+    evidenceSourceSha256: Object.fromEntries(["run-probe.mjs", "worker.ts", "verdict.mjs", "normalize.mjs"].map((file) =>
+      [file, createHash("sha256").update(readFileSync(join(repo, "docs/evidence/worker-daemon-crash-linux", file))).digest("hex")])),
+    productionBase: execFileSync("git", ["rev-parse", "origin/develop"], { cwd: repo, encoding: "utf8" }).trim(),
   });
   await startDaemon();
   for (const n of [1, 2]) {
@@ -186,6 +196,13 @@ try {
   const before = await inventory();
   const victim = before.launches.find((l) => l.slotId === "dev/1" && l.liveness === "live");
   if (!victim) {throw new Error("no live dev/1 worker");}
+  const tempPropagation = [activeDaemon.pid, before.identity.pid, ...before.launches.filter((l) => l.liveness === "live").map((l) => l.pid)]
+    .map((pid) => ({ pid, tmpdir: processTmpdir(pid) }));
+  checks.privateTempPropagated = tempPropagation.length === 4 && tempPropagation.every((p) => p.tmpdir === privateTmp) &&
+    workerEvents().filter((e) => e.event === "launcher").length === 2 &&
+    workerEvents().filter((e) => e.event === "launcher").every((e) => e.detail.tmpdir === privateTmp && e.detail.effectiveTmpdir === privateTmp);
+  note("private temp propagation", { privateTmp, tempPropagation, verified: checks.privateTempPropagated });
+  if (!checks.privateTempPropagated) {throw new Error("private TMPDIR was not retained by daemon -> host -> Pi workers");}
   note("active before worker kill", { before, artifactsBefore });
   // Accept ordinary work while the original workers are held. A replacement may become idle
   // and acknowledge it before the daemon crash; inspect actual stored status/binding below.
@@ -208,6 +225,8 @@ try {
   note("worker recovery", { recovered, tickets: await Promise.all([1, 2].map((n) => cli("ticket", "show", String(n)))) });
   const preCrash = await inventory();
   const live = preCrash.launches.filter((l) => l.liveness === "live");
+  checks.privateTempPropagated = checks.privateTempPropagated && live.every((l) => processTmpdir(l.pid) === privateTmp);
+  note("replacement temp propagation", { workers: live.map((l) => ({ pid: l.pid, tmpdir: processTmpdir(l.pid) })), verified: checks.privateTempPropagated });
   await stopDaemon();
   const beforeRestart = snapshot("before-restart");
   checks.acceptedMessageStoredAndBound = beforeRestart.message.some((m) => m.body === "FOU124_ACCEPTED_BEFORE_WORKER_KILL" && m.bound_slot !== null);
@@ -232,26 +251,40 @@ try {
   const afterRestart = snapshot("after-restart");
   checks.acceptedRowsAndBindingPreserved = beforeRestart.message.every((m) => afterRestart.message.some((a) => a.id === m.id && a.body === m.body && a.bound_slot === m.bound_slot));
   checks.assignmentsPreserved = beforeRestart.assignment.every((a) => afterRestart.assignment.some((b) => b.id === a.id && b.ticket_number === a.ticket_number && b.slot_id === a.slot_id && b.status === a.status));
-  outcome = checks.survivingWorkersReconnected && checks.channelTrafficResumed ? "reconnected-only-not-full-acceptance" : "blocked-reconnect";
+  journeyCompleted = true;
 } catch (error) {
   note("first failure", { stack: String(error.stack ?? error) });
-  outcome = "blocked-first-failure";
 } finally {
-  await stopDaemon();
-  for (let round = 0; round < 50 && processes().length; round++) {
-    for (const pid of processes()) {try {kill(pid);} catch { /* Already exited. */ }}
-    await sleep(100);
-  }
-  const survivors = processes();
-  checks.cleanup = survivors.length === 0;
-  if (existsSync(marker)) {cpSync(marker, join(out, "worker-events"), { recursive: true });}
-  if (existsSync(join(home, "tickets"))) {cpSync(join(home, "tickets"), join(out, "tickets"), { recursive: true });}
-  if (existsSync(join(home, "logs"))) {cpSync(join(home, "logs"), join(out, "logs"), { recursive: true });}
-  if (existsSync(join(root, "worktrees"))) {cpSync(join(root, "worktrees"), join(out, "worktrees"), { recursive: true });}
-  if (existsSync(join(home, "foundry.db")) && !existsSync(join(out, "after-restart"))) {snapshot("at-failure");}
-  note("cleanup", { survivors, rootRemoved: survivors.length === 0 });
-  if (!survivors.length) {rmSync(root, { recursive: true, force: true });}
-  writeFileSync(join(out, "result.json"), `${JSON.stringify({ outcome, checks, events }, null, 2)}\n`);
-  console.log(JSON.stringify({ outcome, checks, out }));
-  process.exitCode = outcome === "reconnected-only-not-full-acceptance" && checks.cleanup ? 0 : 1;
+  let survivors;
+  const cleanupErrors = await guardedPhases([
+    ["daemon stop", stopDaemon],
+    ["marker sweep", async () => {
+      for (let round = 0; round < 50 && processes().length; round++) {
+        for (const pid of processes()) {try {kill(pid);} catch (error) {if (error.code !== "ESRCH") {note("sweep retry", String(error));}}}
+        await sleep(100);
+      }
+      survivors = processes();
+      checks.cleanup = survivors.length === 0;
+      note("marker sweep", { survivors });
+    }],
+    ["worker evidence", () => {if (existsSync(marker)) {cpSync(marker, join(out, "worker-events"), { recursive: true });}}],
+    ["ticket evidence", () => {if (existsSync(join(home, "tickets"))) {cpSync(join(home, "tickets"), join(out, "tickets"), { recursive: true });}}],
+    ["process logs", () => {if (existsSync(join(home, "logs"))) {cpSync(join(home, "logs"), join(out, "logs"), { recursive: true });}}],
+    ["failure snapshot", () => {
+      if (activeDaemon && activeDaemon.exitCode === null && activeDaemon.signalCode === null) {throw new Error("daemon not confirmed exited; refusing database snapshot");}
+      if (existsSync(join(home, "foundry.db")) && !existsSync(join(out, "after-restart"))) {snapshot("at-failure");}
+    }],
+    ["private root removal", () => {
+      if (!checks.cleanup) {throw new Error("preserving private root because marked processes remain or sweep failed");}
+      rmSync(root, { recursive: true, force: true });
+      note("cleanup", { survivors, rootRemoved: !existsSync(root) });
+    }],
+    ["normalize evidence copies", () => normalizeTree(out)],
+  ], (failure) => note("cleanup phase failure", failure));
+  checks.cleanupPhasesSucceeded = cleanupErrors.length === 0;
+  const verdict = boundedVerdict(checks, journeyCompleted);
+  // Final manifest is independent of stop/sweep/copy/removal failures above.
+  writeFileSync(join(out, "result.json"), normalizeText(`${JSON.stringify({ ...verdict, journeyCompleted, checks, cleanupErrors, events }, null, 2)}\n`));
+  console.log(normalizeText(JSON.stringify({ ...verdict, checks, out })));
+  process.exitCode = verdict.exitCode;
 }

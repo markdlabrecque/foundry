@@ -1,0 +1,27 @@
+{
+  "source": "<USER_HOME>/f124r.bz79h9/probe/result.json",
+  "sourceSha256": "e0d312b19f49067fd4fb386468195ba6578b9459a32d1fda3703ec09ce3a62a1",
+  "sourceEvents": 107,
+  "outcome": "blocked-first-failure",
+  "checks": {
+    "cleanup": true
+  },
+  "selectedEvents": [
+    {
+      "at": "2026-11-26T00:56:04.995Z",
+      "event": "first failure",
+      "detail": {
+        "stack": "Error: two assigned tickets in actual Pi held tools: not observed within 30000ms\n    at until (file://<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/run-probe.mjs:52:9)\n    at async file://<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/run-probe.mjs:181:3"
+      }
+    },
+    {
+      "at": "2026-11-26T00:56:05.137Z",
+      "event": "cleanup",
+      "detail": {
+        "survivors": [],
+        "rootRemoved": true
+      }
+    }
+  ],
+  "excerptNotFullTranscript": true
+}

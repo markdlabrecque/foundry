@@ -1,0 +1,3 @@
+Error: Failed to load extension "<CHECKOUT>/packages/extension/e2e/fixtures/interrupt-worker.ts": Failed to load extension: ENOSPC: no space left on device, open '/tmp/jiti/fixtures-interrupt-worker.ebd61199.mjs'
+Hint: Start without extensions using "pi -ne".
+exit 1 events []

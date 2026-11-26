@@ -3,7 +3,7 @@
 > vitest run --config vitest.e2e.config.ts
 
 
- RUN  v5.1.1 /home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67
+ RUN  v5.1.1 <CHECKOUT>
 
 (node:2438445) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)

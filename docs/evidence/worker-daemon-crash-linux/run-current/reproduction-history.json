@@ -1,0 +1,22 @@
+{
+  "earlierReviewFixedRun": {
+    "productionBase": "050145655c76a722afc6bce70ae422397e49872c",
+    "branchHead": "8a5f97396fb2342bf102cf1e138900b687c9bf84",
+    "outcome": "blocked-reconnect",
+    "checks": {
+      "privateTempPropagated": true,
+      "workerReplacementAccepted": true,
+      "acceptedMessageStoredAndBound": true,
+      "survivingWorkersReconnected": false,
+      "channelTrafficResumed": false,
+      "ticketArtifactsUnchanged": true,
+      "liveLaunchesPreserved": true,
+      "acceptedRowsAndBindingPreserved": true,
+      "assignmentsPreserved": true,
+      "cleanup": true,
+      "cleanupPhasesSucceeded": true
+    },
+    "observedMs": 45336,
+    "note": "Reached reconnect boundary and cleaned up; latest-base repetition below replaces the representative detailed run."
+  }
+}

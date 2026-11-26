@@ -1,0 +1,74 @@
+{
+  "fullTicketAcceptance": false,
+  "environment": {
+    "PATH":"<REDACTED inherited PATH>",
+    "HOME": "<USER_HOME>/f124chk-FMJ7CQ/user",
+    "TMPDIR": "<USER_HOME>/f124chk-FMJ7CQ/t",
+    "FOUNDRY_PI_BIN": "<USER_HOME>/f124chk-FMJ7CQ/pi"
+  },
+  "commands": [
+    {
+      "label": "build",
+      "command": "npm",
+      "args": [
+        "run",
+        "build"
+      ],
+      "code": 0,
+      "signal": null
+    },
+    {
+      "label": "typecheck",
+      "command": "npm",
+      "args": [
+        "run",
+        "typecheck"
+      ],
+      "code": 0,
+      "signal": null
+    },
+    {
+      "label": "oxlint",
+      "command": "<CHECKOUT>/node_modules/.bin/oxlint",
+      "args": [],
+      "code": 0,
+      "signal": null
+    },
+    {
+      "label": "unit-evidence",
+      "command": "<USER_HOME>/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+      "args": [
+        "--test",
+        "docs/evidence/worker-daemon-crash-linux/verdict.test.mjs"
+      ],
+      "code": 0,
+      "signal": null
+    },
+    {
+      "label": "vitest",
+      "command": "npm",
+      "args": [
+        "test"
+      ],
+      "code": 0,
+      "signal": null
+    },
+    {
+      "label": "e2e",
+      "command": "npm",
+      "args": [
+        "run",
+        "test:e2e"
+      ],
+      "code": 0,
+      "signal": null
+    }
+  ],
+  "beforeCleanup": [],
+  "survivors": [],
+  "wrapper": {
+    "invocations": 9,
+    "privateTmpdirVerified": true
+  },
+  "rootRemoved": true
+}

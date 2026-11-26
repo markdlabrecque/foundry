@@ -1,0 +1,28 @@
+{
+  "sourceHead": "8a5f97396fb2342bf102cf1e138900b687c9bf84",
+  "sourcePath": "docs/evidence/worker-daemon-crash-linux/checks/vitest-enospc.log",
+  "sourceSha256BeforeNormalization": "ea9a7694cb5d03784af12f990f159366e2c7317b6753ab7e7cb560e4b9ffe38a",
+  "sourceLines": 2919,
+  "retainedRangesInclusive": [
+    [
+      1,
+      25
+    ],
+    [
+      340,
+      365
+    ],
+    [
+      2907,
+      2919
+    ]
+  ],
+  "tests": {
+    "passed": 695,
+    "failed": 142
+  },
+  "files": {
+    "passed": 75,
+    "failed": 25
+  }
+}

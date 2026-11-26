@@ -13,7 +13,7 @@ rooms:
         instances: 2
         isolation: worktree
         model: foundry-faux/scripted
-        extensions: ["/home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67/packages/testkit/dist/pi/faux-provider.js", { path: "/home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67/docs/evidence/worker-daemon-crash-linux/worker.ts", tools: [fixture_work] }]
+        extensions: ["<CHECKOUT>/packages/testkit/dist/pi/faux-provider.js", { path: "<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/worker.ts", tools: [fixture_work] }]
 production_lines:
   f:
     verify: ["true"]

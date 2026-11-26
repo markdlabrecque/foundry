@@ -1,0 +1,106 @@
+TAP version 13
+# Subtest: evidence redacts PATH and tokenizes repeated checkout/home prefixes without losing argv order
+ok 1 - evidence redacts PATH and tokenizes repeated checkout/home prefixes without losing argv order
+  ---
+  duration_ms: 0.897333
+  type: 'test'
+  ...
+# Subtest: all observations pass only the bounded probe, never full ticket acceptance
+ok 2 - all observations pass only the bounded probe, never full ticket acceptance
+  ---
+  duration_ms: 0.169417
+  type: 'test'
+  ...
+# Subtest: privateTempPropagated false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 3 - privateTempPropagated false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.137799
+  type: 'test'
+  ...
+# Subtest: workerReplacementAccepted false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 4 - workerReplacementAccepted false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.086572
+  type: 'test'
+  ...
+# Subtest: acceptedMessageStoredAndBound false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 5 - acceptedMessageStoredAndBound false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.050655
+  type: 'test'
+  ...
+# Subtest: survivingWorkersReconnected false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 6 - survivingWorkersReconnected false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.069951
+  type: 'test'
+  ...
+# Subtest: channelTrafficResumed false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 7 - channelTrafficResumed false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.07456
+  type: 'test'
+  ...
+# Subtest: ticketArtifactsUnchanged false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 8 - ticketArtifactsUnchanged false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.04241
+  type: 'test'
+  ...
+# Subtest: liveLaunchesPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 9 - liveLaunchesPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.13324
+  type: 'test'
+  ...
+# Subtest: acceptedRowsAndBindingPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 10 - acceptedRowsAndBindingPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.158136
+  type: 'test'
+  ...
+# Subtest: assignmentsPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 11 - assignmentsPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.070161
+  type: 'test'
+  ...
+# Subtest: cleanup false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 12 - cleanup false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.033293
+  type: 'test'
+  ...
+# Subtest: cleanupPhasesSucceeded false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 13 - cleanupPhasesSucceeded false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.024896
+  type: 'test'
+  ...
+# Subtest: new recorded invariants also fail closed without editing the required-key list
+ok 14 - new recorded invariants also fail closed without editing the required-key list
+  ---
+  duration_ms: 0.04788
+  type: 'test'
+  ...
+# Subtest: missing reconnect is distinguished from data loss and incomplete journeys
+ok 15 - missing reconnect is distinguished from data loss and incomplete journeys
+  ---
+  duration_ms: 0.400602
+  type: 'test'
+  ...
+# Subtest: stop and copy failures cannot skip marker cleanup, removal or manifest phase
+ok 16 - stop and copy failures cannot skip marker cleanup, removal or manifest phase
+  ---
+  duration_ms: 0.226926
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 16
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 37.271509

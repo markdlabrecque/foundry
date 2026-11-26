@@ -1,0 +1,22 @@
+[
+  {
+    "source": "<USER_HOME>/f124r.bz79h9/interrupt-launch-diagnostic.log",
+    "sha256BeforeNormalization": "bf4176b991b7add8feeadcd168b40bd1621d4465c8fddc833a5285e4f2aa8661",
+    "retained": "interrupt-launch-diagnostic.log"
+  },
+  {
+    "source": "<USER_HOME>/f124r.bz79h9/interrupt-rerun.log",
+    "sha256BeforeNormalization": "d90cda17bfa86bd295d9af61d8b532e5f9c6a4218a60f807f68921adb94691bc",
+    "retained": "interrupt-rerun.log"
+  },
+  {
+    "source": "<USER_HOME>/f124r.bz79h9/e2e.log",
+    "sha256BeforeNormalization": "cd6b854ef9949c727f7004e6d72529c80746b9b2e24656dd561de550c047ab95",
+    "retained": "e2e.log"
+  },
+  {
+    "source": "<USER_HOME>/f124r.bz79h9/probe/logs/launches/b42a5340-08f2-4d5b-b11f-3bf51d2b73f8.stderr",
+    "sha256BeforeNormalization": "c91a8ce89650314aa121a0dcc1248fefc2085d8356309bd4177061907bf76274",
+    "retained": "b42a5340-08f2-4d5b-b11f-3bf51d2b73f8.stderr"
+  }
+]

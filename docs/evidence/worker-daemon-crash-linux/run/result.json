@@ -22,11 +22,11 @@
         "pi": "1.6.0",
         "foundry": "40ea1faff294990789b3fd92119c10146bc8978a",
         "fixture": {
-          "driver": "/home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67/docs/evidence/worker-daemon-crash-linux/worker.ts",
-          "faux": "/home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67/packages/testkit/dist/pi/faux-provider.js",
-          "yaml": "version: 1\nname: alpha\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\nworktrees:\n  root: \"/tmp/fou124-VikFuh/worktrees\"\nrooms:\n  eng:\n    stations:\n      dev:\n        instances: 2\n        isolation: worktree\n        model: foundry-faux/scripted\n        extensions: [\"/home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67/packages/testkit/dist/pi/faux-provider.js\", { path: \"/home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67/docs/evidence/worker-daemon-crash-linux/worker.ts\", tools: [fixture_work] }]\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: a\n        station: eng.dev\n        writing: true\n      - id: b\n        station: eng.dev\n        approval: true\n        on_rejection: a\n",
+          "driver": "<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/worker.ts",
+          "faux": "<CHECKOUT>/packages/testkit/dist/pi/faux-provider.js",
+          "yaml": "version: 1\nname: alpha\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\nworktrees:\n  root: \"/tmp/fou124-VikFuh/worktrees\"\nrooms:\n  eng:\n    stations:\n      dev:\n        instances: 2\n        isolation: worktree\n        model: foundry-faux/scripted\n        extensions: [\"<CHECKOUT>/packages/testkit/dist/pi/faux-provider.js\", { path: \"<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/worker.ts\", tools: [fixture_work] }]\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: a\n        station: eng.dev\n        writing: true\n      - id: b\n        station: eng.dev\n        approval: true\n        on_rejection: a\n",
           "env": {
-            "PATH": "/home/mark/.pi/agent/bin:/home/mark/.local/share/pi-node/current/bin:/home/mark/.bun/bin:/home/mark/bin:/home/mark/.local/bin:/home/mark/.local/share/mise/command-wrappers/bin:/home/mark/firstmate/bin:/home/mark/.config/nvm/versions/node/v24.20.0/bin:/usr/share/omarchy/bin:/home/mark/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/bin:/home/mark/.local/share/mise/shims:/var/lib/flatpak/exports/bin:/usr/bin/site_perl:/usr/bin/vendor_perl:/usr/bin/core_perl:/opt/rocm/bin",
+            "PATH":"<REDACTED inherited PATH>",
             "HOME": "/tmp/fou124-VikFuh/user",
             "XDG_CONFIG_HOME": "/tmp/fou124-VikFuh/user/.config",
             "XDG_DATA_HOME": "/tmp/fou124-VikFuh/user/.local/share",
@@ -53,7 +53,7 @@
       "detail": {
         "pid": 2407832,
         "args": [
-          "/home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67/packages/daemon/dist/main.js",
+          "<CHECKOUT>/packages/daemon/dist/main.js",
           "--home",
           "/tmp/fou124-VikFuh/home",
           "--log-level",
@@ -564,7 +564,7 @@
       "detail": {
         "pid": 2408071,
         "args": [
-          "/home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67/packages/daemon/dist/main.js",
+          "<CHECKOUT>/packages/daemon/dist/main.js",
           "--home",
           "/tmp/fou124-VikFuh/home",
           "--log-level",
