@@ -1,0 +1,9 @@
+{
+  "ownedMarkedDetachedGroups": [
+    2410261,
+    2410280,
+    2410281
+  ],
+  "command": "ps -eo pid=,pgid=,stat=,args= (filter exact retained marked host/worker PGIDs)",
+  "remainingMembers": []
+}
