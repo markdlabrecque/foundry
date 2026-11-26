@@ -1,0 +1,95 @@
+{
+  "productCommit": "089ab52ac2deeeac53c59e8597605bcad309127a",
+  "implementationCommit": "477b169f2b23a1a952008b2f5d7a5b28d02324bb",
+  "sourceAndRuntimeSha256": {
+    "docs/evidence/rpc-52-1-linux/run-probe.mjs": "c5c3354bc34084da4f0c03c62a37ab6a63183acab73a72decff145160a12ca60",
+    "docs/evidence/rpc-52-1-linux/probe-extension.ts": "869b550364a587e0049dcc93c10566105ed529d71fe924d3e5f3a5daddc74806",
+    "docs/evidence/sdk-52-1-linux/normalize-artifacts.py": "3fdcfebcd8fd472ba1e02d0d44505c1ccf9424a4a50ffcaed441b9f4deaebb60",
+    "package-lock.json": "35b39e78be6478d4919b56f6ba6df3f7fba8bf0add4af04a32fbf428438ebccc",
+    "packages/host/src/control.ts": "9462194993585c5a996e3a52d01811771fa05ea625bb6dd4d4d4364418b06658",
+    "packages/extension/src/worker.ts": "ef8fe4fd403bc9872faa3ca332514f0b933fc835b926244004f48b6758a80895",
+    "packages/extension/src/channel/client.ts": "81e92a4a6c81055fad7ff7c9d7eb8c68a1d53d75e7ed91258480d8a779796d84",
+    "node_modules/@earendil-works/pi-coding-agent/dist/bundle/rpc-entry.js": "c247f32381c9daf6df70f204be62f49555e18e3013780e36ebfbb86e8ed0de4d",
+    "packages/host/dist/main.js": "f46db39851ee85bdbe3351af3a3921fadb58c74a593c5fb71e4331ef9b21d274",
+    "packages/daemon/dist/main.js": "f385da3a3d4ecb1615d313b6ff5fee9f205886cc595fb3cf7216cdabd36de5a5",
+    "packages/extension/dist/index.js": "4f6cfd0254c9a288dc00d40dce48a3a4bc14ad65eb558119de1b4afec942c8a5",
+    "packages/extension/src/channel/lifecycle.ts": "2d2bf8d31755f3e0198e63d276803235200c21d243549100253fa5023d4cad3b",
+    "packages/extension/src/channel/launch.ts": "56c1308668c614bce7bf6700f87b7d77289a716cee70f27daf304287d08b81c0"
+  },
+  "npm": "10.9.8",
+  "hostControlVersion": 5,
+  "ambientRuntimeForProbe": "sdk",
+  "effectiveRuntime": "rpc",
+  "FOUNDRY_PI_BIN": "unset",
+  "diagnosticShim": false,
+  "validationTMPDIR": "<validation-temp> (short private home-backed mktemp directory)",
+  "probeChildTMPDIR": "<fixture-root>/tmp",
+  "commands": [
+    {
+      "argv": [
+        "npm",
+        "ci"
+      ],
+      "exitCode": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exitCode": 0
+    },
+    {
+      "argv": [
+        "node",
+        "docs/evidence/rpc-52-1-linux/run-probe.mjs",
+        "<validation-temp>/probe"
+      ],
+      "exitCode": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exitCode": 0
+    },
+    {
+      "argv": [
+        "./node_modules/.bin/oxlint"
+      ],
+      "exitCode": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "test"
+      ],
+      "exitCode": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "test:e2e"
+      ],
+      "exitCode": 0
+    }
+  ],
+  "checkCounts": {
+    "vitest": {
+      "files": 105,
+      "tests": 862
+    },
+    "e2e": {
+      "files": 3,
+      "tests": 5
+    },
+    "probe": {
+      "observations": 11,
+      "passed": 11
+    }
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "observedAt": "2026-11-26T02:42:28.555845+00:00",
+  "method": "Read /proc/<pid>/stat process-group IDs and exact NUL-delimited environment marker; no signals sent by this supplemental inspection.",
+  "marker": "PROBE_DIR=<fixture-root>/probe",
+  "workerPgids": [
+    3142162,
+    3142168
+  ],
+  "groupMembersLeft": [],
+  "markedProcessesLeft": [],
+  "originalPidPathsExist": {
+    "3142150": false,
+    "3142162": false,
+    "3142168": false
+  },
+  "fixtureRoot": "<fixture-root>",
+  "fixtureRootExists": false
+}
