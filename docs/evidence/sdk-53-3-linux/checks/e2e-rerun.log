@@ -1,5 +1,5 @@
 
- RUN  v5.1.1 /home/mark/worktress/develop/t3-657bb997-100eb9b7258f70dc
+ RUN  v5.1.1 <REPO>
 
 (node:2439482) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
@@ -65,4 +65,3 @@ fatal: cannot update the ref 'refs/heads/main': unable to create directory for '
       Tests  3 failed | 2 passed (5)
    Start at  16:49:09
    Duration  752ms (import 64%, tests 29%, transform 7%)
-

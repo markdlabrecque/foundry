@@ -1,0 +1,54 @@
+{
+  "tmp": "<CHECK_ROOT>/t",
+  "shim": "<CHECK_ROOT>/pi",
+  "node": "<NODE>",
+  "commands": [
+    {
+      "name": "build",
+      "command": "npm",
+      "args": [
+        "run",
+        "build"
+      ],
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "name": "typecheck",
+      "command": "npm",
+      "args": [
+        "run",
+        "typecheck"
+      ],
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "name": "oxlint",
+      "command": "./node_modules/.bin/oxlint",
+      "args": [],
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "name": "vitest",
+      "command": "./node_modules/.bin/vitest",
+      "args": [
+        "run"
+      ],
+      "exit": 0,
+      "signal": null
+    },
+    {
+      "name": "e2e",
+      "command": "./node_modules/.bin/vitest",
+      "args": [
+        "run",
+        "--config",
+        "vitest.e2e.config.ts"
+      ],
+      "exit": 0,
+      "signal": null
+    }
+  ]
+}

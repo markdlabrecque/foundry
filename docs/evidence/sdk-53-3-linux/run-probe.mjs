@@ -13,12 +13,17 @@ const replace = (from, to) => {
 replace('const fixtures = join(here, "fixtures");', `const fixtures = ${JSON.stringify(resolve(here, "../rpc-53-3-linux/fixtures"))};`);
 replace('"fou108-', '"fou153-'); // output directory prefix only
 replace('`fou108-${name}-`', '`fou153-${name}-`');
-replace('    FOUNDRY_HOME:', '    FOUNDRY_WORKER_RUNTIME: "sdk",\n    FOUNDRY_HOME:');
+replace('const MODEL = "probe-local/inert";', 'const MODEL = "openai/gpt-4.1-mini";');
+replace('  writeFileSync(join(agent, "models.json"), JSON.stringify(MODELS_JSON));', '  writeFileSync(join(agent, "auth.json"), JSON.stringify({openai: {type: "api_key", key: "none"}}));');
+replace('    FOUNDRY_HOME:', '    FOUNDRY_WORKER_RUNTIME: "sdk",\n    TMPDIR: process.env.TMPDIR,\n    FOUNDRY_HOME:');
+replace('Object.entries(VARIANTS)', '["missing", "reserved", "cleared", "agent-name"].map(name => [name, VARIANTS[name]])');
 replace('join(fixtures, "record-argv.mjs")', JSON.stringify(join(here, "record-process.mjs")));
 replace('  } finally {\n    result.shutdown', `  } catch (error) {
     result.observationError = String(error);
     result.daemonOutput = daemonOut;
     result.holdList = cli("hold", "list");
+    const holds = JSON.parse(cli("hold", "list", "--json").out).result.holds;
+    result.holdShow = holds.map(h => cli("hold", "show", String(h.id)));
     result.slotList = cli("slot", "list");
     result.slotShow = slots.map(s => cli("slot", "show", s));
     result.markers = Object.fromEntries(readdirSync(markers).sort().map(f => {
@@ -35,6 +40,10 @@ replace('    // Removed even when the variant failed, so an aborted run leaves n
     };
     // A marker authenticates the group as this disposable launch; never signal arbitrary PIDs.
     await poll("owned groups to disappear", () => groupMembers().length === 0, 20_000).catch(error => { result.cleanupError = String(error); });
+    result.markers = Object.fromEntries(readdirSync(markers).sort().map(f => {
+      const value = readFileSync(join(markers, f), "utf8");
+      return [f, f.endsWith(".log") ? value : JSON.parse(value)];
+    }));
     result.cleanup = { ownedGroups: owned.map(p => p.pgid), remaining: groupMembers(), daemonExited: daemon.exitCode !== null || daemon.signalCode !== null };
     if (result.cleanup.remaining.length === 0 && result.cleanup.daemonExited) {
       rmSync(root, { recursive: true, force: true });
