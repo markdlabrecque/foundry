@@ -58,6 +58,8 @@ const env = {
   XDG_DATA_HOME: join(user, ".local/share"),
   XDG_CACHE_HOME: join(user, ".cache"),
   PI_CODING_AGENT_DIR: agentDir,
+  // Optional SDK gate reuses this real-process wiring and the same busy fixture.
+  FOUNDRY_WORKER_RUNTIME: process.env.FOUNDRY_WORKER_RUNTIME ?? "rpc",
   PI_OFFLINE: "1",
   PI_TELEMETRY: "0",
   FOUNDRY_HOME: join(root, "not-this-one"),
@@ -119,7 +121,7 @@ mkdirSync(source);
 git(source, ["init", "--quiet", "--initial-branch", "main"]);
 writeFileSync(join(source, "README.md"), "fixture\n");
 git(source, ["add", "README.md"]);
-git(source, ["commit", "--quiet", "--no-verify", "-m", "fixture"]);
+git(source, ["-c", "core.hooksPath=/dev/null", "commit", "--quiet", "--no-verify", "-m", "fixture"]);
 const factoryFile = join(root, "alpha.yaml");
 writeFileSync(factoryFile, yaml);
 writeFileSync(join(outDir, "alpha.yaml"), yaml);
@@ -298,12 +300,12 @@ const slotLaunches = (body) => (body?.result?.slots ?? []).map((s) => ({ slotId:
 
 let first;
 let second;
-let daemonUp = false;
 let result = "inconclusive";
 const checks = {};
 
 try {
   note("versions", {
+    runtime: env.FOUNDRY_WORKER_RUNTIME,
     node: process.version,
     pi: execFileSync(process.execPath, [PI_CLI, "--version"], { env, encoding: "utf8" }).trim(),
     platform: `${process.platform} ${process.arch}`,
@@ -313,7 +315,6 @@ try {
   });
 
   first = await startDaemon();
-  daemonUp = true;
   note("first daemon serving", { pid: first.child.pid });
 
   // Busy: both workers are inside `probe_hold`.
@@ -352,11 +353,16 @@ try {
   checks.connectedBeforeKill = launchIds.length === 2 && launchIds.every((id) => channelsBefore[id].accepted.length === 1 &&
     (channelsBefore[id].frameCounts.heartbeat ?? 0) > 0);
 
-  // Abrupt kill of the daemon only.
+  if (!checks.fixtureShape || !checks.connectedBeforeKill) {
+    throw new Error("observation preconditions failed: two busy, connected workers required");
+  }
+
+  // Abrupt kill of the owned daemon only; never signal a PID without our marker.
+  if (!hasMarker(first.child.pid)) {throw new Error("daemon ownership marker missing");}
+
   const killedAt = new Date().toISOString();
   first.child.kill("SIGKILL");
   const firstExit = await first.exited;
-  daemonUp = false;
   await sleep(2_000);
   const afterKill = {
     killedAt,
@@ -373,7 +379,6 @@ try {
   // Restart on the same state root.
   const logOffset = daemonLogSize();
   second = await startDaemon();
-  daemonUp = true;
   const restartedAt = new Date().toISOString();
   note("second daemon serving", { pid: second.child.pid, restartedAt });
 
@@ -436,10 +441,13 @@ try {
   // `blocked`: blocked on the tested approach, the ticket's label for a reproducible failure.
   result = Object.values(checks).every(Boolean) ? "supported" : "blocked";
 } catch (error) {
-  result = daemonUp || first !== undefined ? "blocked" : "inconclusive";
+  // An observation-tool/environment error is not a demonstrated product failure.
+  result = "inconclusive";
   note("error", { message: String(error?.stack ?? error) });
 } finally {
+  const beforeSweep = runProcesses();
   const survivors = await sweep();
+  note("owned cleanup", { marker: PROBE_MARKER, beforeSweep, survivors });
 
   if (survivors.length > 0) {note("cleanup incomplete", { pids: survivors });}
 
