@@ -1,0 +1,2 @@
+# Clamp a finite number
+Fix clamp(value,min,max) in clamp.mjs. Inputs are finite numbers and min <= max (validation out of scope). Return min below the lower bound, max above the upper bound, and the unchanged value within or equal to either bound. Preserve negative and fractional numbers. Add cheap pure tests using node:test covering below, above, inside, equality at each bound, negative and fractional values, and min=max. No dependencies or unrelated features. npm test must pass.

@@ -1,0 +1,1 @@
+Read the submitted request and refine its Specification file into objective, exact requirements, non-goals, acceptance criteria and cheap verification plan. Do not write repository code. Save specify.md as your actual specification-stage report then task_transition done (no gitCommit needed).

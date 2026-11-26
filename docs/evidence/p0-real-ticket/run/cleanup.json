@@ -1,0 +1,22 @@
+{
+  "observedAt": "2026-11-26T04:05:17.251077+00:00",
+  "ownedWorkerPgids": [
+    3431133,
+    3431139,
+    3431146,
+    3431153
+  ],
+  "ownedDaemonAndHostPids": [
+    3431102,
+    3431121
+  ],
+  "remainingBeforeFallback": [],
+  "fallbackUsed": false,
+  "sourceHead": "80d08e7292ae1fa8e19cbcec1b949b40e9edc2de",
+  "cloneHead": "80d08e7292ae1fa8e19cbcec1b949b40e9edc2de",
+  "sourceStatus": "",
+  "cloneStatus": "",
+  "cloneWorktrees": "worktree <fixture>/state/clones/realticket\nHEAD 80d08e7292ae1fa8e19cbcec1b949b40e9edc2de\nbranch refs/heads/main\n\n",
+  "ticketWorktreeRootExists": false,
+  "rootRemoved": true
+}

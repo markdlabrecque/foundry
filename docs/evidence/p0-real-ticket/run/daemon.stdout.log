@@ -1,0 +1,2 @@
+foundry daemon: state root <fixture>/state claimed (pid 3431102)
+foundry daemon: management API on <fixture>/state/management.sock

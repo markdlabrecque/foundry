@@ -1,0 +1,59 @@
+[
+  {
+    "name": "build",
+    "argv": [
+      "npm",
+      "run",
+      "build"
+    ],
+    "exit": 0,
+    "seconds": 0.083
+  },
+  {
+    "name": "typecheck",
+    "argv": [
+      "npm",
+      "run",
+      "typecheck"
+    ],
+    "exit": 0,
+    "seconds": 0.622
+  },
+  {
+    "name": "oxlint",
+    "argv": [
+      "./node_modules/.bin/oxlint"
+    ],
+    "exit": 0,
+    "seconds": 0.661
+  },
+  {
+    "name": "unit-integration",
+    "argv": [
+      "npm",
+      "test"
+    ],
+    "exit": 0,
+    "seconds": 16.667
+  },
+  {
+    "name": "e2e",
+    "argv": [
+      "npm",
+      "run",
+      "test:e2e"
+    ],
+    "exit": 0,
+    "seconds": 7.564
+  },
+  {
+    "name": "diff",
+    "argv": [
+      "git",
+      "diff",
+      "--check"
+    ],
+    "exit": 0,
+    "seconds": 0.002
+  }
+]
