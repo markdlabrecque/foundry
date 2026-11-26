@@ -1,0 +1,118 @@
+TAP version 13
+# Subtest: orderly shutdown plus empty snapshots and verified root absence passes
+ok 1 - orderly shutdown plus empty snapshots and verified root absence passes
+  ---
+  duration_ms: 0.822243
+  type: 'test'
+  ...
+# Subtest: cleanup cannot green: shutdown exception
+ok 2 - cleanup cannot green: shutdown exception
+  ---
+  duration_ms: 0.165049
+  type: 'test'
+  ...
+# Subtest: cleanup cannot green: survivor cleaned by fallback
+ok 3 - cleanup cannot green: survivor cleaned by fallback
+  ---
+  duration_ms: 0.085811
+  type: 'test'
+  ...
+# Subtest: cleanup cannot green: surviving group without marked PID list
+ok 4 - cleanup cannot green: surviving group without marked PID list
+  ---
+  duration_ms: 0.079129
+  type: 'test'
+  ...
+# Subtest: cleanup cannot green: root remains after removal
+ok 5 - cleanup cannot green: root remains after removal
+  ---
+  duration_ms: 0.09608
+  type: 'test'
+  ...
+# Subtest: cleanup cannot green: fallback cannot empty owned processes
+ok 6 - cleanup cannot green: fallback cannot empty owned processes
+  ---
+  duration_ms: 0.413415
+  type: 'test'
+  ...
+# Subtest: cleanup cannot green: reviewer shutdown exception plus surviving group
+ok 7 - cleanup cannot green: reviewer shutdown exception plus surviving group
+  ---
+  duration_ms: 0.113263
+  type: 'test'
+  ...
+# Subtest: snapshot errors cannot skip safe fallback or become green
+ok 8 - snapshot errors cannot skip safe fallback or become green
+  ---
+  duration_ms: 0.09023
+  type: 'test'
+  ...
+# Subtest: literal independently captured valid primes pass against fixture-derived expectations
+ok 9 - literal independently captured valid primes pass against fixture-derived expectations
+  ---
+  duration_ms: 0.583164
+  type: 'test'
+  ...
+# Subtest: normalization preserves executable/package/source relations inside nested JSONL
+ok 10 - normalization preserves executable/package/source relations inside nested JSONL
+  ---
+  duration_ms: 0.278393
+  type: 'test'
+  ...
+# Subtest: rejects mutually consistent but wrong primes: wrong address in all three identical headers
+ok 11 - rejects mutually consistent but wrong primes: wrong address in all three identical headers
+  ---
+  duration_ms: 0.867798
+  type: 'test'
+  ...
+# Subtest: rejects mutually consistent but wrong primes: wrong slot in all three identical headers
+ok 12 - rejects mutually consistent but wrong primes: wrong slot in all three identical headers
+  ---
+  duration_ms: 0.270738
+  type: 'test'
+  ...
+# Subtest: rejects mutually consistent but wrong primes: wrong isolation convention
+ok 13 - rejects mutually consistent but wrong primes: wrong isolation convention
+  ---
+  duration_ms: 0.167354
+  type: 'test'
+  ...
+# Subtest: rejects mutually consistent but wrong primes: wrong knowledge root
+ok 14 - rejects mutually consistent but wrong primes: wrong knowledge root
+  ---
+  duration_ms: 0.118322
+  type: 'test'
+  ...
+# Subtest: rejects mutually consistent but wrong primes: reordered instruction blocks and matching reordered store parts
+ok 15 - rejects mutually consistent but wrong primes: reordered instruction blocks and matching reordered store parts
+  ---
+  duration_ms: 0.244218
+  type: 'test'
+  ...
+# Subtest: rejects mutually consistent but wrong primes: bogus hash in every body and matching store parts
+ok 16 - rejects mutually consistent but wrong primes: bogus hash in every body and matching store parts
+  ---
+  duration_ms: 0.153067
+  type: 'test'
+  ...
+# Subtest: rejects mutually consistent but wrong primes: wrong source path
+ok 17 - rejects mutually consistent but wrong primes: wrong source path
+  ---
+  duration_ms: 0.129763
+  type: 'test'
+  ...
+# Subtest: rejects mutually consistent but wrong primes: store situation disagrees with actual prime
+ok 18 - rejects mutually consistent but wrong primes: store situation disagrees with actual prime
+  ---
+  duration_ms: 0.210465
+  type: 'test'
+  ...
+1..18
+# tests 18
+# suites 0
+# pass 18
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 38.749626

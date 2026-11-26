@@ -9,6 +9,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { connectHost } from '@foundry/host';
+import { assertExpectedPrimes, verifyCleanup } from './probe-verification.mjs';
+import { normalizeEvidence } from './normalize-evidence.mjs';
 const repo = resolve(dirname(fileURLToPath(import.meta.url)), '../../..');
 const out = resolve(process.argv[2] ?? mkdtempSync(join(tmpdir(), 'fou148-out-')));
 mkdirSync(out, { recursive: true });
@@ -161,40 +163,64 @@ production_lines:
   assert.equal(events().filter(e => e.kind === 'side-effect').length, 1);
   const finalBranch = events().filter(e => e.kind === 'agent_settled').at(-1).branch;
   const injected = finalBranch.filter(e => e.type === 'custom_message' && e.details?.kind === 'prime');
-  assert.deepEqual(injected.map(e => /Situation: (\w+)/.exec(e.content)[1]), ['fresh', 'recovery', 'compaction']);
-  assert.equal(new Set(injected.map(e => e.content.replace(/Situation: \w+/, 'Situation: <situation>'))).size, 1);
-  assert.equal(new Set(primes().map(p => p.parts)).size, 1);
-  for (const prime of primes()) {
-    assert.equal(prime.conversation_ref, starts[0].sessionId);
-    assert(prime.acknowledged_at !== null);
-    assert.equal(injected.filter(e => e.details.foundryId === prime.id).length, 1);
-  }
+  // Expectations come from fixture files and contract identity, never observed
+  // prime bodies/store hashes. This also checks convention lines and full text.
+  const expected = { address: 'eng.dev', slotId: 'dev/1', isolation: 'worktree', knowledgeRoot: join(root, 'knowledge'),
+    sources: ['factory.md', 'room.md', 'station.md'].map(source => ({ source, content: readFileSync(join(root, source), 'utf8') })) };
+  const diskPrimes = jsonl(starts[1].sessionFile).filter(e => e.type === 'custom_message' && e.details?.kind === 'prime');
+  assert.deepEqual(diskPrimes, injected, 'observer branch must match the actual on-disk SDK prime entries');
+  assertExpectedPrimes({ injected: diskPrimes, records: primes(), conversationRef: starts[0].sessionId, expected });
+  result.primeExpectation = expected;
   const storedMessages = queries('SELECT * FROM message');
   assert.equal(storedMessages.length, 5);
   assert(storedMessages.every(m => m.status === 'acknowledged'));
   observed('in-place compaction prime in model context', { primes: primes(), live: await host.inventory(), noPrimeStartedTurn: true, identicalBodiesExceptSituation: true });
-  result.outcome = 'supported-on-tested-linux-implementation';
+  result.behavioralOutcome = 'supported-on-tested-linux-implementation';
+  // Final success is withheld until orderly shutdown and root absence pass.
 } catch (error) {
   result.failure = { stage, error: error.stack };
   result.outcome = 'requires-classification'; process.exitCode = 1;
 } finally {
-  result.primes = existsSync(join(home, 'foundry.db')) ? primes() : [];
-  result.messages = existsSync(join(home, 'foundry.db')) ? queries('SELECT * FROM message') : [];
-  result.history = existsSync(join(home, 'foundry.db')) ? queries('SELECT * FROM history ORDER BY sequence') : [];
-  if (host) { result.inventoryBeforeShutdown = await host.inventory(); host.close(); }
-  try { if (daemon) { result.shutdown = cli('shutdown', '--force'); await until('daemon exit', () => daemon.exitCode !== null || daemon.signalCode !== null); } } catch (error) { result.shutdownError = String(error); }
-  result.cleanup = { beforeSweep: owned(), groups: (result.inventoryBeforeShutdown ?? []).map(l => ({ pgid: l.pgid, members: members(l.pgid) })) };
-  // Fallback only for still-owned marked groups. Never kill by name or stale PID.
-  for (const pgid of new Set(ps().filter(p => marked(p.pid)).map(p => p.pgid))) signalGroup(pgid, 'SIGKILL');
-  await until('all marked processes gone', () => owned().length === 0);
-  result.cleanup.remaining = owned();
-  result.daemonOutput = output; result.daemonLog = jsonl(join(home, 'logs/daemon.log'));
-  result.markers = Object.fromEntries(readdirSync(markers).map(name => [name, read(join(markers, name))]));
-  const sessions = join(home, 'slots/restore/dev-1/sessions');
-  result.sessions = existsSync(sessions) ? Object.fromEntries(readdirSync(sessions).filter(n => n.endsWith('.jsonl')).map(n => [n, read(join(sessions, n))])) : {};
-  // Only deterministic padding is abbreviated. All IDs, errors, history, primes,
-  // command arguments and tool results remain; no credentials entered this run.
-  writeFileSync(join(out, 'result.json'), JSON.stringify(result, null, 2).replace(/z{1000,}/g, s => `[deterministic padding: ${s.length} z characters]`));
-  rmSync(root, { recursive: true, force: true });
-  console.log(JSON.stringify({ outcome: result.outcome, failure: result.failure, cleanup: result.cleanup, artifact: join(out, 'result.json') }, null, 2));
+  try {
+    result.primes = existsSync(join(home, 'foundry.db')) ? primes() : [];
+    result.messages = existsSync(join(home, 'foundry.db')) ? queries('SELECT * FROM message') : [];
+    result.history = existsSync(join(home, 'foundry.db')) ? queries('SELECT * FROM history ORDER BY sequence') : [];
+    if (host) result.inventoryBeforeShutdown = await host.inventory();
+  } catch (error) { result.evidenceError = String(error); process.exitCode = 1; }
+  finally { host?.close(); }
+  const pgids = [...new Set([result.first, result.second, ...(result.inventoryBeforeShutdown ?? [])].filter(Boolean).map(l => l.pgid))];
+  const snapshot = () => ({ owned: owned(), groups: pgids.map(pgid => ({ pgid, members: members(pgid) })) });
+  result.cleanup = await verifyCleanup({
+    shutdown: async () => {
+      if (daemon) {
+        result.shutdown = cli('shutdown', '--force');
+        await until('daemon exit', () => daemon.exitCode !== null || daemon.signalCode !== null);
+      }
+      // Capture before removal; evidence IO errors cannot skip owned cleanup.
+      try {
+        result.daemonOutput = output; result.daemonLog = jsonl(join(home, 'logs/daemon.log'));
+        result.markers = Object.fromEntries(readdirSync(markers).map(name => [name, read(join(markers, name))]));
+        const sessions = join(home, 'slots/restore/dev-1/sessions');
+        result.sessions = existsSync(sessions) ? Object.fromEntries(readdirSync(sessions).filter(n => n.endsWith('.jsonl')).map(n => [n, read(join(sessions, n))])) : {};
+      } catch (error) { result.evidenceError = String(error); throw error; }
+    },
+    snapshot,
+    fallback: async () => {
+      // Safe marked-group cleanup still executes on failure, but can NEVER pass
+      // orderly cleanup. No unmarked group or reused PID is signalled.
+      for (const pgid of new Set(ps().filter(p => marked(p.pid)).map(p => p.pgid))) signalGroup(pgid, 'SIGKILL');
+      await until('all owned processes/groups gone', () => { const s = snapshot(); return s.owned.length === 0 && s.groups.every(g => g.members.length === 0); });
+    },
+    removeRoot: () => rmSync(root, { recursive: true, force: true }),
+    rootExists: () => existsSync(root),
+  });
+  if (!result.cleanup.orderly) {
+    result.outcome = 'inconclusive-orderly-cleanup'; process.exitCode = 1;
+  } else if (result.behavioralOutcome && !result.evidenceError && !result.failure) {
+    result.outcome = result.behavioralOutcome;
+  } else { process.exitCode = 1; }
+  result.normalization = 'Path prefixes are documented placeholders, not literal raw output; deterministic padding abbreviated by length.';
+  const normalized = normalizeEvidence(JSON.stringify(result, null, 2), { repo, fixture: root, privateTmp: tmpdir(), node: process.execPath });
+  writeFileSync(join(out, 'result.json'), normalized.replace(/z{1000,}/g, s => `[deterministic padding: ${s.length} z characters]`) + '\n');
+  console.log(normalizeEvidence(JSON.stringify({ outcome: result.outcome, failure: result.failure, cleanup: result.cleanup, artifact: join(out, 'result.json') }, null, 2), { repo, fixture: root, privateTmp: tmpdir(), node: process.execPath }));
 }
