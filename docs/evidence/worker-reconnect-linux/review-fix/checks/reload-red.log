@@ -1,0 +1,35 @@
+
+ RUN  v5.1.1 <repo>
+
+(node:3032796) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+foundry: channel hello refused (terminal launch_not_current)
+ ❯ test/worker-refusal.test.ts (4 tests | 1 failed | 3 skipped) 55ms
+   × terminal refusal survives actual Pi extension reconstruction without redial or tool dispatch 54ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/worker-refusal.test.ts > terminal refusal survives actual Pi extension reconstruction without redial or tool dispatch
+AssertionError: expected 2 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 2
+
+ ❯ test/worker-refusal.test.ts:89:19
+     87|   await session.reload();
+     88|   await session.prompt(`@@ ${AGENT_DISCOVER} {}`);
+     89|   expect(dials()).toBe(1);
+       |                   ^
+     90|   expect(toolFrames()).toBe(0);
+     91|   expect(session.messages.findLast((message) => message.role === "tool…
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed | 3 skipped (4)
+   Start at  18:17:53
+   Duration  550ms (import 76%, transform 13%, tests 11%)

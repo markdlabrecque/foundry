@@ -52,7 +52,10 @@ test.each([
     })],
   });
 
-  cleanups.push(() => session.dispose());
+  cleanups.push(async () => {
+    await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+    session.dispose();
+  });
   await session.prompt(`@@ ${tool} ${JSON.stringify(args)}`);
   expect(calls).toEqual([{ type: "tool_call", callId: expect.any(String), tool, args }]);
   expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({

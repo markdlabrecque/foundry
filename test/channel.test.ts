@@ -107,6 +107,30 @@ test("reconnecting the same launch closes its earlier channel and reset revokes 
   expect(frames).toEqual([]);
 });
 
+test("cancelling an in-flight hello closes its socket and never revives it when the claim completes late", async () => {
+  let claimed!: () => void;
+  const started = waitFor<void>((resolve) => { claimed = resolve; });
+  let finish!: () => void;
+  const continueClaim = waitFor<void>((resolve) => { finish = resolve; });
+  server = await startChannelServer({ socketPath: join(dir, "channel.sock"), slotClaim: {
+    claim: async (h) => {
+      claimed();
+      await continueClaim;
+
+      return { accepted: true, slot: { factoryId: h.factoryId, slotId: h.slotId, launchId: h.launchId } };
+    },
+  } });
+  const abort = new AbortController();
+  const opening = openChannel({ socketPath: server.socketPath, hello, signal: abort.signal });
+  const rejected = expect(opening).rejects.toThrow("channel dial cancelled");
+  await started;
+  abort.abort();
+  await rejected;
+  finish();
+  // An already-cancelled lifecycle cannot open a fresh socket either.
+  await expect(openChannel({ socketPath: server.socketPath, hello, signal: abort.signal })).rejects.toThrow("channel dial cancelled");
+});
+
 test("reset revocation invalidates a hello claim already in flight", async () => {
   let claimed!: () => void;
   const started = waitFor<void>((resolve) => { claimed = resolve; });

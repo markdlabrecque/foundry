@@ -178,7 +178,10 @@ test("Pi can discover and inspect its factory and submit a durable message throu
     extensionFactories: [(pi) => connectWorker(pi, { socketPath, ...launches[1] })],
   });
 
-  cleanups.push(() => session.dispose());
+  cleanups.push(async () => {
+    await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+    session.dispose();
+  });
   expect(session.getActiveToolNames()).toEqual(expect.arrayContaining([AGENT_DISCOVER, AGENT_MESSAGE]));
   await session.prompt(`@@ ${AGENT_DISCOVER} {}`);
 

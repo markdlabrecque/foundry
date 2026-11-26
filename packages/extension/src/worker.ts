@@ -6,16 +6,16 @@
  * Daemon frames go to the existing handlers: a prime into the conversation adapter, an interrupt
  * to the run interrupter. Receipts and compaction reports travel back on the attached channel.
  *
- * Terminal hello refusals disable this launch's channel and tools. A general reconnect/backoff
- * loop after a lost channel or retryable refusal remains out of scope.
+ * One lifecycle retries transport loss and retryable refusals; terminal refusals disable this
+ * launch's channel and tools permanently. Session changes re-announce actual observations.
  */
 import { existsSync } from "node:fs";
 import type { AgentToolResult, ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, CHANNEL_SOCKET_ENV, LAUNCH_ENV, PROTOCOL_VERSION, TASK_TRANSITION, HUMAN_REQUEST } from "@foundry/protocol";
 import type { Hello, ToolCallOutcome } from "@foundry/protocol";
 import { Type } from "typebox";
-import { openChannel } from "./channel/client.js";
-import type { OpenChannel } from "./channel/client.js";
+import { WorkerConnection } from "./channel/lifecycle.js";
+import { claimLaunchChannel } from "./channel/launch.js";
 import { CompactionReporter } from "./compaction.js";
 import { createConversationAdapter } from "./conversation/adapter.js";
 import { interruptRuns, RunInterrupter } from "./interrupt.js";
@@ -85,7 +85,10 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   const compactions = new CompactionReporter();
   pi.on("session_compact", () => compactions.record());
 
+  const launchChannel = claimLaunchChannel(JSON.stringify([launch.socketPath, launch.factoryId, launch.slotId, launch.launchId]));
   const toolCalls = new ToolCallClient();
+
+  if (launchChannel.reason !== undefined) {toolCalls.refuse(launchChannel.reason);}
 
   for (const tool of [
     { name: AGENT_DISCOVER, label: "Discover stations and slots", description: "List the configured stations and slots in your factory." },
@@ -249,47 +252,32 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
     },
   });
 
-  const onFrame = receiveDaemonFrames({ adapter, messages, interrupter, toolCalls });
-  let channel: OpenChannel | undefined;
-  let dialling = false;
-
-  pi.on("session_start", async (_event, ctx) => {
-    // One dial per launch for now: a later `session_start` (`/new`, `/resume`, `/reload`) on a live
-    // channel is not re-announced. Conversation-change handling belongs to the reconnect work.
-    if (toolCalls.terminallyRefused || channel !== undefined || dialling) {return;}
-
-    dialling = true;
-
-    try {
-      const opened = await openChannel({ socketPath: launch.socketPath, hello: helloFor(pi, launch, ctx), onFrame });
-
-      if (!opened.accepted) {
-        toolCalls.refuse(opened.reason);
-        // The host keeps the launch's stderr, so a worker that never connects can be diagnosed.
-        process.stderr.write(`foundry: channel hello refused (${opened.reason.kind} ${opened.reason.code})\n`);
-
-        return;
-      }
-
-      channel = opened.channel;
-      injections.attach(opened.channel);
-      receipts.attach(opened.channel);
-      compactions.attach(opened.channel);
-      toolCalls.attach(opened.channel);
-      void opened.channel.closed.then(() => {
-        if (channel === opened.channel) {channel = undefined;}
-      });
-    } catch (cause) {
-      // No daemon answered. Pi keeps running; reconnecting is not part of this extension yet.
+  const connection = new WorkerConnection({
+    socketPath: launch.socketPath,
+    onFrame: receiveDaemonFrames({ adapter, messages, interrupter, toolCalls }),
+    attach: (channel) => {
+      injections.attach(channel);
+      receipts.attach(channel);
+      compactions.attach(channel);
+      toolCalls.attach(channel);
+    },
+    refuse: (reason) => {
+      launchChannel.refuse(reason);
+      toolCalls.refuse(reason);
+      process.stderr.write(`foundry: channel hello refused (${reason.kind} ${reason.code})\n`);
+    },
+    failed: (cause) => {
       process.stderr.write(`foundry: channel not reached at ${launch.socketPath}: ${String(cause)}\n`);
-    } finally {
-      dialling = false;
-    }
+    },
   });
-  pi.on("session_shutdown", () => {
-    channel?.close();
-    channel = undefined;
+
+  launchChannel.own(() => connection.stop());
+  pi.on("session_start", (_event, ctx) => {
+    if (launchChannel.reason !== undefined) {return;}
+
+    return connection.start(() => helloFor(pi, launch, ctx));
   });
+  pi.on("session_shutdown", (event) => launchChannel.release(event.reason === "quit"));
 };
 
 /** Pi's entry point: connect when running as a Foundry launch, otherwise do nothing. */

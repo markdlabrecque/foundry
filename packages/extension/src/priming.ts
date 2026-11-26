@@ -61,6 +61,9 @@ export class ReceiptReporter {
         if (this.channel === channel) {this.channel = undefined;}
 
         this.sending = false;
+
+        // A reconnect may have attached while the old write was still settling.
+        if (this.channel !== undefined && this.channel !== channel) {this.flush();}
       },
     );
   }

@@ -1,0 +1,27 @@
+{
+  "observedAt": "2026-11-26T02:09:57Z",
+  "implementationCommit": "d24ad90554084039e8632bc0847b76d8be660698",
+  "baseCommit": "43f703492834f9a2b558718094c737cfb0166da7",
+  "workingChanges": "Only the candidate evidence report/artifacts; implementation unchanged",
+  "environment": {
+    "TMPDIR": "<fixture-root>/validation-temp",
+    "FOUNDRY_PI_BIN": "unset",
+    "piDiagnosticShim": false,
+    "node": "v22.23.2",
+    "pi": "1.6.0",
+    "platform": "linux x64"
+  },
+  "checks": [
+    { "command": "npm run build", "exitCode": 0 },
+    { "command": "npm run typecheck", "exitCode": 0 },
+    { "command": "./node_modules/.bin/oxlint", "exitCode": 0, "diagnostics": [] },
+    { "command": "npm test", "exitCode": 0, "testFilesPassed": 103, "testsPassed": 856, "durationSeconds": 16.53 },
+    { "command": "npm run test:e2e", "exitCode": 0, "testFilesPassed": 3, "testsPassed": 5, "durationSeconds": 7.59 },
+    { "command": "git diff --check", "exitCode": 0 }
+  ],
+  "probes": [
+    { "entry": "docs/evidence/rpc-52-1-linux/run-probe.mjs", "runtime": "rpc", "ambientRuntime": "sdk", "result": "supported", "checksTrue": 11 },
+    { "entry": "docs/evidence/sdk-52-1-linux/run-probe.mjs", "runtime": "sdk", "result": "supported", "checksTrue": 11 }
+  ],
+  "review": "Pending fresh independent GPT 6.1 SOL review by coordinator; no PR or CI yet"
+}

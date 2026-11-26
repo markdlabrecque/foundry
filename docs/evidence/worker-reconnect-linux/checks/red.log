@@ -1,0 +1,32 @@
+
+ RUN  v5.1.1 <repo>
+
+ ❯ packages/extension/test/reconnect.test.ts (1 test | 1 failed) 5ms
+   × initial transport unavailability retries automatically with bounded backoff then reconnects after loss 4ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  packages/extension/test/reconnect.test.ts > initial transport unavailability retries automatically with bounded backoff then reconnects after loss
+AssertionError: expected +0 to be 1 // Object.is equality
+
+- Expected
++ Received
+
+- 1
++ 0
+
+ ❯ packages/extension/test/reconnect.test.ts:35:32
+     33|   await f.connection.start(hello);
+     34|   for (const ms of [250, 500, 1000, 2000, 4000, 5000, 5000]) {
+     35|     expect(vi.getTimerCount()).toBe(1);
+       |                                ^
+     36|     const before = dial.mock.calls.length;
+     37|     await vi.advanceTimersByTimeAsync(ms - 1);
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed (1)
+      Tests  1 failed (1)
+   Start at  17:58:32
+   Duration  173ms (import 71%, transform 24%, tests 4%, worker 1%)

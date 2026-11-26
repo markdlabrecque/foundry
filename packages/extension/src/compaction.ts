@@ -50,6 +50,9 @@ export class CompactionReporter {
 
         this.pending = true;
         this.sending = false;
+
+        // Do not strand a report if attach raced this old channel's failed write.
+        if (this.channel !== undefined && this.channel !== channel) {this.flush();}
       },
     );
   }

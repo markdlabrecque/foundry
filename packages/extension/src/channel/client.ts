@@ -5,7 +5,7 @@
  */
 import { connect } from "node:net";
 import type { Socket } from "node:net";
-import { decodeDaemonFrameLine, decodeHelloReplyLine, encodeFrame, FrameLineSplitter, HEARTBEAT_INTERVAL_MS } from "@foundry/protocol";
+import { decodeDaemonFrameLine, decodeHelloReplyLine, encodeFrame, FrameLineSplitter, HEARTBEAT_INTERVAL_MS, CHANNEL_LOST_AFTER_MS } from "@foundry/protocol";
 import type { DaemonFrame, Hello, HelloRejectReason, WorkerFrame } from "@foundry/protocol";
 
 export interface OpenChannel {
@@ -24,6 +24,8 @@ export type ChannelOpenResult =
 export interface OpenChannelOptions {
   readonly socketPath: string;
   readonly hello: Hello;
+  /** Cancels a pending handshake or closes its accepted channel. */
+  readonly signal?: AbortSignal;
   readonly heartbeatIntervalMs?: number;
   /**
    * A frame the daemon sent after accepting the hello, with the channel it
@@ -67,6 +69,21 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
       reject(cause);
     };
 
+    const abort = (): void => {
+      if (!settled) {fail(new Error("channel dial cancelled"));} else {socket.destroy();}
+    };
+
+    options.signal?.addEventListener("abort", abort, { once: true });
+    socket.once("close", () => options.signal?.removeEventListener("abort", abort));
+
+    if (options.signal?.aborted) {
+      abort();
+
+      return;
+    }
+
+    // Bound unanswered hellos too: a listener may accept transport but never answer.
+    socket.setTimeout(CHANNEL_LOST_AFTER_MS, () => fail(new Error("channel hello timed out")));
     socket.once("connect", () => socket.write(encodeFrame(options.hello)));
     socket.on("error", fail);
     socket.once("close", () => fail(new Error("channel closed before the hello was answered")));
@@ -91,9 +108,10 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
           if (!reply.ok) {return fail(new Error(`malformed hello reply: ${reply.detail}`));}
 
           settled = true;
+          socket.setTimeout(0);
 
           if (reply.value.type === "hello_rejected") {
-            socket.end();
+            socket.destroy();
 
             return resolve({ accepted: false, reason: reply.value.reason });
           }
@@ -115,7 +133,7 @@ export const openChannel = (options: OpenChannelOptions): Promise<ChannelOpenRes
               }),
             close: () => {
               stop();
-              socket.end();
+              socket.destroy();
             },
             closed,
           };
