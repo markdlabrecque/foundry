@@ -1,105 +1,121 @@
 # FOU-151: SDK resource isolation and named tools — Linux
 
-Draft 56h; PRD §17.2 resource-isolation observations and §17.3 actual named-tool call. This is the SDK sibling of [RPC Linux evidence](rpc-53-2-linux.md), using the adapter described in [SDK trial](sdk-147-trial.md). No product changes, collision/missing-registration work, reconnect work, macOS qualification, or other gate work is included.
+[Ticket](https://linear.app/foundry-mdl/issue/FOU-151/check-sdk-resource-isolation-and-named-tools-on-linux), draft 56h. Scoped observations from PRD §17.2–3; actual Worker Host, pinned Pi, disposable resources and credential-free faux model calls. References: [RPC sibling evidence](rpc-53-2-linux.md), [SDK adapter trial](sdk-147-trial.md).
 
-## Verdict: blocked on the tested approach; NOT a gate pass
+## Current outcome: supported on the tested approach
 
-The actual Worker Host explicitly selected the pinned SDK entry with `FOUNDRY_WORKER_RUNTIME=sdk`. Two configured workers authenticated, used the intended faux model and skill/extension, excluded calibrated ambient resources, and each called only the YAML-named registered fixture tool. The skill-clear override was effective.
+The recovered real-process run completed **all observations in this draft**. Three actual SDK workers connected: inheriting and skill-cleared workers each exposed 13 tools; the fully cleared station exposed 12 fixed tools and no configured fixture. Each configured worker's actual faux-model turn called `probe_named` and received its result; the registered-but-unnamed tool was absent.
 
-The fully cleared station **never connected**: its independent disposable `models.json` model was not registered by the SDK adapter. Three automatic host launches reproduced `SDK model is not registered: probe-local/inert`, then the harness's three-accepted-channel deadline expired. Stop here: the passing criterion remains **unmet**. The SDK platform's ability to support an independently registered credential-free clear-station model is **inconclusive**, not disproved. Do not close a passing qualification criterion from this negative evidence.
+This supersedes the previous blocked fixture approach, not the historical observations. It is **not** whole-launcher or cross-platform qualification and does not cover mismatch/collision drafts, reconnect, explicit-stop cross-factory isolation, restoration, priming or a real paid model reading an indexed skill on demand. No product code, SDK model registration, testkit, PR or tracker changes were made. Fresh final evidence review is still required.
 
-This is a tested adapter/fixture compatibility limitation, not an infrastructure timeout or proof that cleared lists themselves leak. The adapter deliberately constructs `ModelRuntime` with `modelsPath: null`; the sibling RPC harness relies on a disposable `models.json` provider to let `extensions: []` start without its faux-provider extension. No product fix or credential workaround was applied to force a pass.
+## Per-criterion evidence
 
-## Per-observation status
+The prerequisite-aware [`observations.json`](sdk-53-2-linux/observations.json), recomputed from retained output by [`summarize.mjs`](sdk-53-2-linux/summarize.mjs), verifies:
 
-[`observations.json`](sdk-53-2-linux/observations.json) contains independently recomputed assertions against retained raw output. Reproduce its analysis with the retained `summarize.mjs`; it does not start workers or directly invoke tools.
-
-| Observation | Status and evidence |
+| Criterion | Observed result |
 |---|---|
-| Actual SDK host and Foundry channel | **Verified:** captured argv enters `packages/host/dist/sdk-worker.js`; accepted `inherit/1` and `skillclear/1`, each with 13 tools and host launch identity. Neutral slot cwd is outside the source repo. |
-| Ordinary-launch global control | **Verified:** ordinary pinned Pi loads `GLOBAL_EXTENSION_53A`, starts the fixture MCP server, activates `grep` from global `defaultTools`, and passes global AGENTS/SYSTEM/APPEND markers and `mcp__probe__ambient` to the faux model. |
-| Intended model and configured extension | **Verified:** both worker `session_start` observations identify `probe-faux/scripted`, not the conflicting global `wrong-control/wrong-control`; configured extension startup is recorded. |
-| Configured skill and skill-clear override | **Verified:** `CONFIGURED_SKILL_53A` description/path appears in inherited worker model input and not `skillclear/1` input. This proves skill indexing, not a model reading its body on demand. |
-| Global extension, MCP, defaults and context excluded | **Verified for the two connected workers:** no ambient extension/MCP worker startup; no global context/system markers in actual model requests; explicit tool declarations contain 12 fixed tools plus `probe_named`, not `grep`, `find` or MCP tools. |
-| Repository resources excluded | **Verified on neutral-cwd approach:** disposable source contains marked root AGENTS and `.pi` extension, skill, settings and system prompt; none reaches worker input/startup. No trusted ordinary repository baseline was run; do not generalize to every trust mode. |
-| Named registered tool and unnamed registration | **Verified:** shared fixture registers `probe_named` and `probe_unnamed`; ordinary registry shows both. Each configured worker executes exactly one `probe_named({value:"CALL_MARKER_53A"})`; its second faux-model request contains `TOOL_RESULT_53A:CALL_MARKER_53A`. `probe_unnamed` is absent from worker model declarations. No direct driver call to the implementation. “Only named” applies to configured extension tools, not removal of fixed tools. |
-| Fully cleared inheritance | **Partial/unmet:** all three clear-worker argv records omit configured extension and `--skill`; no configured startup marker. But none reaches hello, so absence of its tools in a live cleared worker remains **unverified**. |
-| Full passing criterion | **Unmet:** partial positives plus a reproducible clear-station startup failure are not passing gate evidence. |
+| Actual SDK host and pinned Pi | **Verified.** Explicit `FOUNDRY_WORKER_RUNTIME=sdk`; actual argv enters `packages/host/dist/sdk-worker.js`. All three workers authenticate on the Foundry channel. Pi 1.6.0, not the outer harness installation. |
+| Ordinary global positive control | **Verified.** Ordinary pinned Pi loads `GLOBAL_EXTENSION_53A`, starts local MCP, activates global `defaultTools: [grep]`, and passes global AGENTS/SYSTEM/APPEND markers and `mcp__probe__ambient` to its faux-model request. Both configured registrations appear in its registry. |
+| Effective configured model and extension | **Verified.** `session_start` identifies `probe-faux/scripted`, not conflicting `wrong-control/wrong-control`; configured extension startup and actual faux-model inputs are recorded in both configured workers. |
+| Skill and cleared skill override | **Verified.** Inherited model input includes `CONFIGURED_SKILL_53A` description/path; `skillclear/1` does not. This proves indexing, not an on-demand read of its body. |
+| Global extension/MCP/defaultTools/context excluded | **Verified.** With positive ordinary controls and accepted/model-request evidence present, neither configured worker loads ambient extension/MCP/context markers. Actual model tool declarations are exactly 12 fixed tools plus `probe_named`, without `grep`, `find`, MCP or unnamed fixture tools. |
+| Repository resources excluded | **Verified on the neutral-cwd approach.** Disposable source contains marked root AGENTS and `.pi` extension, skill, settings and system prompt. Worker cwd is outside the repository; repository markers do not appear in worker startup/model input. No trusted ordinary repository baseline was run; do not generalize to every trust mode. |
+| Named tool callable; unnamed registration absent | **Verified.** Shared fixture registers `probe_named` and `probe_unnamed`; each configured worker's first faux turn emits a real `probe_named({value:"CALL_MARKER_53A"})` call, executes it once, and includes `TOOL_RESULT_53A:CALL_MARKER_53A` in its second model request. `probe_unnamed` is absent from model declarations. No driver directly calls the implementation. Fixed tools remain available. |
+| Fully cleared inheritance | **Verified.** Clear station has no configured-extension argv, no `--skill`, no configured startup marker, an accepted hello with 12 fixed tools, normal slot state, no freeze, and no prompt/model request. No inherited provider extension is retained to keep it alive. |
+| Safe fixture and cleanup | **Verified.** Fake disposable auth, offline mode and deny-fetch installed in all three workers; zero fetch attempts. Three owned marked worker groups and their host are absent after owned-state shutdown, including an exact-PGID group-membership check. |
 
-The 12 fixed tools now exist in this base; the historical RPC record's 5/6-tool counts are not the SDK expected counts. Missing YAML registrations, reserved-name collisions and broader §17.3 real-model repository/skill-read behavior are outside this draft's agreed observations. No real provider request was made.
+Accepted identities in the qualification capture:
 
-## Reproduction, versions and exact launcher
+| Slot | Launch ID | Tools |
+|---|---|---:|
+| `inherit/1` | `b2f7c7af-4e1e-40bc-9d69-bf00aff51122` | 13 |
+| `skillclear/1` | `880aebc9-deaf-4dba-93b2-09516e3f2882` | 13 |
+| `clear/1` | `0103d3e7-73cf-45c1-b84b-97d0678705f1` | 12 |
 
-Manual real-process integration evidence, **not** a timing-dependent commit-tier test. A cheaper in-memory test cannot demonstrate actual ambient discovery, the detached host boundary or a model tool round trip. Reuse the sibling's fixtures and recording preload rather than copy product logic.
+## Reproduction and exact fixture
+
+This is a bounded **manual real-process integration probe**, not a timing-dependent commit-suite test. Only this boundary proves ordinary discovery, actual detached SDK host wiring and model tool round trips. It reuses the sibling harness, fixture extension and recording preload; it does not duplicate product logic.
+
+Complete qualification invocation used:
 
 ```sh
-npm ci
 npm run build
-# Use a fresh private home-backed temp dir if /tmp is inode-exhausted.
-mkdir -p /home/mark/fou151-private-tmp
-TMPDIR=/home/mark/fou151-private-tmp \
-  node docs/evidence/sdk-53-2-linux/run-probe.mjs /home/mark/fou151-output
-# Probe exits 1 at the reproduced clear-station failure, then analysis is separate:
-node docs/evidence/sdk-53-2-linux/summarize.mjs /home/mark/fou151-output
+mkdir -p /home/mark/f151
+TMPDIR=/home/mark/f151 \
+  node docs/evidence/sdk-53-2-linux/run-probe.mjs /home/mark/f151/qualification
+# driver exit 0 is only execution status, not independently a gate pass
+node docs/evidence/sdk-53-2-linux/normalize.mjs \
+  /home/mark/f151/qualification/result.json docs/evidence/sdk-53-2-linux/result.json
+node docs/evidence/sdk-53-2-linux/summarize.mjs docs/evidence/sdk-53-2-linux
 ```
 
-The retained run was `node docs/evidence/sdk-53-2-linux/run-probe.mjs /tmp/fou151-evidence-final`, at `2026-11-26T00:47:50Z`, before the later regression-suite inode errors. Its disposable root `/tmp/fou151-qFno4S` was removed after shutdown. `FOUNDRY_PI_BIN` was unset; SDK selection is explicit in the allowlisted daemon/host/worker environment. The ordinary calibration intentionally uses normal Pi RPC launch, not SDK, so discovery remains enabled.
+A fresh equivalent short private directory is fine. `/home/mark/f151` is disk-backed; **do not use inode-exhausted `/tmp`**. The runner creates a short uniquely owned disposable root beneath it and explicitly allowlists `TMPDIR=<root>/tmp` into **every** child (ordinary Pi, MCP, CLI, Git, daemon, host and workers). This preserves the original environment allowlist; no operator environment/credential spread was added. Ordinary discovery remains enabled. `FOUNDRY_PI_BIN` is unset for the probe.
 
-- Foundry source base: `050145655c76a722afc6bce70ae422397e49872c` (`origin/develop`, includes merged SDK adapter).
-- Pinned worker Pi **1.6.0**, Node **v22.23.2**, npm **10.9.8**. Outer harness model: `openai/gpt-6.1-sol`; not used by the fixture.
-- Linux: `Linux omarchy 7.2.15-1-omarchy #1 SMP PREEMPT_DYNAMIC Mon, 02 Nov 2026 10:32:17 +0000 x86_64 GNU/Linux`.
+Defaults: faux model `probe-faux/scripted`, one configured skill, configured extension object `tools: [probe_named]`. `inherit` inherits; `skillclear` sets `skills: []`; `clear` sets `skills: []`, `extensions: []`, and **only there** the idle built-in model `openai/gpt-4.1-mini`. Complete YAML and resolved validation are in `result.json`.
 
-For readability `$W` below is the captured checkout `/home/mark/worktress/develop/t3-2b8eba8e-cff669249e50faa9`; the artifact preserves absolute argv and cwd without abbreviations. The host supplies RPC-compatible flags for SDK parsing; the entry is SDK, not the RPC server.
+The approved fixture-only recovery writes disposable `auth.json` exactly as:
+
+```json
+{"openai":{"type":"api_key","key":"none"}}
+```
+
+This is intentionally fake, not a credential. It allows builtin model selection preflight while the cleared station is **never prompted**. Configured workers continue to make actual credential-free **faux** model calls. `PI_OFFLINE=1` and [`deny-network.mjs`](sdk-53-2-linux/deny-network.mjs), imported via allowlisted `NODE_OPTIONS` into all Node children, replace `fetch` with a throwing recorder before any model startup. The capture shows deny-fetch installation in every worker and **zero `fetch-denied` attempts**. This enforces the no-real-model-request boundary; it is not claimed to be a general OS-level network sandbox. The fixture never invokes socket/HTTP clients directly except the local stdio MCP fixture and Foundry's local channel.
+
+All HOME/agent/XDG/repository/session/state/temp locations are disposable. No real `~/.pi`, operator global configuration, production, 1Password or secrets are read or changed. Fixture Git history is fresh and commits disable hooks. SDK's intentional `modelsPath: null` is unchanged. The sibling loopback `models.json` remains in the global control fixture but is not needed to start the recovered cleared SDK worker.
+
+### Versions and captured launcher
+
+- Product base: `050145655c76a722afc6bce70ae422397e49872c`, including merged SDK adapter.
+- Capture source checkout HEAD: `5e67e08b500a287e3b6854883d22bc34f3dfaa6d`; recovery harness edits were uncommitted when observed. Product code equals the base above.
+- Pi **1.6.0**, Node **v22.23.2**, npm **10.9.8**.
+- `Linux omarchy 7.2.15-1-omarchy #1 SMP PREEMPT_DYNAMIC Mon, 02 Nov 2026 10:32:17 +0000 x86_64 GNU/Linux`.
+- Run began `2026-11-26T01:06:44Z`. Actual owned disposable root was under the short disk-backed parent above and was removed after cleanup.
+
+**Transformation label:** committed captures are path-normalized, not byte-for-byte raw. `/REPO` denotes the checkout, `/NODE` the pinned Node installation, `/RUN` that artifact's disposable root; irrelevant PATH search-list text is omitted. The normalization tool preserves argv/source/cwd relationships, launch IDs, marker strings, counts, model requests/results and representative errors. Private original captures remain outside Git at `/home/mark/f151/qualification/`. Checks use analogous `/CHECK_TMP` placeholders. These placeholders are substitutions, not literal runnable paths.
+
+Inherited worker command, with those consistent path substitutions:
 
 ```sh
-/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node \
- "$W/packages/host/dist/sdk-worker.js" \
+/NODE/bin/node /REPO/packages/host/dist/sdk-worker.js \
  --mode rpc --system-prompt '' --append-system-prompt '' \
  --no-extensions --no-mcp --no-skills --no-prompt-templates --no-themes \
  --no-context-files --no-approve \
- --session-id 2dc609cb-b431-4914-928d-4da6eb32652d \
+ --session-id 41360fb3-03e5-4e82-a065-2365afd9f6d6 \
  --model probe-faux/scripted \
  --tools read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_named \
- --extension "$W/packages/extension/dist/index.js" \
- --extension "$W/docs/evidence/rpc-53-2-linux/fixture.mjs" \
- --skill /tmp/fou151-qFno4S/skill/SKILL.md
-# cwd: /tmp/fou151-qFno4S/state/slots/probe/inherit-1
+ --extension /REPO/packages/extension/dist/index.js \
+ --extension /REPO/docs/evidence/rpc-53-2-linux/fixture.mjs \
+ --skill /RUN/skill/SKILL.md
+# cwd: /RUN/state/slots/probe/inherit-1
 ```
 
-Ordinary calibration command: the same Node executable, `$W/node_modules/@earendil-works/pi-coding-agent/dist/cli.js --mode rpc --model probe-faux/scripted --extension "$W/docs/evidence/rpc-53-2-linux/fixture.mjs"`, cwd the disposable user home. Its complete stdout and model context are retained.
+`result.markers` is authoritative for the captured session ID and all argv. Host argv remains RPC-compatible for parsing; the executed entry is SDK, **not** a running RPC server. `NODE_OPTIONS` imports the sibling `record-argv.mjs` and this draft's `deny-network.mjs`; neither replaces product launch logic or registers tools. Ordinary calibration is `/NODE/bin/node /REPO/node_modules/@earendil-works/pi-coding-agent/dist/cli.js --mode rpc --model probe-faux/scripted --extension /REPO/docs/evidence/rpc-53-2-linux/fixture.mjs`, cwd `/RUN/user`.
 
-### Effective fixture
+## Review recovery and historical evidence
 
-Full YAML, resolved validation and disposable environment are in `result.json`. Defaults: `probe-faux/scripted`, one configured skill file, configured fixture extension object with `tools: [probe_named]`. `inherit` inherits both lists; `skillclear` sets `skills: []`; `clear` sets both lists empty and model `probe-local/inert`. That independent provider is defined in disposable `models.json` with dummy `apiKey: none` and closed loopback `http://127.0.0.1:9/v1`; it is never called. Every station is worktree-isolated; source is a freshly initialized disposable repository with hooks disabled for its fixture commit.
+The previous blocker was the **fixture approach**, not a requirement for a product model-registration change. The first attempt selected an unauthenticated idle builtin; the next relied on `models.json`, which SDK intentionally does not load. These unsuccessful records and representative errors are preserved under [`history/`](sdk-53-2-linux/history/), with both original and current prerequisite-aware analysis. Neither is counted as a pass; the old analyzer's output is explicitly superseded.
 
-All user HOME, agent, XDG, source, session and state directories are disposable. No real `~/.pi`, operator config, production, 1Password, credential or paid real model call is used. `NODE_OPTIONS` only imports the sibling recording preload, which records argv/output and does not replace the host executable. Global MCP is a local fixture process, not a real service.
+Review fixes:
 
-## Failures, limits and independent remediation
+1. **M1:** give ordinary Pi and every child a short owned disk-backed `TMPDIR`, not just the parent. `/tmp` was confirmed at 1,048,576/1,048,576 used inodes; no unrelated global/temp cleanup was performed.
+2. **M2:** pure analyzer now requires ordinary calibration, nonempty accepted-worker/model-request evidence and actual tool results before negative exclusion checks can verify. Fully cleared evidence requires an actual accepted hello and nonempty argv records. No `.every([])` can prove exclusion. An unregistered-model reason is derived only from retained errors belonging to real clear-launch IDs, never invented before launches. Missing evidence is **unverified/inconclusive**. Driver outcome/exit 0 cannot force analyzer success.
+3. **Cheapest regression:** six pure unit cases in `test/sdk-resource-evidence.test.ts` cover empty/exit-zero-only records, failed calibration, missing accepted hello, missing model requests, supported observations independent of driver label, and one observed launch error without a hardcoded three-retry requirement. They launch no process and use no timing/filesystem/network.
 
-An initial fixture-development run selected idle builtin `openai/gpt-4o` for the fully cleared station; it exited before hello because the isolated home had no provider credentials (`setModel` requires auth). No prompt was sent to that station and no real provider request occurred. This was an observation-fixture error, not a negative SDK isolation result. Its sanitized output is retained as `fixture-error.json`; startup stderr was not collected by that earlier driver revision, so the auth diagnosis is source-supported, not a retained error trace. It is not counted as qualification evidence.
+The shared RPC harness's default five-tool expectation is **historical and not recertified** here. Only SDK's current 12/13 count is exercised. No actual RPC replay was requested for this ticket; do not interpret shared-driver updates as a current default-RPC gate pass.
 
-The corrected retained run restores the sibling's credential-free independent loopback model. `result.launchErrors` captures the **three identical explicit unregistered-model errors**, and `hostLog` ties them to the clear station's launch IDs and exit code 1. The failure is registration, not the later `/tmp` inode exhaustion. Both configured faux workers completed their tool round trips during this run. The daemon performed its normal automatic retries; the probe starts no further approach after retaining the reproducible failure.
+## Owned cleanup
 
-Independent follow-up, not implemented here: agree how the SDK should register an explicitly selected disposable model independently of removable extension lists (or approve a different credential-free clear-station fixture). Loading arbitrary global resources or retaining an inherited extension merely to keep its provider would weaken the gate. Decide that seam separately, then rerun the whole observation set with a live fully cleared station. This record does not prescribe loading all global model configuration or changing the product to satisfy a fixture.
+Probe shutdown targets **only** its disposable state root via `foundry shutdown --force`. Raw response: `factory probe stopped (3 worker(s))`, `worker host stopped`, `shutdown complete (forced)`. No process is selected for signaling by executable-name match.
 
-## Cleanup evidence
+`ownedBeforeShutdown` identifies only processes with this run's unique `PROBE_MARKER_DIR`: host PID/PGID **2663901**, workers **2663912**, **2663918**, **2663925** (each PID equals PGID), plus the foreground daemon. `ownedAfterShutdown` is empty; an exact-PGID `ps -eo pid=,pgid=,stat=,args=` filter finds **zero members** of the owned detached groups, including members that might have dropped the environment marker. The foreground daemon exited. The owned disposable root is removed only after successful cleanup. This does not qualify the separate cross-factory explicit-stop gate.
 
-The driver sends `foundry shutdown --force --home <owned disposable state>` only. It never signals by executable-name match. Raw shutdown: `factory probe stopped (2 worker(s))`, `worker host stopped`, `shutdown complete (forced)`. Host logs show the two accepted worker launches ended as requested; the failed clear launches had already exited.
+## Artifacts and regression checks
 
-`ownedBeforeShutdown` records only `/proc` processes whose environment includes this run's unique `PROBE_MARKER_DIR`: host PID/PGID **2410261**, workers PID/PGID **2410280** and **2410281**, and the foreground daemon. `ownedAfterShutdown` is empty. A subsequent exact-PGID `ps -eo pid=,pgid=,stat=,args=` inspection found **no members** of these three detached owned groups; retained in `cleanup.json`. This checks group members even if they removed the marker. No unrelated cleanup was performed. This is cleanup proof for this probe, not the separate explicit-stop cross-factory gate.
+- `sdk-53-2-linux/run-probe.mjs`: SDK selector wrapper reusing the calibrated sibling harness.
+- `sdk-53-2-linux/result.json`: transformed capture with versions, launch commands, YAML/validation, startup/model/tool markers, slot identities/state, network guard markers, daemon/host logs and cleanup.
+- `summarize.mjs`, `summarize.d.mts`, `observations.json`: prerequisite-aware pure classification and CLI.
+- `deny-network.mjs`, `normalize.mjs`: fixture-only fetch guard and labeled path transformation.
+- `history/`: preserved unsuccessful records and corrected reanalysis.
+- `checks/`: final regression logs; these are **separate** from the successful real-process observations.
 
-## Retained artifacts and repository checks
-
-- [`sdk-53-2-linux/run-probe.mjs`](sdk-53-2-linux/run-probe.mjs): SDK selector wrapper around existing sibling harness. Shared harness changes are limited to runtime selection, current SDK expected count, and owned-process/error evidence retention.
-- [`result.json`](sdk-53-2-linux/result.json): raw corrected run, versions, exact commands, effective YAML/validation, marker JSONL, actual model contexts/tool results, worker argv, daemon/host logs, clear-launch stderr and shutdown snapshots.
-- [`summarize.mjs`](sdk-53-2-linux/summarize.mjs), [`observations.json`](sdk-53-2-linux/observations.json), [`cleanup.json`](sdk-53-2-linux/cleanup.json), [`fixture-error.json`](sdk-53-2-linux/fixture-error.json).
-- [`checks/`](sdk-53-2-linux/checks/): retained successful regression logs and infrastructure-only Pi wrapper.
-
-Repository checks are separate from the **blocked** probe outcome. After committing the evidence, fetched and rebased on latest `origin/develop` (`050145655c76a722afc6bce70ae422397e49872c`, already up to date), then reran all five checks below. Retained logs are from that final run; the subsequent log-refresh commit changes documentation/artifacts only:
-
-- Build: exit **0**; typecheck: exit **0**; direct `./node_modules/.bin/oxlint`: exit **0**, empty diagnostics.
-- Full direct Vitest with private home-backed `TMPDIR`: **100 files / 837 tests passed**, exit **0**.
-- Separate e2e with private parent and child temp directory: **3 files / 5 tests passed**, exit **0**. Exact command: `TMPDIR=/home/mark/fou151-check-tmp FOUNDRY_PI_BIN=/home/mark/fou151-check-logs/pi-with-private-tmp ./node_modules/.bin/vitest run --config vitest.e2e.config.ts`. The retained wrapper exports only `TMPDIR` then execs the pinned Pi unchanged with all arguments. This environment workaround is regression-check wiring, **not used for the SDK probe**.
-- Initial default-`/tmp` full suite: **29 failed / 71 passed files; 193 failed / 587 passed / 57 skipped tests**. Separate e2e: **4 failed / 1 passed**. Infrastructure failures included `ENOSPC` mkdtemp and SQLite unable-to-open DB errors. `df -i /tmp` showed **1,048,576 / 1,048,576 inodes used**, despite 22 GiB free space. Moving parent TMPDIR alone passed full Vitest but left interrupt e2e timing out (**4/5 passed**), because its testkit intentionally omits parent TMPDIR from the worker environment; giving the unchanged pinned child a private TMPDIR passed all five. No product/test changes or unrelated temporary-directory cleanup were made.
-
-Fresh independent review remains required. No PR, merge or Linear update is part of this task. Regression health does not change the unmet passing qualification criterion.
+Final regression results are recorded below after latest-origin rebase. No testkit fixes are made in this branch; its omitted child TMPDIR still requires the documented pinned-Pi shim when `/tmp` is inode-exhausted.

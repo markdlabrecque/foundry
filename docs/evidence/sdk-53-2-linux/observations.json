@@ -1,12 +1,31 @@
 {
-  "actual SDK host selection": "verified",
-  "ordinary global extension/MCP/context/defaultTools calibration": "verified",
-  "inherit/1: configured model/resources and excluded ambient resources": "verified",
-  "skillclear/1: configured model/resources and excluded ambient resources": "verified",
-  "global/repository extensions and MCP never loaded in workers": "verified",
-  "cleared extension/skill argv and no configured extension startup": "verified",
-  "reproducible clear-station failure": "verified",
-  "owned marked processes cleaned": "verified",
-  "fully cleared station connects without extension/tools": "unmet: no registered fixture model; no accepted hello",
-  "gate outcome": "blocked-on-tested-approaches; passing criterion remains unmet, SDK capability inconclusive"
+  "outcome": "supported",
+  "phase": "observations-complete",
+  "reason": "All scoped observations verified; not whole-launcher qualification",
+  "observations": {
+    "ordinary global controls": {
+      "status": "verified"
+    },
+    "inherit/1 configured resources, exclusions and real named call": {
+      "status": "verified"
+    },
+    "skillclear/1 configured resources, exclusions and real named call": {
+      "status": "verified"
+    },
+    "global/repository extensions and MCP excluded in connected workers": {
+      "status": "verified"
+    },
+    "actual SDK launch and neutral cwd": {
+      "status": "verified"
+    },
+    "fully cleared inheritance in a connected unprompted station": {
+      "status": "verified"
+    },
+    "offline fake-auth fixture and deny-fetch active": {
+      "status": "verified"
+    },
+    "owned marked processes and groups cleaned": {
+      "status": "verified"
+    }
+  }
 }

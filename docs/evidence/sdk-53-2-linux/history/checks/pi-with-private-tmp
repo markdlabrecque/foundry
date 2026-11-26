@@ -1,0 +1,4 @@
+#!/bin/sh
+# Infrastructure-only launch wrapper; pinned executable and all args unchanged.
+export TMPDIR=/CHECK_TMP
+exec /NODE/bin/node /REPO/node_modules/@earendil-works/pi-coding-agent/dist/cli.js "$@"

@@ -1,5 +1,5 @@
 
- RUN  v5.1.1 /home/mark/worktress/develop/t3-2b8eba8e-cff669249e50faa9
+ RUN  v5.1.1 /REPO
 
 (node:2550820) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
@@ -107,7 +107,7 @@
 (Use `node --trace-warnings ...` to show where the warning was created)
 foundry: channel hello refused (terminal launch_not_current)
 foundry: channel hello refused (retryable host_unreachable)
-foundry: channel not reached at /home/mark/fou151-check-tmp/foundry-tool-set-9hSkug/unused.sock: Error: connect ENOENT /home/mark/fou151-check-tmp/foundry-tool-set-9hSkug/unused.sock
+foundry: channel not reached at /CHECK_TMP/foundry-tool-set-9hSkug/unused.sock: Error: connect ENOENT /CHECK_TMP/foundry-tool-set-9hSkug/unused.sock
 (node:2557171) ExperimentalWarning: SQLite is an experimental feature and might change at any time
 (Use `node --trace-warnings ...` to show where the warning was created)
 (node:2557209) ExperimentalWarning: SQLite is an experimental feature and might change at any time
