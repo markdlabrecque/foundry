@@ -1,0 +1,28 @@
+{
+  "normalization": "Documented path placeholders, not literal raw host output; see ../../sdk-restore-and-prime.md",
+  "base": "6dc2a5b5f01b9be13d465bccecedc67f04e8410c",
+  "checkoutHeadAtProbe": "0fe083b318cc4acd9bf1a4a929bb47d9f8d64ab8 (verifier fixes committed; final artifact refresh uncommitted)",
+  "node": "v22.23.2",
+  "pi": "1.6.0",
+  "build": { "command": "npm run build", "exit": 0, "output": "build.log" },
+  "typecheck": { "command": "npm run typecheck", "exit": 0, "output": "typecheck.log" },
+  "lint": { "command": "./node_modules/.bin/oxlint", "exit": 0, "output": "oxlint.log", "diagnostics": "empty" },
+  "pureRed": { "command": "node --test docs/evidence/sdk-restore-and-prime/probe-verification.test.mjs", "implementation": "temporarily extracted pre-review checks", "exit": 1, "passedTests": 1, "failedTests": 16, "output": "unit-red.log", "classification": "expected red proving legacy verifier gaps, not a current regression-suite failure" },
+  "pureGreen": { "command": "node --test docs/evidence/sdk-restore-and-prime/probe-verification.test.mjs", "implementation": "fixed independent verifier plus normalization regression", "exit": 0, "passedTests": 18, "output": "unit-green.log" },
+  "vitest": { "command": "TMPDIR=<private-tmp> ./node_modules/.bin/vitest run", "exit": 0, "passedFiles": 100, "passedTests": 837, "output": "vitest.log" },
+  "e2eHistoricalParentOnly": { "command": "TMPDIR=<private-tmp> ./node_modules/.bin/vitest run --config vitest.e2e.config.ts", "exit": 1, "passedFiles": 2, "passedTests": 4, "failedFiles": 1, "failedTests": 1, "output": "e2e.log", "classification": "historical interrupt timeout with /tmp inode exhaustion; no exposed child ENOSPC stack" },
+  "e2eIsolatedChildTmp": { "command": "TMPDIR=<private-tmp> FOUNDRY_PI_BIN=<private-tmp>/pi-tmp ./node_modules/.bin/vitest run --config vitest.e2e.config.ts", "exit": 0, "passedFiles": 3, "passedTests": 5, "output": "e2e-isolated-tmp.log", "qualification": "shim sets child TMPDIR only and execs unchanged pinned Pi CLI/argv; shared testkit fix remains separately owned" },
+  "sdkProbe": { "command": "TMPDIR=<private-tmp> node docs/evidence/sdk-restore-and-prime/run-probe.mjs <private-tmp>/fixed-probe", "exit": 0, "runtimeSelector": "FOUNDRY_WORKER_RUNTIME=sdk", "piBinOverride": "absent", "outcome": "supported-on-tested-linux-implementation", "orderlyCleanup": true, "fallbackUsed": false, "rootAbsenceVerified": true, "output": "../result.json" },
+  "finalIntegration": {
+    "base": "d6a3856ed8f5c7d6f151279dd2e66c2a01ac5a69",
+    "checkoutAtVerification": "f736cb0086a7b1a4eeffbe2d55466bd395d0cdd9",
+    "environment": "Short private disk-backed parent TMPDIR; shared child-TMPDIR fix inherited from develop; FOUNDRY_PI_BIN unset; no diagnostic shim",
+    "build": { "exit": 0, "output": "integration/build.log" },
+    "typecheck": { "exit": 0, "output": "integration/typecheck.log" },
+    "directOxlint": { "exit": 0, "diagnostics": "empty", "output": "integration/oxlint.log" },
+    "pure": { "exit": 0, "passedTests": 18, "output": "integration/unit.log" },
+    "vitest": { "exit": 0, "passedFiles": 101, "passedTests": 839, "output": "integration/vitest.log" },
+    "normalE2e": { "command": "env -u FOUNDRY_PI_BIN TMPDIR=<private-tmp> npm run test:e2e", "exit": 0, "passedFiles": 3, "passedTests": 5, "output": "integration/e2e.log" }
+  },
+  "review": "Coordinator-reported fresh independent GPT6.1SOL re-review approved ea07775 without must-fixes; independently verified pure cases, extra cleanup/prime negatives, actual SDK probe/orderly cleanup and 837 tests. Rebase/integration changes no verifier or fixture code."
+}
