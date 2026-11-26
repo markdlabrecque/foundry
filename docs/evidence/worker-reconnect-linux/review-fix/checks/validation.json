@@ -1,0 +1,34 @@
+{
+  "observedAt": "2026-11-26T02:26:33Z",
+  "implementationCommit": "8505ae69e923c06250ab714a5aca3e2e1827415b",
+  "baseCommit": "1bde222862fbf6d1d4ba311faa85cf62ee601c46",
+  "baseIntegration": "FOU-163 collision fix, host-control protocol 5; fresh disposable hosts only",
+  "environment": {
+    "TMPDIR": "<fixture-root>/validation-temp",
+    "FOUNDRY_PI_BIN": "unset",
+    "piDiagnosticShim": false,
+    "node": "v22.23.2",
+    "pi": "1.6.0",
+    "platform": "linux x64"
+  },
+  "checks": [
+    { "command": "npm run build", "exitCode": 0 },
+    { "command": "npm run typecheck", "exitCode": 0 },
+    { "command": "./node_modules/.bin/oxlint", "exitCode": 0, "diagnostics": [] },
+    { "command": "npx vitest run test/worker-refusal.test.ts packages/extension/test/launch-state.test.ts packages/extension/test/reconnect.test.ts", "exitCode": 0, "testFilesPassed": 3, "testsPassed": 15 },
+    { "command": "npm test", "exitCode": 0, "testFilesPassed": 105, "testsPassed": 862, "durationSeconds": 16.96 },
+    { "command": "npm run test:e2e", "exitCode": 0, "testFilesPassed": 3, "testsPassed": 5, "durationSeconds": 7.50 },
+    { "command": "git diff --check", "exitCode": 0 }
+  ],
+  "redGreen": {
+    "reviewedProductionHead": "71e13a6d3d39af1d09ffa9a541fe7d42abf6fec8",
+    "actualReloadRed": "expected 2 dials to be 1; no production modification for this red run",
+    "actualReloadGreen": "one total dial, zero tool frames, identical explicit terminal code and detail after real session.reload()",
+    "newTests": "one actual reload integration case and two process/launch-state unit cases"
+  },
+  "probes": [
+    { "entry": "docs/evidence/rpc-52-1-linux/run-probe.mjs", "runtime": "rpc", "ambientRuntime": "sdk", "result": "supported", "checksTrue": 11, "uncommitted": [] },
+    { "entry": "docs/evidence/sdk-52-1-linux/run-probe.mjs", "runtime": "sdk", "result": "supported", "checksTrue": 11, "uncommitted": [] }
+  ],
+  "review": "P1 correction complete; fresh independent GPT 6.1 SOL re-review by coordinator pending; no PR or CI yet"
+}

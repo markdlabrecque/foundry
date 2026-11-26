@@ -1,0 +1,17 @@
+{
+  "observedAt": "2026-11-26T02:26:33.674Z",
+  "groups": [
+    {
+      "launchId": "9c0196ad-ac15-4cf8-86a1-a3167766ace9",
+      "pgid": 3076720,
+      "status": "ESRCH"
+    },
+    {
+      "launchId": "d0483386-6cec-4b56-8a6a-82ecf34c0541",
+      "pgid": 3076726,
+      "status": "ESRCH"
+    }
+  ],
+  "rootRemoved": true,
+  "survivors": []
+}

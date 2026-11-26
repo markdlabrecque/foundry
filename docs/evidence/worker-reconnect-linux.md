@@ -1,6 +1,13 @@
 # Worker reconnect candidate — FOU-162
 
-## Candidate verdict: supported on tested Linux RPC and SDK paths
+## Historical candidate: positive probes, subsequently found incomplete
+
+**Review follow-up:** fresh independent review of `71e13a6` confirmed the positive
+probes but found a P1: an actual Pi `session.reload()` cleared terminal refusal
+for the same launch. The implementation below is historical, not the current
+complete candidate. See [the reload correction and fresh reruns](worker-reconnect-reload-linux.md)
+for rebased implementation `8505ae6` and current validation. All artifacts below retain
+their original provenance unchanged.
 
 Implementation `d24ad90554084039e8632bc0847b76d8be660698`, based on fetched
 `origin/develop` `43f703492834f9a2b558718094c737cfb0166da7`. Both actual-process
@@ -50,7 +57,8 @@ Cheapest-tier evidence:
   retryable recovery, terminal latch, shutdown, cancelled/late dials and frames,
   fresh observations, and the two reporter races. No sockets, Pi or sleeps.
 - Red: the initial retry test first failed (`expected +0 to be 1`) against an
-  extracted one-dial baseline matching the old worker's lack of retry. The
+  hand-extracted one-dial baseline matching the old worker's lack of retry,
+  **not the untouched base implementation**. The
   [retained baseline](worker-reconnect-linux/checks/red-baseline.ts.txt) and
   [failure log](worker-reconnect-linux/checks/red.log) make the exact scope of
   this red observation explicit; it was not a new 45-second process run.
