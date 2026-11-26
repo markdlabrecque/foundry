@@ -49,6 +49,8 @@ export {
   buildLaunchArgs,
   buildLaunchCommand,
   resolvePiExecutable,
+  resolveWorkerExecutable,
+  WORKER_RUNTIME_ENV,
 } from "./launch-command.js";
 
 export type {

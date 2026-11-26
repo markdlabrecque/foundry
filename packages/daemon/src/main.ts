@@ -57,7 +57,7 @@ import type { ManagementApi } from "./management-api.js";
 import { selectStateRoot } from "@foundry/protocol/state-root";
 import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUEST, AGENT_STATUS, TASK_TRANSITION, HUMAN_REQUEST, channelSocketPath } from "@foundry/protocol";
 import { fileURLToPath } from "node:url";
-import { connectHost, resolvePiExecutable } from "@foundry/host";
+import { connectHost, resolveWorkerExecutable } from "@foundry/host";
 import type { HostConnection } from "@foundry/host";
 import { connectOrStartHost, createSlotScheduler, planSlots, recordedCurrentLaunch, storedConversation, storeSlotInterrupter, storeSlotsReader } from "./slots.js";
 import { startChannelServer } from "./channel/server.js";
@@ -581,7 +581,7 @@ const main = async (): Promise<void> => {
         revokeSlot: (factoryId, slotId) => channel?.revokeSlot(factoryId, slotId),
         hostId: identity.hostId,
         bootId: identity.bootId,
-        pi: resolvePiExecutable(process.env),
+        pi: resolveWorkerExecutable(process.env),
         foundryExtension: foundryExtensionPath(),
         slots: plannedSlots,
         freezer,
