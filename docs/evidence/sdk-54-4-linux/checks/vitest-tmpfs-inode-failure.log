@@ -3347,4 +3347,3 @@ fatal: cannot lock ref 'HEAD': Unable to create '/tmp/foundry-worktrees-5pUufD/s
 
     Isolate  100 workers spawned · ~162ms startup each (spawn + environment, per file)
              at least ~916ms faster with isolate: false — reuses workers across files instead of one per file
-

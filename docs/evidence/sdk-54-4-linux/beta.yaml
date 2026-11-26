@@ -5,7 +5,7 @@ repository:
   default_branch: main
 default_production_line: f
 worktrees:
-  root: "/tmp/fou122-EL6FrC/worktrees-beta"
+  root: "/home/mark/f155-3U7EJw/fou122-NXLzQl/worktrees-beta"
 rooms:
   eng:
     stations:

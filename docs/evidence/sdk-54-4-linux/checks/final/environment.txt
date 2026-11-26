@@ -1,0 +1,2 @@
+TMPDIR=/home/mark/f155-ZtqMRP
+FOUNDRY_PI_BIN=/home/mark/f155-ZtqMRP/pi-shim

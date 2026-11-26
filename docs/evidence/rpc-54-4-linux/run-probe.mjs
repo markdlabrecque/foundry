@@ -56,6 +56,7 @@ writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ enableInstallTel
 const env = {
   PATH: process.env.PATH ?? "",
   HOME: user,
+  TMPDIR: root, // Keep transpiler caches inside this run, including in isolated Pi children.
   XDG_CONFIG_HOME: join(user, ".config"),
   XDG_DATA_HOME: join(user, ".local/share"),
   XDG_CACHE_HOME: join(user, ".cache"),
@@ -394,7 +395,7 @@ try {
   const alphaEscalation = alpha.map((l) => escalationOf(stop.samples, l, childOf(l)));
   note("after stop", {
     escalation: alphaEscalation,
-    hostRecords: afterStop.map(({ factoryId, slotId, pgid, liveness, exit }) => ({ factoryId, slotId, pgid, liveness, exit })),
+    hostRecords: afterStop.map(({ launchId, factoryId, slotId, pid, pgid, liveness, exit }) => ({ launchId, factoryId, slotId, pid, pgid, liveness, exit })),
     alphaGroupsAlive: alpha.map((l) => ({ pgid: l.pgid, alive: groupAlive(l.pgid) })),
     alphaChildrenAlive: alphaChildren.map((pid) => ({ pid, alive: pidAlive(pid) })),
     betaGroupsAlive: beta.map((l) => ({ pgid: l.pgid, alive: groupAlive(l.pgid) })),

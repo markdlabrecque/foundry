@@ -1,0 +1,30 @@
+
+ RUN  v5.1.1 /home/mark/worktress/develop/t3-b678ba8d-5cb10feec1c2d8fa
+
+(node:2573915) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2573913) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/extension/e2e/interrupt.e2e.test.ts (1 test | 1 failed) 60030ms
+   × an interrupt aborts the active run and keeps the launch and conversation 60030ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 1 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  packages/extension/e2e/interrupt.e2e.test.ts > an interrupt aborts the active run and keeps the launch and conversation
+TestTimeoutError: Test timed out in 60000ms.
+If this is a long-running test, pass a timeout value as the last argument or configure it globally with "testTimeout".
+ ❯ packages/extension/e2e/interrupt.e2e.test.ts:46:1
+     44| };
+     45|
+     46| test("an interrupt aborts the active run and keeps the launch and conv…
+       | ^
+     47|   dir = await mkdtemp(join(tmpdir(), "foundry-interrupt-"));
+     48|   const hellos: Array<string> = [];
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/1]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  1 failed | 4 passed (5)
+   Start at  16:56:42
+   Duration  60.60s (tests 98%, import 2%)

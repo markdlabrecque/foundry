@@ -21,9 +21,11 @@ SIGKILL. The non-detached children were present throughout the sampled membershi
 intervals, escalation was reported, and all groups disappeared within the bound.
 The raw result is retained unchanged, not relabeled as an all-green harness run.
 This is a probe-expectation mismatch, not an observed failure to stop a group or
-an unavailable platform. A reviewer should assess the contract observations below
-separately from those two stronger RPC expectations. No further run was made to
-chase green checks after the required observations completed.
+an unavailable platform. The follow-up adds a separate `sdk-assessment.json` with
+eight independent contract checks, without rewriting any generic raw flag. A reviewer should assess the contract observations below
+separately from those two stronger RPC expectations. The initial run stopped after complete observations. One bounded follow-up run
+was explicitly requested to exercise the new SDK assessment; its raw flags again
+remain 11/13, never 13/13.
 
 | Criterion | Verification |
 |---|---|
@@ -32,11 +34,97 @@ chase green checks after the required observations completed.
 | Bounded escalation with non-detached child | **Verified.** Initial membership placed each child in its leader's PGID, matching fixture `detached: false`. The sampler polls every 250 ms and retains changed membership only: alpha's six-process initial membership became beta-only at +10,299 ms; beta's pair became empty at +10,341 ms during shutdown. No intermediate membership change was recorded. Every stop result reports escalation; host logs record SIGKILL for all three leaders. Child-after-leader-exit is **not observed** and is not claimed. |
 | No owned groups after whole-instance shutdown | **Verified.** Non-force shutdown exited 0 in 10,341 ms with `hostStopped: true`. `ps` found no member in any of the three recorded groups; signal-0 probes found every group and child absent. Daemon exited 0, host absent, run-marker process scan empty **before** fallback cleanup. |
 
-No required Linux explicit-stop criterion is unmet or unverified. Independent
-review is still required; regression-suite success is not the evidence for these
-process observations.
+No required Linux explicit-stop criterion is unmet or unverified. The table
+records the initial run; independent review and the follow-up run are detailed
+below. Regression-suite success is not the evidence for these process observations.
 
-## Versions, revision and exact launch
+## Follow-up assessment and validation (current retained run)
+
+Independent GPT 6.1 SOL review of `090920a` was supplied by the coordinating
+thread: no narrow evidence-approval blockers, independently reproduced SDK 11/13
+with the same two RPC-specific diagnostic failures, and backward-compatible RPC
+13/13. These are attributed review observations, not new runs performed here.
+The reviewer also reported repeat interrupt e2e timeouts, requiring follow-up.
+
+The current repeat run, 2026-11-26 01:02:23–01:02:46 UTC, used the same product
+base and versions as the initial run, with the SDK assessment and harness-only
+changes visible in the raw `versions.uncommitted` record. It records:
+
+- Alpha PGIDs 2616382 / 2616389 with non-detached children 2616598 / 2616615.
+  Scoped stop completed in **10,306 ms**, escalated both, leaving neither group.
+- Original beta launch `6786f5e8-b300-4b34-a58e-550310a9ea8a`, PID/PGID 2616395,
+  child 2616609, survived alpha stop. The retained post-stop inventory now includes
+  launch ID and PID, explicitly compared with the original identity.
+- Beta shutdown completed in **10,298 ms**, with escalation of that exact launch.
+  Every owned group/child, host and daemon was absent before fallback cleanup.
+- `sdk-assessment.json`: **supported**, eight contract checks true. Each CLI
+  duration must be positive and at most **17,000 ms**: the documented 5+5+5 s
+  stop windows plus 2 s CLI overhead. Unexpected extra stop/shutdown launches,
+  replaced beta identities, missing fixture children or cleanup-only absence
+  cannot produce a supported assessment.
+- `summary.json`: original generic **failed**, **11/13** flags true, with both
+  child-outlives-leader flags still false. The shared RPC verdict is unchanged.
+
+Current artifacts are at `sdk-54-4-linux/`; the initial run's exact summary,
+YAML and daemon/host logs are preserved under `initial-run/`. The detailed
+initial-run timeline/launcher below refer to those initial artifacts; the current
+run's full launcher is in the current `summary.json`.
+
+### Short disk-backed reproduction
+
+```sh
+npm ci && npm run build
+short=$(mktemp -d "$HOME/f155-XXXXXX")
+TMPDIR="$short" node docs/evidence/sdk-54-4-linux/run-probe.mjs "$(mktemp -d "$HOME/f155-out-XXXXXX")"
+rmdir "$short"
+# Full checks, with the child-Pi TMPDIR workaround (output remains for inspection):
+bash docs/evidence/sdk-54-4-linux/run-validation.sh docs/evidence/sdk-54-4-linux/checks/reproduction
+```
+
+The probe now passes its disposable run root as `TMPDIR` to its isolated children,
+keeping Pi's transpiler cache out of global `/tmp`. This is manual harness
+isolation, not a product/testkit change. Use a short disk-backed root: checkout-
+length roots can exceed Unix-socket path limits.
+
+### Interrupt environment control and final checks
+
+`startFauxPi` deliberately drops outer environment variables except PATH; an outer
+TMPDIR alone therefore does not control its Pi child's transpiler cache. No change
+was made to that shared testkit. The retained `run-validation.sh` generates a
+private temporary executable shim, exporting a short home-backed TMPDIR *inside*
+the Pi child before exec of this checkout's unchanged pinned Pi `dist/cli.js`.
+The helper captures its exact shim/environment, runs the exact interrupt test,
+full ordinary Vitest and ordinary e2e suite, then removes only its own temp root.
+It never deletes `/tmp/jiti`, global caches or unrelated temporary files.
+
+Reviewer timeout logs are copied to `checks/followup/reviewer-*-timeout.log`.
+The independent FOU-124 diagnostic's explicit ENOSPC attribution was supplied by
+the coordinator, not generated here. This follow-up's `tmp-inode-control.log`
+records a fresh uniquely named `/tmp` write failing with **ENOSPC**, with
+**0 free inodes** of 1,048,576. The controlled
+outer-TMPDIR/no-shim interrupt run **passed 1/1** (`interrupt-before.log`); it did
+not reproduce the reviewer's timeout, likely benefiting from existing cache
+entries. That possibility is not a measured cache-hit claim. Consequently this
+is **not** claimed as a deterministic red-to-green product fix.
+
+With the private child shim, the exact interrupt test passed **1/1**; full suite
+passed **100 files / 837 tests**; complete ordinary e2e passed **3 files / 5
+tests**. Build, typecheck and direct oxlint all exited 0. Exact commands, child
+shim, environment and exit codes are retained in `checks/followup/`. After
+committing, fetching and rebasing latest `origin/develop` (unchanged product base
+`050145655c76a722afc6bce70ae422397e49872c`), the entire helper was repeated:
+build/typecheck/direct lint exit 0, exact interrupt **1/1**, full Vitest **100
+files / 837 tests**, ordinary e2e **3 files / 5 tests**, all exit 0. Final command
+outputs, effective shim, environment and exits are in `checks/final/`. This resolves
+the requested final controlled validation without claiming the earlier timeout
+could not recur under the exhausted uncontrolled `/tmp` environment.
+
+Retained text logs are normalized only by removing trailing whitespace on each
+line and trailing blank lines, retaining one final newline for nonempty files.
+JSON/YAML observations are not normalized. `checks/normalization.txt` lists the
+normalized log paths; content, diagnostics, counts and exit codes are not changed.
+
+## Initial-run versions, revision and exact launch
 
 Run: 2026-11-26 00:45:44–00:46:07 UTC. Linux x64, kernel `7.2.15-1-omarchy`,
 Node `v22.23.2`, npm `10.9.8`, pinned Pi `1.6.0`. Product revision:
@@ -47,12 +135,15 @@ were clean. `npm ci` and build completed before the probe.
 Reproduce at repo root after `npm ci && npm run build`:
 
 ```sh
-node docs/evidence/sdk-54-4-linux/run-probe.mjs "$(mktemp -d)"
+short=$(mktemp -d "$HOME/f155-XXXXXX")
+TMPDIR="$short" node docs/evidence/sdk-54-4-linux/run-probe.mjs "$(mktemp -d "$HOME/f155-out-XXXXXX")"
+rmdir "$short"
 ```
 
 The SDK wrapper reuses `../rpc-54-4-linux/run-probe.mjs` and its existing
-`probe-extension.ts`; the shared driver gains only an optional validated runtime
-argument and records that selector. The wrapper supplies `sdk`, which sets
+`probe-extension.ts`; the shared driver gains an optional validated runtime
+argument, records that selector and post-stop launch identities, and isolates
+child TMPDIR. Its existing raw predicates/verdict are unchanged. The wrapper supplies `sdk`, which sets
 **`FOUNDRY_WORKER_RUNTIME=sdk`** in the isolated daemon environment. No
 `FOUNDRY_PI_BIN` override is provided. The daemon starts the real detached Worker
 Host, which launches real SDK workers with the pinned Pi dependency. Driver:
@@ -165,7 +256,7 @@ Under [sdk-54-4-linux/](sdk-54-4-linux/):
   for reproducibility, not secrets.
 - `checks/`: captured regression command output and exit summary.
 
-One completed run only; no daemon kill, restart, graceful drain acknowledgement,
+One initial run and one requested bounded follow-up; no daemon kill, restart, graceful drain acknowledgement,
 force stop, detached descendants, inaccessible/foreign groups, real providers or
 other platform were tested. The known shared-extension reconnect problem was not
 changed, disproved or qualified. Prior context:
@@ -174,13 +265,12 @@ changed, disproved or qualified. Prior context:
 [rpc-gate-decision.md](rpc-gate-decision.md), and
 [sdk-147-trial.md](sdk-147-trial.md).
 
-Potential independent probe maintenance: give future SDK runs a contract-specific
-aggregate, retaining child-outlives-leader as a diagnostic instead of a universal
-pass predicate. No product remediation is proposed to make those RPC-only
+The follow-up implements the separate SDK contract assessment, retaining
+child-outlives-leader in the unchanged generic aggregate as a diagnostic. No product remediation is proposed to make those RPC-only
 predicates pass. Any SDK child-handle/graceful-exit improvement is separate work,
 not a prerequisite invented by this evidence and not implemented here.
 
-## Regression verification and handoff
+## Initial regression verification and handoff
 
 Against product base `050145655c76a722afc6bce70ae422397e49872c`:
 `npm run build`, `npm run typecheck`, direct `./node_modules/.bin/oxlint`,
@@ -203,7 +293,7 @@ suite exit 1 (59 files passed / 41 failed, 696 tests passed / 141 failed), e2e
 exit 1 (1 passed / 4 failed tests). Both attempts' full logs are retained as
 `checks/*-tmpfs-inode-failure.log` and `checks/*-long-path-failure.log`.
 
-Final post-rebase verification used the short disposable
+The initial handoff's final post-rebase verification used the short disposable
 `TMPDIR=/home/mark/f155-SUvrBu` for both direct Vitest commands: **exit 0,
 100 files / 837 tests**, and **exit 0, 3 files / 5 e2e tests**. Those final passing
 outputs are `checks/vitest.log` and `checks/e2e.log`. Only TMPDIR changed; no test
@@ -212,7 +302,8 @@ after their tests cleaned up, including residual jiti caches. These regression
 environment failures occurred after the manual SDK observations and do not alter
 that raw probe result or establish a product regression.
 
-Branch: `marklabrecque/fou-155-check-sdk-explicit-stop-on-linux`. No PR, merge,
-tracker edit or product fix. A fresh independent review must reconcile the
-contract verdict with the transparently retained raw probe discrepancy before
-using this as passing Linux gate evidence.
+Branch: `marklabrecque/fou-155-check-sdk-explicit-stop-on-linux`. No merge,
+tracker edit or product fix. Fresh independent review supplied by the coordinator
+supports the narrow Linux contract verdict and the raw diagnostic reconciliation.
+The assessment/validation follow-up is explicitly documented above; no overall
+launcher qualification is implied.
