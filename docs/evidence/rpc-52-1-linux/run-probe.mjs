@@ -30,6 +30,10 @@ import { connectHost } from "@foundry/host";
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repo = resolve(here, "../../..");
+// Runtime belongs to the entry point, never the caller's ambient environment.
+const runtime = new URL(import.meta.url).searchParams.get("runtime") ?? "rpc";
+
+if (!["rpc", "sdk"].includes(runtime)) {throw new Error(`unsupported probe runtime: ${runtime}`);}
 const DAEMON = join(repo, "packages/daemon/dist/main.js");
 const CLI = join(repo, "packages/cli/dist/main.js");
 const PROBE_EXTENSION = join(here, "probe-extension.ts");
@@ -46,8 +50,9 @@ const home = join(root, "home");
 const user = join(root, "user");
 const agentDir = join(root, "agent");
 const probeDir = join(root, "probe");
+const childTemp = join(root, "tmp");
 
-for (const dir of [user, agentDir, probeDir]) {mkdirSync(dir, { recursive: true });}
+for (const dir of [user, agentDir, probeDir, childTemp]) {mkdirSync(dir, { recursive: true });}
 
 writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ enableInstallTelemetry: false }));
 
@@ -58,8 +63,8 @@ const env = {
   XDG_DATA_HOME: join(user, ".local/share"),
   XDG_CACHE_HOME: join(user, ".cache"),
   PI_CODING_AGENT_DIR: agentDir,
-  // Optional SDK gate reuses this real-process wiring and the same busy fixture.
-  FOUNDRY_WORKER_RUNTIME: process.env.FOUNDRY_WORKER_RUNTIME ?? "rpc",
+  TMPDIR: childTemp,
+  FOUNDRY_WORKER_RUNTIME: runtime,
   PI_OFFLINE: "1",
   PI_TELEMETRY: "0",
   FOUNDRY_HOME: join(root, "not-this-one"),
@@ -301,6 +306,8 @@ const slotLaunches = (body) => (body?.result?.slots ?? []).map((s) => ({ slotId:
 let first;
 let second;
 let result = "inconclusive";
+let phase = "setup";
+let failurePhase;
 const checks = {};
 
 try {
@@ -314,6 +321,7 @@ try {
     uncommitted: execFileSync("git", ["status", "--porcelain"], { cwd: repo, encoding: "utf8" }).split("\n").filter(Boolean),
   });
 
+  phase = "initial-channel-control";
   first = await startDaemon();
   note("first daemon serving", { pid: first.child.pid });
 
@@ -357,6 +365,7 @@ try {
     throw new Error("observation preconditions failed: two busy, connected workers required");
   }
 
+  phase = "daemon-kill";
   // Abrupt kill of the owned daemon only; never signal a PID without our marker.
   if (!hasMarker(first.child.pid)) {throw new Error("daemon ownership marker missing");}
 
@@ -376,6 +385,7 @@ try {
   checks.daemonKilledAbruptly = firstExit.signal === "SIGKILL";
   checks.workersAndHostSurviveKill = afterKill.hostAlive && live.length === 2 && afterKill.workersAlive.every((w) => w.alive);
 
+  phase = "restart-observation";
   // Restart on the same state root.
   const logOffset = daemonLogSize();
   second = await startDaemon();
@@ -428,6 +438,7 @@ try {
   checks.reconnectedToRestartedDaemon = launchIds.every((id) => channelsAfter[id].accepted.length > 0);
   checks.channelTrafficResumed = launchIds.every((id) => (channelsAfter[id].frameCounts.heartbeat ?? 0) >= 2);
 
+  phase = "shutdown";
   const down = await cli(["shutdown"]);
   note("shutdown", down);
   await Promise.race([second.exited, sleep(15_000)]);
@@ -441,9 +452,13 @@ try {
   // `blocked`: blocked on the tested approach, the ticket's label for a reproducible failure.
   result = Object.values(checks).every(Boolean) ? "supported" : "blocked";
 } catch (error) {
-  // An observation-tool/environment error is not a demonstrated product failure.
-  result = "inconclusive";
-  note("error", { message: String(error?.stack ?? error) });
+  failurePhase = phase;
+  // Preserve a completed product failure even if later observation/cleanup fails.
+  // Setup/control errors alone are not evidence that the product gate failed.
+  const failedProductChecks = Object.entries(checks).filter(([key, value]) =>
+    !["fixtureShape", "connectedBeforeKill", "shutdownLeavesNothing"].includes(key) && value === false);
+  result = failedProductChecks.length > 0 ? "blocked" : "inconclusive";
+  note("error", { phase, completedChecks: checks, message: String(error?.stack ?? error) });
 } finally {
   const beforeSweep = runProcesses();
   const survivors = await sweep();
@@ -461,7 +476,7 @@ try {
     note("state root logs", { files: logFiles, copiedTo: outDir });
   }
 
-  writeFileSync(join(outDir, "summary.json"), `${JSON.stringify({ result, checks, log }, null, 2)}\n`);
+  writeFileSync(join(outDir, "summary.json"), `${JSON.stringify({ runtime, result, phase, failurePhase, checks, log }, null, 2)}\n`);
   rmSync(root, { recursive: true, force: true });
   note("result", { result, checks, outDir });
 }

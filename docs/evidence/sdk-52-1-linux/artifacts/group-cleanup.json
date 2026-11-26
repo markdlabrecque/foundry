@@ -1,16 +1,15 @@
 {
-  "at": "2026-11-26T00:47:26.060Z",
+  "at": "2026-11-26T01:08:08.321Z",
   "groups": [
     {
-      "pgid": 2394387,
+      "pgid": 2651655,
       "exists": false,
       "code": "ESRCH"
     },
     {
-      "pgid": 2394388,
+      "pgid": 2651662,
       "exists": false,
       "code": "ESRCH"
     }
-  ],
-  "removedFixture": true
+  ]
 }

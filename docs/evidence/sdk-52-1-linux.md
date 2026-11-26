@@ -2,171 +2,182 @@
 
 ## Verdict: blocked on the tested implementation
 
-The actual SDK Worker Host and pinned Pi were available. Both busy workers survived
-an abrupt daemon-only kill, retained their original launch IDs and slots, and had
-no replacements. **Neither reconnected or resumed channel traffic.** The passing
-criterion is **unmet**; this negative record cannot close it or qualify the SDK.
-This is not a claim that the SDK platform inherently cannot reconnect.
+**Original passing criterion remains unmet.** The actual SDK Worker Host and pinned
+Pi are available. Two busy workers survive an abrupt daemon-only kill, retain
+their original launch IDs and slots, and have no replacements. Neither reconnects
+or resumes traffic. This is not intrinsic SDK incapability or platform unavailability.
 
-Contract: PRD §17.2 gate 1 and SDK fallback. No §17.3, restoration, compaction,
-resource-isolation or explicit-stop gate qualification is claimed. Read alongside
-[RPC sibling evidence](rpc-52-1-linux.md), [launcher decision](rpc-gate-decision.md)
-and [SDK adapter trial](sdk-147-trial.md).
+Contract: PRD §17.2 gate 1 and SDK fallback. No §17.3, restoration, resource-isolation,
+compaction, priming or explicit-stop qualification is claimed. Read alongside the
+[RPC sibling](rpc-52-1-linux.md), [launcher decision](rpc-gate-decision.md) and
+[SDK trial](sdk-147-trial.md). No evidence merge can close the original passing gate.
 
-## Reproduce and inspect
+## Recovery disposition and review fixes
+
+Resume this evidence task for review must-fixes; keep qualification blocked on
+worker-side reconnect and a passing rerun. Do not file or close anything here.
+Prior branch-only evidence showed survival/no replacement but failed reconnect.
+Independent review reproduced that outcome on both SDK and RPC; it also isolated
+an observation environment defect: the Pi child dropped TMPDIR and failed with
+`ENOSPC` in `/tmp/jiti`. A diagnostic wrapper passed, but was not acceptable as
+normal repository verification. No wrapper is used in the retained reruns.
+
+**M1, narrowly scoped test support (not production code):**
+
+- `packages/testkit/src/pi/launch.ts` creates an owned `tmp` beneath its existing
+  disposable root and explicitly passes it to the Pi child. A caller's explicit
+  fixture `env.TMPDIR` is respected, used for the root, and never deleted by the
+  helper; disposal removes only the helper's child root. Normal runs use a short
+  home-backed parent TMPDIR. No global cache is deleted or operator config changed.
+- Two cheap subprocess-boundary regressions use a tiny Node environment witness,
+  not Pi/daemon/model, to prove the child's actual `tmpdir()`, default cleanup and
+  caller-owned override preservation. No second full Pi journey is added.
+- The existing interrupt e2e now bounds the initial hello wait at 10 seconds and
+  reports child exit/stderr instead of masking startup failure behind its 60-second
+  whole-journey timeout. It does not widen any timeout or skip assertions.
+- The reusable manual driver explicitly passes its own fixture `TMPDIR` too.
+  Driver outputs and validation logs live on the home-backed filesystem, not the
+  inode-exhausted `/tmp` filesystem.
+
+**M2, evidence normalization:** all retained report/YAML/summary/log paths use
+`<repo>`, `<node>` and `<fixture-root>` consistently. `<node>` denotes the exact
+Node executable (Node version below); `<fixture-root>/validation-temp` denotes the
+separate owned short parent used for validation/output. These are lexical labels,
+not runnable paths. Argv ordering, relative resources, launch IDs, PIDs, timestamps,
+socket evidence and errors are unchanged. The retained normalization driver is
+[sdk-52-1-linux/normalize-artifacts.py](sdk-52-1-linux/normalize-artifacts.py).
+Trailing blank lines and bulk successful test output were removed; check logs retain
+command summaries/counts/times. Latest explicit-temp runs supersede earlier artifacts.
+
+**Cheap probe hardening:** the RPC entry defaults explicitly to RPC, ignoring
+ambient `FOUNDRY_WORKER_RUNTIME`; the SDK wrapper passes an explicit import runtime
+parameter, which sets the child's `FOUNDRY_WORKER_RUNTIME=sdk`. Selected runtime is
+prominent in summary/versions. On exceptions the driver records the failure phase
+and completed checks; a completed product failure remains blocked even if a later
+observer fails. An error without completed product-failure evidence is inconclusive.
+The probe is not a general shared-harness or product refactor.
+
+## Reproduction and retained artifacts
+
+Use a short owned home-backed directory (substitute your home; no wrapper/overrides):
 
 ```sh
+scratch=$(mktemp -d "$HOME/.f149-XXXX")
+export TMPDIR="$scratch"
+unset FOUNDRY_PI_BIN
 npm ci
 npm run build
-node docs/evidence/sdk-52-1-linux/run-probe.mjs /tmp/fou149-evidence
+npm run typecheck
+./node_modules/.bin/oxlint
+npm test
+npm run test:e2e
+node docs/evidence/sdk-52-1-linux/run-probe.mjs "$scratch/sdk-probe"
+# Deliberately conflicting ambient selector proves the RPC entry is explicit:
+FOUNDRY_WORKER_RUNTIME=sdk node docs/evidence/rpc-52-1-linux/run-probe.mjs "$scratch/rpc-probe"
+python3 docs/evidence/sdk-52-1-linux/normalize-artifacts.py "$scratch/sdk-probe" /path/to/retained-sdk
+python3 docs/evidence/sdk-52-1-linux/normalize-artifacts.py "$scratch/rpc-probe" /path/to/retained-rpc
+# Remove only your owned scratch after retaining output and checking cleanup.
 ```
 
-The minimal SDK entry explicitly sets `FOUNDRY_WORKER_RUNTIME=sdk` and imports the
-existing RPC sibling driver. The driver reuses the same actual daemon/host wiring,
-45-second observation window and `probe-extension.ts`; it does not duplicate
-product logic or replace an executable. Its small changes allow explicit runtime
-selection (default remains RPC), disable fixture Git hooks, check preconditions
-and daemon ownership before killing, record cleanup, and classify observation
-exceptions as inconclusive rather than as product failures. This updates the older
-sibling document's error-label description: driver errors are now inconclusive.
-No automated test was added: only real process wiring can demonstrate survival.
-The manual driver's exit 0 means it completed; inspect `summary.json.result`, not
-its process exit, to decide the gate outcome.
+This is manual real-process wiring evidence, not a timing-dependent commit test.
+The SDK wrapper reuses the sibling's existing busy faux-provider fixture and actual
+host/daemon wiring, without copying product logic. Its exit 0 means observation
+completed; use `summary.json.result` for the gate verdict.
 
-Retained sanitized, credential-free outputs under [sdk-52-1-linux/artifacts/](sdk-52-1-linux/artifacts/):
+Retained [artifacts](sdk-52-1-linux/artifacts/): SDK `summary.json`, `alpha.yaml`,
+`daemon.log`, `host.log`, `group-cleanup.json`; the same five files under
+`rpc-control/` for the explicit RPC control; regression summaries under `checks/`.
+No operator state, production resources, secrets, 1Password or paid models were used.
 
-- `summary.json`: versions, exact worker executable/argv/cwd, host identities,
-  slots, inventory, timestamps, socket peers, channel counts and all checks.
-- `alpha.yaml`: exact effective factory (including disposable absolute paths).
-- `daemon.log`, `host.log`: complete real-process logs, including accepted
-  initial channels, both restored original slots and shutdown.
-- `group-cleanup.json`: independent post-run signal-0 check of both owned worker
-  process groups (`ESRCH`) and confirmation that the disposable fixture was removed.
+## Versions, exact launcher and effective fixture
 
-Only generated fixture data and local paths occur in these artifacts; no operator
-configuration, secrets, credentials, production resources, 1Password, or paid
-model were used. `.log` artifacts must be force-added if ignored by local rules.
+Rerun 2026-11-26, Foundry revision `1601ef60c80f7fda00510502c84f104be7967779`
+(base `050145655c76a722afc6bce70ae422397e49872c`, merged SDK adapter), plus the
+review fixes listed in retained `versions.uncommitted`. Node `v22.23.2`, npm
+`10.9.8`, pinned repository Pi `1.6.0`, Linux x64 kernel `7.2.15-1-omarchy`.
 
-## Exact tested versions, launcher and fixture
-
-Executed 2026-11-26, Foundry `050145655c76a722afc6bce70ae422397e49872c`
-(the merged SDK adapter base), with evidence-only uncommitted changes listed in
-`summary.json`. Node `v22.23.2`, npm `10.9.8`, pinned repository Pi `1.6.0`,
-Linux x64 kernel `7.2.15-1-omarchy`.
-
-The driver launched the built daemon twice with:
+Exact normalized daemon command, both starts:
 
 ```sh
-<node> <repo>/packages/daemon/dist/main.js \
-  --home /tmp/fou83-jhRxp4/home --log-level debug /tmp/fou83-jhRxp4/alpha.yaml
+<node> <repo>/packages/daemon/dist/main.js --home <fixture-root>/home --log-level debug <fixture-root>/alpha.yaml
 ```
 
-`<node>` was `/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node`.
-`<repo>` was `/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba`.
-The real detached host launched worker 1 as follows (worker 2's complete argv is
-also retained; its session ID is `8dd572c6-617a-4b39-b588-31bf6b6d59c8`):
+Worker 1's exact normalized command (worker 2's full argv/session ID is in summary):
 
 ```sh
 <node> <repo>/packages/host/dist/sdk-worker.js \
   --mode rpc --system-prompt '' --append-system-prompt '' \
   --no-extensions --no-mcp --no-skills --no-prompt-templates --no-themes \
   --no-context-files --no-approve \
-  --session-id 90292c18-be04-4356-9a87-5cd3a0c41c5d --model probe/busy \
+  --session-id 26c7e2bd-bdc0-46fd-abab-5aa13b709d6b --model probe/busy \
   --tools read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold \
   --extension <repo>/packages/extension/dist/index.js \
   --extension <repo>/docs/evidence/rpc-52-1-linux/probe-extension.ts
-# cwd: /tmp/fou83-jhRxp4/home/slots/alpha/hold-1
+# cwd: <fixture-root>/home/slots/alpha/hold-1
 ```
 
-`--mode rpc` is the host's compatible argument format, **not** the RPC runtime:
-`sdk-worker.js` parses the arguments and calls the actual SDK session adapter,
-with no stdin RPC command server. `FOUNDRY_PI_BIN` was absent.
+Complete argv for both workers is retained in `summary.json`.
+`--mode rpc` is compatible host argument syntax: the executable
+is the actual SDK adapter, with no stdin RPC command server. `FOUNDRY_PI_BIN` is
+absent. The RPC control instead records pinned `bundle/rpc-entry.js` explicitly.
 
-Only PATH and an explicit allowlist reach the fixture. HOME, all XDG directories,
-PI_CODING_AGENT_DIR, source repo, state, worktrees, sessions and probe markers
-live under fresh `/tmp/fou83-jhRxp4`, subsequently removed. Global Git config is
-`/dev/null`, system Git config disabled, fixture commits disable hooks, and
-telemetry/offline settings are explicit. No real `~/.pi` or global config changes.
-
-The factory `alpha` has two `eng.hold` instances (`hold/1`, `hold/2`), neutral
-slot cwd, worktree isolation, explicit `probe/busy` credential-free faux provider,
-and only the configured sibling extension naming `probe_hold`. No skill or
-ambient provider is needed. The faux model really calls that tool; its execute
-body records the launch and blocks until abort, keeping both workers busy during
-the entire kill/restart window. The control records remained unchanged afterward.
+The allowlist contains PATH plus disposable HOME, all XDG locations,
+PI_CODING_AGENT_DIR, fixture `TMPDIR=<fixture-root>/tmp`, Git isolation, offline and
+telemetry settings, marker, and explicit runtime. The factory YAML has two
+`eng.hold` instances, worktree isolation, neutral cwd, a disposable one-commit repo,
+explicit `probe/busy` credential-free faux provider, and the configured sibling
+extension naming `probe_hold`. Its actual model calls that tool and stays blocked
+until abort, recording exact launch/argv. No skill or ambient provider is needed.
+Fixture commits disable Git hooks. No real `~/.pi` or global config is touched.
 
 ## Observations and controls
 
-| Observation | Verified result |
+| Observation | SDK result |
 |---|---|
-| Positive observation control | Each original launch had one accepted channel, one receipt and one heartbeat before kill; both actual model/tool runs reached `probe_hold`. |
-| Original `hold/1` | `11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00`, PID/PGID `2394387` |
-| Original `hold/2` | `76ee3a41-6059-438c-bc6d-071dedc8b52b`, PID/PGID `2394388` |
-| Daemon-only abrupt kill | PID `2394358`, SIGKILL at `00:46:09.947Z`; observed exit signal SIGKILL. |
-| Survival | Both original worker PIDs and host `2394375` alive after kill and at end of restart observation. Same host ID `5f21a826-e226-467d-bd60-86151b821370`. |
-| Negative connection control | Immediately after kill, both workers' original daemon sockets vanished; their three host sockets each remained. Confirms `ss` distinguishes host from daemon traffic. |
-| Restart | New daemon `2394808` served at `00:46:12.217Z` on the same state root. |
-| Same launches/slots, no replacement | After 45,044 ms, inventory contained exactly the two original live launches with original PIDs; slots retained original IDs, normal and no end recorded; hold list empty; busy-tool records unchanged. |
-| Reconnect | **Failed:** zero accepted/refused channels for either original launch after restart. Neither worker acquired a socket to the new daemon. |
-| Resumed traffic | **Failed:** zero frames or heartbeats for both original launches after restart. |
-| Cleanup | Disposable-state `foundry shutdown` exit 0; host stopped, daemon exit 0, no marked process remained; both original PGIDs subsequently absent. |
+| Positive observer control | Both original launches accepted, each with receipt and heartbeat before kill, both busy inside actual `probe_hold` calls. |
+| Original `hold/1` | `e21cae29-1029-492b-a311-139689f829e3`, PID/PGID `2651655` |
+| Original `hold/2` | `4fa3fc63-bb24-42c0-bbb8-b436033ce4f7`, PID/PGID `2651662` |
+| Abrupt daemon-only kill | Observed SIGKILL exit; host and original worker PIDs survive. |
+| Negative connection control | Original daemon sockets disappear after kill; each worker's three host sockets remain. |
+| Restart/survival | Same host PID `2651643`, host ID `c74ddf8a-fc7c-4a6f-87d5-9e837f3cf3ad`; both original workers remain live. |
+| Identity and replacement | Exactly two original live launches in original slots; no replacements, changed busy records or holds. |
+| Reconnect after 45,046 ms | **Failed:** zero accepted/refused channels; no worker socket to new daemon. |
+| Resumed traffic | **Failed:** zero frames/heartbeats from either launch after restart. |
+| Cleanup | Disposable shutdown exit 0; host/daemon stopped; no marked processes; both original worker PGIDs independently `ESRCH`. |
 
-Nine summary checks are true; `reconnectedToRestartedDaemon` and
-`channelTrafficResumed` are false. The pre-kill accepted/heartbeat control and
-post-kill socket loss control rule out an unavailable observer or platform.
-No observation-tool error occurred. The first complete reproduction was retained;
-no additional priming variants or product changes were tried to manufacture a pass.
+The explicit RPC control also observed 45,046 ms with the same nine passing and
+two failing checks. Its original launches are `8e1d38af-f388-4ca7-85af-0159a908f979`
+and `f3dd5ada-e9d4-48cd-a52d-9205eea97cb7`; PGIDs `2663002` and `2663009`, both
+subsequently `ESRCH`. Neither rerun encountered an observation error. Full controls,
+commands and timings are retained separately for each runtime. Both fixture roots
+were removed after marked cleanup; no unmarked process was signaled.
 
-## Diagnosis, independent remediation and limits
+## Diagnosis, regression checks and handoff
 
-The shared Foundry extension still dials once at `session_start`.
-`packages/extension/src/worker.ts` explicitly excludes a reconnect/backoff loop;
-its `opened.channel.closed` callback only clears `channel`. The SDK adapter uses
-this same extension and does not add redial. The observed absence of reconnect is
-consistent with the prior RPC sibling failure, not an SDK incapability finding.
+The shared `packages/extension/src/worker.ts` still dials once on session start;
+its channel-close callback clears the reference but does not redial. SDK uses the
+same extension. Separate remediation must add worker-side reconnect/reconciliation
+for the same launch and conversation and rerun this gate. Normal-looking stranded
+slots may separately need reachability reporting. Neither product change is made.
 
-Separate remediation should implement bounded worker-side redial/reconciliation
-for the same launch and conversation after channel loss, then rerun this gate.
-The normal-looking stranded slots may separately need operator-visible reachability
-state. Neither remedy belongs in this evidence-only task. A longer timeout alone
-cannot supply the missing dial path.
+Normal commands with a short home-backed TMPDIR, **without any Pi diagnostic wrapper**:
 
-Linux only, one real-process run with deterministic source corroboration. No
-worker-exit restoration, execution replay, real model, macOS, automatic/mid-run
-compaction, fresh/recovery priming, or complete shutdown-gate coverage was tested.
-No fixture child was spawned, so cleanup proves these owned worker groups only,
-not child escalation. All direct kill operations are restricted to the marked
-run; the final fallback sweep found nothing to kill. The group absence checks
-signal 0 only and never terminate unrelated groups.
-
-## Repository health and handoff
-
-Fetched/rebased before validation: latest `origin/develop` remained
-`050145655c76a722afc6bce70ae422397e49872c`; no product changes were introduced.
-Retained command output is in `sdk-52-1-linux/artifacts/checks/`.
-
-| Check | Exit and result |
+| Check | Result |
 |---|---|
-| `npm run build` | 0 |
-| `npm run typecheck` | 0 |
-| Direct `./node_modules/.bin/oxlint` | 0, empty diagnostic output |
-| Full direct `vitest run`, default temp | 1: 799 passed, 38 failed / 100 files; explicit `ENOSPC` Git failures. `/tmp` had 1,048,576/1,048,576 inodes allocated, despite free byte capacity. |
-| Full direct `vitest run`, owned isolated `TMPDIR` | **0: 837 tests / 100 files passed.** |
-| Separate direct `vitest run --config vitest.e2e.config.ts`, default temp | 1: 3 passed, 2 failed / 3 files (Git ENOSPC and interrupt timeout). |
-| Separate e2e with owned isolated `TMPDIR` | **1: 4 passed, 1 failed / 3 files**; existing interrupt journey timed out at 60 seconds. |
+| `npm run build` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| Direct `./node_modules/.bin/oxlint` | exit 0, empty diagnostics |
+| Targeted child-temp regression | 2 tests / 1 file passed |
+| `npm test` (full Vitest) | exit 0, **839 tests / 101 files passed** |
+| Separate `npm run test:e2e` | exit 0, **5 tests / 3 files passed** |
 
-The rerun used a fresh `/home/mark/.f149-xnQEp2` temp directory, removed after
-retaining logs. No unrelated temp files were deleted. The interrupt timeout's
-precise cause is **unverified**: the helper's child environment does not forward
-TMPDIR, so a parent temp override does not isolate every child cache. Do not
-assert a proven environmental cause for that remaining timeout or report the e2e
-suite green. It is separate from the complete SDK gate observation, which ran
-before inode exhaustion and has successful initial-channel and socket controls.
-No tests/configuration or product code were changed to force passing checks.
+The earlier `/tmp` inode-exhaustion failures are not product qualification failures
+or passing checks. Review isolated dropped child temp env as their cause; normal
+commands now pass with the narrow test-support repair. Regression health does not
+change the independently blocked SDK/RPC gate result.
 
-Per criterion: unchanged launch IDs and no replacement **verified**; resumed
-channel traffic/reconnect **unmet**; entire passing criterion **unmet**. Other SDK
-qualification gates and macOS are **unverified**, outside scope.
-
-A fresh independent review remains required. No PR, merge, tracker mutation or
-product-code fix was made; passing acceptance remains open.
+Per criterion: unchanged IDs/no replacement **verified**; reconnect/resumed traffic
+**unmet**; full passing criterion **unmet**. Other gates/macOS **unverified**, outside
+scope. No worker-exit restoration, execution replay, real-model or child-escalation
+claim is made. Fresh independent review is required for these shared support fixes.
+No PR, merge, tracker changes or product reconnect remedy. Keep the ticket open.

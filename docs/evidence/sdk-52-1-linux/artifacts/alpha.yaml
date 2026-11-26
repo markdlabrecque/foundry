@@ -5,7 +5,7 @@ repository:
   default_branch: main
 default_production_line: f
 worktrees:
-  root: "/tmp/fou83-jhRxp4/worktrees-alpha"
+  root: "<fixture-root>/worktrees-alpha"
 rooms:
   eng:
     stations:
@@ -14,7 +14,7 @@ rooms:
         isolation: worktree
         instances: 2
         extensions:
-          - path: "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/docs/evidence/rpc-52-1-linux/probe-extension.ts"
+          - path: "<repo>/docs/evidence/rpc-52-1-linux/probe-extension.ts"
             tools: [probe_hold]
 production_lines:
   f:

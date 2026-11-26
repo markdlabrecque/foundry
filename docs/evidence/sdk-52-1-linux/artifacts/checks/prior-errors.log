@@ -1,0 +1,5 @@
+Prior default-temp failures (superseded by explicit-child-temp normal reruns).
+Path prefixes normalized; error text unchanged.
+Error: Command failed: git init --quiet --initial-branch main
+fatal: cannot copy '/usr/share/git-core/templates/info/exclude' to '<fixture-root>/repo/.git/info/exclude': No space left on device
+TestTimeoutError: Test timed out in 60000ms.

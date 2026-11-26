@@ -1,5 +1,7 @@
 {
+  "runtime": "sdk",
   "result": "blocked",
+  "phase": "shutdown",
   "checks": {
     "fixtureShape": true,
     "connectedBeforeKill": true,
@@ -15,47 +17,51 @@
   },
   "log": [
     {
-      "at": "2026-11-26T00:46:01.299Z",
+      "at": "2026-11-26T01:05:10.216Z",
       "event": "versions",
       "runtime": "sdk",
       "node": "v22.23.2",
       "pi": "1.6.0",
       "platform": "linux x64",
       "kernel": "7.2.15-1-omarchy",
-      "foundryCommit": "0501456",
+      "foundryCommit": "1601ef6",
       "uncommitted": [
         " M docs/evidence/rpc-52-1-linux/run-probe.mjs",
-        "?? docs/evidence/sdk-52-1-linux/"
+        " M docs/evidence/sdk-52-1-linux/run-probe.mjs",
+        " M packages/extension/e2e/interrupt.e2e.test.ts",
+        " M packages/testkit/src/pi/launch.ts",
+        "?? packages/testkit/test/fixtures/",
+        "?? packages/testkit/test/pi-temp.test.ts"
       ]
     },
     {
-      "at": "2026-11-26T00:46:01.618Z",
+      "at": "2026-11-26T01:05:10.633Z",
       "event": "first daemon serving",
-      "pid": 2394358
+      "pid": 2651617
     },
     {
-      "at": "2026-11-26T00:46:09.947Z",
+      "at": "2026-11-26T01:05:18.952Z",
       "event": "before kill",
       "host": {
-        "pid": 2394375,
-        "hostId": "5f21a826-e226-467d-bd60-86151b821370",
+        "pid": 2651643,
+        "hostId": "c74ddf8a-fc7c-4a6f-87d5-9e837f3cf3ad",
         "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110"
       },
       "launches": [
         {
-          "launchId": "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00",
+          "launchId": "e21cae29-1029-492b-a311-139689f829e3",
           "factoryId": "alpha",
           "slotId": "hold/1",
-          "pid": 2394387,
-          "pgid": 2394387,
+          "pid": 2651655,
+          "pgid": 2651655,
           "liveness": "live"
         },
         {
-          "launchId": "76ee3a41-6059-438c-bc6d-071dedc8b52b",
+          "launchId": "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7",
           "factoryId": "alpha",
           "slotId": "hold/2",
-          "pid": 2394388,
-          "pgid": 2394388,
+          "pid": 2651662,
+          "pgid": 2651662,
           "liveness": "live"
         }
       ],
@@ -63,12 +69,12 @@
         {
           "factoryId": "alpha",
           "slotId": "hold/1",
-          "launchId": "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00",
-          "workerPid": 2394387,
-          "at": "2026-11-26T00:46:03.547Z",
-          "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+          "launchId": "e21cae29-1029-492b-a311-139689f829e3",
+          "workerPid": 2651655,
+          "at": "2026-11-26T01:05:12.597Z",
+          "execPath": "<node>",
           "argv": [
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/host/dist/sdk-worker.js",
+            "<repo>/packages/host/dist/sdk-worker.js",
             "--mode",
             "rpc",
             "--system-prompt",
@@ -83,27 +89,27 @@
             "--no-context-files",
             "--no-approve",
             "--session-id",
-            "90292c18-be04-4356-9a87-5cd3a0c41c5d",
+            "26c7e2bd-bdc0-46fd-abab-5aa13b709d6b",
             "--model",
             "probe/busy",
             "--tools",
             "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
             "--extension",
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/extension/dist/index.js",
+            "<repo>/packages/extension/dist/index.js",
             "--extension",
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/docs/evidence/rpc-52-1-linux/probe-extension.ts"
+            "<repo>/docs/evidence/rpc-52-1-linux/probe-extension.ts"
           ],
-          "cwd": "/tmp/fou83-jhRxp4/home/slots/alpha/hold-1"
+          "cwd": "<fixture-root>/home/slots/alpha/hold-1"
         },
         {
           "factoryId": "alpha",
           "slotId": "hold/2",
-          "launchId": "76ee3a41-6059-438c-bc6d-071dedc8b52b",
-          "workerPid": 2394388,
-          "at": "2026-11-26T00:46:03.549Z",
-          "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+          "launchId": "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7",
+          "workerPid": 2651662,
+          "at": "2026-11-26T01:05:12.613Z",
+          "execPath": "<node>",
           "argv": [
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/host/dist/sdk-worker.js",
+            "<repo>/packages/host/dist/sdk-worker.js",
             "--mode",
             "rpc",
             "--system-prompt",
@@ -118,17 +124,17 @@
             "--no-context-files",
             "--no-approve",
             "--session-id",
-            "8dd572c6-617a-4b39-b588-31bf6b6d59c8",
+            "1914cb3e-c414-40de-814a-913b1fc527db",
             "--model",
             "probe/busy",
             "--tools",
             "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
             "--extension",
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/extension/dist/index.js",
+            "<repo>/packages/extension/dist/index.js",
             "--extension",
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/docs/evidence/rpc-52-1-linux/probe-extension.ts"
+            "<repo>/docs/evidence/rpc-52-1-linux/probe-extension.ts"
           ],
-          "cwd": "/tmp/fou83-jhRxp4/home/slots/alpha/hold-2"
+          "cwd": "<fixture-root>/home/slots/alpha/hold-2"
         }
       ],
       "slots": [
@@ -136,108 +142,108 @@
           "slotId": "hold/1",
           "condition": "normal",
           "freezeCause": null,
-          "launchId": "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00",
+          "launchId": "e21cae29-1029-492b-a311-139689f829e3",
           "endedAt": null
         },
         {
           "slotId": "hold/2",
           "condition": "normal",
           "freezeCause": null,
-          "launchId": "76ee3a41-6059-438c-bc6d-071dedc8b52b",
+          "launchId": "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7",
           "endedAt": null
         }
       ],
       "channels": {
-        "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00": {
+        "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7": {
           "accepted": [
-            "2026-11-26T00:46:02.038Z"
+            "2026-11-26T01:05:11.105Z"
           ],
           "lost": [],
           "frameCounts": {
             "receipt": 1,
             "heartbeat": 1
           },
-          "lastFrameAt": "2026-11-26T00:46:07.039Z"
+          "lastFrameAt": "2026-11-26T01:05:16.107Z"
         },
-        "76ee3a41-6059-438c-bc6d-071dedc8b52b": {
+        "e21cae29-1029-492b-a311-139689f829e3": {
           "accepted": [
-            "2026-11-26T00:46:02.042Z"
+            "2026-11-26T01:05:11.088Z"
           ],
           "lost": [],
           "frameCounts": {
             "receipt": 1,
             "heartbeat": 1
           },
-          "lastFrameAt": "2026-11-26T00:46:07.043Z"
+          "lastFrameAt": "2026-11-26T01:05:16.089Z"
         }
       },
       "workerUnixSockets": {
-        "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00": [
+        "e21cae29-1029-492b-a311-139689f829e3": [
           {
-            "inode": "113009208",
-            "peerInode": "113009207",
+            "inode": "114373992",
+            "peerInode": "114373991",
             "peerPids": [
-              2394375
+              2651643
             ]
           },
           {
-            "inode": "113009219",
-            "peerInode": "113010519",
+            "inode": "114373994",
+            "peerInode": "114373993",
             "peerPids": [
-              2394358
+              2651643
             ]
           },
           {
-            "inode": "113009206",
-            "peerInode": "113009205",
+            "inode": "114370369",
+            "peerInode": "114366262",
             "peerPids": [
-              2394375
+              2651617
             ]
           },
           {
-            "inode": "113009210",
-            "peerInode": "113009209",
+            "inode": "114373990",
+            "peerInode": "114373989",
             "peerPids": [
-              2394375
+              2651643
             ]
           }
         ],
-        "76ee3a41-6059-438c-bc6d-071dedc8b52b": [
+        "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7": [
           {
-            "inode": "113009215",
-            "peerInode": "113009214",
+            "inode": "114373999",
+            "peerInode": "114373998",
             "peerPids": [
-              2394375
+              2651643
             ]
           },
           {
-            "inode": "113006386",
-            "peerInode": "113010520",
+            "inode": "114374001",
+            "peerInode": "114374000",
             "peerPids": [
-              2394358
+              2651643
             ]
           },
           {
-            "inode": "113009213",
-            "peerInode": "113009212",
+            "inode": "114371042",
+            "peerInode": "114376934",
             "peerPids": [
-              2394375
+              2651617
             ]
           },
           {
-            "inode": "113009217",
-            "peerInode": "113009216",
+            "inode": "114373997",
+            "peerInode": "114373996",
             "peerPids": [
-              2394375
+              2651643
             ]
           }
         ]
       }
     },
     {
-      "at": "2026-11-26T00:46:12.012Z",
+      "at": "2026-11-26T01:05:21.022Z",
       "event": "after kill",
-      "killedAt": "2026-11-26T00:46:09.947Z",
+      "killedAt": "2026-11-26T01:05:18.952Z",
       "daemonExit": {
         "code": null,
         "signal": "SIGKILL"
@@ -245,107 +251,107 @@
       "hostAlive": true,
       "workersAlive": [
         {
-          "launchId": "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00",
-          "pid": 2394387,
+          "launchId": "e21cae29-1029-492b-a311-139689f829e3",
+          "pid": 2651655,
           "alive": true
         },
         {
-          "launchId": "76ee3a41-6059-438c-bc6d-071dedc8b52b",
-          "pid": 2394388,
+          "launchId": "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7",
+          "pid": 2651662,
           "alive": true
         }
       ],
       "workerUnixSockets": {
-        "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00": [
+        "e21cae29-1029-492b-a311-139689f829e3": [
           {
-            "inode": "113009208",
-            "peerInode": "113009207",
+            "inode": "114373992",
+            "peerInode": "114373991",
             "peerPids": [
-              2394375
+              2651643
             ]
           },
           {
-            "inode": "113009206",
-            "peerInode": "113009205",
+            "inode": "114373994",
+            "peerInode": "114373993",
             "peerPids": [
-              2394375
+              2651643
             ]
           },
           {
-            "inode": "113009210",
-            "peerInode": "113009209",
+            "inode": "114373990",
+            "peerInode": "114373989",
             "peerPids": [
-              2394375
+              2651643
             ]
           }
         ],
-        "76ee3a41-6059-438c-bc6d-071dedc8b52b": [
+        "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7": [
           {
-            "inode": "113009215",
-            "peerInode": "113009214",
+            "inode": "114373999",
+            "peerInode": "114373998",
             "peerPids": [
-              2394375
+              2651643
             ]
           },
           {
-            "inode": "113009213",
-            "peerInode": "113009212",
+            "inode": "114374001",
+            "peerInode": "114374000",
             "peerPids": [
-              2394375
+              2651643
             ]
           },
           {
-            "inode": "113009217",
-            "peerInode": "113009216",
+            "inode": "114373997",
+            "peerInode": "114373996",
             "peerPids": [
-              2394375
+              2651643
             ]
           }
         ]
       }
     },
     {
-      "at": "2026-11-26T00:46:12.217Z",
+      "at": "2026-11-26T01:05:21.520Z",
       "event": "second daemon serving",
-      "pid": 2394808,
-      "restartedAt": "2026-11-26T00:46:12.217Z"
+      "pid": 2652014,
+      "restartedAt": "2026-11-26T01:05:21.520Z"
     },
     {
-      "at": "2026-11-26T00:46:57.828Z",
+      "at": "2026-11-26T01:06:07.145Z",
       "event": "after restart",
-      "observedMs": 45044,
+      "observedMs": 45046,
       "host": {
-        "pid": 2394375,
-        "hostId": "5f21a826-e226-467d-bd60-86151b821370",
+        "pid": 2651643,
+        "hostId": "c74ddf8a-fc7c-4a6f-87d5-9e837f3cf3ad",
         "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110"
       },
       "launches": [
         {
-          "launchId": "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00",
+          "launchId": "e21cae29-1029-492b-a311-139689f829e3",
           "factoryId": "alpha",
           "slotId": "hold/1",
-          "pid": 2394387,
-          "pgid": 2394387,
+          "pid": 2651655,
+          "pgid": 2651655,
           "liveness": "live"
         },
         {
-          "launchId": "76ee3a41-6059-438c-bc6d-071dedc8b52b",
+          "launchId": "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7",
           "factoryId": "alpha",
           "slotId": "hold/2",
-          "pid": 2394388,
-          "pgid": 2394388,
+          "pid": 2651662,
+          "pgid": 2651662,
           "liveness": "live"
         }
       ],
       "workersAlive": [
         {
-          "launchId": "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00",
-          "pid": 2394387,
+          "launchId": "e21cae29-1029-492b-a311-139689f829e3",
+          "pid": 2651655,
           "alive": true
         },
         {
-          "launchId": "76ee3a41-6059-438c-bc6d-071dedc8b52b",
-          "pid": 2394388,
+          "launchId": "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7",
+          "pid": 2651662,
           "alive": true
         }
       ],
@@ -354,14 +360,14 @@
           "slotId": "hold/1",
           "condition": "normal",
           "freezeCause": null,
-          "launchId": "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00",
+          "launchId": "e21cae29-1029-492b-a311-139689f829e3",
           "endedAt": null
         },
         {
           "slotId": "hold/2",
           "condition": "normal",
           "freezeCause": null,
-          "launchId": "76ee3a41-6059-438c-bc6d-071dedc8b52b",
+          "launchId": "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7",
           "endedAt": null
         }
       ],
@@ -372,13 +378,13 @@
         }
       },
       "channels": {
-        "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00": {
+        "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7": {
           "accepted": [],
           "lost": [],
           "frameCounts": {},
           "lastFrameAt": null
         },
-        "76ee3a41-6059-438c-bc6d-071dedc8b52b": {
+        "e21cae29-1029-492b-a311-139689f829e3": {
           "accepted": [],
           "lost": [],
           "frameCounts": {},
@@ -386,63 +392,63 @@
         }
       },
       "workerUnixSockets": {
-        "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00": [
+        "e21cae29-1029-492b-a311-139689f829e3": [
           {
-            "inode": "113009208",
-            "peerInode": "113009207",
+            "inode": "114373992",
+            "peerInode": "114373991",
             "peerPids": [
-              2394375
+              2651643
             ]
           },
           {
-            "inode": "113009206",
-            "peerInode": "113009205",
+            "inode": "114373994",
+            "peerInode": "114373993",
             "peerPids": [
-              2394375
+              2651643
             ]
           },
           {
-            "inode": "113009210",
-            "peerInode": "113009209",
+            "inode": "114373990",
+            "peerInode": "114373989",
             "peerPids": [
-              2394375
+              2651643
             ]
           }
         ],
-        "76ee3a41-6059-438c-bc6d-071dedc8b52b": [
+        "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7": [
           {
-            "inode": "113009215",
-            "peerInode": "113009214",
+            "inode": "114373999",
+            "peerInode": "114373998",
             "peerPids": [
-              2394375
+              2651643
             ]
           },
           {
-            "inode": "113009213",
-            "peerInode": "113009212",
+            "inode": "114374001",
+            "peerInode": "114374000",
             "peerPids": [
-              2394375
+              2651643
             ]
           },
           {
-            "inode": "113009217",
-            "peerInode": "113009216",
+            "inode": "114373997",
+            "peerInode": "114373996",
             "peerPids": [
-              2394375
+              2651643
             ]
           }
         ]
       },
       "notableDaemonLog": [
         {
-          "time": "2026-11-26T00:46:12.216Z",
+          "time": "2026-11-26T01:05:21.520Z",
           "level": "info",
-          "runId": "1914bed8-f056-40b6-9039-3a2d0495410a",
+          "runId": "7dd71753-d5bb-49a1-adb6-57818d1164b0",
           "msg": "daemon started",
           "detail": {
-            "pid": 2394808,
-            "stateRoot": "/tmp/fou83-jhRxp4/home",
-            "socket": "/tmp/fou83-jhRxp4/home/management.sock",
+            "pid": 2652014,
+            "stateRoot": "<fixture-root>/home",
+            "socket": "<fixture-root>/home/management.sock",
             "logLevel": "debug"
           }
         }
@@ -451,12 +457,12 @@
         {
           "factoryId": "alpha",
           "slotId": "hold/1",
-          "launchId": "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00",
-          "workerPid": 2394387,
-          "at": "2026-11-26T00:46:03.547Z",
-          "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+          "launchId": "e21cae29-1029-492b-a311-139689f829e3",
+          "workerPid": 2651655,
+          "at": "2026-11-26T01:05:12.597Z",
+          "execPath": "<node>",
           "argv": [
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/host/dist/sdk-worker.js",
+            "<repo>/packages/host/dist/sdk-worker.js",
             "--mode",
             "rpc",
             "--system-prompt",
@@ -471,27 +477,27 @@
             "--no-context-files",
             "--no-approve",
             "--session-id",
-            "90292c18-be04-4356-9a87-5cd3a0c41c5d",
+            "26c7e2bd-bdc0-46fd-abab-5aa13b709d6b",
             "--model",
             "probe/busy",
             "--tools",
             "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
             "--extension",
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/extension/dist/index.js",
+            "<repo>/packages/extension/dist/index.js",
             "--extension",
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/docs/evidence/rpc-52-1-linux/probe-extension.ts"
+            "<repo>/docs/evidence/rpc-52-1-linux/probe-extension.ts"
           ],
-          "cwd": "/tmp/fou83-jhRxp4/home/slots/alpha/hold-1"
+          "cwd": "<fixture-root>/home/slots/alpha/hold-1"
         },
         {
           "factoryId": "alpha",
           "slotId": "hold/2",
-          "launchId": "76ee3a41-6059-438c-bc6d-071dedc8b52b",
-          "workerPid": 2394388,
-          "at": "2026-11-26T00:46:03.549Z",
-          "execPath": "/home/mark/.local/share/pi-node/node-v22.23.2-linux-x64/bin/node",
+          "launchId": "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7",
+          "workerPid": 2651662,
+          "at": "2026-11-26T01:05:12.613Z",
+          "execPath": "<node>",
           "argv": [
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/host/dist/sdk-worker.js",
+            "<repo>/packages/host/dist/sdk-worker.js",
             "--mode",
             "rpc",
             "--system-prompt",
@@ -506,22 +512,22 @@
             "--no-context-files",
             "--no-approve",
             "--session-id",
-            "8dd572c6-617a-4b39-b588-31bf6b6d59c8",
+            "1914cb3e-c414-40de-814a-913b1fc527db",
             "--model",
             "probe/busy",
             "--tools",
             "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
             "--extension",
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/packages/extension/dist/index.js",
+            "<repo>/packages/extension/dist/index.js",
             "--extension",
-            "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/docs/evidence/rpc-52-1-linux/probe-extension.ts"
+            "<repo>/docs/evidence/rpc-52-1-linux/probe-extension.ts"
           ],
-          "cwd": "/tmp/fou83-jhRxp4/home/slots/alpha/hold-2"
+          "cwd": "<fixture-root>/home/slots/alpha/hold-2"
         }
       ]
     },
     {
-      "at": "2026-11-26T00:46:58.107Z",
+      "at": "2026-11-26T01:06:07.443Z",
       "event": "shutdown",
       "argv": [
         "foundry",
@@ -530,10 +536,10 @@
         "<home>",
         "--json"
       ],
-      "startedAt": "2026-11-26T00:46:57.828Z",
+      "startedAt": "2026-11-26T01:06:07.146Z",
       "exitCode": 0,
       "signal": null,
-      "ms": 279,
+      "ms": 297,
       "body": {
         "ok": true,
         "result": {
@@ -545,13 +551,13 @@
               "force": false,
               "launches": [
                 {
-                  "launchId": "11cf6e2e-8fd5-4cd0-aa8b-6b2f826b9f00",
+                  "launchId": "e21cae29-1029-492b-a311-139689f829e3",
                   "slotId": "hold/1",
                   "drained": false,
                   "escalated": false
                 },
                 {
-                  "launchId": "76ee3a41-6059-438c-bc6d-071dedc8b52b",
+                  "launchId": "4fa3fc63-bb24-42c0-bbb8-b436033ce4f7",
                   "slotId": "hold/2",
                   "drained": false,
                   "escalated": false
@@ -565,27 +571,27 @@
       "stderr": ""
     },
     {
-      "at": "2026-11-26T00:46:58.115Z",
+      "at": "2026-11-26T01:06:07.456Z",
       "event": "after shutdown",
       "daemonExit": 0,
       "hostAlive": false,
       "runProcessesLeft": []
     },
     {
-      "at": "2026-11-26T00:46:58.127Z",
+      "at": "2026-11-26T01:06:07.469Z",
       "event": "owned cleanup",
-      "marker": "PROBE_DIR=/tmp/fou83-jhRxp4/probe",
+      "marker": "PROBE_DIR=<fixture-root>/probe",
       "beforeSweep": [],
       "survivors": []
     },
     {
-      "at": "2026-11-26T00:46:58.128Z",
+      "at": "2026-11-26T01:06:07.469Z",
       "event": "state root logs",
       "files": [
         "daemon.log",
         "host.log"
       ],
-      "copiedTo": "/home/mark/worktress/develop/t3-d84b1553-64f16b707698faba/docs/evidence/sdk-52-1-linux/artifacts"
+      "copiedTo": "<fixture-root>/validation-temp/sdk-probe"
     }
   ]
 }
