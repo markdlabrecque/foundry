@@ -118,4 +118,20 @@ Probe shutdown targets **only** its disposable state root via `foundry shutdown 
 - `history/`: preserved unsuccessful records and corrected reanalysis.
 - `checks/`: final regression logs; these are **separate** from the successful real-process observations.
 
-Final regression results are recorded below after latest-origin rebase. No testkit fixes are made in this branch; its omitted child TMPDIR still requires the documented pinned-Pi shim when `/tmp` is inode-exhausted.
+After fetching/rebasing latest `origin/develop` **`6dc2a5b5f01b9be13d465bccecedc67f04e8410c`**, all checks were rerun on **`cc7ec54471f1b7f50e8c0438288e06736c43bd98`**. That develop advance adds the separate SDK explicit-stop evidence only, not product/testkit changes. The subsequent check-log/documentation commit changes no observation driver, analyzer or test code.
+
+| Check | Exit / result |
+|---|---|
+| `npm run build` | **0** |
+| `npm run typecheck` | **0** |
+| Direct `./node_modules/.bin/oxlint` | **0**, empty diagnostics |
+| `TMPDIR=/home/mark/f151 ./node_modules/.bin/vitest run` | **0**, **101 files / 843 tests passed** |
+| Separate normal e2e with private parent TMPDIR | **1**, **4/5 tests passed**; interrupt child timeout |
+| Separate e2e with pinned-Pi child-temp shim | **0**, **3 files / 5 tests passed** |
+| Focused pure analyzer unit tests | **0**, **1 file / 6 tests passed** |
+
+Retained commands/exits/counts are in `checks/exits.json`; all corresponding logs, including the failed normal e2e, are retained. Normal e2e command: `TMPDIR=/home/mark/f151 ./node_modules/.bin/vitest run --config vitest.e2e.config.ts`. The shared testkit's isolated interrupt child deliberately omits parent TMPDIR; with `/tmp` still at zero free inodes, its Jiti startup can fail before hello. The fixture's test then times out. This is the already reproduced environment limitation, not a negative SDK verdict. No testkit fixes are made in this branch; that shared work belongs to the sibling owner and has not merged into this base.
+
+Qualified e2e command: `TMPDIR=/home/mark/f151 FOUNDRY_PI_BIN=/home/mark/f151/checks/pi-temp ./node_modules/.bin/vitest run --config vitest.e2e.config.ts`. The retained `checks/pi-temp` (path-normalized) **only exports the same private TMPDIR then execs the unchanged pinned Pi CLI with all arguments**. It was generated outside the repo with this checkout's absolute Pi path. No regression shim was used in the SDK qualification probe: that probe's own explicit allowlist now carries child TMPDIR correctly. Do not describe unqualified normal e2e as passing until the shared fix/environment is available.
+
+The probe's complete scoped result is **supported**; normal-e2e infrastructure status remains separately qualified. Final independent evidence review is pending. No PR, merge or Linear update is authorized by this handoff.
