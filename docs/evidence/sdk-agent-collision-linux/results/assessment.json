@@ -1,0 +1,13 @@
+{
+  "selectedRecordedObservationsChecked": true,
+  "zeroFetch": true,
+  "cleanupVerified": true,
+  "missingNamedHold": "verified",
+  "reservedNamedHold": "verified",
+  "clearedAndInheritedControl": "verified",
+  "agentCollisionRefusedWithSource": "verified",
+  "agentNamedMismatchHold": "verified",
+  "correctedSameConversation": "verified",
+  "failedRecheckStillFrozen": "verified",
+  "qualification": "FOU-163 candidate observation only; FOU-153 separate acceptance remains open"
+}

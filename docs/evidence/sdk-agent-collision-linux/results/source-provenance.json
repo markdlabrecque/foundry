@@ -1,0 +1,69 @@
+{
+  "base": "43f703492834f9a2b558718094c737cfb0166da7",
+  "candidate": "ef1d079e91bdb8b2ce59a6663cebe371e73e4838",
+  "tree": "5eac169f6ce68ac0adf714bb3c4534573d1f715f",
+  "trackedChanges": "",
+  "files": [
+    {
+      "path": "docs/evidence/sdk-agent-collision-linux/check-observations.mjs",
+      "sha256": "70ba4c717936919c347d1d67975d2ce29b4d5033513379d8d12107e44a00423d"
+    },
+    {
+      "path": "docs/evidence/sdk-agent-collision-linux/normalize-evidence.mjs",
+      "sha256": "382a10e8a0be277082da42131cd2fbd40c56945b3f76a68f2b0223e6c84cd5db"
+    },
+    {
+      "path": "docs/evidence/sdk-agent-collision-linux/run-checks.mjs",
+      "sha256": "abc2e6f1cfec9c2a4b60d4dedf25960b0e2048e8fec31b1be74d741a27de3b53"
+    },
+    {
+      "path": "docs/evidence/sdk-agent-collision-linux/run-probe.mjs",
+      "sha256": "dfcb6bcc131993942f6d2574393a95e768f15fbb6d847c09f731360342ab4a61"
+    },
+    {
+      "path": "packages/daemon/src/main.ts",
+      "sha256": "61d6abee4bd13458c3a7ddf71703a9343941c5bea8b834ca786846943d60febd"
+    },
+    {
+      "path": "packages/daemon/src/slots.ts",
+      "sha256": "bcc738bc2f9da6d6800f10d74e0bad1461b358fa2fb61684458d44f072e646bf"
+    },
+    {
+      "path": "packages/daemon/src/tool-set-check.ts",
+      "sha256": "79b1bda9f8ea3a6c2cad8d0c3a50ad2cf80560a308f58660de0af27a24d5b38a"
+    },
+    {
+      "path": "packages/daemon/test/slot-scheduler.test.ts",
+      "sha256": "e0e8797277741432ac125eb0db84a25a18beb83994c6f43eb5b072a8547a1716"
+    },
+    {
+      "path": "packages/host/src/control.ts",
+      "sha256": "9462194993585c5a996e3a52d01811771fa05ea625bb6dd4d4d4364418b06658"
+    },
+    {
+      "path": "packages/host/src/launches.ts",
+      "sha256": "1e30b4f2b4a8aa72db29b9c41c8cdea40b53e8c3f8b2ecc3001dd17ae9ea395c"
+    },
+    {
+      "path": "packages/host/src/sdk-diagnostic.ts",
+      "sha256": "5b135436ddc6be6eaf455854732d0ce268675bffc2594e63f91c7f30be2ea79f"
+    },
+    {
+      "path": "packages/host/src/sdk-session.ts",
+      "sha256": "2470457b91a0f2cc648f8edbffdb105ec304d9e7557dde7d87d9989780b61478"
+    },
+    {
+      "path": "packages/host/src/sdk-worker.ts",
+      "sha256": "a0e3dfc946512d25346fe75038fe25464f5bc47f3c7802b91289367a241814d8"
+    },
+    {
+      "path": "packages/host/test/owned-launch.test.ts",
+      "sha256": "f9055236f3987f3f1446545a236bb37adf52108d90205c995d7d8153824462dd"
+    },
+    {
+      "path": "packages/host/test/sdk-diagnostic.test.ts",
+      "sha256": "8a6c4d0c0f843bc9347d02c0227c76edbea9d2cbd47891d5886e3ef3252cd72b"
+    }
+  ],
+  "note": "Runtime probes and normal checks ran after candidate commit. Later evidence-only commit does not change product, tests or drivers."
+}

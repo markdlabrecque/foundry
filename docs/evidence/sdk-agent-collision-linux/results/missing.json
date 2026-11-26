@@ -1,0 +1,213 @@
+{
+  "variant": "missing",
+  "root": "<PROBE_TMP>/fou163-missing-bpYTSk",
+  "factoryYaml": "version: 1\nname: probe\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\nrooms:\n  eng:\n    stations:\n      dev:\n        isolation: worktree\n        model: openai/gpt-4.1-mini\n        extensions: [{ path: \"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/missing.ts\", tools: [probe_absent] }]\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: s0\n        station: eng.dev\n        writing: true\n      - id: approve\n        station: eng.dev\n        approval: true\n        on_rejection: s0\n",
+  "validate": {
+    "code": 0,
+    "out": "<PROBE_TMP>/fou163-missing-bpYTSk/factory.yaml: factory \"probe\" is valid\nTool Set for eng.dev (13 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\n  probe_absent     extension <REPO>/docs/evidence/rpc-53-3-linux/fixtures/missing.ts\nExtension tools are listed as configured; whether each extension registers them is not checked.\n"
+  },
+  "daemonLog": [
+    {
+      "level": "info",
+      "runId": "1b7b3a14-83e6-4518-8f96-1d356bcefd18",
+      "msg": "channel hello refused",
+      "detail": {
+        "kind": "terminal",
+        "code": "tool_set_mismatch"
+      }
+    },
+    {
+      "level": "info",
+      "runId": "1b7b3a14-83e6-4518-8f96-1d356bcefd18",
+      "msg": "launch ended",
+      "factoryId": "probe",
+      "slotId": "dev/1",
+      "launchId": "95145a8e-47cc-4cb8-a587-b4c8b7fc526d"
+    }
+  ],
+  "holdList": {
+    "code": 0,
+    "out": "1  frozen_slot  dev/1  raised 2026-11-26T02:10:55.858Z\n"
+  },
+  "holdShow": [
+    {
+      "code": 0,
+      "out": "hold        1\nkind        frozen_slot\nsubject     dev/1\nfactory     probe\nstate       open\nraised at   2026-11-26T02:10:55.858Z\nupdated at  2026-11-26T02:10:55.858Z\nevidence\n  cause: tool_set_mismatch\n  launchId: 95145a8e-47cc-4cb8-a587-b4c8b7fc526d\n  conversationRef: 341c8e2a-43a1-4de0-8ed7-f789cd054e4f\n  missing: [{\"name\":\"probe_absent\",\"source\":\"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/missing.ts\"}]\n  extra: []\n  replaced: []\ncommands\n  foundry slot unfreeze dev/1\n  foundry slot reset dev/1\n"
+    }
+  ],
+  "slotList": {
+    "code": 0,
+    "out": "probe  dev/1  eng.dev  frozen (tool_set_mismatch)  launch 95145a8e-47cc-4cb8-a587-b4c8b7fc526d ended (requested)\n"
+  },
+  "slotShow": [
+    {
+      "code": 0,
+      "out": "slot        dev/1\nfactory     probe\nstation     eng.dev\ncondition   frozen (tool_set_mismatch)\nlaunches\n  95145a8e-47cc-4cb8-a587-b4c8b7fc526d  started  started 2026-11-26T02:10:55.509Z  pid 2990952  ended 2026-11-26T02:10:55.873Z (requested, code 0)\n"
+    }
+  ],
+  "markers": {
+    "95145a8e-47cc-4cb8-a587-b4c8b7fc526d.network.json": {
+      "fetchCalls": 0,
+      "denied": true
+    },
+    "95145a8e-47cc-4cb8-a587-b4c8b7fc526d.process.json": {
+      "pid": 2990952,
+      "pgid": 2990952,
+      "launchId": "95145a8e-47cc-4cb8-a587-b4c8b7fc526d",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    },
+    "dev_1.launch.95145a8e-47cc-4cb8-a587-b4c8b7fc526d.json": {
+      "execPath": "<NODE>",
+      "argv": [
+        "<REPO>/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "341c8e2a-43a1-4de0-8ed7-f789cd054e4f",
+        "--model",
+        "openai/gpt-4.1-mini",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_absent",
+        "--extension",
+        "<REPO>/packages/extension/dist/index.js",
+        "--extension",
+        "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/missing.ts"
+      ],
+      "cwd": "<PROBE_TMP>/fou163-missing-bpYTSk/home/slots/probe/dev-1"
+    },
+    "dev_1.launch.95145a8e-47cc-4cb8-a587-b4c8b7fc526d.stderr.log": "foundry: channel hello refused (terminal tool_set_mismatch)\n",
+    "dev_1.launch.95145a8e-47cc-4cb8-a587-b4c8b7fc526d.stdout.log": "",
+    "dev_1.missing.loaded.json": {
+      "argv": [
+        "<NODE>",
+        "<REPO>/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "341c8e2a-43a1-4de0-8ed7-f789cd054e4f",
+        "--model",
+        "openai/gpt-4.1-mini",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_absent",
+        "--extension",
+        "<REPO>/packages/extension/dist/index.js",
+        "--extension",
+        "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/missing.ts"
+      ],
+      "registers": [
+        "probe_unnamed"
+      ],
+      "launchId": "95145a8e-47cc-4cb8-a587-b4c8b7fc526d"
+    },
+    "dev_1.missing.session.json": {
+      "all": [
+        {
+          "name": "read",
+          "source": "builtin:read"
+        },
+        {
+          "name": "bash",
+          "source": "builtin:bash"
+        },
+        {
+          "name": "edit",
+          "source": "builtin:edit"
+        },
+        {
+          "name": "write",
+          "source": "builtin:write"
+        },
+        {
+          "name": "agent_discover",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_status",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_message",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_request",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_delegate",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_reply",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "task_transition",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "human_request",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        }
+      ],
+      "active": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "agent_discover",
+        "agent_status",
+        "agent_message",
+        "agent_request",
+        "agent_reply",
+        "agent_delegate",
+        "task_transition",
+        "human_request"
+      ]
+    }
+  },
+  "ownedProcesses": [
+    {
+      "pid": 2990952,
+      "pgid": 2990952,
+      "launchId": "95145a8e-47cc-4cb8-a587-b4c8b7fc526d",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    }
+  ],
+  "shutdown": {
+    "code": 0,
+    "out": "factory probe stopped (0 worker(s))\nworker host stopped\nshutdown complete (forced)\n"
+  },
+  "cleanup": {
+    "ownedGroups": [
+      2990952
+    ],
+    "remaining": [],
+    "daemonExited": true,
+    "rootRemoved": true
+  }
+}
