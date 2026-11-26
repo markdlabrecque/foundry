@@ -1,0 +1,26 @@
+/** Own one launch's channel and retry policy, independent of Pi and the socket transport. */
+import type { Hello, HelloRejectReason } from "@foundry/protocol";
+import { openChannel } from "./client.js";
+import type { OpenChannel, OpenChannelOptions } from "./client.js";
+
+export interface WorkerConnectionOptions {
+  readonly socketPath: string;
+  readonly onFrame: NonNullable<OpenChannelOptions["onFrame"]>;
+  readonly attach: (channel: OpenChannel) => void;
+  readonly refuse: (reason: HelloRejectReason) => void;
+  readonly failed: (cause: unknown) => void;
+  readonly dial?: typeof openChannel;
+}
+
+export class WorkerConnection {
+  constructor(private readonly options: WorkerConnectionOptions) {}
+
+  async start(hello: () => Hello): Promise<void> {
+    try {
+      const result = await (this.options.dial ?? openChannel)({ socketPath: this.options.socketPath, hello: hello(), onFrame: this.options.onFrame });
+      if (result.accepted) {this.options.attach(result.channel);} else {this.options.refuse(result.reason);}
+    } catch (cause) {this.options.failed(cause);}
+  }
+
+  stop(): void {}
+}

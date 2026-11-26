@@ -1,0 +1,7 @@
+{"time":"2026-11-26T02:06:12.722Z","level":"info","hostId":"ad373807-fba9-4a94-9c7c-2cb1c6bc4149","msg":"worker host serving","detail":{"pid":2954000,"socket":"<fixture-root>/home/host.sock","bootId":"e4653541-62f1-4746-93c3-19c8d32b3110"}}
+{"time":"2026-11-26T02:06:12.735Z","level":"info","hostId":"ad373807-fba9-4a94-9c7c-2cb1c6bc4149","msg":"launch started","factoryId":"alpha","slotId":"hold/1","launchId":"faf742d5-5930-4f6b-b181-88a9fe103e7e","detail":{"pid":2954013}}
+{"time":"2026-11-26T02:06:12.743Z","level":"info","hostId":"ad373807-fba9-4a94-9c7c-2cb1c6bc4149","msg":"launch started","factoryId":"alpha","slotId":"hold/2","launchId":"b2273bce-6710-4cf8-9965-c27ed412a909","detail":{"pid":2954019}}
+{"time":"2026-11-26T02:06:41.200Z","level":"info","hostId":"ad373807-fba9-4a94-9c7c-2cb1c6bc4149","msg":"launch ended as requested","factoryId":"alpha","slotId":"hold/1","launchId":"faf742d5-5930-4f6b-b181-88a9fe103e7e","detail":{"code":0,"signal":null}}
+{"time":"2026-11-26T02:06:41.202Z","level":"info","hostId":"ad373807-fba9-4a94-9c7c-2cb1c6bc4149","msg":"launch ended as requested","factoryId":"alpha","slotId":"hold/2","launchId":"b2273bce-6710-4cf8-9965-c27ed412a909","detail":{"code":0,"signal":null}}
+{"time":"2026-11-26T02:06:41.214Z","level":"info","hostId":"ad373807-fba9-4a94-9c7c-2cb1c6bc4149","msg":"worker host shutdown accepted","detail":{}}
+{"time":"2026-11-26T02:06:41.214Z","level":"info","hostId":"ad373807-fba9-4a94-9c7c-2cb1c6bc4149","msg":"worker host stopping","detail":{"signal":"shutdown"}}
