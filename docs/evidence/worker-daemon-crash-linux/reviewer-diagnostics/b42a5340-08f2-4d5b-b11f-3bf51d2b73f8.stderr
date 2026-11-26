@@ -1,0 +1,3 @@
+Warning: No project session found with id '25e9b281-62bb-4125-b07d-fdba1d49d41a'; creating a new session with that id.
+Error: Failed to load extension "<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/worker.ts": Failed to load extension: ENOSPC: no space left on device, open '/tmp/jiti/worker-daemon-crash-linux-worker.c1ddca85.mjs'
+Hint: Start without extensions using "pi -ne".

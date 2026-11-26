@@ -1,0 +1,150 @@
+TAP version 13
+# Subtest: evidence redacts PATH and tokenizes repeated checkout/home prefixes without losing argv order
+not ok 1 - evidence redacts PATH and tokenizes repeated checkout/home prefixes without losing argv order
+  ---
+  duration_ms: 1.972791
+  type: 'test'
+  location: '<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/verdict.test.mjs:8:1'
+  failureType: 'testCodeFailure'
+  error: |-
+    Expected values to be strictly deep-equal:
+    + actual - expected
+
+      {
+        argv: [
+    +     '<USER_HOME>/worktress/develop/t3-123abc-456def/pi.js',
+    -     '<CHECKOUT>/pi.js',
+          '--extension',
+    +     '<USER_HOME>/worktress/develop/t3-123abc-456def/fixture.ts'
+    -     '<CHECKOUT>/fixture.ts'
+        ],
+        env: {
+          PATH: '<REDACTED inherited PATH>'
+        },
+        executable: '<USER_HOME>/node-v22/bin/node'
+
+  code: 'ERR_ASSERTION'
+  name: 'AssertionError'
+  expected:
+    env:
+      PATH: '<REDACTED inherited PATH>'
+    argv:
+      0: '<CHECKOUT>/pi.js'
+      1: '--extension'
+      2: '<CHECKOUT>/fixture.ts'
+    executable: '<USER_HOME>/node-v22/bin/node'
+  actual:
+    env:
+      PATH: '<REDACTED inherited PATH>'
+    argv:
+      0: '<USER_HOME>/worktress/develop/t3-123abc-456def/pi.js'
+      1: '--extension'
+      2: '<USER_HOME>/worktress/develop/t3-123abc-456def/fixture.ts'
+    executable: '<USER_HOME>/node-v22/bin/node'
+  operator: 'deepStrictEqual'
+  stack: |-
+    TestContext.<anonymous> (file://<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/verdict.test.mjs:11:10)
+    Test.runInAsyncScope (node:async_hooks:214:14)
+    Test.run (node:internal/test_runner/test:1047:25)
+    Test.start (node:internal/test_runner/test:944:17)
+    startSubtestAfterBootstrap (node:internal/test_runner/harness:296:17)
+  ...
+# Subtest: all observations pass only the bounded probe, never full ticket acceptance
+ok 2 - all observations pass only the bounded probe, never full ticket acceptance
+  ---
+  duration_ms: 0.173716
+  type: 'test'
+  ...
+# Subtest: privateTempPropagated false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 3 - privateTempPropagated false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.151515
+  type: 'test'
+  ...
+# Subtest: workerReplacementAccepted false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 4 - workerReplacementAccepted false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.098224
+  type: 'test'
+  ...
+# Subtest: acceptedMessageStoredAndBound false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 5 - acceptedMessageStoredAndBound false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.074169
+  type: 'test'
+  ...
+# Subtest: survivingWorkersReconnected false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 6 - survivingWorkersReconnected false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.076764
+  type: 'test'
+  ...
+# Subtest: channelTrafficResumed false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 7 - channelTrafficResumed false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.081643
+  type: 'test'
+  ...
+# Subtest: ticketArtifactsUnchanged false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 8 - ticketArtifactsUnchanged false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.061355
+  type: 'test'
+  ...
+# Subtest: liveLaunchesPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 9 - liveLaunchesPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.171592
+  type: 'test'
+  ...
+# Subtest: acceptedRowsAndBindingPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 10 - acceptedRowsAndBindingPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.264636
+  type: 'test'
+  ...
+# Subtest: assignmentsPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 11 - assignmentsPreserved false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.148068
+  type: 'test'
+  ...
+# Subtest: cleanup false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 12 - cleanup false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.068659
+  type: 'test'
+  ...
+# Subtest: cleanupPhasesSucceeded false or missing cannot be masked by reconnect/traffic/cleanup success
+ok 13 - cleanupPhasesSucceeded false or missing cannot be masked by reconnect/traffic/cleanup success
+  ---
+  duration_ms: 0.047068
+  type: 'test'
+  ...
+# Subtest: new recorded invariants also fail closed without editing the required-key list
+ok 14 - new recorded invariants also fail closed without editing the required-key list
+  ---
+  duration_ms: 0.835858
+  type: 'test'
+  ...
+# Subtest: missing reconnect is distinguished from data loss and incomplete journeys
+ok 15 - missing reconnect is distinguished from data loss and incomplete journeys
+  ---
+  duration_ms: 0.090329
+  type: 'test'
+  ...
+# Subtest: stop and copy failures cannot skip marker cleanup, removal or manifest phase
+ok 16 - stop and copy failures cannot skip marker cleanup, removal or manifest phase
+  ---
+  duration_ms: 0.226294
+  type: 'test'
+  ...
+1..16
+# tests 16
+# suites 0
+# pass 15
+# fail 1
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 52.675995

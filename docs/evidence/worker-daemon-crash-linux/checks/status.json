@@ -1,0 +1,15 @@
+{
+  "validatedBase": "050145655c76a722afc6bce70ae422397e49872c",
+  "crashProbeBase": "40ea1faff294990789b3fd92119c10146bc8978a",
+  "npmCi": { "exit": 0 },
+  "build": { "exit": 0 },
+  "typecheck": { "exit": 0 },
+  "directOxlint": { "command": "./node_modules/.bin/oxlint", "exit": 0, "diagnostics": 0 },
+  "vitestInitial": { "exit": 1, "passed": 695, "failed": 142, "reason": "ENOSPC: /tmp inode exhaustion" },
+  "e2eInitial": { "exit": 1, "passed": 2, "failed": 3, "reason": "ENOSPC: /tmp inode exhaustion" },
+  "vitestDiskTmpdir": { "exit": 0, "files": 100, "passed": 837, "failed": 0 },
+  "e2eDiskTmpdir": { "exit": 0, "files": 3, "passed": 5, "failed": 0 },
+  "checkTempCleanup": { "remainingMarkedProcesses": 0, "rootRemoved": true },
+  "requestedCrashJourney": { "exit": 1, "outcome": "blocked-reconnect", "passingAcceptance": false },
+  "preliminaryInstrumentationAttempt": { "exit": 1, "reason": "incorrect activity-frame observer; not a product failure", "remainingMarkedProcesses": 0 }
+}

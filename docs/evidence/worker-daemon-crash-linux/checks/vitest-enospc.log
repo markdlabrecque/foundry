@@ -1,0 +1,70 @@
+REPRESENTATIVE EXCERPT; omitted repetitive diagnostics. See historical-trim.json for source SHA and line ranges.
+
+--- source lines 1-25 ---
+
+> foundry@0.0.0 test
+> vitest run
+
+
+ RUN  v5.1.1 <CHECKOUT>
+
+(node:2428724) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2428747) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2428783) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2428710) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2428804) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2428818) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2428789) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2428725) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2428760) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+--- source lines 340-365 ---
+⎯⎯⎯⎯⎯⎯ Failed Tests 142 ⎯⎯⎯⎯⎯⎯
+
+ FAIL  test/agent-discover.test.ts > Pi can discover and inspect its factory and submit a durable message through registered tools
+Error: ENOSPC: no space left on device, mkdtemp '/tmp/foundry-discover-NFk9Du/.channel.sock-awEeB8'
+ ❯ listenPrivately packages/daemon/src/channel/server.ts:427:22
+ ❯ startChannelServer packages/daemon/src/channel/server.ts:337:3
+ ❯ startDiscovery test/agent-discover.test.ts:51:18
+     49|   const store: Store = await Effect.runPromise(Scope.provide(scope)(op…
+     50|
+     51|   const server = await startChannelServer({
+       |                  ^
+     52|     socketPath: join(dir, "channel.sock"),
+     53|     slotClaim: createHostSlotClaim({ host: { inventory: async () => la…
+ ❯ test/agent-discover.test.ts:173:31
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/138]⎯
+
+ FAIL  test/daemon-restart-ownership.test.ts > a restarted daemon keeps a proven launch and freezes a slot holding an orphan instead of adopting it
+Error: Command failed: git commit --quiet --no-verify -m fixture
+fatal: cannot lock ref 'HEAD': Unable to create '/tmp/foundry-restart-factory-DWCyJk/repo/.git/HEAD.lock': No space left on device
+
+ ❯ git packages/testkit/src/git-source.ts:24:3
+ ❯ makeGitSource packages/testkit/src/git-source.ts:32:3
+ ❯ test/daemon-restart-ownership.test.ts:108:3
+    106|   cleanups.push(() => stopHost(home));
+    107|   const factoryDir = tempDir("foundry-restart-factory-");
+
+--- source lines 2907-2919 ---
+ ❯ packages/daemon/test/worktrees.test.ts:1173:5
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[138/138]⎯
+
+
+ Test Files  25 failed | 75 passed (100)
+      Tests  142 failed | 695 passed (837)
+   Start at  16:48:47
+   Duration  17.56s (import 47%, tests 42%, transform 10%)
+
+    Isolate  100 workers spawned · ~178ms startup each (spawn + environment, per file)
+             at least ~1.01s faster with isolate: false — reuses workers across files instead of one per file

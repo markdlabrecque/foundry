@@ -1,0 +1,78 @@
+{
+  "base": "d6a3856ed8f5c7d6f151279dd2e66c2a01ac5a69",
+  "validatedBranchBeforeFinalEvidenceCommit": "0296997ce8d5cc5e17e0fc0606ca8f7621bbe83e",
+  "environment": {
+    "mode": "env -i allowlist",
+    "PATH":"<REDACTED inherited PATH>",
+    "HOME": "<USER_HOME>/f124fin-BhrIX2/user",
+    "TMPDIR": "<USER_HOME>/f124fin-BhrIX2/t",
+    "FOUNDRY_PI_BIN": "UNSET; no shim",
+    "FOUNDRY_WORKER_RUNTIME": "UNSET"
+  },
+  "commands": [
+    {
+      "argv": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "./node_modules/.bin/oxlint"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "test"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "test:e2e"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "node",
+        "--test",
+        "docs/evidence/worker-daemon-crash-linux/verdict.test.mjs"
+      ],
+      "exit": 0
+    }
+  ],
+  "vitest": {
+    "files": 101,
+    "passed": 839
+  },
+  "ordinaryE2E": {
+    "files": 3,
+    "passed": 5
+  },
+  "evidenceUnit": {
+    "passed": 16
+  },
+  "cleanup": {
+    "remainingPrivateRootProcesses": [],
+    "rootRemoved": true
+  },
+  "crashJourneyRerun": false,
+  "historicalCrashBase": "6dc2a5b5f01b9be13d465bccecedc67f04e8410c",
+  "historicalCrashObservedMs": 45324,
+  "originalTicketAcceptance": "unmet"
+}
