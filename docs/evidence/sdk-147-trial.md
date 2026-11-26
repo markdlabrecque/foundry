@@ -40,15 +40,16 @@ RPC rejection, or evidence that either launcher passes PRD §17.2.
 
 ## Verification
 
-Implementation revision: `fc229ceca019ff545f0aa181c999dfb5469714ba`, rebased onto
-then-latest `origin/develop` `edf3e0e6279dfd20cc1c7201fd7fdf31068a15d9` before the
-full validation run. Linux, Node `v22.23.2`, npm `10.9.8`, pinned Pi `1.6.0`.
+Implementation revision: `52d3d6c` (rebased implementation commit). The complete
+suite was rerun after rebasing onto latest `origin/develop`
+`ebc5533ad3b944723d49c46c9ab9bee11e28d4b4`. Linux, Node `v22.23.2`, npm `10.9.8`,
+pinned Pi `1.6.0`. The subsequent evidence-only commit changes no executable code.
 
 - `npm ci`: exit 0, zero audit vulnerabilities.
 - `npm run build`: exit 0.
 - `npm run typecheck`: exit 0.
 - Direct `./node_modules/.bin/oxlint`: exit 0, empty diagnostics (captured explicitly).
-- Direct `./node_modules/.bin/vitest run`: exit 0; **98 files, 821 tests passed**.
+- Direct `./node_modules/.bin/vitest run`: exit 0; **98 files, 828 tests passed**.
 - Separate `./node_modules/.bin/vitest run --config vitest.e2e.config.ts`:
   exit 0; **3 files, 5 tests passed**.
 - Targeted launch/SDK tests: **2 files, 18 tests passed**.
