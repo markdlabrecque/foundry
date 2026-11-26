@@ -16,7 +16,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) {await cleanup();}
 });
 
-const fixture = async (reason: HelloRejectReason) => {
+const fixture = async (reason: HelloRejectReason, launchId = "launch") => {
   const dir = await mkdtemp(join(tmpdir(), "foundry-worker-refusal-"));
   cleanups.push(() => rm(dir, { recursive: true, force: true }));
   let dials = 0;
@@ -44,7 +44,7 @@ const fixture = async (reason: HelloRejectReason) => {
     root: join(dir, "pi"),
     tools: [AGENT_DISCOVER],
     extensionFactories: [(pi) => connectWorker(pi, {
-      socketPath: server.socketPath, factoryId: "factory", slotId: "builder/1", launchId: "launch",
+      socketPath: server.socketPath, factoryId: "factory", slotId: "builder/1", launchId,
     })],
   });
 
@@ -75,6 +75,24 @@ test("terminal hello refusal reaches Pi tools and survives later session starts 
   });
   expect(dials()).toBe(1);
   expect(toolFrames()).toBe(0);
+});
+
+test("terminal refusal survives actual Pi extension reconstruction without redial or tool dispatch", async () => {
+  const reason = { kind: "terminal", code: "launch_not_current", detail: "stale launch" } as const;
+  const { session, dials, toolFrames } = await fixture(reason);
+  await session.prompt(`@@ ${AGENT_DISCOVER} {}`);
+  const before = session.messages.findLast((message) => message.role === "toolResult");
+  expect(before).toMatchObject({ isError: true, details: { status: "refused", code: reason.code, detail: reason.detail } });
+
+  await session.reload();
+  await session.prompt(`@@ ${AGENT_DISCOVER} {}`);
+  expect(dials()).toBe(1);
+  expect(toolFrames()).toBe(0);
+  expect(session.messages.findLast((message) => message.role === "toolResult")).toMatchObject({
+    isError: true,
+    content: [{ type: "text", text: `${reason.code}: ${reason.detail}` }],
+    details: { status: "refused", code: reason.code, detail: reason.detail },
+  });
 });
 
 test("automatically reconnects the same Pi launch, reconciles known history and replays a lost tool result without a second commit", async () => {

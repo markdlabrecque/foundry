@@ -15,6 +15,7 @@ import { AGENT_DELEGATE, AGENT_DISCOVER, AGENT_MESSAGE, AGENT_REPLY, AGENT_REQUE
 import type { Hello, ToolCallOutcome } from "@foundry/protocol";
 import { Type } from "typebox";
 import { WorkerConnection } from "./channel/lifecycle.js";
+import { claimLaunchChannel } from "./channel/launch.js";
 import { CompactionReporter } from "./compaction.js";
 import { createConversationAdapter } from "./conversation/adapter.js";
 import { interruptRuns, RunInterrupter } from "./interrupt.js";
@@ -84,7 +85,10 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
   const compactions = new CompactionReporter();
   pi.on("session_compact", () => compactions.record());
 
+  const launchChannel = claimLaunchChannel(JSON.stringify([launch.socketPath, launch.factoryId, launch.slotId, launch.launchId]));
   const toolCalls = new ToolCallClient();
+
+  if (launchChannel.reason !== undefined) {toolCalls.refuse(launchChannel.reason);}
 
   for (const tool of [
     { name: AGENT_DISCOVER, label: "Discover stations and slots", description: "List the configured stations and slots in your factory." },
@@ -258,6 +262,7 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
       toolCalls.attach(channel);
     },
     refuse: (reason) => {
+      launchChannel.refuse(reason);
       toolCalls.refuse(reason);
       process.stderr.write(`foundry: channel hello refused (${reason.kind} ${reason.code})\n`);
     },
@@ -266,8 +271,13 @@ export const connectWorker = (pi: ExtensionAPI, launch: WorkerLaunch): void => {
     },
   });
 
-  pi.on("session_start", (_event, ctx) => connection.start(() => helloFor(pi, launch, ctx)));
-  pi.on("session_shutdown", () => connection.stop());
+  launchChannel.own(() => connection.stop());
+  pi.on("session_start", (_event, ctx) => {
+    if (launchChannel.reason !== undefined) {return;}
+
+    return connection.start(() => helloFor(pi, launch, ctx));
+  });
+  pi.on("session_shutdown", (event) => launchChannel.release(event.reason === "quit"));
 };
 
 /** Pi's entry point: connect when running as a Foundry launch, otherwise do nothing. */
