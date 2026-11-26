@@ -1,0 +1,23 @@
+{
+  "verdict": "blocked",
+  "root": "<fixture>",
+  "product": "fa1f40ee85daea577ad617ffaf0e3ce625dcb825",
+  "startedAt": "2026-11-26T03:47:27.411Z",
+  "model": "pi-claude-subscription/claude-sonnet-5-5",
+  "requestBound": 50,
+  "wallBoundSeconds": 900,
+  "authAvailable": true,
+  "initialCommit": "80d08e7292ae1fa8e19cbcec1b949b40e9edc2de",
+  "daemonArgv": [
+    "<node>",
+    "<repo>/packages/daemon/dist/main.js",
+    "--home",
+    "<fixture>/state",
+    "<fixture>/factory.yaml"
+  ],
+  "daemonPid": 3431102,
+  "assistantResponses": 1,
+  "failure": "Error: bounded journey deadline",
+  "finishedAt": "2026-11-26T04:02:28.546Z",
+  "daemonExit": 0
+}

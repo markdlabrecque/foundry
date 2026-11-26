@@ -1,0 +1,46 @@
+version: 1
+name: realticket
+repository:
+  source: ./repo
+  default_branch: main
+default_production_line: tiny
+worktrees:
+  root: <fixture>/worktrees
+message_budget: 12
+recovery_limit: 1
+defaults:
+  instructions: roles/common.md
+  model: pi-claude-subscription/claude-sonnet-5-5
+  extensions: ["<provider>/index.ts"]
+rooms:
+  eng:
+    stations:
+      specify:
+        isolation: none
+        instructions: roles/specify.md
+      implement:
+        isolation: worktree
+        instructions: roles/implement.md
+      review:
+        isolation: worktree
+        instructions: roles/review.md
+      verify:
+        isolation: worktree
+        instructions: roles/verify.md
+production_lines:
+  tiny:
+    rejection_limit: 1
+    verify: [npm, test]
+    stages:
+      - id: specify
+        station: eng.specify
+      - id: implement
+        station: eng.implement
+        writing: true
+      - id: review
+        station: eng.review
+        on_rejection: implement
+      - id: verify
+        station: eng.verify
+        approval: true
+        on_rejection: implement

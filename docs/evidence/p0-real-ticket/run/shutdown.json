@@ -1,0 +1,40 @@
+{
+  "ok": true,
+  "result": {
+    "force": false,
+    "factories": [
+      {
+        "factoryId": "realticket",
+        "state": "stopped",
+        "force": false,
+        "launches": [
+          {
+            "launchId": "e64a1e14-7b38-4a2a-bb84-e9b04b97d620",
+            "slotId": "specify/1",
+            "drained": true,
+            "escalated": false
+          },
+          {
+            "launchId": "0eb1f8ed-202a-40d1-a23d-b86ddd7986f8",
+            "slotId": "implement/1",
+            "drained": true,
+            "escalated": false
+          },
+          {
+            "launchId": "8b014ae2-b3d8-4c10-8e53-4f0a515d63bd",
+            "slotId": "review/1",
+            "drained": true,
+            "escalated": false
+          },
+          {
+            "launchId": "9588e4ec-a01e-40d9-a979-5666845fd13a",
+            "slotId": "verify/1",
+            "drained": true,
+            "escalated": false
+          }
+        ]
+      }
+    ],
+    "hostStopped": true
+  }
+}

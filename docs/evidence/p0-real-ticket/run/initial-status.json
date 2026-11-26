@@ -1,0 +1,10 @@
+{
+  "ok": true,
+  "result": {
+    "instance": {
+      "stateRoot": "<fixture>/state",
+      "daemonPid": 3431102,
+      "startedAt": "2026-11-26T03:47:27.983Z"
+    }
+  }
+}

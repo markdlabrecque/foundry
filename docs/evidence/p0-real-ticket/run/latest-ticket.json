@@ -1,0 +1,63 @@
+{
+  "ticket": {
+    "factory": "realticket",
+    "number": 1,
+    "title": "Clamp a finite number",
+    "slug": "clamp-a-finite-number",
+    "line": "tiny",
+    "state": "stage",
+    "stage": "specify",
+    "status": "assigned",
+    "submittedAt": "2026-11-26T03:47:29.060Z",
+    "directory": "<fixture>/state/tickets/realticket/1",
+    "specPath": "<fixture>/state/tickets/realticket/1/spec.md",
+    "evidencePath": "<fixture>/state/tickets/realticket/1/evidence",
+    "rejections": {
+      "spent": 0,
+      "ceiling": 1
+    },
+    "messages": {
+      "spent": 0,
+      "ceiling": 12
+    },
+    "worktree": null
+  },
+  "transitions": [
+    {
+      "at": "2026-11-26T03:47:29.060Z",
+      "actor": "operator",
+      "from": null,
+      "to": {
+        "state": "backlog",
+        "stage": null,
+        "status": null
+      },
+      "outcome": null,
+      "reason": null,
+      "commit": null,
+      "evidence": [],
+      "configLoad": "1",
+      "voidedTransitions": []
+    },
+    {
+      "at": "2026-11-26T03:47:29.064Z",
+      "actor": "daemon",
+      "from": {
+        "state": "backlog",
+        "stage": null,
+        "status": null
+      },
+      "to": {
+        "state": "stage",
+        "stage": "specify",
+        "status": "assigned"
+      },
+      "outcome": null,
+      "reason": null,
+      "commit": null,
+      "evidence": [],
+      "configLoad": "1",
+      "voidedTransitions": []
+    }
+  ]
+}

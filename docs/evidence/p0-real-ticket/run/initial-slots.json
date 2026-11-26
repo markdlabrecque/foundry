@@ -1,0 +1,83 @@
+{
+  "ok": true,
+  "result": {
+    "slots": [
+      {
+        "factoryId": "realticket",
+        "slotId": "specify/1",
+        "station": "eng.specify",
+        "ordinal": 1,
+        "condition": "normal",
+        "freezeCause": null,
+        "launch": {
+          "launchId": "e64a1e14-7b38-4a2a-bb84-e9b04b97d620",
+          "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+          "pid": 3431133,
+          "startedAt": "2026-11-26T03:47:28.112Z",
+          "origin": "started",
+          "endedAt": null,
+          "endReason": null,
+          "exitCode": null,
+          "exitSignal": null
+        }
+      },
+      {
+        "factoryId": "realticket",
+        "slotId": "implement/1",
+        "station": "eng.implement",
+        "ordinal": 1,
+        "condition": "normal",
+        "freezeCause": null,
+        "launch": {
+          "launchId": "0eb1f8ed-202a-40d1-a23d-b86ddd7986f8",
+          "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+          "pid": 3431139,
+          "startedAt": "2026-11-26T03:47:28.120Z",
+          "origin": "started",
+          "endedAt": null,
+          "endReason": null,
+          "exitCode": null,
+          "exitSignal": null
+        }
+      },
+      {
+        "factoryId": "realticket",
+        "slotId": "review/1",
+        "station": "eng.review",
+        "ordinal": 1,
+        "condition": "normal",
+        "freezeCause": null,
+        "launch": {
+          "launchId": "8b014ae2-b3d8-4c10-8e53-4f0a515d63bd",
+          "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+          "pid": 3431146,
+          "startedAt": "2026-11-26T03:47:28.127Z",
+          "origin": "started",
+          "endedAt": null,
+          "endReason": null,
+          "exitCode": null,
+          "exitSignal": null
+        }
+      },
+      {
+        "factoryId": "realticket",
+        "slotId": "verify/1",
+        "station": "eng.verify",
+        "ordinal": 1,
+        "condition": "normal",
+        "freezeCause": null,
+        "launch": {
+          "launchId": "9588e4ec-a01e-40d9-a979-5666845fd13a",
+          "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+          "pid": 3431153,
+          "startedAt": "2026-11-26T03:47:28.135Z",
+          "origin": "started",
+          "endedAt": null,
+          "endReason": null,
+          "exitCode": null,
+          "exitSignal": null
+        }
+      }
+    ]
+  }
+}

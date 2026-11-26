@@ -1,0 +1,833 @@
+{
+  "agent_request": [],
+  "approval": [],
+  "assignment": [
+    {
+      "id": "4c46d82e-879d-4788-9b1b-9c8ac845257a",
+      "factory_id": "realticket",
+      "ticket_number": 1,
+      "stage": "specify",
+      "slot_id": "specify/1",
+      "status": "active",
+      "recovery_count": 0,
+      "recovery_ceiling": 1,
+      "created_at": 1795664849064,
+      "ended_at": null,
+      "end_reason": null,
+      "context_message": "fe86a7dd-7894-461b-9df3-99c11ef84102"
+    }
+  ],
+  "assignment_resume": [],
+  "conversation": [
+    {
+      "factory_id": "realticket",
+      "slot_id": "specify/1",
+      "ref": "06be0f78-65b9-4f53-8142-37c4283cb6cc",
+      "status": "current",
+      "created_at": 1795664848106
+    },
+    {
+      "factory_id": "realticket",
+      "slot_id": "implement/1",
+      "ref": "10933382-5db4-47ec-8787-17feecf4aea9",
+      "status": "current",
+      "created_at": 1795664848116
+    },
+    {
+      "factory_id": "realticket",
+      "slot_id": "review/1",
+      "ref": "986dac8d-af5c-4dd7-97f8-ea55966fb31b",
+      "status": "current",
+      "created_at": 1795664848123
+    },
+    {
+      "factory_id": "realticket",
+      "slot_id": "verify/1",
+      "ref": "77bc5d33-a488-48cd-829d-586248dd6d57",
+      "status": "current",
+      "created_at": 1795664848131
+    }
+  ],
+  "delegation": [],
+  "factory_config_load": [
+    {
+      "id": 1,
+      "run_id": "38f89114-ec1b-4366-a994-218e731fd40e",
+      "factory_id": "realticket",
+      "yaml_file": "<fixture>/factory.yaml",
+      "config": "{\"config\":{\"version\":1,\"name\":\"realticket\",\"repository\":{\"source\":\"./repo\",\"default_branch\":\"main\"},\"default_production_line\":\"tiny\",\"worktrees\":{\"root\":\"<fixture>/worktrees\",\"branch_pattern\":\"ticket/{ticket-id}-{slug}\"},\"knowledge\":{\"root\":\"knowledge\"},\"message_budget\":12,\"delegation_depth_limit\":2,\"recovery_limit\":1,\"defaults\":{\"instructions\":\"roles/common.md\",\"model\":\"pi-claude-subscription/claude-sonnet-5-5\",\"extensions\":[\"<provider>/index.ts\"]},\"rooms\":{\"eng\":{\"stations\":{\"specify\":{\"instructions\":\"roles/specify.md\",\"instances\":1,\"isolation\":\"none\"},\"implement\":{\"instructions\":\"roles/implement.md\",\"instances\":1,\"isolation\":\"worktree\"},\"review\":{\"instructions\":\"roles/review.md\",\"instances\":1,\"isolation\":\"worktree\"},\"verify\":{\"instructions\":\"roles/verify.md\",\"instances\":1,\"isolation\":\"worktree\"}}}},\"production_lines\":{\"tiny\":{\"rejection_limit\":1,\"verify\":[\"npm\",\"test\"],\"stages\":[{\"id\":\"specify\",\"station\":\"eng.specify\",\"writing\":false,\"approval\":false},{\"id\":\"implement\",\"station\":\"eng.implement\",\"writing\":true,\"approval\":false},{\"id\":\"review\",\"station\":\"eng.review\",\"writing\":false,\"approval\":false,\"on_rejection\":\"implement\"},{\"id\":\"verify\",\"station\":\"eng.verify\",\"writing\":false,\"approval\":true,\"on_rejection\":\"implement\"}]}}},\"stations\":[{\"address\":\"eng.specify\",\"room\":\"eng\",\"station\":\"specify\",\"instructions\":[\"<fixture>/roles/common.md\",\"<fixture>/roles/specify.md\"],\"model\":\"pi-claude-subscription/claude-sonnet-5-5\",\"skills\":[],\"extensions\":[{\"path\":\"<provider>/index.ts\",\"tools\":[]}],\"instances\":1,\"isolation\":\"none\"},{\"address\":\"eng.implement\",\"room\":\"eng\",\"station\":\"implement\",\"instructions\":[\"<fixture>/roles/common.md\",\"<fixture>/roles/implement.md\"],\"model\":\"pi-claude-subscription/claude-sonnet-5-5\",\"skills\":[],\"extensions\":[{\"path\":\"<provider>/index.ts\",\"tools\":[]}],\"instances\":1,\"isolation\":\"worktree\"},{\"address\":\"eng.review\",\"room\":\"eng\",\"station\":\"review\",\"instructions\":[\"<fixture>/roles/common.md\",\"<fixture>/roles/review.md\"],\"model\":\"pi-claude-subscription/claude-sonnet-5-5\",\"skills\":[],\"extensions\":[{\"path\":\"<provider>/index.ts\",\"tools\":[]}],\"instances\":1,\"isolation\":\"worktree\"},{\"address\":\"eng.verify\",\"room\":\"eng\",\"station\":\"verify\",\"instructions\":[\"<fixture>/roles/common.md\",\"<fixture>/roles/verify.md\"],\"model\":\"pi-claude-subscription/claude-sonnet-5-5\",\"skills\":[],\"extensions\":[{\"path\":\"<provider>/index.ts\",\"tools\":[]}],\"instances\":1,\"isolation\":\"worktree\"}]}",
+      "config_hash": "sha256:a705577b8feb9be404ac62159db9d7924d8b56f987816f591ccec593b067bc73",
+      "knowledge_root": "<fixture>/knowledge"
+    }
+  ],
+  "foundry_migrations": [
+    {
+      "migration_id": 1,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "history"
+    },
+    {
+      "migration_id": 2,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "operator_hold"
+    },
+    {
+      "migration_id": 3,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "tickets"
+    },
+    {
+      "migration_id": 4,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "history_records"
+    },
+    {
+      "migration_id": 5,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "prime"
+    },
+    {
+      "migration_id": 6,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "run_and_config_loads"
+    },
+    {
+      "migration_id": 7,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "operation"
+    },
+    {
+      "migration_id": 8,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "slots_and_launches"
+    },
+    {
+      "migration_id": 9,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "slot_freeze_cause"
+    },
+    {
+      "migration_id": 10,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "conversation"
+    },
+    {
+      "migration_id": 11,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "submission"
+    },
+    {
+      "migration_id": 12,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "message_acceptance"
+    },
+    {
+      "migration_id": 13,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "message_binding"
+    },
+    {
+      "migration_id": 14,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "request_acceptance"
+    },
+    {
+      "migration_id": 15,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "assignments"
+    },
+    {
+      "migration_id": 16,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "message_delivery"
+    },
+    {
+      "migration_id": 17,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "operator_message_attribution"
+    },
+    {
+      "migration_id": 18,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "delegation_acceptance"
+    },
+    {
+      "migration_id": 19,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "idle_slot_recovery"
+    },
+    {
+      "migration_id": 20,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "assignment_repository_context"
+    },
+    {
+      "migration_id": 21,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "blocked_approvals"
+    },
+    {
+      "migration_id": 22,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "worker_request_approvals"
+    },
+    {
+      "migration_id": 23,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "message_injection_clock"
+    },
+    {
+      "migration_id": 24,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "message_limit_approvals"
+    },
+    {
+      "migration_id": 25,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "stage_gate_approvals"
+    },
+    {
+      "migration_id": 26,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "cancelled_requests"
+    },
+    {
+      "migration_id": 27,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "ticket_resume"
+    },
+    {
+      "migration_id": 28,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "abandoned_requests"
+    },
+    {
+      "migration_id": 29,
+      "created_at": "2026-11-26 03:47:27",
+      "name": "voided_evaluations"
+    }
+  ],
+  "history": [
+    {
+      "sequence": 1,
+      "factory_id": "",
+      "recorded_at": 1795664847990,
+      "kind": "run.started",
+      "subject": "38f89114-ec1b-4366-a994-218e731fd40e",
+      "detail": "{\"version\":\"0.0.0\",\"factories\":[\"realticket\"]}"
+    },
+    {
+      "sequence": 2,
+      "factory_id": "realticket",
+      "recorded_at": 1795664847990,
+      "kind": "factory.config_loaded",
+      "subject": "1",
+      "detail": "{\"runId\":\"38f89114-ec1b-4366-a994-218e731fd40e\",\"configHash\":\"sha256:a705577b8feb9be404ac62159db9d7924d8b56f987816f591ccec593b067bc73\",\"yamlFile\":\"<fixture>/factory.yaml\"}"
+    },
+    {
+      "sequence": 3,
+      "factory_id": "realticket",
+      "recorded_at": 1795664848107,
+      "kind": "launch.requested",
+      "subject": "specify/1",
+      "detail": "{\"station\":\"eng.specify\",\"hostId\":\"5514c1ca-35af-4892-bc8c-610126077a07\",\"conversationRef\":\"06be0f78-65b9-4f53-8142-37c4283cb6cc\"}"
+    },
+    {
+      "sequence": 4,
+      "factory_id": "realticket",
+      "recorded_at": 1795664848113,
+      "kind": "launch.started",
+      "subject": "e64a1e14-7b38-4a2a-bb84-e9b04b97d620",
+      "detail": "{\"slotId\":\"specify/1\",\"pid\":3431133,\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\"}"
+    },
+    {
+      "sequence": 5,
+      "factory_id": "realticket",
+      "recorded_at": 1795664848116,
+      "kind": "launch.requested",
+      "subject": "implement/1",
+      "detail": "{\"station\":\"eng.implement\",\"hostId\":\"5514c1ca-35af-4892-bc8c-610126077a07\",\"conversationRef\":\"10933382-5db4-47ec-8787-17feecf4aea9\"}"
+    },
+    {
+      "sequence": 6,
+      "factory_id": "realticket",
+      "recorded_at": 1795664848120,
+      "kind": "launch.started",
+      "subject": "0eb1f8ed-202a-40d1-a23d-b86ddd7986f8",
+      "detail": "{\"slotId\":\"implement/1\",\"pid\":3431139,\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\"}"
+    },
+    {
+      "sequence": 7,
+      "factory_id": "realticket",
+      "recorded_at": 1795664848124,
+      "kind": "launch.requested",
+      "subject": "review/1",
+      "detail": "{\"station\":\"eng.review\",\"hostId\":\"5514c1ca-35af-4892-bc8c-610126077a07\",\"conversationRef\":\"986dac8d-af5c-4dd7-97f8-ea55966fb31b\"}"
+    },
+    {
+      "sequence": 8,
+      "factory_id": "realticket",
+      "recorded_at": 1795664848128,
+      "kind": "launch.started",
+      "subject": "8b014ae2-b3d8-4c10-8e53-4f0a515d63bd",
+      "detail": "{\"slotId\":\"review/1\",\"pid\":3431146,\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\"}"
+    },
+    {
+      "sequence": 9,
+      "factory_id": "realticket",
+      "recorded_at": 1795664848131,
+      "kind": "launch.requested",
+      "subject": "verify/1",
+      "detail": "{\"station\":\"eng.verify\",\"hostId\":\"5514c1ca-35af-4892-bc8c-610126077a07\",\"conversationRef\":\"77bc5d33-a488-48cd-829d-586248dd6d57\"}"
+    },
+    {
+      "sequence": 10,
+      "factory_id": "realticket",
+      "recorded_at": 1795664848135,
+      "kind": "launch.started",
+      "subject": "9588e4ec-a01e-40d9-a979-5666845fd13a",
+      "detail": "{\"slotId\":\"verify/1\",\"pid\":3431153,\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\"}"
+    },
+    {
+      "sequence": 11,
+      "factory_id": "realticket",
+      "recorded_at": 1795664848998,
+      "kind": "prime.sent",
+      "subject": "specify/1",
+      "detail": "{\"primeId\":\"prime-261e6a02-bb71-4f18-ac63-72184208e165\",\"launchId\":\"e64a1e14-7b38-4a2a-bb84-e9b04b97d620\",\"conversationRef\":\"06be0f78-65b9-4f53-8142-37c4283cb6cc\",\"situation\":\"fresh\",\"parts\":[{\"source\":\"roles/common.md\",\"hash\":\"sha256:b411875d715a0f7db9373465ead630f9e0eab95d282a48dfa98bb824c72ababa\"},{\"source\":\"roles/specify.md\",\"hash\":\"sha256:d9cb577f2981916c56062382411e9359da7df1340b37491d9593243c345c3f7f\"}]}"
+    },
+    {
+      "sequence": 12,
+      "factory_id": "realticket",
+      "recorded_at": 1795664849003,
+      "kind": "prime.sent",
+      "subject": "verify/1",
+      "detail": "{\"primeId\":\"prime-2c0cd85c-2715-4c4a-ad5c-bc89e0525559\",\"launchId\":\"9588e4ec-a01e-40d9-a979-5666845fd13a\",\"conversationRef\":\"77bc5d33-a488-48cd-829d-586248dd6d57\",\"situation\":\"fresh\",\"parts\":[{\"source\":\"roles/common.md\",\"hash\":\"sha256:b411875d715a0f7db9373465ead630f9e0eab95d282a48dfa98bb824c72ababa\"},{\"source\":\"roles/verify.md\",\"hash\":\"sha256:0ad98d52b5316ce41f2e787cafa4e327409457e55bbae81599dc0dcc23fbdfad\"}]}"
+    },
+    {
+      "sequence": 13,
+      "factory_id": "realticket",
+      "recorded_at": 1795664849008,
+      "kind": "prime.sent",
+      "subject": "review/1",
+      "detail": "{\"primeId\":\"prime-caeb1627-ab3f-4e0d-9bcd-d54ff4169e8e\",\"launchId\":\"8b014ae2-b3d8-4c10-8e53-4f0a515d63bd\",\"conversationRef\":\"986dac8d-af5c-4dd7-97f8-ea55966fb31b\",\"situation\":\"fresh\",\"parts\":[{\"source\":\"roles/common.md\",\"hash\":\"sha256:b411875d715a0f7db9373465ead630f9e0eab95d282a48dfa98bb824c72ababa\"},{\"source\":\"roles/review.md\",\"hash\":\"sha256:95fc92d8b7b0ad8ba8d3fe1c27033b30e5a9ed866a19e6055bfc1665f7fa1abb\"}]}"
+    },
+    {
+      "sequence": 14,
+      "factory_id": "realticket",
+      "recorded_at": 1795664849021,
+      "kind": "prime.sent",
+      "subject": "implement/1",
+      "detail": "{\"primeId\":\"prime-1856d7e1-0f5c-4f34-b56a-2028172129c0\",\"launchId\":\"0eb1f8ed-202a-40d1-a23d-b86ddd7986f8\",\"conversationRef\":\"10933382-5db4-47ec-8787-17feecf4aea9\",\"situation\":\"fresh\",\"parts\":[{\"source\":\"roles/common.md\",\"hash\":\"sha256:b411875d715a0f7db9373465ead630f9e0eab95d282a48dfa98bb824c72ababa\"},{\"source\":\"roles/implement.md\",\"hash\":\"sha256:ed10251ce7ba7cf24c52a2b2fcfcf1374c80dab38e0100bfcd98175dd44e5868\"}]}"
+    },
+    {
+      "sequence": 15,
+      "factory_id": "realticket",
+      "recorded_at": 1795664849060,
+      "kind": "ticket.submitted",
+      "subject": "1",
+      "detail": "{\"title\":\"Clamp a finite number\",\"line\":\"tiny\",\"directory\":\"<fixture>/state/tickets/realticket/1\"}"
+    },
+    {
+      "sequence": 16,
+      "factory_id": "realticket",
+      "recorded_at": 1795664849065,
+      "kind": "message.accepted",
+      "subject": "fe86a7dd-7894-461b-9df3-99c11ef84102",
+      "detail": "{\"sequence\":1,\"senderKind\":\"daemon\",\"senderSlot\":null,\"recipient\":\"eng.specify\",\"kind\":\"ordinary\",\"delivery\":\"after_turn\"}"
+    },
+    {
+      "sequence": 17,
+      "factory_id": "realticket",
+      "recorded_at": 1795664849065,
+      "kind": "repository_context.accepted",
+      "subject": "fe86a7dd-7894-461b-9df3-99c11ef84102",
+      "detail": "{\"assignment\":\"4c46d82e-879d-4788-9b1b-9c8ac845257a\",\"slotId\":\"specify/1\",\"conversationRef\":\"06be0f78-65b9-4f53-8142-37c4283cb6cc\",\"root\":\"<fixture>/state/clones/realticket\",\"parts\":[]}"
+    },
+    {
+      "sequence": 18,
+      "factory_id": "realticket",
+      "recorded_at": 1795664849065,
+      "kind": "ticket.assigned",
+      "subject": "1",
+      "detail": "{\"assignment\":\"4c46d82e-879d-4788-9b1b-9c8ac845257a\",\"stage\":\"specify\",\"slotId\":\"specify/1\",\"contextMessage\":\"fe86a7dd-7894-461b-9df3-99c11ef84102\"}"
+    },
+    {
+      "sequence": 19,
+      "factory_id": "realticket",
+      "recorded_at": 1795664849069,
+      "kind": "message.bound",
+      "subject": "fe86a7dd-7894-461b-9df3-99c11ef84102",
+      "detail": "{\"sequence\":1,\"slotId\":\"specify/1\"}"
+    },
+    {
+      "sequence": 20,
+      "factory_id": "realticket",
+      "recorded_at": 1795664849072,
+      "kind": "message.sent",
+      "subject": "fe86a7dd-7894-461b-9df3-99c11ef84102",
+      "detail": "{\"attemptId\":\"caf02514-a5db-42b3-a9c3-0f300c5e386f\",\"slotId\":\"specify/1\",\"launchId\":\"e64a1e14-7b38-4a2a-bb84-e9b04b97d620\",\"connectionId\":\"f60ea483-8b56-4a57-a88d-d8bf89c0be23\"}"
+    },
+    {
+      "sequence": 21,
+      "factory_id": "realticket",
+      "recorded_at": 1795664849077,
+      "kind": "message.injected",
+      "subject": "fe86a7dd-7894-461b-9df3-99c11ef84102",
+      "detail": "{\"slotId\":\"specify/1\",\"launchId\":\"e64a1e14-7b38-4a2a-bb84-e9b04b97d620\",\"injectedAt\":1795664849076}"
+    },
+    {
+      "sequence": 22,
+      "factory_id": "realticket",
+      "recorded_at": 1795664861022,
+      "kind": "prime.acknowledged",
+      "subject": "specify/1",
+      "detail": "{\"primeId\":\"prime-261e6a02-bb71-4f18-ac63-72184208e165\"}"
+    },
+    {
+      "sequence": 23,
+      "factory_id": "realticket",
+      "recorded_at": 1795664861025,
+      "kind": "message.acknowledged",
+      "subject": "fe86a7dd-7894-461b-9df3-99c11ef84102",
+      "detail": "{\"attemptId\":\"caf02514-a5db-42b3-a9c3-0f300c5e386f\",\"slotId\":\"specify/1\",\"launchId\":\"e64a1e14-7b38-4a2a-bb84-e9b04b97d620\"}"
+    },
+    {
+      "sequence": 24,
+      "factory_id": "realticket",
+      "recorded_at": 1795665748800,
+      "kind": "factory.stopping",
+      "subject": "realticket",
+      "detail": "{\"force\":false}"
+    },
+    {
+      "sequence": 25,
+      "factory_id": "realticket",
+      "recorded_at": 1795665748817,
+      "kind": "launch.ended",
+      "subject": "e64a1e14-7b38-4a2a-bb84-e9b04b97d620",
+      "detail": "{\"slotId\":\"specify/1\",\"reason\":\"requested\",\"unexpected\":false,\"code\":0,\"signal\":null}"
+    },
+    {
+      "sequence": 26,
+      "factory_id": "realticket",
+      "recorded_at": 1795665748820,
+      "kind": "launch.ended",
+      "subject": "0eb1f8ed-202a-40d1-a23d-b86ddd7986f8",
+      "detail": "{\"slotId\":\"implement/1\",\"reason\":\"requested\",\"unexpected\":false,\"code\":0,\"signal\":null}"
+    },
+    {
+      "sequence": 27,
+      "factory_id": "realticket",
+      "recorded_at": 1795665748824,
+      "kind": "launch.ended",
+      "subject": "9588e4ec-a01e-40d9-a979-5666845fd13a",
+      "detail": "{\"slotId\":\"verify/1\",\"reason\":\"requested\",\"unexpected\":false,\"code\":0,\"signal\":null}"
+    },
+    {
+      "sequence": 28,
+      "factory_id": "realticket",
+      "recorded_at": 1795665748827,
+      "kind": "launch.ended",
+      "subject": "8b014ae2-b3d8-4c10-8e53-4f0a515d63bd",
+      "detail": "{\"slotId\":\"review/1\",\"reason\":\"requested\",\"unexpected\":false,\"code\":0,\"signal\":null}"
+    },
+    {
+      "sequence": 29,
+      "factory_id": "realticket",
+      "recorded_at": 1795665748831,
+      "kind": "factory.stopped",
+      "subject": "realticket",
+      "detail": "{\"force\":false,\"launches\":4}"
+    }
+  ],
+  "history_record": [
+    {
+      "sequence": 5,
+      "record_kind": "slot",
+      "record_id": "implement/1"
+    },
+    {
+      "sequence": 6,
+      "record_kind": "slot",
+      "record_id": "implement/1"
+    },
+    {
+      "sequence": 26,
+      "record_kind": "slot",
+      "record_id": "implement/1"
+    },
+    {
+      "sequence": 7,
+      "record_kind": "slot",
+      "record_id": "review/1"
+    },
+    {
+      "sequence": 8,
+      "record_kind": "slot",
+      "record_id": "review/1"
+    },
+    {
+      "sequence": 28,
+      "record_kind": "slot",
+      "record_id": "review/1"
+    },
+    {
+      "sequence": 3,
+      "record_kind": "slot",
+      "record_id": "specify/1"
+    },
+    {
+      "sequence": 4,
+      "record_kind": "slot",
+      "record_id": "specify/1"
+    },
+    {
+      "sequence": 17,
+      "record_kind": "slot",
+      "record_id": "specify/1"
+    },
+    {
+      "sequence": 18,
+      "record_kind": "slot",
+      "record_id": "specify/1"
+    },
+    {
+      "sequence": 19,
+      "record_kind": "slot",
+      "record_id": "specify/1"
+    },
+    {
+      "sequence": 25,
+      "record_kind": "slot",
+      "record_id": "specify/1"
+    },
+    {
+      "sequence": 9,
+      "record_kind": "slot",
+      "record_id": "verify/1"
+    },
+    {
+      "sequence": 10,
+      "record_kind": "slot",
+      "record_id": "verify/1"
+    },
+    {
+      "sequence": 27,
+      "record_kind": "slot",
+      "record_id": "verify/1"
+    },
+    {
+      "sequence": 15,
+      "record_kind": "ticket",
+      "record_id": "1"
+    },
+    {
+      "sequence": 16,
+      "record_kind": "ticket",
+      "record_id": "1"
+    },
+    {
+      "sequence": 17,
+      "record_kind": "ticket",
+      "record_id": "1"
+    },
+    {
+      "sequence": 18,
+      "record_kind": "ticket",
+      "record_id": "1"
+    },
+    {
+      "sequence": 19,
+      "record_kind": "ticket",
+      "record_id": "1"
+    }
+  ],
+  "integration_intent": [],
+  "launch": [
+    {
+      "launch_id": "e64a1e14-7b38-4a2a-bb84-e9b04b97d620",
+      "factory_id": "realticket",
+      "slot_id": "specify/1",
+      "boot_id": "e4653541-62f1-4746-93c3-19c8d32b3110",
+      "pid": 3431133,
+      "started_at": 1795664848112,
+      "origin": "started",
+      "ended_at": 1795665748815,
+      "end_reason": "requested",
+      "exit_code": 0,
+      "exit_signal": null
+    },
+    {
+      "launch_id": "0eb1f8ed-202a-40d1-a23d-b86ddd7986f8",
+      "factory_id": "realticket",
+      "slot_id": "implement/1",
+      "boot_id": "e4653541-62f1-4746-93c3-19c8d32b3110",
+      "pid": 3431139,
+      "started_at": 1795664848120,
+      "origin": "started",
+      "ended_at": 1795665748816,
+      "end_reason": "requested",
+      "exit_code": 0,
+      "exit_signal": null
+    },
+    {
+      "launch_id": "8b014ae2-b3d8-4c10-8e53-4f0a515d63bd",
+      "factory_id": "realticket",
+      "slot_id": "review/1",
+      "boot_id": "e4653541-62f1-4746-93c3-19c8d32b3110",
+      "pid": 3431146,
+      "started_at": 1795664848127,
+      "origin": "started",
+      "ended_at": 1795665748816,
+      "end_reason": "requested",
+      "exit_code": 0,
+      "exit_signal": null
+    },
+    {
+      "launch_id": "9588e4ec-a01e-40d9-a979-5666845fd13a",
+      "factory_id": "realticket",
+      "slot_id": "verify/1",
+      "boot_id": "e4653541-62f1-4746-93c3-19c8d32b3110",
+      "pid": 3431153,
+      "started_at": 1795664848135,
+      "origin": "started",
+      "ended_at": 1795665748816,
+      "end_reason": "requested",
+      "exit_code": 0,
+      "exit_signal": null
+    }
+  ],
+  "message": [
+    {
+      "id": "fe86a7dd-7894-461b-9df3-99c11ef84102",
+      "factory_id": "realticket",
+      "sequence": 1,
+      "sender_kind": "daemon",
+      "sender_slot": null,
+      "recipient": "eng.specify",
+      "body": "Ticket 1: Clamp a finite number\nProduction line: tiny\nStage: specify\nAssignment: 4c46d82e-879d-4788-9b1b-9c8ac845257a\nSlot: specify/1\nSpecification: <fixture>/state/tickets/realticket/1/spec.md\nEvidence: <fixture>/state/tickets/realticket/1/evidence\nWorktree: none (write only in the ticket directory)\n\n# Repository Context\nRoot: <fixture>/state/clones/realticket\n\n## Repository skills (read bodies on demand)\nNo repository context files or indexed skills.",
+      "delivery": "after_turn",
+      "kind": "ordinary",
+      "ticket_number": 1,
+      "request_id": null,
+      "delegation_id": null,
+      "status": "acknowledged",
+      "accepted_at": 1795664849065,
+      "bound_slot": "specify/1",
+      "bound_at": 1795664849069,
+      "acknowledged_at": 1795664861025
+    }
+  ],
+  "message_attempt": [
+    {
+      "id": "caf02514-a5db-42b3-a9c3-0f300c5e386f",
+      "factory_id": "realticket",
+      "message_id": "fe86a7dd-7894-461b-9df3-99c11ef84102",
+      "slot_id": "specify/1",
+      "launch_id": "e64a1e14-7b38-4a2a-bb84-e9b04b97d620",
+      "connection_id": "f60ea483-8b56-4a57-a88d-d8bf89c0be23",
+      "sent_at": 1795664849072,
+      "acknowledged_at": 1795664861025,
+      "injected_at": 1795664849076,
+      "retired_at": null
+    }
+  ],
+  "operation": [],
+  "operator_hold": [],
+  "prime": [
+    {
+      "id": "prime-261e6a02-bb71-4f18-ac63-72184208e165",
+      "factory_id": "realticket",
+      "slot_id": "specify/1",
+      "launch_id": "e64a1e14-7b38-4a2a-bb84-e9b04b97d620",
+      "conversation_ref": "06be0f78-65b9-4f53-8142-37c4283cb6cc",
+      "situation": "fresh",
+      "parts": "[{\"source\":\"roles/common.md\",\"hash\":\"sha256:b411875d715a0f7db9373465ead630f9e0eab95d282a48dfa98bb824c72ababa\"},{\"source\":\"roles/specify.md\",\"hash\":\"sha256:d9cb577f2981916c56062382411e9359da7df1340b37491d9593243c345c3f7f\"}]",
+      "recorded_at": 1795664848997,
+      "acknowledged_at": 1795664861022
+    },
+    {
+      "id": "prime-2c0cd85c-2715-4c4a-ad5c-bc89e0525559",
+      "factory_id": "realticket",
+      "slot_id": "verify/1",
+      "launch_id": "9588e4ec-a01e-40d9-a979-5666845fd13a",
+      "conversation_ref": "77bc5d33-a488-48cd-829d-586248dd6d57",
+      "situation": "fresh",
+      "parts": "[{\"source\":\"roles/common.md\",\"hash\":\"sha256:b411875d715a0f7db9373465ead630f9e0eab95d282a48dfa98bb824c72ababa\"},{\"source\":\"roles/verify.md\",\"hash\":\"sha256:0ad98d52b5316ce41f2e787cafa4e327409457e55bbae81599dc0dcc23fbdfad\"}]",
+      "recorded_at": 1795664849003,
+      "acknowledged_at": null
+    },
+    {
+      "id": "prime-caeb1627-ab3f-4e0d-9bcd-d54ff4169e8e",
+      "factory_id": "realticket",
+      "slot_id": "review/1",
+      "launch_id": "8b014ae2-b3d8-4c10-8e53-4f0a515d63bd",
+      "conversation_ref": "986dac8d-af5c-4dd7-97f8-ea55966fb31b",
+      "situation": "fresh",
+      "parts": "[{\"source\":\"roles/common.md\",\"hash\":\"sha256:b411875d715a0f7db9373465ead630f9e0eab95d282a48dfa98bb824c72ababa\"},{\"source\":\"roles/review.md\",\"hash\":\"sha256:95fc92d8b7b0ad8ba8d3fe1c27033b30e5a9ed866a19e6055bfc1665f7fa1abb\"}]",
+      "recorded_at": 1795664849008,
+      "acknowledged_at": null
+    },
+    {
+      "id": "prime-1856d7e1-0f5c-4f34-b56a-2028172129c0",
+      "factory_id": "realticket",
+      "slot_id": "implement/1",
+      "launch_id": "0eb1f8ed-202a-40d1-a23d-b86ddd7986f8",
+      "conversation_ref": "10933382-5db4-47ec-8787-17feecf4aea9",
+      "situation": "fresh",
+      "parts": "[{\"source\":\"roles/common.md\",\"hash\":\"sha256:b411875d715a0f7db9373465ead630f9e0eab95d282a48dfa98bb824c72ababa\"},{\"source\":\"roles/implement.md\",\"hash\":\"sha256:ed10251ce7ba7cf24c52a2b2fcfcf1374c80dab38e0100bfcd98175dd44e5868\"}]",
+      "recorded_at": 1795664849021,
+      "acknowledged_at": null
+    }
+  ],
+  "repository_context": [
+    {
+      "message_id": "fe86a7dd-7894-461b-9df3-99c11ef84102",
+      "assignment_id": "4c46d82e-879d-4788-9b1b-9c8ac845257a",
+      "factory_id": "realticket",
+      "slot_id": "specify/1",
+      "conversation_ref": "06be0f78-65b9-4f53-8142-37c4283cb6cc",
+      "root": "<fixture>/state/clones/realticket",
+      "parts": "[]"
+    }
+  ],
+  "resume_notice": [],
+  "run": [
+    {
+      "id": "38f89114-ec1b-4366-a994-218e731fd40e",
+      "started_at": 1795664847983,
+      "version": "0.0.0"
+    }
+  ],
+  "slot": [
+    {
+      "factory_id": "realticket",
+      "slot_id": "specify/1",
+      "station": "eng.specify",
+      "ordinal": 1,
+      "condition": "normal",
+      "current_launch": "e64a1e14-7b38-4a2a-bb84-e9b04b97d620",
+      "pending_host": null,
+      "pending_boot": null,
+      "freeze_cause": null,
+      "recovery_count": 0
+    },
+    {
+      "factory_id": "realticket",
+      "slot_id": "implement/1",
+      "station": "eng.implement",
+      "ordinal": 1,
+      "condition": "normal",
+      "current_launch": "0eb1f8ed-202a-40d1-a23d-b86ddd7986f8",
+      "pending_host": null,
+      "pending_boot": null,
+      "freeze_cause": null,
+      "recovery_count": 0
+    },
+    {
+      "factory_id": "realticket",
+      "slot_id": "review/1",
+      "station": "eng.review",
+      "ordinal": 1,
+      "condition": "normal",
+      "current_launch": "8b014ae2-b3d8-4c10-8e53-4f0a515d63bd",
+      "pending_host": null,
+      "pending_boot": null,
+      "freeze_cause": null,
+      "recovery_count": 0
+    },
+    {
+      "factory_id": "realticket",
+      "slot_id": "verify/1",
+      "station": "eng.verify",
+      "ordinal": 1,
+      "condition": "normal",
+      "current_launch": "9588e4ec-a01e-40d9-a979-5666845fd13a",
+      "pending_host": null,
+      "pending_boot": null,
+      "freeze_cause": null,
+      "recovery_count": 0
+    }
+  ],
+  "sqlite_sequence": [
+    {
+      "name": "approval",
+      "seq": 0
+    },
+    {
+      "name": "history",
+      "seq": 29
+    },
+    {
+      "name": "factory_config_load",
+      "seq": 1
+    },
+    {
+      "name": "ticket_transition",
+      "seq": 2
+    }
+  ],
+  "submission": [],
+  "ticket": [
+    {
+      "factory_id": "realticket",
+      "number": 1,
+      "title": "Clamp a finite number",
+      "slug": "clamp-a-finite-number",
+      "production_line": "tiny",
+      "directory": "<fixture>/state/tickets/realticket/1",
+      "state": "stage",
+      "stage": "specify",
+      "status": "assigned",
+      "rejections": 0,
+      "rejection_ceiling": 1,
+      "messages_spent": 0,
+      "message_ceiling": 12,
+      "worktree_path": null,
+      "branch": null,
+      "start_commit": null,
+      "submitted_at": 1795664849060
+    }
+  ],
+  "ticket_transition": [
+    {
+      "sequence": 1,
+      "factory_id": "realticket",
+      "ticket_number": 1,
+      "recorded_at": 1795664849060,
+      "actor": "operator",
+      "from_state": null,
+      "from_stage": null,
+      "from_status": null,
+      "to_state": "backlog",
+      "to_stage": null,
+      "to_status": null,
+      "outcome": null,
+      "reason": null,
+      "git_commit": null,
+      "evidence": "[]",
+      "config_load": "1",
+      "voided_transitions": "[]"
+    },
+    {
+      "sequence": 2,
+      "factory_id": "realticket",
+      "ticket_number": 1,
+      "recorded_at": 1795664849064,
+      "actor": "daemon",
+      "from_state": "backlog",
+      "from_stage": null,
+      "from_status": null,
+      "to_state": "stage",
+      "to_stage": "specify",
+      "to_status": "assigned",
+      "outcome": null,
+      "reason": null,
+      "git_commit": null,
+      "evidence": "[]",
+      "config_load": "1",
+      "voided_transitions": "[]"
+    }
+  ]
+}
