@@ -61,7 +61,33 @@ test("an interrupt aborts the active run and keeps the launch and conversation",
     tools: [BLOCK_TOOL],
     env: { FOUNDRY_TEST_CHANNEL_SOCKET: server.socketPath },
   });
-  await connected;
+  // Fail at the actual startup boundary, with child diagnostics, rather than
+  // waiting for the entire journey's 60-second timeout on a missing hello.
+  const worker = pi;
+  let stderr = "";
+  const recordStderr = (chunk: string) => { stderr += chunk; };
+
+  worker.child.stderr.on("data", recordStderr);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let onExit: ((code: number | null, signal: string | null) => void) | undefined;
+
+  try {
+    await Promise.race([
+      connected,
+      new Promise<never>((_resolve, reject) => {
+        onExit = (code, signal) => reject(new Error(`Pi exited before channel hello (${code ?? signal}); stderr:\n${stderr}`));
+        worker.child.once("exit", onExit);
+        timer = setTimeout(() => reject(new Error(`Pi channel hello timed out; stderr:\n${stderr}`)), 10_000);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+
+    if (onExit) {worker.child.off("exit", onExit);}
+
+    worker.child.stderr.off("data", recordStderr);
+  }
+
   const conversation = await sessionId(pi, "s1");
 
   // Hold a run active inside a tool that only returns on abort.

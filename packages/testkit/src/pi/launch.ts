@@ -92,13 +92,16 @@ export interface StartFauxPiOptions {
 
 export function startFauxPi(options: StartFauxPiOptions = {}): FauxPi {
   const piBin = options.piBin ?? resolvePiBin();
-  const root = mkdtempSync(join(tmpdir(), "foundry-faux-pi-"));
+  // An explicit fixture TMPDIR owns its lifecycle; otherwise keep child caches
+  // beneath our disposable root rather than silently falling back to global /tmp.
+  const root = mkdtempSync(join(options.env?.["TMPDIR"] ?? tmpdir(), "foundry-faux-pi-"));
   const home = join(root, "home");
   const agentDir = join(root, "agent");
   const sessions = join(root, "sessions");
   const work = join(root, "work");
+  const childTemp = join(root, "tmp");
 
-  for (const dir of [home, agentDir, sessions, work]) {mkdirSync(dir, { recursive: true });}
+  for (const dir of [home, agentDir, sessions, work, childTemp]) {mkdirSync(dir, { recursive: true });}
 
   writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ enableInstallTelemetry: false }));
 
@@ -123,6 +126,7 @@ export function startFauxPi(options: StartFauxPiOptions = {}): FauxPi {
     XDG_DATA_HOME: join(home, ".local/share"),
     XDG_CACHE_HOME: join(home, ".cache"),
     PI_CODING_AGENT_DIR: agentDir,
+    TMPDIR: childTemp,
     PI_OFFLINE: "1",
     PI_TELEMETRY: "0",
     ...options.env,
