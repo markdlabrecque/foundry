@@ -1,0 +1,6 @@
+[
+  {
+    "path": "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts",
+    "error": "Tool \"agent_message\" conflicts with <REPO>/packages/extension/dist/index.js"
+  }
+]

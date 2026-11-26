@@ -1,0 +1,605 @@
+{
+  "variant": "agent-name",
+  "root": "<PROBE_TMP>/fou163-agent-name-P0VvTd",
+  "factoryYaml": "version: 1\nname: probe\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\nrooms:\n  eng:\n    stations:\n      dev:\n        isolation: worktree\n        model: openai/gpt-4.1-mini\n        extensions: [{ path: \"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts\", tools: [probe_named] }]\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: s0\n        station: eng.dev\n        writing: true\n      - id: approve\n        station: eng.dev\n        approval: true\n        on_rejection: s0\n",
+  "validate": {
+    "code": 0,
+    "out": "<PROBE_TMP>/fou163-agent-name-P0VvTd/factory.yaml: factory \"probe\" is valid\nTool Set for eng.dev (13 tools):\n  read             Pi built-in\n  bash             Pi built-in\n  edit             Pi built-in\n  write            Pi built-in\n  agent_discover   Foundry extension\n  agent_status     Foundry extension\n  agent_message    Foundry extension\n  agent_request    Foundry extension\n  agent_reply      Foundry extension\n  agent_delegate   Foundry extension\n  task_transition  Foundry extension\n  human_request    Foundry extension\n  probe_named      extension <REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts\nExtension tools are listed as configured; whether each extension registers them is not checked.\n"
+  },
+  "daemonLog": [
+    {
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "launch ended",
+      "factoryId": "probe",
+      "slotId": "dev/1",
+      "launchId": "b9913251-a731-487e-ac94-12a6c27b0a16"
+    }
+  ],
+  "holdList": {
+    "code": 0,
+    "out": "1  frozen_slot  dev/1  raised 2026-11-26T02:28:09.368Z\n"
+  },
+  "holdShow": [
+    {
+      "code": 0,
+      "out": "hold        1\nkind        frozen_slot\nsubject     dev/1\nfactory     probe\nstate       open\nraised at   2026-11-26T02:28:09.368Z\nupdated at  2026-11-26T02:28:09.368Z\nevidence\n  cause: tool_set_mismatch\n  launchId: b9913251-a731-487e-ac94-12a6c27b0a16\n  conversationRef: b5eb035d-f213-4527-a605-88e304eb8f43\n  missing: []\n  extra: []\n  replaced: [{\"name\":\"agent_message\",\"expected\":\"<REPO>/packages/extension/dist/index.js\",\"actual\":\"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts\"}]\ncommands\n  foundry slot unfreeze dev/1\n  foundry slot reset dev/1\n"
+    }
+  ],
+  "slotList": {
+    "code": 0,
+    "out": "probe  dev/1  eng.dev  frozen (tool_set_mismatch)  launch b9913251-a731-487e-ac94-12a6c27b0a16 ended (requested)\n"
+  },
+  "slotShow": [
+    {
+      "code": 0,
+      "out": "slot        dev/1\nfactory     probe\nstation     eng.dev\ncondition   frozen (tool_set_mismatch)\nlaunches\n  b9913251-a731-487e-ac94-12a6c27b0a16  started  started 2026-11-26T02:28:08.886Z  pid 3090003  ended 2026-11-26T02:28:09.248Z (requested, code 1)\n    stderr <PROBE_TMP>/fou163-agent-name-P0VvTd/home/logs/launches/b9913251-a731-487e-ac94-12a6c27b0a16.stderr\n"
+    }
+  ],
+  "slotJson": [
+    {
+      "code": 0,
+      "out": "{\"ok\":true,\"result\":{\"slot\":{\"factoryId\":\"probe\",\"slotId\":\"dev/1\",\"station\":\"eng.dev\",\"ordinal\":1,\"condition\":\"frozen\",\"freezeCause\":\"tool_set_mismatch\",\"launch\":{\"launchId\":\"b9913251-a731-487e-ac94-12a6c27b0a16\",\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\",\"pid\":3090003,\"startedAt\":\"2026-11-26T02:28:08.886Z\",\"origin\":\"started\",\"endedAt\":\"2026-11-26T02:28:09.248Z\",\"endReason\":\"requested\",\"exitCode\":1,\"exitSignal\":null}},\"launches\":[{\"launchId\":\"b9913251-a731-487e-ac94-12a6c27b0a16\",\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\",\"pid\":3090003,\"startedAt\":\"2026-11-26T02:28:08.886Z\",\"origin\":\"started\",\"endedAt\":\"2026-11-26T02:28:09.248Z\",\"endReason\":\"requested\",\"exitCode\":1,\"exitSignal\":null,\"stderrPath\":\"<PROBE_TMP>/fou163-agent-name-P0VvTd/home/logs/launches/b9913251-a731-487e-ac94-12a6c27b0a16.stderr\"}]}}\n"
+    }
+  ],
+  "ticketList": {
+    "code": 0,
+    "out": "{\"ok\":true,\"result\":{\"tickets\":[]}}\n"
+  },
+  "fullDaemonLog": [
+    {
+      "time": "2026-11-26T02:28:08.764Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "factory clone created",
+      "factoryId": "probe",
+      "detail": {
+        "path": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home/clones/probe",
+        "source": "<PROBE_TMP>/fou163-agent-name-P0VvTd/repo"
+      }
+    },
+    {
+      "time": "2026-11-26T02:28:08.768Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "factory configuration loaded",
+      "factoryId": "probe",
+      "detail": {
+        "loadId": 1,
+        "configHash": "sha256:7a054a161e517047804f35dc63657bf509e7a93080a4d41f2a5da1a00cdfcc99"
+      }
+    },
+    {
+      "time": "2026-11-26T02:28:08.890Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "slot started",
+      "factoryId": "probe",
+      "slotId": "dev/1",
+      "launchId": "b9913251-a731-487e-ac94-12a6c27b0a16"
+    },
+    {
+      "time": "2026-11-26T02:28:08.893Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "daemon started",
+      "detail": {
+        "pid": 3089975,
+        "stateRoot": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home",
+        "socket": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home/management.sock",
+        "logLevel": "info"
+      }
+    },
+    {
+      "time": "2026-11-26T02:28:09.372Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "launch ended",
+      "factoryId": "probe",
+      "slotId": "dev/1",
+      "launchId": "b9913251-a731-487e-ac94-12a6c27b0a16"
+    }
+  ],
+  "hostIdentity": {
+    "hostId": "70bbc4b3-9e9f-4c37-94e5-84372e6d12f2",
+    "pid": 3089992,
+    "startedAt": "2026-11-26T02:28:08.871Z",
+    "stateRoot": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home",
+    "controlVersion": 5,
+    "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110"
+  },
+  "hostInventory": [
+    {
+      "launchId": "b9913251-a731-487e-ac94-12a6c27b0a16",
+      "factoryId": "probe",
+      "slotId": "dev/1",
+      "pid": 3090003,
+      "pgid": 3090003,
+      "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+      "startedAt": "2026-11-26T02:28:08.886Z",
+      "startupDiagnostic": {
+        "version": 1,
+        "kind": "agent_tool_collision",
+        "collisions": [
+          {
+            "name": "agent_message",
+            "sources": [
+              "<REPO>/packages/extension/dist/index.js",
+              "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts"
+            ]
+          }
+        ]
+      },
+      "liveness": "gone",
+      "exit": {
+        "code": 1,
+        "signal": null,
+        "endedAt": "2026-11-26T02:28:09.248Z"
+      }
+    }
+  ],
+  "markers": {
+    "b9913251-a731-487e-ac94-12a6c27b0a16.exception.log": "Error: SDK agent tool collision: agent_message: <REPO>/packages/extension/dist/index.js, <REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts\n    at createSdkSession (file://<REPO>/packages/host/dist/sdk-session.js:32:15)\n    at async file://<REPO>/packages/host/dist/sdk-worker.js:12:21",
+    "b9913251-a731-487e-ac94-12a6c27b0a16.network.json": {
+      "fetchCalls": 0,
+      "denied": true
+    },
+    "b9913251-a731-487e-ac94-12a6c27b0a16.process.json": {
+      "pid": 3090003,
+      "pgid": 3090003,
+      "launchId": "b9913251-a731-487e-ac94-12a6c27b0a16",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    },
+    "dev_1.agent-name.loaded.json": {
+      "argv": [
+        "<NODE>",
+        "<REPO>/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "b5eb035d-f213-4527-a605-88e304eb8f43",
+        "--model",
+        "openai/gpt-4.1-mini",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_named",
+        "--extension",
+        "<REPO>/packages/extension/dist/index.js",
+        "--extension",
+        "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts"
+      ],
+      "registers": [
+        "probe_named",
+        "agent_message"
+      ],
+      "launchId": "e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817"
+    },
+    "dev_1.launch.b9913251-a731-487e-ac94-12a6c27b0a16.json": {
+      "execPath": "<NODE>",
+      "argv": [
+        "<REPO>/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "b5eb035d-f213-4527-a605-88e304eb8f43",
+        "--model",
+        "openai/gpt-4.1-mini",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_named",
+        "--extension",
+        "<REPO>/packages/extension/dist/index.js",
+        "--extension",
+        "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts"
+      ],
+      "cwd": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home/slots/probe/dev-1"
+    },
+    "dev_1.launch.b9913251-a731-487e-ac94-12a6c27b0a16.stderr.log": "",
+    "dev_1.launch.b9913251-a731-487e-ac94-12a6c27b0a16.stdout.log": "",
+    "dev_1.launch.dfdc8b39-89bf-4caf-a30d-5b802da73a93.json": {
+      "execPath": "<NODE>",
+      "argv": [
+        "<REPO>/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "b5eb035d-f213-4527-a605-88e304eb8f43",
+        "--model",
+        "openai/gpt-4.1-mini",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_named",
+        "--extension",
+        "<REPO>/packages/extension/dist/index.js",
+        "--extension",
+        "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts"
+      ],
+      "cwd": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home/slots/probe/dev-1"
+    },
+    "dev_1.launch.dfdc8b39-89bf-4caf-a30d-5b802da73a93.stderr.log": "",
+    "dev_1.launch.dfdc8b39-89bf-4caf-a30d-5b802da73a93.stdout.log": "",
+    "dev_1.launch.e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817.json": {
+      "execPath": "<NODE>",
+      "argv": [
+        "<REPO>/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "b5eb035d-f213-4527-a605-88e304eb8f43",
+        "--model",
+        "openai/gpt-4.1-mini",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_named",
+        "--extension",
+        "<REPO>/packages/extension/dist/index.js",
+        "--extension",
+        "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts"
+      ],
+      "cwd": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home/slots/probe/dev-1"
+    },
+    "dev_1.launch.e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817.stderr.log": "",
+    "dev_1.launch.e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817.stdout.log": "",
+    "dev_1.named.loaded.json": {
+      "argv": [
+        "<NODE>",
+        "<REPO>/packages/host/dist/sdk-worker.js",
+        "--mode",
+        "rpc",
+        "--system-prompt",
+        "",
+        "--append-system-prompt",
+        "",
+        "--no-extensions",
+        "--no-mcp",
+        "--no-skills",
+        "--no-prompt-templates",
+        "--no-themes",
+        "--no-context-files",
+        "--no-approve",
+        "--session-id",
+        "b5eb035d-f213-4527-a605-88e304eb8f43",
+        "--model",
+        "openai/gpt-4.1-mini",
+        "--tools",
+        "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_named",
+        "--extension",
+        "<REPO>/packages/extension/dist/index.js",
+        "--extension",
+        "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts"
+      ],
+      "registers": [
+        "probe_named"
+      ],
+      "launchId": "dfdc8b39-89bf-4caf-a30d-5b802da73a93"
+    },
+    "dev_1.named.session.json": {
+      "all": [
+        {
+          "name": "read",
+          "source": "builtin:read"
+        },
+        {
+          "name": "bash",
+          "source": "builtin:bash"
+        },
+        {
+          "name": "edit",
+          "source": "builtin:edit"
+        },
+        {
+          "name": "write",
+          "source": "builtin:write"
+        },
+        {
+          "name": "agent_discover",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_status",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_message",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_request",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_delegate",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "agent_reply",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "task_transition",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "human_request",
+          "source": "<REPO>/packages/extension/dist/index.js"
+        },
+        {
+          "name": "probe_named",
+          "source": "<REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts"
+        }
+      ],
+      "active": [
+        "read",
+        "bash",
+        "edit",
+        "write",
+        "agent_discover",
+        "agent_status",
+        "agent_message",
+        "agent_request",
+        "agent_reply",
+        "agent_delegate",
+        "task_transition",
+        "human_request",
+        "probe_named"
+      ]
+    },
+    "dfdc8b39-89bf-4caf-a30d-5b802da73a93.network.json": {
+      "fetchCalls": 0,
+      "denied": true
+    },
+    "dfdc8b39-89bf-4caf-a30d-5b802da73a93.process.json": {
+      "pid": 3090273,
+      "pgid": 3090273,
+      "launchId": "dfdc8b39-89bf-4caf-a30d-5b802da73a93",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    },
+    "e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817.exception.log": "Error: SDK agent tool collision: agent_message: <REPO>/packages/extension/dist/index.js, <REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts\n    at createSdkSession (file://<REPO>/packages/host/dist/sdk-session.js:32:15)\n    at async file://<REPO>/packages/host/dist/sdk-worker.js:12:21",
+    "e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817.network.json": {
+      "fetchCalls": 0,
+      "denied": true
+    },
+    "e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817.process.json": {
+      "pid": 3090133,
+      "pgid": 3090133,
+      "launchId": "e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    }
+  },
+  "failedUnfreeze": {
+    "code": 1,
+    "out": "foundry: Slot dev/1 stays frozen: tool_set_mismatch still fails its check (hold 1, evidence refreshed)\n"
+  },
+  "failedRecheckHold": {
+    "code": 0,
+    "out": "hold        1\nkind        frozen_slot\nsubject     dev/1\nfactory     probe\nstate       open\nraised at   2026-11-26T02:28:09.368Z\nupdated at  2026-11-26T02:28:12.491Z\nevidence\n  cause: tool_set_mismatch\n  launchId: e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817\n  conversationRef: b5eb035d-f213-4527-a605-88e304eb8f43\n  missing: []\n  extra: []\n  replaced: [{\"name\":\"agent_message\",\"expected\":\"<REPO>/packages/extension/dist/index.js\",\"actual\":\"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/agent-name.ts\"}]\ncommands\n  foundry slot unfreeze dev/1\n  foundry slot reset dev/1\n"
+  },
+  "beforeCorrection": {
+    "code": 0,
+    "out": "{\"ok\":true,\"result\":{\"slot\":{\"factoryId\":\"probe\",\"slotId\":\"dev/1\",\"station\":\"eng.dev\",\"ordinal\":1,\"condition\":\"frozen\",\"freezeCause\":\"tool_set_mismatch\",\"launch\":{\"launchId\":\"e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817\",\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\",\"pid\":3090133,\"startedAt\":\"2026-11-26T02:28:12.142Z\",\"origin\":\"started\",\"endedAt\":\"2026-11-26T02:28:12.489Z\",\"endReason\":\"requested\",\"exitCode\":1,\"exitSignal\":null}},\"launches\":[{\"launchId\":\"b9913251-a731-487e-ac94-12a6c27b0a16\",\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\",\"pid\":3090003,\"startedAt\":\"2026-11-26T02:28:08.886Z\",\"origin\":\"started\",\"endedAt\":\"2026-11-26T02:28:09.248Z\",\"endReason\":\"requested\",\"exitCode\":1,\"exitSignal\":null,\"stderrPath\":\"<PROBE_TMP>/fou163-agent-name-P0VvTd/home/logs/launches/b9913251-a731-487e-ac94-12a6c27b0a16.stderr\"},{\"launchId\":\"e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817\",\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\",\"pid\":3090133,\"startedAt\":\"2026-11-26T02:28:12.142Z\",\"origin\":\"started\",\"endedAt\":\"2026-11-26T02:28:12.489Z\",\"endReason\":\"requested\",\"exitCode\":1,\"exitSignal\":null,\"stderrPath\":\"<PROBE_TMP>/fou163-agent-name-P0VvTd/home/logs/launches/e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817.stderr\"}]}}\n"
+  },
+  "correctedFactoryYaml": "version: 1\nname: probe\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\nrooms:\n  eng:\n    stations:\n      dev:\n        isolation: worktree\n        model: openai/gpt-4.1-mini\n        extensions: [{ path: \"<REPO>/docs/evidence/rpc-53-3-linux/fixtures/named.ts\", tools: [probe_named] }]\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: s0\n        station: eng.dev\n        writing: true\n      - id: approve\n        station: eng.dev\n        approval: true\n        on_rejection: s0\n",
+  "stillFrozenAfterRestart": {
+    "code": 0,
+    "out": "slot        dev/1\nfactory     probe\nstation     eng.dev\ncondition   frozen (tool_set_mismatch)\nlaunches\n  b9913251-a731-487e-ac94-12a6c27b0a16  started  started 2026-11-26T02:28:08.886Z  pid 3090003  ended 2026-11-26T02:28:09.248Z (requested, code 1)\n    stderr <PROBE_TMP>/fou163-agent-name-P0VvTd/home/logs/launches/b9913251-a731-487e-ac94-12a6c27b0a16.stderr\n  e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817  started  started 2026-11-26T02:28:12.142Z  pid 3090133  ended 2026-11-26T02:28:12.489Z (requested, code 1)\n    stderr <PROBE_TMP>/fou163-agent-name-P0VvTd/home/logs/launches/e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817.stderr\n"
+  },
+  "unfreeze": {
+    "code": 0,
+    "out": "slot dev/1 unfrozen; hold 1 resolved\n"
+  },
+  "afterCorrection": {
+    "code": 0,
+    "out": "{\"ok\":true,\"result\":{\"slot\":{\"factoryId\":\"probe\",\"slotId\":\"dev/1\",\"station\":\"eng.dev\",\"ordinal\":1,\"condition\":\"normal\",\"freezeCause\":null,\"launch\":{\"launchId\":\"dfdc8b39-89bf-4caf-a30d-5b802da73a93\",\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\",\"pid\":3090273,\"startedAt\":\"2026-11-26T02:28:14.117Z\",\"origin\":\"started\",\"endedAt\":null,\"endReason\":null,\"exitCode\":null,\"exitSignal\":null}},\"launches\":[{\"launchId\":\"b9913251-a731-487e-ac94-12a6c27b0a16\",\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\",\"pid\":3090003,\"startedAt\":\"2026-11-26T02:28:08.886Z\",\"origin\":\"started\",\"endedAt\":\"2026-11-26T02:28:09.248Z\",\"endReason\":\"requested\",\"exitCode\":1,\"exitSignal\":null,\"stderrPath\":\"<PROBE_TMP>/fou163-agent-name-P0VvTd/home/logs/launches/b9913251-a731-487e-ac94-12a6c27b0a16.stderr\"},{\"launchId\":\"e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817\",\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\",\"pid\":3090133,\"startedAt\":\"2026-11-26T02:28:12.142Z\",\"origin\":\"started\",\"endedAt\":\"2026-11-26T02:28:12.489Z\",\"endReason\":\"requested\",\"exitCode\":1,\"exitSignal\":null,\"stderrPath\":\"<PROBE_TMP>/fou163-agent-name-P0VvTd/home/logs/launches/e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817.stderr\"},{\"launchId\":\"dfdc8b39-89bf-4caf-a30d-5b802da73a93\",\"bootId\":\"e4653541-62f1-4746-93c3-19c8d32b3110\",\"pid\":3090273,\"startedAt\":\"2026-11-26T02:28:14.117Z\",\"origin\":\"started\",\"endedAt\":null,\"endReason\":null,\"exitCode\":null,\"exitSignal\":null,\"stderrPath\":null}]}}\n"
+  },
+  "correctedHolds": {
+    "code": 0,
+    "out": "no open holds\n"
+  },
+  "correctedLog": [
+    {
+      "time": "2026-11-26T02:28:08.764Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "factory clone created",
+      "factoryId": "probe",
+      "detail": {
+        "path": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home/clones/probe",
+        "source": "<PROBE_TMP>/fou163-agent-name-P0VvTd/repo"
+      }
+    },
+    {
+      "time": "2026-11-26T02:28:08.768Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "factory configuration loaded",
+      "factoryId": "probe",
+      "detail": {
+        "loadId": 1,
+        "configHash": "sha256:7a054a161e517047804f35dc63657bf509e7a93080a4d41f2a5da1a00cdfcc99"
+      }
+    },
+    {
+      "time": "2026-11-26T02:28:08.890Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "slot started",
+      "factoryId": "probe",
+      "slotId": "dev/1",
+      "launchId": "b9913251-a731-487e-ac94-12a6c27b0a16"
+    },
+    {
+      "time": "2026-11-26T02:28:08.893Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "daemon started",
+      "detail": {
+        "pid": 3089975,
+        "stateRoot": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home",
+        "socket": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home/management.sock",
+        "logLevel": "info"
+      }
+    },
+    {
+      "time": "2026-11-26T02:28:09.372Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "launch ended",
+      "factoryId": "probe",
+      "slotId": "dev/1",
+      "launchId": "b9913251-a731-487e-ac94-12a6c27b0a16"
+    },
+    {
+      "time": "2026-11-26T02:28:12.499Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "launch ended",
+      "factoryId": "probe",
+      "slotId": "dev/1",
+      "launchId": "e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817"
+    },
+    {
+      "time": "2026-11-26T02:28:13.001Z",
+      "level": "info",
+      "runId": "88c9474b-fea2-450e-9810-bdc1b4a89bb3",
+      "msg": "daemon stopping",
+      "detail": {
+        "signal": "SIGTERM"
+      }
+    },
+    {
+      "time": "2026-11-26T02:28:13.388Z",
+      "level": "info",
+      "runId": "a260df0b-9b44-4893-9d0b-21d17260b0e1",
+      "msg": "factory clone reused",
+      "factoryId": "probe",
+      "detail": {
+        "path": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home/clones/probe",
+        "source": "<PROBE_TMP>/fou163-agent-name-P0VvTd/repo"
+      }
+    },
+    {
+      "time": "2026-11-26T02:28:13.449Z",
+      "level": "info",
+      "runId": "a260df0b-9b44-4893-9d0b-21d17260b0e1",
+      "msg": "factory configuration loaded",
+      "factoryId": "probe",
+      "detail": {
+        "loadId": 2,
+        "configHash": "sha256:0c63615edebcc36d1ac238abb9e601e7406cf2cfe8a2173f045decd9631e4e8a"
+      }
+    },
+    {
+      "time": "2026-11-26T02:28:13.457Z",
+      "level": "info",
+      "runId": "a260df0b-9b44-4893-9d0b-21d17260b0e1",
+      "msg": "slot held",
+      "factoryId": "probe",
+      "slotId": "dev/1"
+    },
+    {
+      "time": "2026-11-26T02:28:13.461Z",
+      "level": "info",
+      "runId": "a260df0b-9b44-4893-9d0b-21d17260b0e1",
+      "msg": "daemon started",
+      "detail": {
+        "pid": 3090192,
+        "stateRoot": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home",
+        "socket": "<PROBE_TMP>/fou163-agent-name-P0VvTd/home/management.sock",
+        "logLevel": "info"
+      }
+    },
+    {
+      "time": "2026-11-26T02:28:14.463Z",
+      "level": "info",
+      "runId": "a260df0b-9b44-4893-9d0b-21d17260b0e1",
+      "msg": "channel accepted",
+      "factoryId": "probe",
+      "slotId": "dev/1",
+      "launchId": "dfdc8b39-89bf-4caf-a30d-5b802da73a93",
+      "detail": {
+        "mode": "headless",
+        "tools": 13
+      }
+    }
+  ],
+  "ownedProcesses": [
+    {
+      "pid": 3090003,
+      "pgid": 3090003,
+      "launchId": "b9913251-a731-487e-ac94-12a6c27b0a16",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    },
+    {
+      "pid": 3090273,
+      "pgid": 3090273,
+      "launchId": "dfdc8b39-89bf-4caf-a30d-5b802da73a93",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    },
+    {
+      "pid": 3090133,
+      "pgid": 3090133,
+      "launchId": "e4bcb1e4-cdb4-4b42-8d1b-cd6543e46817",
+      "slot": "dev/1",
+      "runtime": "sdk"
+    }
+  ],
+  "shutdown": {
+    "code": 0,
+    "out": "factory probe stopped (1 worker(s))\nworker host stopped\nshutdown complete (forced)\n"
+  },
+  "cleanup": {
+    "ownedGroups": [
+      3090003,
+      3090273,
+      3090133
+    ],
+    "remaining": [],
+    "daemonExited": true,
+    "rootRemoved": true
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "outcome": "supported on Linux for the listed FOU-153 actual-host observations",
+  "requiredNamedSourceHolds": [
+    "probe_absent",
+    "read",
+    "agent_message"
+  ],
+  "clearedAndInheritedControl": true,
+  "unchangedUnfreezeRefused": true,
+  "correctedUnfreezeSameConversationReference": true,
+  "hostControlVersion": 5,
+  "launches": 7,
+  "interceptedFetchAttempts": 0,
+  "allOwnedGroupsAndRootsCleaned": true,
+  "noGenericChurnOrAssignedWorkObserved": true,
+  "limits": "No prompts/tickets, no prompted-history restoration, no OS-wide network isolation, no macOS or complete-launcher qualification; independent review pending"
+}
