@@ -1,0 +1,118 @@
+{
+  "approvedHead": "891c20b03b5c60d82934288bc4ebe3d990f2ad73",
+  "rebasedValidationHead": "3b10a556db4bef2b76a6d60296abd5982b15ba89",
+  "fetchedDevelopBase": "dbc34d51ea84e1535f6d0fc212a1f2dd8c7f8f92",
+  "mergeTree": "7366fb0071dd782d4d0af234c9d705696c4a89de",
+  "mergeTreeEqualsRebasedHead": true,
+  "approvedEvidenceByteEquivalentBeforeAddendum": true,
+  "approvedToRebasedDeltaPaths": [
+    "docs/evidence/linux-launcher-qualification.md",
+    "docs/evidence/linux-launcher-qualification/checks/build.log",
+    "docs/evidence/linux-launcher-qualification/checks/diff-check.log",
+    "docs/evidence/linux-launcher-qualification/checks/e2e.log",
+    "docs/evidence/linux-launcher-qualification/checks/lint.log",
+    "docs/evidence/linux-launcher-qualification/checks/npm-ci.log",
+    "docs/evidence/linux-launcher-qualification/checks/results.json",
+    "docs/evidence/linux-launcher-qualification/checks/typecheck.log",
+    "docs/evidence/linux-launcher-qualification/checks/vitest.log",
+    "docs/evidence/linux-launcher-qualification/provenance.json",
+    "docs/evidence/linux-launcher-qualification/recheck-stop.mjs",
+    "docs/evidence/linux-launcher-qualification/rechecks/cleanup.json",
+    "docs/evidence/linux-launcher-qualification/rechecks/resources.log",
+    "docs/evidence/linux-launcher-qualification/rechecks/resources/observations.json",
+    "docs/evidence/linux-launcher-qualification/rechecks/resources/result.json",
+    "docs/evidence/linux-launcher-qualification/rechecks/restore.log",
+    "docs/evidence/linux-launcher-qualification/rechecks/restore/result.json",
+    "docs/evidence/linux-launcher-qualification/rechecks/stop.log",
+    "docs/evidence/linux-launcher-qualification/rechecks/stop/alpha.yaml",
+    "docs/evidence/linux-launcher-qualification/rechecks/stop/beta.yaml",
+    "docs/evidence/linux-launcher-qualification/rechecks/stop/daemon.log",
+    "docs/evidence/linux-launcher-qualification/rechecks/stop/host.log",
+    "docs/evidence/linux-launcher-qualification/rechecks/stop/sdk-assessment.json",
+    "docs/evidence/linux-launcher-qualification/rechecks/stop/summary.json"
+  ],
+  "productTestConfigDelta": [],
+  "compiledOutputHashesMatchApprovedRun": {
+    "packages/cli/dist/main.js": "082c9f22c322f3ffd4855fc8c1ec0745bae717142e56b4177928c0d820d93922",
+    "packages/host/dist/index.js": "b85b8efe76c1b92320fb99cce1476bdfeeef58f788ba2fe9c527378bf9e2d547",
+    "packages/extension/dist/index.js": "4f6cfd0254c9a288dc00d40dce48a3a4bc14ad65eb558119de1b4afec942c8a5",
+    "packages/daemon/dist/index.js": "8c3a00b0fa4bde9b83ec9374f5582202f78da3865c5ab394917d3dd36156b34b"
+  },
+  "commands": [
+    {
+      "argv": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "./node_modules/.bin/oxlint"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "test"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "test:e2e"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "node",
+        "--test",
+        "docs/evidence/worker-daemon-crash-postmerge/verify.test.mjs"
+      ],
+      "exit": 0
+    }
+  ],
+  "environment": {
+    "mode": "env -i",
+    "PATH":"<REDACTED inherited PATH>",
+    "HOME": "<USER_HOME>/f124pr-2IgwhR/user",
+    "TMPDIR": "<USER_HOME>/f124pr-2IgwhR/t",
+    "FOUNDRY_PI_BIN": "UNSET; no shim",
+    "runtimeOverride": "unset"
+  },
+  "counts": {
+    "vitest": 862,
+    "vitestFiles": 105,
+    "ordinaryE2E": 5,
+    "e2eFiles": 3,
+    "pureEvidenceTests": 54
+  },
+  "retainedReplayExit": 0,
+  "freshReplayExit": 0,
+  "approvedManifestFiles": 117,
+  "approvedManifestSha256": "f875f7ccfa0498b594ac27a3604d9ed3e471cb05b20d9b783488b57addb4ddae",
+  "cleanup": {
+    "privateRootProcesses": [],
+    "privateRootRemoved": true
+  },
+  "review": {
+    "source": "coordinating thread relayed NEW fresh GPT6.1SOL review",
+    "head": "891c20b03b5c60d82934288bc4ebe3d990f2ad73",
+    "result": "APPROVED; no must-fix",
+    "independentMutationsReported": 162,
+    "qualification": "Reported independent review, not a hosted GitHub approval; final delta is rebase plus submission documentation/logs/checksums only"
+  }
+}

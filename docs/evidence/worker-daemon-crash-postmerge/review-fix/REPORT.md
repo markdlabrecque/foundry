@@ -87,3 +87,28 @@ All final commands used `env -i` with only PATH, private HOME and a short privat
 All new output is labeled normalized evidence, not byte-for-byte raw: personal home/checkout prefixes and unrelated PATH are normalized consistently; `.log` trailing whitespace is canonicalized before published checksums. Pre-review reports, logs, failures and the original blocked evidence remain preserved. No live DB was opened by the reader; copied DB/WAL binaries were excluded from publication and removed with the exact owned output root.
 
 The final pre-fallback observation already has no marked process or live group member, and orderly shutdown is true. Independent signal-0 checks return **ESRCH** for PGIDs **3334884, 3334891, 3335077**. The private validation root has zero remaining processes before removal; only its exact UID/mode-verified root and the exact owned copied-output root were removed. No unrelated `/tmp`, cache/config, operator/old host or reviewer artifacts were touched. Stop here for NEW independent review; do not create a PR or alter the tracker.
+
+## Submission addendum — independent approval, final fetch and evidence-only rebase
+
+This later addendum supersedes the earlier pending-review/stop-before-PR disposition, **without changing any historical execution HEAD, dirty-working-tree source pin, original captured record, red/green result or cleanup claim above**.
+
+The coordinator relayed the NEW fresh GPT-6.1-SOL re-review: **APPROVED `891c20b03b5c60d82934288bc4ebe3d990f2ad73`, no must-fix**. The independent reviewer reported a positive actual journey (20/20), 54 passing pure tests, the 29-pass/25-fail red run, 54 actual-record mutations against each of three artifacts (**162 rejections**), all 117 then-published checksums/source/build matches, and normal 862-test/5-E2E green checks. These are explicitly relayed independent review results, not a hosted GitHub approval or additional executions by this author. Optional integer-sequence schema hardening was nonblocking and is deferred; no oracle/test scope was added after approval.
+
+Final fetch advanced develop from `a61daf0913331e83cb111c6b6572a8a3bba2f434` to **`dbc34d51ea84e1535f6d0fc212a1f2dd8c7f8f92`**. The full delta consists only of the separate `docs/evidence/linux-launcher-qualification*` report/artifacts: product, test, dependency and configuration bytes are equivalent. Both branch commits rebased cleanly, producing validation checkout **`3b10a556db4bef2b76a6d60296abd5982b15ba89`**. Before this addendum, the complete FOU-124 evidence subtree/report was byte-identical to approved `891c20b`; no oracle, test, runner, worker or captured artifact changed during rebase. `git merge-tree --write-tree origin/develop HEAD` succeeded and equalled the rebased HEAD tree, **`7366fb0071dd782d4d0af234c9d705696c4a89de`**.
+
+Final normal checks were repeated after rebase using a fresh mode-0700 home-backed private root, `env -i` PATH/private HOME/private TMPDIR only, **FOUNDRY_PI_BIN unset, no shim**, and no runtime override:
+
+| Final submission check | Result |
+|---|---|
+| build / typecheck / direct oxlint | all exit 0 |
+| full ordinary Vitest | **105 files / 862 tests**, exit 0 |
+| separate ordinary E2E | **3 files / 5 tests**, exit 0 |
+| pure evidence suite | **54/54**, exit 0 |
+| retained and fresh recorded-journey replay | both exit 0, 9 strengthened predicates and 20-check verdict pass |
+| compiled output hashes | byte-identical to the independently approved run |
+| approved publication manifest before addendum | **117/117** entries verify |
+| updated final publication manifest / staged diff check | exit 0 |
+
+`submission-checks/` retains exact command logs, both replay outputs, approved-manifest verification, merge-tree/base/delta/source-build evidence, environment, counts and cleanup in `status.json`. The final submission commit adds only this provenance addendum, these validation logs/metadata and refreshed publication checksums after the approved/rebased source tree. The final PR head is the commit wrapping those documentation-only changes; it is not misrepresented as the historical actual-run checkout `f380cd2` or the pre-addendum validation checkout `3b10a55`.
+
+The new private validation root had zero remaining associated processes before removal; only that exact owned UID/mode-verified root was removed. No actual crash journey was repeated solely for an evidence-only base change: the independently reviewed 20/20 captures are retained and replayed with unchanged source hashes. Safety, observed continuation through an operator approval gate, and all bounded Linux/default-RPC limitations above remain unchanged. Open the PR against develop for **FOU-124 only**; no watch, merge, manual Linear closure, coordinator CURRENT edit or broader SDK/macOS/full-integration/release claim.

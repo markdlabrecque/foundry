@@ -55,7 +55,7 @@ c157346a0375072c2a00071ffb80e07ffbfdf00b71b977f658b98ba25901b8b8  docs/evidence/
 1f38eb242d969950f98650101c630fd08e7f8ba49bde7d23365fc1aca6fac346  docs/evidence/worker-daemon-crash-postmerge/preliminary/queued-notice-observer/result.json
 9f26aa39dc7f2ad141363b04423795935ae6236ca5f6b1e8758143acf1537710  docs/evidence/worker-daemon-crash-postmerge/preliminary/queued-notice-observer/stdout.log
 5e9e90e7413822475eba165daa7dcd64bfa4867ff5b642a9f9811d5eb9d6a0b5  docs/evidence/worker-daemon-crash-postmerge/preliminary/queued-notice-observer/worker-events/worker.jsonl
-91c5fce5c4491edefc74e89b521bc00995bf336eac3c39c3aadd47ba75080a74  docs/evidence/worker-daemon-crash-postmerge/review-fix/REPORT.md
+fdde26e51acaa01ecfc1fea908806b57616e76dfd0f5fa0abe60791907466acb  docs/evidence/worker-daemon-crash-postmerge/review-fix/REPORT.md
 be5d7d5c6b9765f40c6d2b83ac5b7b4ea31456b27687edc25ea277a396d1b71f  docs/evidence/worker-daemon-crash-postmerge/review-fix/before-review/SHA256SUMS
 168cfda4dca284966c7f10c942823b188b12fed0d3e145667ce0d06d3b98252a  docs/evidence/worker-daemon-crash-postmerge/review-fix/before-review/history.mjs
 2b18632601c538dda3c326296317cd9f13a090ca1ff4523885b38a60a96a6e32  docs/evidence/worker-daemon-crash-postmerge/review-fix/before-review/report.md
@@ -93,6 +93,17 @@ b9cd3922b0d9990c76a07153eb1e4dd2693d00561b93f581e7fbadf93d586aa3  docs/evidence/
 327b60651f543b0b832e12e87f07176e8fc8ec75d1fc5120b2837d9f315a3287  docs/evidence/worker-daemon-crash-postmerge/review-fix/run/worker-events/release-1
 327b60651f543b0b832e12e87f07176e8fc8ec75d1fc5120b2837d9f315a3287  docs/evidence/worker-daemon-crash-postmerge/review-fix/run/worker-events/release-2
 a095a1b1acc4e98789a0bd4a82a8ff67e205d9ff25555ccbc26f732f410bf0eb  docs/evidence/worker-daemon-crash-postmerge/review-fix/run/worker-events/worker.jsonl
+9670b96ddab992dda9a96b13ec4a2d639f9fd8a96a25bfacc006dfc8418eb6fa  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/approved-checksums.log
+20bc1f6ae471fc8c5fc285baad202c72dc9a5f609d0f8111f199622834c7d248  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/build.log
+af2d422dd9047a5f11f6b183d0fce87ee0dbc5f17a6f61c36f18bcd73b4471f2  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/e2e.log
+c37b4c01a34d052e023034aa68ad06fb630d692fd166df9e18b96a7787d0baf6  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/exits.txt
+9d9826525971d20ec549b0a3928065a697dee8ebb50d484b23e189ba2b61b8d5  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/fresh-replay.json
+e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/lint.log
+d2ef04a4815c7935a8a65cb5b3546f5689c42d7c102d9e7f499b31363a763d6d  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/retained-replay.json
+4b1c52e3a782cb8ef0c3497f5075919b36fb1f4e70b8467a0b2daff774169ac0  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/status.json
+10b160861b954c6e099e1cc780117ecebabb7729d0d8a37de933fccc0f5ef85d  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/test.log
+957c3bb3243febaf93d810d3b969eaefe9df258f03dd13e57b2b99ad7a490d1a  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/typecheck.log
+1977223719b4fe676297ad9a0cfd7da073eeed5e3460b7d3e85095b56f434498  docs/evidence/worker-daemon-crash-postmerge/review-fix/submission-checks/unit.log
 ead6646e087ed0106f9fe5e0fc295391a2d1fb5469fc89f0dd8f71daaf86da6b  docs/evidence/worker-daemon-crash-postmerge/run/NORMALIZATION.md
 549cf1ae4b0aa085dcd202d89b5f1785e5825a6ef46cab3baecbe953ec2f2341  docs/evidence/worker-daemon-crash-postmerge/run/after-continuation/records.json
 9418d543d3b2fa4fdb1050d38e3816d68a17575b530872eb687b0b0ec9315e7e  docs/evidence/worker-daemon-crash-postmerge/run/before-restart/records.json
