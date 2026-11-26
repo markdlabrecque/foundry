@@ -10,8 +10,13 @@
  *   confirmation of the exact inspected state. A branch checked out in another worktree, a worktree
  *   on another branch, a locked worktree or an unregistered directory at the path is never touched.
  *
+ * A failed creation with no recorded start commit changed no Git (worktrees.ts checks for a
+ * colliding branch before recording it), so a branch found under that name is not Foundry's: retry
+ * never adopts it, and discard deletes it only with confirmation, even when it has no commits.
+ *
  * Both claim a new `worktree_create` intent-first; the hold is resolved in the change that publishes
- * the worktree. A failure records the new operation failed and refreshes the hold.
+ * the worktree. A failure records the new operation failed and refreshes the hold. Inspection
+ * (`inspectFailed`) only reads; only retry and discard refresh the hold.
  */
 import { createHash } from "node:crypto";
 import { existsSync } from "node:fs";
@@ -24,6 +29,7 @@ import { beginOperationIn, getOperation, recordOperationResult } from "./operati
 import type { Operation, OperationDetail } from "./operations.js";
 import type { StoreError } from "./store.js";
 import { TicketError } from "./tickets.js";
+import { fingerprintFiles } from "./worktree-fingerprint.js";
 import { GitFailed, inspectPartial } from "./worktree-recovery.js";
 import type { PartialState } from "./worktree-recovery.js";
 import { createTicketWorktree, publishTicketWorktreeIn, raiseFailedWorktreeIn, runFirstSetup } from "./worktrees.js";
@@ -74,6 +80,9 @@ const discardBlocker = (failed: FailedTicket, state: PartialState): string | und
 
   if (listed !== undefined && listed.branch !== null && listed.branch !== failed.branch) {return "the worktree at the path is on another branch; preserved";}
 
+  // A detached worktree may hold commits on no branch; only an `initializing` one (a crash inside `git worktree add`) cannot.
+  if (listed !== undefined && listed.branch === null && listed.locked !== "initializing") {return "the worktree at the path is detached and may hold commits; preserved";}
+
   if (listed !== undefined && listed.locked !== undefined && listed.locked !== "initializing") {return "the worktree at the path is locked; preserved";}
 
   if (listed === undefined && existsSync(failed.path)) {return "an unregistered directory is at the worktree path; preserved, remove it yourself";}
@@ -91,8 +100,8 @@ export const createFailedWorktreeActions = (options: FailedWorktreeOptions) => {
   const { store } = options;
   const env = options.env ?? process.env;
 
-  const git = (cwd: string) => (args: ReadonlyArray<string>) => Effect.tryPromise({
-    try: () => runCloneGit(args, env, cwd), catch: (cause) => new GitFailed({ reason: messageOf(cause) }),
+  const git = (cwd: string, rawOutput = false) => (args: ReadonlyArray<string>) => Effect.tryPromise({
+    try: () => runCloneGit(args, env, cwd, rawOutput), catch: (cause) => new GitFailed({ reason: messageOf(cause) }),
   });
 
   const select = (factory: string | undefined, number: number) => Effect.gen(function* () {
@@ -169,7 +178,7 @@ export const createFailedWorktreeActions = (options: FailedWorktreeOptions) => {
     const { factory, clonePath } = failed.target;
 
     const created = yield* createTicketWorktree({ store, factory, clonePath, ticket: failed.ticket, operation,
-      path: failed.path, branch: failed.branch, defaultBranch: failed.defaultBranch, env });
+      path: failed.path, branch: failed.branch, defaultBranch: failed.defaultBranch, env, closure: "resolved" });
 
     if (!created.created) {return yield* refuse(created.reason);}
 
@@ -197,11 +206,15 @@ export const createFailedWorktreeActions = (options: FailedWorktreeOptions) => {
 
     const head = state.head;
 
-    const descends = startCommit !== undefined && (yield* run(["merge-base", "--is-ancestor", startCommit, head]).pipe(
+    if (startCommit === undefined) {
+      return yield* blocked(failed, state, "a branch Foundry did not create has the ticket's branch name; never adopted, discard it (with confirmation) to create again");
+    }
+
+    const descends = (yield* run(["merge-base", "--is-ancestor", startCommit, head]).pipe(
       Effect.as(true), Effect.catchTag("GitFailed", () => Effect.succeed(false)),
     ));
 
-    if (startCommit === undefined || !descends) {
+    if (!descends) {
       return yield* blocked(failed, state, "branch does not descend from the recorded start; discard it to create again from the default branch");
     }
 
@@ -229,7 +242,7 @@ export const createFailedWorktreeActions = (options: FailedWorktreeOptions) => {
       yield* recordOperationResult(change, operation.id, { status: "complete", result: { path, branch, startCommit, head, adopted: true } });
 
       return yield* publishTicketWorktreeIn(change, failed.ticket, operation.id, { path, branch, startCommit },
-        loaded.config.worktrees?.after_create);
+        loaded.config.worktrees?.after_create, "resolved");
     }));
 
     yield* runFirstSetup(store, loaded, failed.ticket, setup, env);
@@ -237,13 +250,16 @@ export const createFailedWorktreeActions = (options: FailedWorktreeOptions) => {
     return result(failed, operation, startCommit);
   });
 
-  /** What discard would lose, bound to the exact state by its confirmation. */
+  /**
+   * What discard would lose, bound to the exact state by its confirmation, or why it must not act.
+   * Reads only: the caller decides whether a blocker refreshes the hold.
+   */
   const survey = (failed: FailedTicket) => Effect.gen(function* () {
     const run = git(failed.target.clonePath);
     const state = yield* inspectPartial(run, failed.path, failed.branch);
     const blocker = discardBlocker(failed, state);
 
-    if (blocker !== undefined) {return yield* blocked(failed, state, blocker);}
+    if (blocker !== undefined) {return { blocker, state } as const;}
 
     const base = yield* run(["rev-parse", "--verify", `refs/heads/${failed.defaultBranch}^{commit}`]);
     const commits = state.head === undefined ? "" : yield* run(["log", "--format=%H %s", `${base}..${state.head}`, "--"]);
@@ -256,15 +272,39 @@ export const createFailedWorktreeActions = (options: FailedWorktreeOptions) => {
     );
 
     const diff = !present ? "" : yield* inWorktree(["diff", "--binary", "HEAD", "--"]).pipe(Effect.catchTag("GitFailed", () => Effect.succeed("")));
-    const head = state.head ?? "";
-    const confirmation = createHash("sha256").update(JSON.stringify({ path: failed.path, branch: failed.branch, head, base, commits, files, diff })).digest("hex");
 
-    return { state, head, commits, files, confirmation, needsConfirmation: commits !== "" || files !== "" };
+    // Untracked and ignored contents bind the confirmation too, as for `worktree clean --force`.
+    const others = !present ? "" : yield* git(failed.path, true)(["ls-files", "--others", "-z"]).pipe(
+      Effect.catchTag("GitFailed", () => Effect.succeed("")),
+    );
+
+    const contents = !present ? "" : yield* Effect.tryPromise({
+      try: () => fingerprintFiles(failed.path, others.split("\0").filter((name) => name !== "")),
+      catch: (cause) => new GitFailed({ reason: `cannot inspect all files safely: ${messageOf(cause)}` }),
+    });
+
+    const head = state.head ?? "";
+
+    // A branch with no recorded start was not created by Foundry (see above), so deleting it is a loss.
+    const foreign = failed.startCommit === undefined && state.head !== undefined
+      ? `branch ${failed.branch} at ${head} was not created by Foundry` : "";
+
+    const confirmation = createHash("sha256").update(JSON.stringify({
+      path: failed.path, branch: failed.branch, head, base, commits, files, diff, contents, foreign,
+    })).digest("hex");
+
+    const surveyed = { blocker: undefined, state, head, commits, files: [foreign, files].filter((line) => line !== "").join("\n"),
+      confirmation, needsConfirmation: commits !== "" || files !== "" || foreign !== "" };
+
+    return surveyed;
   });
 
   const inspectFailed = (factory: string | undefined, number: number) => Effect.gen(function* () {
     const failed = yield* select(factory, number);
     const surveyed = yield* gitRefused(survey(failed));
+
+    if (surveyed.blocker !== undefined) {return yield* refuse(surveyed.blocker);}
+
     const recorded = failed.operation.result;
 
     const inspection: FailedWorktreeInspection = {
@@ -281,10 +321,13 @@ export const createFailedWorktreeActions = (options: FailedWorktreeOptions) => {
     const failed = yield* select(factory, number);
     const { path, branch } = failed;
     const surveyed = yield* gitRefused(survey(failed));
+
+    if (surveyed.blocker !== undefined) {return yield* blocked(failed, surveyed.state, surveyed.blocker);}
+
     const { state } = surveyed;
 
     if (surveyed.needsConfirmation && confirmation !== surveyed.confirmation) {
-      return yield* refuse("the branch has unmerged commits or the worktree has files; inspect and confirm to discard them");
+      return yield* refuse("the branch has unmerged commits, was not created by Foundry, or the worktree has files; inspect and confirm to discard them");
     }
 
     const operation = yield* claim(failed, { discardOf: failed.operation.id, discardedHead: surveyed.head });

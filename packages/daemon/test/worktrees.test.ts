@@ -454,6 +454,54 @@ test("a colliding branch is never overwritten or assigned and failed creation is
   }));
 });
 
+test("a colliding branch Foundry did not create is never adopted by retry and is discarded only with confirmation", async () => {
+  await fixture(({ store, root, clone, scheduler, worktrees }) => Effect.gen(function* () {
+    git(clone, ["branch", "ticket/1-build-widget"]);
+    const original = git(clone, ["rev-parse", "ticket/1-build-widget"]);
+    expect(yield* scheduler.schedule()).toEqual([]);
+
+    expect((yield* worktrees.retry(undefined, 1).pipe(Effect.flip)).message).toContain("never adopted");
+    expect((yield* worktrees.discard(undefined, 1).pipe(Effect.flip)).message).toContain("confirm");
+    expect(git(clone, ["rev-parse", "ticket/1-build-widget"])).toBe(original);
+
+    const inspected = yield* worktrees.inspectFailed(undefined, 1);
+    expect(inspected).toMatchObject({ needsConfirmation: true, files: expect.stringContaining("not created by Foundry") });
+    expect(yield* worktrees.discard(undefined, 1, inspected.confirmation)).toMatchObject({ ticket: 1 });
+
+    expect(existsSync(join(root, "worktrees", "shop", "1-build-widget"))).toBe(true);
+    expect(yield* store.read(`SELECT kind, state FROM operator_hold`)).toEqual([{ kind: "failed_worktree", state: "resolved" }]);
+  }));
+});
+
+test("cancellation after creation intent but before Git fails raises no failed-worktree hold", async () => {
+  await fixture(({ store, root, scheduler }) => Effect.gen(function* () {
+    const path = join(root, "worktrees", "shop", "1-build-widget");
+    const observer = new DatabaseSync(join(root, "foundry.db"));
+    let cancelled = false;
+
+    const unsubscribe = store.onCommit(() => {
+      const row = observer.prepare(`SELECT 1 FROM operation WHERE kind = 'worktree_create'
+        AND status = 'running' AND json_extract(intent, '$.startCommit') IS NOT NULL`).get();
+
+      if (row === undefined || cancelled) {return;}
+
+      cancelled = true;
+      observer.exec(`UPDATE ticket SET state = 'cancelled', stage = NULL, status = NULL WHERE number = 1`);
+      mkdirSync(path, { recursive: true });
+      writeFileSync(join(path, "operator-work.txt"), "preserve me\n");
+    });
+
+    try {expect(yield* scheduler.schedule()).toEqual([]);}
+    finally {unsubscribe(); observer.close();}
+
+    expect(cancelled).toBe(true);
+    expect(yield* store.read(`SELECT state, worktree_path FROM ticket`)).toEqual([{ state: "cancelled", worktree_path: null }]);
+    expect(yield* store.read(`SELECT status FROM operation WHERE kind = 'worktree_create'`)).toEqual([{ status: "failed" }]);
+    expect(yield* store.read(`SELECT * FROM operator_hold WHERE kind = 'failed_worktree'`)).toEqual([]);
+    expect(readFileSync(join(path, "operator-work.txt"), "utf8")).toBe("preserve me\n");
+  }));
+});
+
 test("failed creation does not reserve capacity needed by a later ticket", async () => {
   await fixture(({ store, root, clone, scheduler }) => Effect.gen(function* () {
     git(clone, ["branch", "ticket/1-build-widget"]);

@@ -8,7 +8,7 @@ import { afterEach, expect, test } from "vitest";
 import {
   beginOperation, createAssignmentScheduler, createTicketService, createWorktreeRecovery, enqueueOperation, ensureFactoryClone,
   extendOperationIntent, interruptRunningOperations, listOperations, listOperationsAwaitingRecovery, loadFactoryFiles, LoadFactoriesResult,
-  openStore, planSlots, recoverInterruptedWorktrees, startNextOperation, ticketFactoryFrom,
+  openStore, planSlots, raiseHold, recoverInterruptedWorktrees, startNextOperation, ticketFactoryFrom,
 } from "@foundry/daemon";
 import type { Store } from "@foundry/daemon";
 import { git, isolatedGitEnv, makeGitSource } from "@foundry/testkit";
@@ -106,8 +106,10 @@ test("an empty partial worktree and branch are removed and created again, then t
     const newHead = git(clone, ["rev-parse", "main"]);
     expect(newHead).not.toBe(startCommit);
 
+    yield* raiseHold(store, { factoryId: "shop", kind: "failed_worktree", subject: "1", evidence: { reason: "previous failed attempt" } });
     const verdicts = yield* recover();
     expect(verdicts.map((v) => v.verdict)).toEqual(["recreated"]);
+    expect(yield* store.read(`SELECT state FROM operator_hold WHERE kind = 'failed_worktree'`)).toEqual([{ state: "cleared" }]);
 
     const operations = yield* listOperations(store, "shop");
     expect(operations).toMatchObject([
@@ -131,7 +133,9 @@ test("a partial branch with authored commits is kept and recorded as created, ne
     // The clone moves on; the kept branch must stay on its authored history, not be rebuilt.
     git(clone, ["commit", "--quiet", "--allow-empty", "-m", "clone advances"]);
 
+    yield* raiseHold(store, { factoryId: "shop", kind: "failed_worktree", subject: "1", evidence: { reason: "previous failed attempt" } });
     expect((yield* recover()).map((v) => v.verdict)).toEqual(["kept"]);
+    expect(yield* store.read(`SELECT state FROM operator_hold WHERE kind = 'failed_worktree'`)).toEqual([{ state: "cleared" }]);
 
     expect(yield* listOperations(store, "shop")).toMatchObject([
       { kind: "worktree_create", status: "complete", result: { path, branch: BRANCH, startCommit, head: authored, recovered: "kept" } },
@@ -237,6 +241,7 @@ test("a refused recovery raises a failed-worktree hold; retry re-attaches the br
     expect(yield* worktrees.retry(undefined, 1)).toMatchObject({ ticket: 1, path, branch: BRANCH, startCommit });
 
     expect(yield* openHolds(store)).toEqual([]);
+    expect(yield* store.read(`SELECT kind, state FROM operator_hold`)).toEqual([{ kind: "failed_worktree", state: "resolved" }]);
     expect(git(path, ["rev-parse", "HEAD"])).toBe(authored);
     expect(git(path, ["branch", "--show-current"])).toBe(BRANCH);
     expect(yield* store.read(`SELECT worktree_path, branch, start_commit FROM ticket`)).toEqual([
@@ -285,4 +290,64 @@ test("discard refuses to drop a branch with commits until confirmed, then recrea
     ]);
     expect(yield* schedule()).toMatchObject([{ ticket: 1, stage: "develop" }]);
   }), (path) => { authored = commitsWithoutWorktree(path); });
+});
+
+test.each(["untracked", "ignored"])("discard confirmation binds %s file contents, not just names", async (kind) => {
+  await interruptedCreation(({ store, root, clone, path, recover, schedule, worktrees }) => Effect.gen(function* () {
+    expect((yield* recover()).map((v) => v.verdict)).toEqual(["refused"]);
+    git(clone, ["worktree", "unlock", "--", path]);
+
+    if (kind === "ignored") {
+      const excludes = join(root, "excludes");
+      writeFileSync(excludes, "precious.txt\n");
+      git(clone, ["config", "core.excludesFile", excludes]);
+    }
+
+    const file = join(path, "precious.txt");
+    writeFileSync(file, "first contents\n");
+    const history = yield* store.read(`SELECT * FROM history`);
+    const holds = yield* openHolds(store);
+    const inspected = yield* worktrees.inspectFailed(undefined, 1);
+    expect(inspected.needsConfirmation).toBe(true);
+    expect(yield* store.read(`SELECT * FROM history`)).toEqual(history);
+    expect(yield* openHolds(store)).toEqual(holds);
+
+    writeFileSync(file, "other contents\n");
+    expect((yield* worktrees.discard(undefined, 1, inspected.confirmation).pipe(Effect.flip)).message).toContain("confirm");
+    expect(existsSync(file)).toBe(true);
+    expect(yield* openHolds(store)).toEqual(holds);
+    expect(yield* schedule()).toEqual([]);
+
+    const current = yield* worktrees.inspectFailed(undefined, 1);
+    expect(current.confirmation).not.toBe(inspected.confirmation);
+    yield* worktrees.discard(undefined, 1, current.confirmation);
+    expect(existsSync(file)).toBe(false);
+    expect(yield* store.read(`SELECT state FROM operator_hold WHERE kind = 'failed_worktree'`)).toEqual([{ state: "resolved" }]);
+    expect(yield* schedule()).toMatchObject([{ ticket: 1 }]);
+  }), (path, clone) => { git(clone, ["worktree", "lock", "--reason", "operator lock", "--", path]); });
+});
+
+test("a detached partial worktree holding a commit is never discarded, and inspecting it writes nothing", async () => {
+  let detached = "";
+  await interruptedCreation(({ store, clone, path, startCommit, recover, worktrees }) => Effect.gen(function* () {
+    expect((yield* recover()).map((v) => v.verdict)).toEqual(["refused"]);
+    expect((yield* worktrees.discard(undefined, 1).pipe(Effect.flip)).message).toContain("detached");
+    const history = yield* store.read(`SELECT * FROM history`);
+    const holds = yield* openHolds(store);
+
+    expect((yield* worktrees.inspectFailed(undefined, 1).pipe(Effect.flip)).message).toContain("detached");
+    expect(yield* store.read(`SELECT * FROM history`)).toEqual(history);
+    expect(yield* openHolds(store)).toEqual(holds);
+
+    expect(git(path, ["rev-parse", "HEAD"])).toBe(detached);
+    expect(git(path, ["log", "-1", "--format=%s"])).toBe("detached work");
+    expect(git(clone, ["rev-parse", BRANCH])).toBe(startCommit);
+    expect(yield* openHolds(store)).toMatchObject([{ kind: "failed_worktree", subject: "1" }]);
+  }), (path) => {
+    git(path, ["checkout", "--quiet", "--detach"]);
+    writeFileSync(join(path, "widget.txt"), "widget\n");
+    git(path, ["add", "widget.txt"]);
+    git(path, ["commit", "--quiet", "--no-verify", "-m", "detached work"]);
+    detached = git(path, ["rev-parse", "HEAD"]);
+  });
 });

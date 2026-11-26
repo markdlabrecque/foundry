@@ -248,7 +248,7 @@ const settleOne = (options: WorktreeSettleOptions, target: WorktreeTarget, inter
           });
 
           return yield* publishTicketWorktreeIn(change, ticket, interrupted.id, { path, branch, startCommit },
-            factory.config.worktrees?.after_create);
+            factory.config.worktrees?.after_create, "cleared");
         }));
 
         const kept: Settled = { ...verdict("kept"), finish: runFirstSetup(store, factory, ticket, setup, env) };
