@@ -6,10 +6,10 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Schema } from "effect";
 import {
   acknowledgeMessage, agentDelegateHandler, agentReplyHandler, bindStationMessages, createAssignmentScheduler, createMessageDisposition, createSubmissions,
-  createTicketService, openStore, planSlots, raiseHoldIn, ticketFactoryFrom, ToolRefusal,
+  createTicketService, openStore, planSlots, raiseHoldIn, taskTransitionHandler, ticketFactoryFrom, ToolRefusal,
 } from "@foundry/daemon";
 import type { Store, ToolHandler } from "@foundry/daemon";
-import { AGENT_DELEGATE, AGENT_REPLY } from "@foundry/protocol";
+import { AGENT_DELEGATE, AGENT_REPLY, TASK_TRANSITION } from "@foundry/protocol";
 import { FactoryConfig } from "../src/config/schema.js";
 
 const dirs: Array<string> = [];
@@ -401,5 +401,191 @@ test("validation and transaction failures retain neither obligation, notice, sub
     const beforeSql = yield* snapshot(store);
     expect(yield* Effect.promise(() => submit(store, "sql-fault"))).toMatchObject({ status: "refused", code: "not_committed" });
     expect(yield* snapshot(store)).toEqual(beforeSql);
+  }));
+});
+
+// Real acceptance/routing establishes selected recipients; only delivery ambiguity is injected.
+const delegationTree = (store: Store) => Effect.gen(function* () {
+  const root = yield* selectedDelegation(store);
+  const handler = agentDelegateHandler(slots, { delegationDepthLimit: () => 3 });
+
+  const delegate = (callId: string, parent: string, slot = responder, recipient = "floor.worker") =>
+    Effect.promise(() => submit(store, callId, { recipient, body: callId, parentDelegationId: parent }, slot, handler));
+
+  expect(yield* delegate("child", root.id)).toMatchObject({ status: "committed" });
+  yield* bindStationMessages({ store, slots });
+  const child = (yield* snapshot(store)).delegations[1]!;
+  expect(yield* delegate("grandchild", child.id, sender, "floor.reviewer")).toMatchObject({ status: "committed" });
+  expect(yield* delegate("sibling", root.id)).toMatchObject({ status: "committed" });
+  // Give the grandchild a distinct selected recipient to exercise descendant-only notification.
+  yield* bindStationMessages({ store, slots: slots.filter((slot) => slot.slotId !== "reviewer/1") });
+  const [, , grandchild, sibling] = (yield* snapshot(store)).delegations;
+
+  if (grandchild === undefined || sibling === undefined) {throw new Error("tree missing");}
+
+  yield* store.change((change) => Effect.gen(function* () {
+    yield* change.query(`UPDATE delegation SET status = 'completed' WHERE id = ?`, [sibling.id]);
+    yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "completed-sibling" });
+  }));
+  yield* holdNotice(store, root.notice_id);
+  yield* holdNotice(store, grandchild.notice_id);
+  yield* store.change((change) => raiseHoldIn(change, {
+    factoryId: "shop", kind: "stuck_worker", subject: grandchild.notice_id, evidence: {},
+  }));
+
+  return { root, child, grandchild, sibling };
+});
+
+test("dropping a depth-three subtree abandons only open work, closes notice holds, notifies each slot once and unblocks done", async () => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    const { root, child, grandchild, sibling } = yield* delegationTree(store);
+    const disposition = createMessageDisposition(store);
+    const descendants = [child.id, grandchild.id].sort();
+    expect(yield* disposition.inspect(root.notice_id)).toMatchObject({ descendantDelegations: descendants });
+    const result = yield* disposition.act(root.notice_id, "drop", true);
+    expect(result).toMatchObject({ descendantDelegations: descendants });
+    expect(yield* store.read(`SELECT id, status FROM delegation ORDER BY rowid`)).toEqual([
+      { id: root.id, status: "abandoned" }, { id: child.id, status: "abandoned" },
+      { id: grandchild.id, status: "abandoned" }, { id: sibling.id, status: "completed" },
+    ]);
+    expect(yield* store.read(`SELECT id, status FROM message WHERE kind = 'delegation_notice' ORDER BY sequence`)).toEqual([
+      { id: root.notice_id, status: "dropped" }, { id: child.notice_id, status: "dropped" },
+      { id: grandchild.notice_id, status: "dropped" }, { id: sibling.notice_id, status: "bound" },
+    ]);
+    expect(yield* store.read(`SELECT subject, kind, state FROM operator_hold ORDER BY id`)).toEqual([
+      { subject: root.notice_id, kind: "indeterminate_message", state: "resolved" },
+      { subject: grandchild.notice_id, kind: "indeterminate_message", state: "resolved" },
+      { subject: grandchild.notice_id, kind: "stuck_worker", state: "cleared" },
+    ]);
+    expect(yield* store.read(`SELECT sender_kind, sender_slot, recipient, bound_slot, kind, delivery, status, delegation_id
+      FROM message WHERE sender_kind = 'daemon' AND delegation_id = ? ORDER BY recipient`, [root.id])).toEqual(
+      ["reviewer/1", "reviewer/2", "worker/1"].map((slot) => ({ sender_kind: "daemon", sender_slot: null, recipient: slot,
+        bound_slot: slot, kind: "ordinary", delivery: "after_turn", status: "bound", delegation_id: root.id })),
+    );
+    const events = yield* store.read<{ subject: string; detail: string }>(`SELECT subject, detail FROM history WHERE kind = 'delegation.abandoned'`);
+    expect(events).toHaveLength(3);
+    expect(JSON.parse(events.find((row) => row.subject === root.id)!.detail)).toMatchObject({ reason: "notice_dropped", descendants });
+
+    for (const descendant of [child, grandchild]) {
+      expect(JSON.parse(events.find((row) => row.subject === descendant.id)!.detail)).toMatchObject({
+        reason: "ancestor_dropped", noticeId: root.notice_id, ancestorId: root.id,
+      });
+    }
+
+    const transitionConfig = Schema.decodeUnknownSync(FactoryConfig)({ ...config,
+      production_lines: { standard: { stages: [{ id: "build", station: "floor.worker" }, { id: "review", station: "floor.reviewer" }] } },
+    });
+
+    const submissions = createSubmissions({ store, handlers: new Map([[TASK_TRANSITION,
+      taskTransitionHandler({ factories: [{ factoryId: "shop", config: transitionConfig }] })]]) });
+
+    expect(yield* Effect.promise(() => submissions.submit(sender, { type: "tool_call", callId: "done-after-drop", tool: TASK_TRANSITION,
+      args: { assignmentId: root.root_assignment, outcome: "done", reason: "Ready", evidence: ["proof"] },
+    }))).toMatchObject({ status: "committed" });
+  }));
+});
+
+test("a late subtree failure rolls back root, descendants, notices, holds, notifications and history together", async () => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    const { root } = yield* delegationTree(store);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`CREATE TRIGGER refuse_tree BEFORE INSERT ON history
+        WHEN NEW.kind = 'delegation.abandoned' AND NEW.subject = '${root.id}'
+        BEGIN SELECT RAISE(ABORT, 'subtree fixture failure'); END`);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture.trigger", subject: root.id });
+    }));
+    const before = yield* snapshot(store);
+    const holds = yield* store.read(`SELECT * FROM operator_hold`);
+    yield* Effect.promise(() => expect(Effect.runPromise(createMessageDisposition(store).act(root.notice_id, "drop", true)))
+      .rejects.toThrow(/subtree fixture failure/));
+    expect(yield* snapshot(store)).toEqual(before);
+    expect(yield* store.read(`SELECT * FROM operator_hold`)).toEqual(holds);
+  }));
+});
+
+test.each(["completed", "abandoned", "cancelled"])("cascade traverses %s intermediates but never crosses factory boundaries", async (status) => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    const { root, child, grandchild } = yield* delegationTree(store);
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE delegation SET status = ? WHERE id = ?`, [status, child.id]);
+      // A deliberately inconsistent cross-factory link proves each recursive step is scoped.
+      yield* change.query(`INSERT INTO message (id, factory_id, sequence, sender_kind, sender_slot, recipient, body,
+        delivery, kind, status, accepted_at) VALUES ('foreign-notice', 'other', 1, 'daemon', NULL,
+        'floor.worker', 'foreign', 'after_turn', 'delegation_notice', 'unbound', 1),
+        ('foreign-root-notice', 'other', 2, 'daemon', NULL, 'floor.worker', 'foreign',
+        'after_turn', 'delegation_notice', 'unbound', 1)`);
+      yield* change.query(`INSERT INTO delegation (id, factory_id, root_assignment, parent_id, delegating_slot, recipient,
+        depth, notice_id, status, accepted_at) VALUES ('foreign', 'other', ?, ?, 'foreign/1', 'floor.worker', 3, ?, 'open', 1)`,
+        [root.root_assignment, child.id, "foreign-notice"]);
+      yield* change.query(`INSERT INTO delegation (id, factory_id, root_assignment, parent_id, delegating_slot, recipient,
+        depth, notice_id, status, accepted_at) VALUES ('foreign-root', 'other', ?, ?, 'foreign/1', 'floor.worker', 2, ?, 'open', 1)`,
+        [root.root_assignment, root.id, "foreign-root-notice"]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "closed-intermediate" });
+    }));
+    const disposition = createMessageDisposition(store);
+    expect(yield* disposition.inspect(root.notice_id)).toMatchObject({ descendantDelegations: [grandchild.id] });
+    yield* disposition.act(root.notice_id, "drop", true);
+    expect(yield* store.read(`SELECT id, status FROM delegation WHERE id IN (?, ?, 'foreign', 'foreign-root') ORDER BY id`, [child.id, grandchild.id]))
+      .toEqual([{ id: child.id, status }, { id: grandchild.id, status: "abandoned" },
+        { id: "foreign", status: "open" }, { id: "foreign-root", status: "open" }].sort((a, b) => a.id.localeCompare(b.id)));
+    expect(yield* store.read(`SELECT status FROM message WHERE factory_id = 'other' ORDER BY sequence`))
+      .toEqual([{ status: "unbound" }, { status: "unbound" }]);
+  }));
+});
+
+
+test.each(["unbound", "bound", "indeterminate", "sent", "acknowledged", "dropped"])("descendant notice %s is changed only if undelivered; action rereads after inspection", async (status) => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    const root = yield* selectedDelegation(store);
+    yield* holdNotice(store, root.notice_id);
+    const disposition = createMessageDisposition(store);
+    expect(yield* disposition.inspect(root.notice_id)).toMatchObject({ descendantDelegations: [] });
+    // Sequential state changes, not a concurrent-writer assumption: inspect is advisory.
+    expect(yield* Effect.promise(() => submit(store, "late-child", {
+      recipient: "floor.worker", body: "Child", parentDelegationId: root.id,
+    }, responder))).toMatchObject({ status: "committed" });
+    const child = (yield* snapshot(store)).delegations[1]!;
+
+    if (status !== "unbound") {yield* bindStationMessages({ store, slots });}
+
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE message SET status = ? WHERE id = ?`, [status, child.notice_id]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "notice-status" });
+    }));
+    expect(yield* disposition.act(root.notice_id, "drop", true)).toMatchObject({ descendantDelegations: [child.id] });
+    const expected = ["unbound", "bound", "indeterminate"].includes(status) ? "dropped" : status;
+    expect(yield* store.read(`SELECT status FROM message WHERE id = ?`, [child.notice_id])).toEqual([{ status: expected }]);
+    expect(yield* store.read(`SELECT status FROM delegation`)).toEqual([{ status: "abandoned" }, { status: "abandoned" }]);
+    // An unselected child contributes no null/phantom destination.
+    expect(yield* store.read(`SELECT recipient FROM message WHERE sender_kind = 'daemon' AND delegation_id = ? ORDER BY recipient`, [root.id]))
+      .toEqual([{ recipient: "reviewer/1" }, { recipient: "worker/1" }]);
+  }));
+});
+
+test("closed root and unrelated subtree retain open descendants and send no cascade notifications", async () => {
+  await withStore(await fixture(), (store) => Effect.gen(function* () {
+    const { root, child, grandchild } = yield* delegationTree(store);
+    // A separate root in the same assignment must not be mistaken for a descendant.
+    expect(yield* Effect.promise(() => submit(store, "unrelated"))).toMatchObject({ status: "committed" });
+    const unrelated = (yield* snapshot(store)).delegations.at(-1)!;
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE delegation SET status = 'completed' WHERE id = ?`, [root.id]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "closed-root" });
+    }));
+    const disposition = createMessageDisposition(store);
+    expect(yield* disposition.inspect(root.notice_id)).toMatchObject({ descendantDelegations: [] });
+    yield* disposition.act(root.notice_id, "drop", true);
+    expect(yield* store.read(`SELECT id FROM message WHERE sender_kind = 'daemon' AND delegation_id = ?`, [root.id])).toEqual([]);
+    expect(yield* store.read(`SELECT id, status FROM delegation WHERE id IN (?, ?) ORDER BY id`, [child.id, grandchild.id]))
+      .toEqual([child, grandchild].map((row) => ({ id: row.id, status: "open" })).sort((a, b) => a.id.localeCompare(b.id)));
+    // Reopen only the root to prove the narrower-than-assignment scope on a real cascade too.
+    yield* store.change((change) => Effect.gen(function* () {
+      yield* change.query(`UPDATE delegation SET status = 'open' WHERE id = ?`, [root.id]);
+      yield* change.query(`UPDATE message SET status = 'indeterminate' WHERE id = ?`, [root.notice_id]);
+      yield* change.recordHistory({ factoryId: "shop", kind: "fixture", subject: "reopen-root" });
+    }));
+    yield* disposition.act(root.notice_id, "drop", true);
+    expect(yield* store.read(`SELECT status FROM delegation WHERE id = ?`, [unrelated.id])).toEqual([{ status: "open" }]);
+    expect(yield* store.read(`SELECT status FROM message WHERE id = ?`, [unrelated.notice_id])).toEqual([{ status: "unbound" }]);
   }));
 });

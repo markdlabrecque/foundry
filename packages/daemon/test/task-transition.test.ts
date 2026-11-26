@@ -4,7 +4,7 @@ import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, wr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, test, vi } from "vitest";
-import { Effect, Exit, Match, Schema } from "effect";
+import { Deferred, Effect, Exit, Match, Schema } from "effect";
 import {
   acceptMessage, agentDelegateHandler, agentRequestHandler, assignmentTicket, createAssignmentScheduler, createSubmissions, createTicketService, openStore, planSlots,
   createFactorySyncer, enqueueOperation, listOperations, startNextOperation,
@@ -2180,6 +2180,59 @@ test("code stages including final gates refuse missing worktrees without effects
       expect(yield* Effect.promise(() => createSubmissions({ store, handlers }).submit(owner, frame(id))))
         .toMatchObject({ status: "refused", code: "invalid_code_outcome" });
       expect(yield* snapshot(store)).toEqual(before);
+    }
+  }));
+});
+
+// Integration tier: real read-only sweep and operator decision overlap at query barriers, no timers.
+test.each([false, true])("operator approval after overlapping read-only sweep (moved=%s)", async (moved) => {
+  await gateFixture(true, false, (store, id, root, head, gatedConfig) => Effect.gen(function* () {
+    const factories = [{ factoryId: "shop", config: gatedConfig }];
+    const submissions = createSubmissions({ store, handlers: new Map([[TASK_TRANSITION, taskTransitionHandler({ factories })]]) });
+    yield* Effect.promise(() => submissions.submit(owner, { ...frame(id), args: { ...frame(id).args, gitCommit: head } }));
+    const entered = yield* Deferred.make<void>();
+    const released = yield* Deferred.make<void>();
+    const deciding = yield* Deferred.make<void>();
+    let held = false;
+
+    const overlapping: Store = { ...store, read: <Row extends object>(statement: string, params?: ReadonlyArray<SqlValue>) => Effect.gen(function* () {
+      const rows = yield* store.read<Row>(statement, params);
+
+      if (!held && statement.includes("SELECT tr.sequence, tr.from_stage")) {
+        held = true;
+        yield* Deferred.succeed(entered, undefined);
+        yield* Deferred.await(released);
+      } else if (held && statement.includes("WHERE state = 'stage' AND worktree_path IS NOT NULL")) {
+        yield* Deferred.succeed(deciding, undefined);
+      }
+
+      return rows;
+    }) };
+
+    const sweep = Effect.runPromise(voidStaleApprovals({ store: overlapping, factories }));
+    yield* Deferred.await(entered);
+
+    if (moved) {
+      writeFileSync(join(root, "worktree", "tracked.txt"), "not evaluated\n");
+      git(join(root, "worktree"), "commit", "-am", "not evaluated", "--quiet");
+    }
+
+    const decision = Effect.runPromise(Effect.exit(createApprovalDecisions({ store: overlapping, factories }).resolve(1, "approved")));
+
+    try {yield* Deferred.await(deciding);}
+    finally {yield* Deferred.succeed(released, undefined);}
+
+    const result = yield* Effect.promise(() => decision);
+    expect(yield* Effect.promise(() => sweep)).toBe(moved ? 1 : 0);
+
+    if (moved) {
+      expect(Exit.isFailure(result)).toBe(true);
+      expect(yield* store.read(`SELECT outcome FROM ticket_transition WHERE outcome = 'voided'`)).toHaveLength(1);
+      expect(yield* store.read(`SELECT * FROM integration_intent`)).toEqual([]);
+    } else {
+      expect(result).toMatchObject(Exit.succeed({ decision: "approved", commit: head, integrationRequested: true }));
+      expect(yield* store.read(`SELECT approved_commit FROM integration_intent`)).toEqual([{ approved_commit: head }]);
+      expect(yield* store.read(`SELECT state, decision FROM approval`)).toEqual([{ state: "resolved", decision: "approved" }]);
     }
   }));
 });

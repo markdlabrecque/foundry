@@ -55,7 +55,12 @@ export const runMessageDisposition = async (options: MessageDispositionOptions):
       if (!isMessageDispositionResult(inspection.envelope.result)) {return refused("the daemon answered with an unexpected shape");}
 
       const message = inspection.envelope.result;
-      const losses = `Drop message ${message.id} (${message.kind}). Request: ${message.requestId ?? "none"}; delegation: ${message.delegationId ?? "none"}. A correlated request/delegation will fail.\n`;
+
+      const descendants = message.kind === "delegation_notice"
+        ? `Open descendant delegations to abandon: ${message.descendantDelegations?.join(", ") || "none"}.\n` : "";
+
+      const losses = `Drop message ${message.id} (${message.kind}). Request: ${message.requestId ?? "none"}; delegation: ${message.delegationId ?? "none"}. A correlated request/delegation will fail.\n${descendants}`;
+
       (options.notice ?? ((text: string) => { process.stderr.write(text); }))(losses);
 
       if (!options.yes) {

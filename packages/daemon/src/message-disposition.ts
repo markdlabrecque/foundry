@@ -1,7 +1,7 @@
 /** Explicit operator disposition of an ambiguous copy. No retry or receipt may resolve this hold. */
 import { Data, Effect, Option, Schema } from "effect";
 import { MessageDispositionResult } from "@foundry/protocol/messages-api";
-import { abandonDroppedDelegation } from "./delegation-drop.js";
+import { abandonDroppedDelegation, openDelegationDescendants } from "./delegation-drop.js";
 import { closeOpenHoldIn } from "./holds.js";
 import { failDroppedRequest } from "./request-failure.js";
 import type { Change, Query, Store, StoreError } from "./store.js";
@@ -31,6 +31,17 @@ const inspect = (query: Query, id: string) => Effect.gen(function* () {
 
   if (Option.isNone(result) || result.value.status !== "indeterminate") {
     return yield* new MessageDispositionError({ code: "not_indeterminate", message: `message ${id} is not indeterminate` });
+  }
+
+  if (result.value.kind === "delegation_notice") {
+    const [root] = yield* query<{ id: string }>(
+      `SELECT id FROM delegation WHERE factory_id = ? AND notice_id = ? AND status = 'open'`,
+      [result.value.factoryId, id],
+    );
+
+    const descendants = root === undefined ? [] : yield* openDelegationDescendants(query, result.value.factoryId, root.id);
+
+    return { ...result.value, descendantDelegations: descendants.map((row) => row.id) };
   }
 
   return result.value;

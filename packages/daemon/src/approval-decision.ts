@@ -55,7 +55,7 @@ export const createApprovalDecisions = (options: ApprovalDecisionOptions): Appro
       : undefined;
 
     if (ticket !== undefined) {
-      yield* voidStaleApprovals(options, { factory: ticket.factory_id, ticket: ticket.number }).pipe(
+      yield* voidStaleApprovals({ ...options, waitForLock: true }, { factory: ticket.factory_id, ticket: ticket.number }).pipe(
         Effect.mapError(() => new ApprovalDecisionError({ code: "invalid_state", message: "Could not verify approval HEAD; retry" })),
       );
     }

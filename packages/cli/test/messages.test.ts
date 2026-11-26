@@ -9,9 +9,10 @@ import { afterEach, expect, test } from "vitest";
 import { Effect, Exit, Scope } from "effect";
 import { createOperatorMessages, foundryMigrations, openStore, serveManagementApi } from "@foundry/daemon";
 import type { PlannedSlot, Store } from "@foundry/daemon";
-import { runMessageSend } from "@foundry/cli";
+import { runMessageSend, runMessageDisposition } from "@foundry/cli";
 import { postToDaemon } from "../src/management-client.js";
 import { MESSAGES_PATH } from "@foundry/protocol/messages-api";
+import type { MessageDispositionResult } from "@foundry/protocol/messages-api";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 
@@ -187,4 +188,41 @@ test("message CLI rejects bad usage and uses the selected disposable home when t
   expect(run(["eng.builder"])).toBe(2);
   expect(run(["eng.builder", "hi", "--delivery", "urgent"])).toBe(2);
   expect(run(["eng.builder", "hi"])).toBe(3);
+});
+
+// CLI boundary only: disposition business logic is covered by the daemon's real-store tests.
+test.each([undefined, [], ["child-id", "grandchild-id"]])("drop confirmation describes descendants (%j) before asking", async (descendants) => {
+  const home = tempRoot();
+
+  let message: MessageDispositionResult = { id: "notice", factoryId: "shop", slot: "builder/1",
+    kind: "delegation_notice", requestId: null, delegationId: "root-id", ticket: 1, status: "indeterminate",
+  };
+
+  if (descendants !== undefined) {message = { ...message, descendantDelegations: descendants };}
+
+  let acted = false;
+
+  const api = await serveManagementApi({ stateRoot: home,
+    messageDisposition: {
+      inspect: () => Effect.succeed(message),
+      act: () => Effect.sync(() => {
+        acted = true;
+
+        return { ...message, status: "dropped" as const };
+      }),
+    },
+    status: () => ({ instance: { stateRoot: home, daemonPid: 1, startedAt: "2026-01-01T00:00:00Z" } }),
+  });
+
+  cleanups.push(api.close);
+  let notice = "";
+  expect(await runMessageDisposition({ id: "notice", action: "drop", yes: false, json: false, home, env,
+    terminal: true, notice: (text) => { notice = text; }, confirm: async () => {
+      expect(notice).toBe(`Drop message notice (delegation_notice). Request: none; delegation: root-id. A correlated request/delegation will fail.\nOpen descendant delegations to abandon: ${descendants?.join(", ") || "none"}.\n`);
+      expect(acted).toBe(false);
+
+      return true;
+    },
+  })).toMatchObject({ exitCode: 0 });
+  expect(acted).toBe(true);
 });
