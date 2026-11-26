@@ -21,6 +21,7 @@ beforeEach(async () => {
 });
 
 afterEach(async () => {
+  await session?.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
   session?.dispose();
   session = undefined;
   await rm(root, { recursive: true, force: true });

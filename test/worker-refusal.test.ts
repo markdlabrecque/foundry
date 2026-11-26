@@ -7,7 +7,7 @@ import { afterEach, expect, test } from "vitest";
 import { startChannelServer } from "@foundry/daemon";
 import { connectWorker } from "@foundry/extension";
 import { AGENT_DISCOVER } from "@foundry/protocol";
-import type { HelloRejectReason } from "@foundry/protocol";
+import type { Hello, HelloRejectReason, DaemonToolOutcome, WorkerFrame } from "@foundry/protocol";
 import { startFauxSession } from "@foundry/testkit";
 
 const cleanups: Array<() => Promise<void> | void> = [];
@@ -48,7 +48,10 @@ const fixture = async (reason: HelloRejectReason) => {
     })],
   });
 
-  cleanups.push(() => session.dispose());
+  cleanups.push(async () => {
+    await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+    session.dispose();
+  });
 
   return { session, dials: () => dials, toolFrames: () => toolFrames };
 };
@@ -72,6 +75,73 @@ test("terminal hello refusal reaches Pi tools and survives later session starts 
   });
   expect(dials()).toBe(1);
   expect(toolFrames()).toBe(0);
+});
+
+test("automatically reconnects the same Pi launch, reconciles known history and replays a lost tool result without a second commit", async () => {
+  const dir = await mkdtemp(join(tmpdir(), "f162-"));
+  cleanups.push(() => rm(dir, { recursive: true, force: true }));
+  const hellos: Array<Hello> = [];
+  const frames: Array<WorkerFrame> = [];
+  const stored = new Map<string, DaemonToolOutcome>();
+  let commits = 0;
+  let attempts = 0;
+  let reconciled!: () => void;
+  const reconciliation = new Promise<void>((done) => { reconciled = done; });
+
+  const server = await startChannelServer({
+    socketPath: join(dir, "channel.sock"),
+    slotClaim: { claim: async (hello) => ({ accepted: true, slot: { factoryId: hello.factoryId, slotId: hello.slotId, launchId: hello.launchId } }) },
+    onAccepted: (_slot, hello, connection) => {
+      hellos.push(hello);
+
+      if (hellos.length === 1) {
+        void connection.send({ type: "prime", id: "known-prime", text: "fixture prime" });
+      } else {
+        void connection.send({ type: "reconcile", requestId: "after-restart", ids: ["known-prime"] });
+      }
+    },
+    onFrame: (_slot, frame) => {
+      frames.push(frame);
+
+      if (frame.type === "reconciliation_answer") {reconciled();}
+    },
+    toolCalls: { submit: async (_slot, call) => {
+      attempts += 1;
+      const previous = stored.get(call.callId);
+
+      if (previous !== undefined) {return previous;}
+
+      const outcome = { status: "committed", value: { once: ++commits } } as const;
+      stored.set(call.callId, outcome);
+      // Lose the response after commit. Only the transport goes away, not Pi or its tool client.
+      server.revokeSlot("factory", "builder/1");
+
+      return outcome;
+    } },
+  });
+
+  cleanups.push(() => server.close());
+
+  const session = await startFauxSession({
+    root: join(dir, "pi"), tools: [AGENT_DISCOVER],
+    extensionFactories: [(pi) => connectWorker(pi, {
+      socketPath: server.socketPath, factoryId: "factory", slotId: "builder/1", launchId: "original-launch",
+    })],
+  });
+
+  cleanups.push(async () => {
+    await session.extensionRunner.emit({ type: "session_shutdown", reason: "quit" });
+    session.dispose();
+  });
+  await session.prompt(`@@ ${AGENT_DISCOVER} {}`);
+  await reconciliation; // event-driven socket boundary; no sleep/polling assertion
+  expect(commits).toBe(1);
+  expect(attempts).toBe(2);
+  expect(hellos).toHaveLength(2);
+  expect(hellos[1]).toMatchObject({ ...hellos[0], hasRecoverableHistory: true });
+  expect(frames).toContainEqual({ type: "reconciliation_answer", requestId: "after-restart", lifecycle: "working", answers: [{ id: "known-prime", status: "history" }] });
+  expect(session.messages.filter((message) => message.role === "custom")).toHaveLength(1);
+  expect(session.messages.find((message) => message.role === "toolResult")).toMatchObject({ details: { status: "committed", value: { once: 1 } } });
 });
 
 test("retryable hello refusal permits a later session start to dial", async () => {
