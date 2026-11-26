@@ -6,7 +6,7 @@
 
 The recovered real-process run completed **all observations in this draft**. Three actual SDK workers connected: inheriting and skill-cleared workers each exposed 13 tools; the fully cleared station exposed 12 fixed tools and no configured fixture. Each configured worker's actual faux-model turn called `probe_named` and received its result; the registered-but-unnamed tool was absent.
 
-This supersedes the previous blocked fixture approach, not the historical observations. It is **not** whole-launcher or cross-platform qualification and does not cover mismatch/collision drafts, reconnect, explicit-stop cross-factory isolation, restoration, priming or a real paid model reading an indexed skill on demand. No product code, SDK model registration, testkit, PR or tracker changes were made. Fresh final evidence review is still required.
+This supersedes the previous blocked fixture approach, not the historical observations. It is **not** whole-launcher or cross-platform qualification and does not cover mismatch/collision drafts, reconnect, explicit-stop cross-factory isolation, restoration, priming or a real paid model reading an indexed skill on demand. This ticket changes no product code, SDK model registration or testkit. Fresh independent GPT-6.1-SOL re-review approved head `9dcd3f0d009ee9fd6cf874fcb13f46cf0793cf03` with no must-fixes; the reviewer independently repeated the actual SDK probe (all eight observations supported), six analyzer tests and the 843-test suite. Final integration checks after the shared temp fix are recorded separately below.
 
 ## Per-criterion evidence
 
@@ -116,9 +116,12 @@ Probe shutdown targets **only** its disposable state root via `foundry shutdown 
 - `summarize.mjs`, `summarize.d.mts`, `observations.json`: prerequisite-aware pure classification and CLI.
 - `deny-network.mjs`, `normalize.mjs`: fixture-only fetch guard and labeled path transformation.
 - `history/`: preserved unsuccessful records and corrected reanalysis.
-- `checks/`: final regression logs; these are **separate** from the successful real-process observations.
+- `checks/`: final normal integration logs after the shared temp fix; these are **separate** from the successful real-process observations.
+- `history/pre-temp-fix-checks/`: prior integration logs, retaining the normal e2e failure and shim-assisted pass without relabeling them.
 
-After fetching/rebasing latest `origin/develop` **`6dc2a5b5f01b9be13d465bccecedc67f04e8410c`**, all checks were rerun on **`cc7ec54471f1b7f50e8c0438288e06736c43bd98`**. That develop advance adds the separate SDK explicit-stop evidence only, not product/testkit changes. The subsequent check-log/documentation commit changes no observation driver, analyzer or test code.
+### Historical integration checks before the shared temp fix
+
+After fetching/rebasing then-latest `origin/develop` **`6dc2a5b5f01b9be13d465bccecedc67f04e8410c`**, all checks were rerun on **`cc7ec54471f1b7f50e8c0438288e06736c43bd98`**. That develop advance adds the separate SDK explicit-stop evidence only, not product/testkit changes. The subsequent check-log/documentation commit changes no observation driver, analyzer or test code.
 
 | Check | Exit / result |
 |---|---|
@@ -130,8 +133,24 @@ After fetching/rebasing latest `origin/develop` **`6dc2a5b5f01b9be13d465bccecedc
 | Separate e2e with pinned-Pi child-temp shim | **0**, **3 files / 5 tests passed** |
 | Focused pure analyzer unit tests | **0**, **1 file / 6 tests passed** |
 
-Retained commands/exits/counts are in `checks/exits.json`; all corresponding logs, including the failed normal e2e, are retained. Normal e2e command: `TMPDIR=/home/mark/f151 ./node_modules/.bin/vitest run --config vitest.e2e.config.ts`. The shared testkit's isolated interrupt child deliberately omits parent TMPDIR; with `/tmp` still at zero free inodes, its Jiti startup can fail before hello. The fixture's test then times out. This is the already reproduced environment limitation, not a negative SDK verdict. No testkit fixes are made in this branch; that shared work belongs to the sibling owner and has not merged into this base.
+Historical commands/exits/counts are in `history/pre-temp-fix-checks/exits.json`; all corresponding logs, including the failed normal e2e, are retained. Normal e2e command: `TMPDIR=/home/mark/f151 ./node_modules/.bin/vitest run --config vitest.e2e.config.ts`. The shared testkit's isolated interrupt child deliberately omits parent TMPDIR; with `/tmp` still at zero free inodes, its Jiti startup can fail before hello. The fixture's test then times out. This is the already reproduced environment limitation, not a negative SDK verdict. No testkit fixes are made in this branch; that shared work belonged to the sibling owner and had not merged into that integration base.
 
-Qualified e2e command: `TMPDIR=/home/mark/f151 FOUNDRY_PI_BIN=/home/mark/f151/checks/pi-temp ./node_modules/.bin/vitest run --config vitest.e2e.config.ts`. The retained `checks/pi-temp` (path-normalized) **only exports the same private TMPDIR then execs the unchanged pinned Pi CLI with all arguments**. It was generated outside the repo with this checkout's absolute Pi path. No regression shim was used in the SDK qualification probe: that probe's own explicit allowlist now carries child TMPDIR correctly. Do not describe unqualified normal e2e as passing until the shared fix/environment is available.
+Qualified e2e command: `TMPDIR=/home/mark/f151 FOUNDRY_PI_BIN=/home/mark/f151/checks/pi-temp ./node_modules/.bin/vitest run --config vitest.e2e.config.ts`. The retained historical `history/pre-temp-fix-checks/pi-temp` (path-normalized) **only exports the same private TMPDIR then execs the unchanged pinned Pi CLI with all arguments**. It was generated outside the repo with this checkout's absolute Pi path. No regression shim was used in the SDK qualification probe: that probe's own explicit allowlist now carries child TMPDIR correctly. Do not describe unqualified normal e2e as passing until the shared fix/environment is available.
 
-The probe's complete scoped result is **supported**; normal-e2e infrastructure status remains separately qualified. Final independent evidence review is pending. No PR, merge or Linear update is authorized by this handoff.
+At that historical head the probe's scoped result was **supported**, but normal e2e remained infrastructure-qualified. The subsequent independent re-review approved the narrow evidence with no must-fixes; normal checks were rerun only after the shared fix merged, below.
+
+### Final normal integration checks after the shared temp fix
+
+Fetched and rebased onto `origin/develop` **`d6a3856ed8f5c7d6f151279dd2e66c2a01ac5a69`**, which includes the sibling-owned testkit temp propagation/startup-error fix. Final checks ran on **`82b660a6fbf0fac1fc3df4a4cad841a895b5e63e`**; the subsequent commit only records these logs/documentation. This branch adds no testkit/product changes.
+
+| Check | Exit / result |
+|---|---|
+| `npm run build` | **0** |
+| `npm run typecheck` | **0** |
+| Direct `./node_modules/.bin/oxlint` | **0**, empty diagnostics |
+| `TMPDIR=/home/mark/f151 ./node_modules/.bin/vitest run` | **0**, **102 files / 845 tests passed** |
+| `env -u FOUNDRY_PI_BIN TMPDIR=/home/mark/f151 npm run test:e2e` | **0**, **3 files / 5 tests passed**; normal pinned launcher, **no shim** |
+
+All final logs and explicit commands/exits are under `checks/`. The short disk-backed parent TMPDIR is now propagated by the merged shared testkit into its isolated children, so the normal interrupt e2e passes without `FOUNDRY_PI_BIN` or a launcher replacement. The old failure and shim pass remain historical, not overwritten as a normal pass.
+
+The **original probe product base remains `050145655c76a722afc6bce70ae422397e49872c`**; it has not been relabeled as running on the later integration base. The later checks establish regression integration, not a new resource-gate observation set. The scoped Linux SDK isolation/named-tool result is supported and independently re-reviewed. Other platforms/gates remain unqualified; actual faux tool round trips are not a skill-body read, and zero intercepted fetches are not OS network isolation. PR creation against `develop` is authorized; no merge, watch or Linear update is part of this handoff.
