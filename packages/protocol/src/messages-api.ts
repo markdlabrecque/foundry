@@ -45,6 +45,8 @@ export const MessageDispositionResult = Schema.Struct({
   delegationId: Schema.NullOr(Schema.String),
   ticket: Schema.NullOr(Schema.Number),
   status: Schema.Literals(["indeterminate", "bound", "dropped"]),
+  /** Open descendants at inspection/action time; older daemons may omit this field. */
+  descendantDelegations: Schema.optionalKey(Schema.Array(Schema.String)),
 });
 
 export type MessageDispositionResult = typeof MessageDispositionResult.Type;
