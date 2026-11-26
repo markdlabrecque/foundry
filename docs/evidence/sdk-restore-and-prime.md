@@ -19,7 +19,7 @@ This is **not full SDK launcher qualification**. No claims for macOS, daemon-kil
 | Correct full prime content | Actual disk entries equal observer branch entries. Each of three disk primes independently checked against fixture address, slot, isolation and knowledge conventions, ordered factory → room → station source paths, contents and SHA-256 hashes. Each matches its store situation, slot, conversation, ID, ordered parts and acknowledgement. Five operator messages acknowledged. |
 | Orderly, owned cleanup | Shutdown command succeeded; daemon exited. Pre-fallback and final observations contain zero marked processes and no live members in either recorded worker group. `fallbackUsed: false`, `orderly: true`, `rootRemoved: true`. Removal verified with a separate existence check. Only intentionally killed group was marker-verified immediately before the signal. |
 
-Unmet within this exercised narrow scope: none. All broader limits above remain unverified. Independent review reproduced the narrow behavior before these verifier changes; **fresh review of these fixes is pending**.
+Unmet within this exercised narrow scope: none. All broader limits above remain unverified. Fresh independent GPT6.1SOL re-review approved `ea07775` with no must-fixes (coordinator-reported): 18 pure cases, additional cleanup/prime negative mutations, actual SDK probe/orderly cleanup and 837 tests independently verified. The subsequent rebase changes no verifier or fixture code.
 
 ## Review must-fixes and pure red/green proof
 
@@ -90,7 +90,7 @@ TMPDIR="$private_tmp" node docs/evidence/sdk-restore-and-prime/run-probe.mjs "$p
 
 The driver creates disposable HOME, XDG roots, agent/state/session dirs, Git source/worktree/knowledge roots and provider fixture. Environment is allowlisted (PATH only inherited); fixture Git commits disable hooks. No real `~/.pi`, global config, production, operator resources, 1Password, credentials, network provider or paid model. Read-only SQLite observations use `node:sqlite`.
 
-Product base: `6dc2a5b5f01b9be13d465bccecedc67f04e8410c`, latest `origin/develop` after fetch/rebase, SDK adapter and sibling stop evidence merged. Fixed-run checkout head: `0fe083b318cc4acd9bf1a4a929bb47d9f8d64ab8` (includes verifier fixes); final artifact/report refresh was uncommitted during execution. Implementation agent `openai/gpt-6.1-sol`.
+Historical probe product base: `6dc2a5b5f01b9be13d465bccecedc67f04e8410c`, then-latest `origin/develop`, SDK adapter and sibling stop evidence merged. This is separate from the final integration base below. Fixed-run checkout head: `0fe083b318cc4acd9bf1a4a929bb47d9f8d64ab8` (includes verifier fixes); final artifact/report refresh was uncommitted during execution. Implementation agent `openai/gpt-6.1-sol`.
 
 - Linux: `Linux omarchy 7.2.15-1-omarchy #1 SMP PREEMPT_DYNAMIC Mon, 02 Nov 2026 10:32:17 +0000 x86_64 GNU/Linux`.
 - Node `v22.23.2`, npm `10.9.8`, repository-pinned Pi `1.6.0`.
@@ -127,7 +127,7 @@ Historical setup artifacts are retained and now path-normalized:
 
 Initial separate e2e with parent TMPDIR alone: **1 failed interrupt timeout, 4 tests passed** (`checks/e2e.log`). The testkit drops child TMPDIR, so the TypeScript-extension child still encounters `/tmp`. No exposed child ENOSPC stack was captured: the environment attribution is supported by the private-child-temp control, not a claimed direct stack diagnosis.
 
-No shared testkit change here: FOU-149 owns that remediation. Until it merges, the documented temporary shim sets **child TMPDIR only** and execs the same pinned Pi CLI with unchanged argv. This qualifies the e2e result's environment; the actual SDK probe never uses the shim or `FOUNDRY_PI_BIN`.
+No shared testkit change here: FOU-149 supplied that remediation, now merged at integration base `d6a3856`. The historical temporary shim set **child TMPDIR only** and exec'd the same pinned Pi CLI with unchanged argv. This qualified the historical e2e result's environment; the actual SDK probe never used the shim or `FOUNDRY_PI_BIN`. The final normal e2e run below needs no shim.
 
 Normalized shim (substitute actual paths when creating a disposable local file):
 
@@ -143,7 +143,7 @@ Normalized e2e command:
 TMPDIR=<private-tmp> FOUNDRY_PI_BIN=<private-tmp>/pi-tmp ./node_modules/.bin/vitest run --config vitest.e2e.config.ts
 ```
 
-## Final regression checks, independently classified
+## Historical fixed-probe regression checks, independently classified
 
 | Check | Result |
 |---|---|
@@ -155,6 +155,21 @@ TMPDIR=<private-tmp> FOUNDRY_PI_BIN=<private-tmp>/pi-tmp ./node_modules/.bin/vit
 | Full Vitest (private parent TMPDIR) | **100 files / 837 tests passed**, exit 0 |
 | Separate e2e (private child-temp shim) | **3 files / 5 tests passed**, exit 0; 7.64 seconds |
 
-The normal child-temp suite remains environment-qualified pending the separate shared fix; no testkit/product/test-configuration edits were made to make it pass. These checks do not substitute for the retained actual SDK observations.
+## Final integration checks after shared child-TMPDIR fix
 
-Read alongside [SDK adapter trial](sdk-147-trial.md), [RPC Linux resource evidence](rpc-53-2-linux.md), [RPC process-group evidence](rpc-54-4-linux.md) and [Pi compaction events](compaction-event.md). No PR, merge or Linear change. Fresh independent review of the verifier fixes is required before qualification/closure decisions.
+Integration base: `d6a3856ed8f5c7d6f151279dd2e66c2a01ac5a69` (`origin/develop`, fetched and rebased); checkout at verification: `f736cb0086a7b1a4eeffbe2d55466bd395d0cdd9`. This base includes the separately owned shared testkit child-TMPDIR fix. It does **not** replace the historical actual-probe base or observations above.
+
+All checks below passed after rebase. Test commands used a fresh short private disk-backed home TMPDIR, with **`FOUNDRY_PI_BIN` unset and no diagnostic shim**. The normal e2e command was `env -u FOUNDRY_PI_BIN TMPDIR=<private-tmp> npm run test:e2e`.
+
+| Check | Final result |
+|---|---|
+| `npm run build` | exit 0 |
+| `npm run typecheck` | exit 0 |
+| Direct `./node_modules/.bin/oxlint` | exit 0, empty diagnostics |
+| Pure evidence regressions | exit 0, **18/18 passed** |
+| Full Vitest | exit 0, **101 files / 839 tests passed** |
+| Normal `npm run test:e2e` | exit 0, **3 files / 5 tests passed**, 8.22 seconds |
+
+Normalized outputs are retained in `checks/integration/`; explicit exits/base/counts in `checks/results.json`. No verifier, fixture, testkit, product or test-configuration code changed during this integration pass. These checks do not substitute for the actual SDK observations or expand manual idle compaction into automatic/busy boundaries or overall launcher qualification.
+
+Read alongside [SDK adapter trial](sdk-147-trial.md), [RPC Linux resource evidence](rpc-53-2-linux.md), [RPC process-group evidence](rpc-54-4-linux.md) and [Pi compaction events](compaction-event.md). Independent review approved the narrow evidence and verifier fixes; no merge or Linear change is performed by this task.

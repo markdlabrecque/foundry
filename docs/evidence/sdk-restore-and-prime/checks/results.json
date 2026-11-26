@@ -13,5 +13,16 @@
   "e2eHistoricalParentOnly": { "command": "TMPDIR=<private-tmp> ./node_modules/.bin/vitest run --config vitest.e2e.config.ts", "exit": 1, "passedFiles": 2, "passedTests": 4, "failedFiles": 1, "failedTests": 1, "output": "e2e.log", "classification": "historical interrupt timeout with /tmp inode exhaustion; no exposed child ENOSPC stack" },
   "e2eIsolatedChildTmp": { "command": "TMPDIR=<private-tmp> FOUNDRY_PI_BIN=<private-tmp>/pi-tmp ./node_modules/.bin/vitest run --config vitest.e2e.config.ts", "exit": 0, "passedFiles": 3, "passedTests": 5, "output": "e2e-isolated-tmp.log", "qualification": "shim sets child TMPDIR only and execs unchanged pinned Pi CLI/argv; shared testkit fix remains separately owned" },
   "sdkProbe": { "command": "TMPDIR=<private-tmp> node docs/evidence/sdk-restore-and-prime/run-probe.mjs <private-tmp>/fixed-probe", "exit": 0, "runtimeSelector": "FOUNDRY_WORKER_RUNTIME=sdk", "piBinOverride": "absent", "outcome": "supported-on-tested-linux-implementation", "orderlyCleanup": true, "fallbackUsed": false, "rootAbsenceVerified": true, "output": "../result.json" },
-  "review": "Fresh independent review of verifier fixes required; implementation agent started no subagents"
+  "finalIntegration": {
+    "base": "d6a3856ed8f5c7d6f151279dd2e66c2a01ac5a69",
+    "checkoutAtVerification": "f736cb0086a7b1a4eeffbe2d55466bd395d0cdd9",
+    "environment": "Short private disk-backed parent TMPDIR; shared child-TMPDIR fix inherited from develop; FOUNDRY_PI_BIN unset; no diagnostic shim",
+    "build": { "exit": 0, "output": "integration/build.log" },
+    "typecheck": { "exit": 0, "output": "integration/typecheck.log" },
+    "directOxlint": { "exit": 0, "diagnostics": "empty", "output": "integration/oxlint.log" },
+    "pure": { "exit": 0, "passedTests": 18, "output": "integration/unit.log" },
+    "vitest": { "exit": 0, "passedFiles": 101, "passedTests": 839, "output": "integration/vitest.log" },
+    "normalE2e": { "command": "env -u FOUNDRY_PI_BIN TMPDIR=<private-tmp> npm run test:e2e", "exit": 0, "passedFiles": 3, "passedTests": 5, "output": "integration/e2e.log" }
+  },
+  "review": "Coordinator-reported fresh independent GPT6.1SOL re-review approved ea07775 without must-fixes; independently verified pure cases, extra cleanup/prime negatives, actual SDK probe/orderly cleanup and 837 tests. Rebase/integration changes no verifier or fixture code."
 }
