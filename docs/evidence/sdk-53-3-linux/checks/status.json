@@ -1,7 +1,7 @@
 {
   "tmp": "<CHECK_ROOT>/t",
-  "shim": "<CHECK_ROOT>/pi",
   "node": "<NODE>",
+  "childTmpdir": "shared testkit propagation; no FOUNDRY_PI_BIN override",
   "commands": [
     {
       "name": "build",

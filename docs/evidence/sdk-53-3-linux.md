@@ -54,8 +54,8 @@ Linux `7.2.15-1-omarchy`, Node `v22.23.2`, npm `10.9.8`, pinned Pi `1.6.0`.
 Historical recovery probe ran on branch revision `179476b` (evidence-only original
 commit), whose product/base was `050145655c76a722afc6bce70ae422397e49872c`.
 That is the historical observation base, not the current integration base. Before
-opening the evidence-only PR, the branch was rebased onto latest `origin/develop`
-`6dc2a5b5f01b9be13d465bccecedc67f04e8410c`; the corrected probe and all regression
+final PR handoff, the branch was rebased onto latest `origin/develop`
+`d6a3856ed8f5c7d6f151279dd2e66c2a01ac5a69` (including the shared testkit temp-directory fix); the corrected probe and all regression
 commands below were rerun on this integration base. Current `results/versions.json`
 records the pre-evidence-refresh branch revision for that final probe.
 Read [RPC sibling](rpc-53-3-linux.md), [SDK trial](sdk-147-trial.md) and PRD §17.2–3.
@@ -64,7 +64,7 @@ No repository `AGENTS.md` was present in the tracked source.
 **Normalization:** retained JSON/log/text artifacts use distinct placeholders:
 `<REPO>` = this checkout; `<NODE>` = exact Node executable (v22.23.2);
 `<HOME>` = personal home prefix; `<PROBE_TMP>` = short private home-backed probe
-temp parent; `<CHECK_ROOT>` = owned temporary regression-run root;
+temp parent; `<CHECK_ROOT>` = owned temporary regression-run root (including the historical shim control);
 `<SYSTEM_TMP>` = system `/tmp`. No claim of literal unabridged personal paths is
 made. UUIDs/PIDs, relative source paths, argv order and source attribution are
 preserved. `normalize-evidence.mjs` performs these substitutions and trims trailing
@@ -145,7 +145,8 @@ Artifacts under `sdk-53-3-linux/`:
   and slots, process/argv/output/registry/network markers, shutdown and cleanup.
 - `results/{versions,loader-errors,assessment}.json`, `results/driver.log`.
 - `historic-results/{missing,versions}.json`: corrected interpretation above.
-- `checks/`: status, launch shim text, summary logs and historical failed e2e logs.
+- `checks/`: final no-shim command status/summary logs, historical launch shim text
+  and historical failed e2e logs.
 - `run-probe.mjs`, `record-process.mjs`, `inspect-load.mjs`,
   `check-observations.mjs`: portable minimal probe/inspection/checker sources.
   The checker checks a selected subset of recorded observations, not completeness
@@ -185,9 +186,9 @@ On this recovery, the outer-private-TMPDIR **before** control already passed all
 5 tests (`checks/e2e-private-outer-before.log`); do not claim the shim causally fixed
 a failure observed in this run. System `/tmp` still reported all 1,048,576 inodes used.
 
-For a reproducible child-private-temp final control, `run-checks.mjs` creates a
-short owned home-backed root and executable shim, sets outer TMPDIR and
-`FOUNDRY_PI_BIN`, and executes the unchanged pinned Pi CLI with unchanged arguments:
+The earlier integration-base control used a temporary shim to execute unchanged
+pinned Pi with unchanged arguments. The normalized historical shim is retained as
+`checks/launch-shim.txt`, not used by final validation:
 
 ```
 #!/bin/sh
@@ -195,23 +196,27 @@ export TMPDIR='<CHECK_ROOT>/t'
 exec '<NODE>' '<REPO>/node_modules/@earendil-works/pi-coding-agent/dist/cli.js' "$@"
 ```
 
-This accommodation does not modify product/testkit/test configuration. The actual
-normalized generated shim is retained as `checks/launch-shim.txt`; `checks/status.json`
-records commands/status and paths. Its owned root is removed after commands finish.
+The shared testkit fix subsequently landed on develop at `d6a3856`. After rebasing,
+final validation runs **normal pinned Pi with `FOUNDRY_PI_BIN` unset and no shim**.
+`run-checks.mjs` creates only a short owned home-backed TMPDIR, removes that override
+from the command environment, runs the ordinary commands and records status in
+`checks/status.json`. The merged testkit propagates TMPDIR to its Pi children.
+This evidence branch changes no testkit/test configuration. The owned root is
+removed after commands finish; final validation has no wrapper dependency.
 
 ```sh
 node docs/evidence/sdk-53-3-linux/run-checks.mjs
 node docs/evidence/sdk-53-3-linux/normalize-evidence.mjs
 ```
 
-Final checks, integration base `6dc2a5b` (historical base `0501456`):
+Final normal no-shim checks, integration base `d6a3856` (historical base `0501456`):
 
 | Command | Exit / counts |
 | --- | --- |
 | `npm run build` | 0 |
 | `npm run typecheck` | 0 |
 | direct `./node_modules/.bin/oxlint` | 0, no diagnostics |
-| direct `./node_modules/.bin/vitest run` | 0; **100 files, 837 tests passed** |
+| direct `./node_modules/.bin/vitest run` | 0; **101 files, 839 tests passed** |
 | separate `./node_modules/.bin/vitest run --config vitest.e2e.config.ts` | 0; **3 files, 5 tests passed** |
 
 Check success is independent from the **unmet** agent-name named mismatch hold.
