@@ -160,7 +160,11 @@ same extension. Separate remediation must add worker-side reconnect/reconciliati
 for the same launch and conversation and rerun this gate. Normal-looking stranded
 slots may separately need reachability reporting. Neither product change is made.
 
-Normal commands with a short home-backed TMPDIR, **without any Pi diagnostic wrapper**:
+Final fetch/rebase advanced the branch base to
+`6dc2a5b5f01b9be13d465bccecedc67f04e8410c` (concurrent SDK explicit-stop evidence;
+no production or shared test-support changes). The manual probes above ran before
+that evidence-only rebase; the complete normal command suite below was rerun after
+it. Normal commands used a short home-backed TMPDIR, **without any Pi diagnostic wrapper**:
 
 | Check | Result |
 |---|---|

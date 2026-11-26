@@ -16,7 +16,8 @@ repo = str(Path(__file__).resolve().parents[3])
 validation_root = str(source.parent)
 replacements = [(fixture, "<fixture-root>"), (repo, "<repo>"),
                 (hold["execPath"], "<node>"),
-                (validation_root, "<fixture-root>/validation-temp")]
+                (validation_root, "<fixture-root>/validation-temp"),
+                ("<home>", "<fixture-root>/home")]
 target.mkdir(parents=True, exist_ok=True)
 for name in ["summary.json", "alpha.yaml", "daemon.log", "host.log", "group-cleanup.json"]:
     content = (source / name).read_text()

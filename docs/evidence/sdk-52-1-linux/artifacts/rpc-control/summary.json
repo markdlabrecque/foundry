@@ -533,7 +533,7 @@
         "foundry",
         "shutdown",
         "--home",
-        "<home>",
+        "<fixture-root>/home",
         "--json"
       ],
       "startedAt": "2026-11-26T01:07:19.562Z",
