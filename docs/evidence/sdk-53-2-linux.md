@@ -95,7 +95,7 @@ The driver sends `foundry shutdown --force --home <owned disposable state>` only
 - [`summarize.mjs`](sdk-53-2-linux/summarize.mjs), [`observations.json`](sdk-53-2-linux/observations.json), [`cleanup.json`](sdk-53-2-linux/cleanup.json), [`fixture-error.json`](sdk-53-2-linux/fixture-error.json).
 - [`checks/`](sdk-53-2-linux/checks/): retained successful regression logs and infrastructure-only Pi wrapper.
 
-Repository checks are separate from the **blocked** probe outcome:
+Repository checks are separate from the **blocked** probe outcome. After committing the evidence, fetched and rebased on latest `origin/develop` (`050145655c76a722afc6bce70ae422397e49872c`, already up to date), then reran all five checks below. Retained logs are from that final run; the subsequent log-refresh commit changes documentation/artifacts only:
 
 - Build: exit **0**; typecheck: exit **0**; direct `./node_modules/.bin/oxlint`: exit **0**, empty diagnostics.
 - Full direct Vitest with private home-backed `TMPDIR`: **100 files / 837 tests passed**, exit **0**.
