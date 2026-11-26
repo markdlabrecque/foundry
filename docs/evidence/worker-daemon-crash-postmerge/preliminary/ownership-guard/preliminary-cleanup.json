@@ -1,0 +1,10 @@
+{
+  "reason": "Fixture ownership regex refused signal before any crash; no product failure. Corrected at pure unit tier.",
+  "markedPidsBefore": [
+    3198718,
+    3198730,
+    3198737
+  ],
+  "markedPidsAfter": [],
+  "rootRemoved": true
+}

@@ -1,0 +1,8 @@
+
+ RUN  v5.1.1 <CHECKOUT>
+
+
+ Test Files  1 passed (1)
+      Tests  1 passed (1)
+   Start at  18:56:31
+   Duration  191ms (import 85%, transform 13%, worker 1%, tests 1%)

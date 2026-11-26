@@ -1,0 +1,113 @@
+{
+  "validatedBase": "a61daf0913331e83cb111c6b6572a8a3bba2f434",
+  "capturedProductBase": "a61daf0913331e83cb111c6b6572a8a3bba2f434",
+  "environment": {
+    "mode": "env -i allowlist",
+    "PATH":"<REDACTED inherited PATH>",
+    "HOME": "<USER_HOME>/f124pv-TDHdHV/user",
+    "TMPDIR": "<USER_HOME>/f124pv-TDHdHV/t",
+    "FOUNDRY_PI_BIN": "UNSET; no shim",
+    "FOUNDRY_WORKER_RUNTIME": "UNSET for normal checks; explicit rpc for actual fixture"
+  },
+  "commands": [
+    {
+      "argv": [
+        "npm",
+        "ci"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "build"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "typecheck"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "./node_modules/.bin/oxlint"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "test"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "npm",
+        "run",
+        "test:e2e"
+      ],
+      "exit": 0
+    },
+    {
+      "argv": [
+        "node",
+        "--test",
+        "docs/evidence/worker-daemon-crash-postmerge/verify.test.mjs"
+      ],
+      "exit": 0
+    }
+  ],
+  "vitest": {
+    "files": 105,
+    "passed": 862
+  },
+  "ordinaryE2E": {
+    "files": 3,
+    "passed": 5
+  },
+  "evidenceUnit": {
+    "passed": 29
+  },
+  "requestedJourney": {
+    "exit": 0,
+    "checksPassed": 20,
+    "checksFailed": 0
+  },
+  "earlierFullSuite": {
+    "exit": 1,
+    "filesPassed": 104,
+    "testsPassed": 861,
+    "unhandledErrors": 1,
+    "observed": "fork worker unexpectedly SIGKILL during starting; no assertion failure; cause not established",
+    "focusedImportControl": {
+      "exit": 0,
+      "passed": 1
+    },
+    "normalFullRerun": "passed without changing tests/config/timeouts"
+  },
+  "validationCleanup": {
+    "remainingPrivateRootProcesses": [],
+    "rootRemoved": true
+  },
+  "independentPostRunGroupChecks": [
+    {
+      "pgid": 3247750,
+      "signal0": "ESRCH"
+    },
+    {
+      "pgid": 3247756,
+      "signal0": "ESRCH"
+    },
+    {
+      "pgid": 3247878,
+      "signal0": "ESRCH"
+    }
+  ],
+  "freshReview": "pending; no PR or tracker mutation"
+}

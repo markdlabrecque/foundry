@@ -1,0 +1,184 @@
+TAP version 13
+# Subtest: restored custom_message history remains observed history, not a new fresh assignment
+ok 1 - restored custom_message history remains observed history, not a new fresh assignment
+  ---
+  duration_ms: 0.960082
+  type: 'test'
+  ...
+# Subtest: ownership observation accepts real tab-delimited proc Uid and rejects missing/different uid
+ok 2 - ownership observation accepts real tab-delimited proc Uid and rejects missing/different uid
+  ---
+  duration_ms: 0.243036
+  type: 'test'
+  ...
+# Subtest: completed independent Git effects plus actual continuation/store outcomes satisfy the observation oracle
+ok 3 - completed independent Git effects plus actual continuation/store outcomes satisfy the observation oracle
+  ---
+  duration_ms: 0.643327
+  type: 'test'
+  ...
+# Subtest: lost accepted message
+ok 4 - lost accepted message
+  ---
+  duration_ms: 0.220464
+  type: 'test'
+  ...
+# Subtest: changed accepted body
+ok 5 - changed accepted body
+  ---
+  duration_ms: 0.156574
+  type: 'test'
+  ...
+# Subtest: rerouted existing binding
+ok 6 - rerouted existing binding
+  ---
+  duration_ms: 0.098285
+  type: 'test'
+  ...
+# Subtest: unacknowledged retained row
+ok 7 - unacknowledged retained row
+  ---
+  duration_ms: 0.172995
+  type: 'test'
+  ...
+# Subtest: duplicate ordinary effect
+ok 8 - duplicate ordinary effect
+  ---
+  duration_ms: 0.114014
+  type: 'test'
+  ...
+# Subtest: no actual ordinary processing
+ok 9 - no actual ordinary processing
+  ---
+  duration_ms: 0.580549
+  type: 'test'
+  ...
+# Subtest: changed artifact
+ok 10 - changed artifact
+  ---
+  duration_ms: 0.210635
+  type: 'test'
+  ...
+# Subtest: lost original assignment
+ok 11 - lost original assignment
+  ---
+  duration_ms: 0.125606
+  type: 'test'
+  ...
+# Subtest: rerouted original assignment
+ok 12 - rerouted original assignment
+  ---
+  duration_ms: 0.078067
+  type: 'test'
+  ...
+# Subtest: ticket never progresses
+ok 13 - ticket never progresses
+  ---
+  duration_ms: 0.048791
+  type: 'test'
+  ...
+# Subtest: duplicate outcome transition
+ok 14 - duplicate outcome transition
+  ---
+  duration_ms: 0.04273
+  type: 'test'
+  ...
+# Subtest: no operator handoff
+ok 15 - no operator handoff
+  ---
+  duration_ms: 0.047609
+  type: 'test'
+  ...
+# Subtest: duplicate actual Git commit
+ok 16 - duplicate actual Git commit
+  ---
+  duration_ms: 0.038933
+  type: 'test'
+  ...
+# Subtest: duplicate committed file effect
+ok 17 - duplicate committed file effect
+  ---
+  duration_ms: 0.039134
+  type: 'test'
+  ...
+# Subtest: duplicate external commit attempt
+ok 18 - duplicate external commit attempt
+  ---
+  duration_ms: 0.036999
+  type: 'test'
+  ...
+# Subtest: wrong committed SHA
+ok 19 - wrong committed SHA
+  ---
+  duration_ms: 0.04286
+  type: 'test'
+  ...
+# Subtest: duplicate daemon tool commit
+ok 20 - duplicate daemon tool commit
+  ---
+  duration_ms: 0.037611
+  type: 'test'
+  ...
+# Subtest: no actual held tool continuation
+ok 21 - no actual held tool continuation
+  ---
+  duration_ms: 0.043301
+  type: 'test'
+  ...
+# Subtest: tool failure despite stored rows
+ok 22 - tool failure despite stored rows
+  ---
+  duration_ms: 0.041458
+  type: 'test'
+  ...
+# Subtest: missing Git observations
+ok 23 - missing Git observations
+  ---
+  duration_ms: 0.033142
+  type: 'test'
+  ...
+# Subtest: foreign untracked commit effect
+ok 24 - foreign untracked commit effect
+  ---
+  duration_ms: 0.039374
+  type: 'test'
+  ...
+# Subtest: continuation before post-reconnect release
+ok 25 - continuation before post-reconnect release
+  ---
+  duration_ms: 0.043501
+  type: 'test'
+  ...
+# Subtest: continuation on a replacement after daemon restart
+ok 26 - continuation on a replacement after daemon restart
+  ---
+  duration_ms: 0.040356
+  type: 'test'
+  ...
+# Subtest: additional launch after continuation
+ok 27 - additional launch after continuation
+  ---
+  duration_ms: 0.036238
+  type: 'test'
+  ...
+# Subtest: initially unbound acceptance may bind once, but never change an existing binding
+ok 28 - initially unbound acceptance may bind once, but never change an existing binding
+  ---
+  duration_ms: 0.04257
+  type: 'test'
+  ...
+# Subtest: every missing/false observation and incomplete journey fails closed even when reconnect is true
+ok 29 - every missing/false observation and incomplete journey fails closed even when reconnect is true
+  ---
+  duration_ms: 0.477155
+  type: 'test'
+  ...
+1..29
+# tests 29
+# suites 0
+# pass 29
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 38.862817

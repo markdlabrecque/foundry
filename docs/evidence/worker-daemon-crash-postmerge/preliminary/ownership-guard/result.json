@@ -1,0 +1,347 @@
+{
+  "result": "unmet-or-unverified",
+  "failed": [
+    "workerReplacementRecovered",
+    "sameHostAndSurvivingLaunches",
+    "survivingWorkersReconnected",
+    "channelTrafficResumed",
+    "noDaemonRestartWorkReplay",
+    "acceptedWorkRetained",
+    "ordinaryMessagesProcessed",
+    "artifactBindingsUnchanged",
+    "originalAssignmentsHonored",
+    "trackedTicketsContinued",
+    "noDuplicateCommittedEffects",
+    "actualWorkContinued",
+    "realToolResultsSucceeded",
+    "orderlyCleanup",
+    "cleanup",
+    "cleanupPhasesSucceeded"
+  ],
+  "exitCode": 1,
+  "productionBase": "089ab52ac2deeeac53c59e8597605bcad309127a",
+  "journeyCompleted": false,
+  "checks": {
+    "freshProtocol5Host": true,
+    "originalWorkActive": true,
+    "privateTempPropagated": true,
+    "orderlyCleanup": false,
+    "cleanupPhasesSucceeded": false
+  },
+  "cleanupErrors": [
+    {
+      "phase": "marker sweep",
+      "error": "Error: refusing group 3198730: ownership marker/uid mismatch\n    at killOwnedGroup (file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:167:158)\n    at file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:289:45\n    at guardedPhases (file://<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/verdict.mjs:27:16)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:279:25"
+    },
+    {
+      "phase": "private root removal",
+      "error": "Error: preserving private root because marked processes remain or sweep failed\n    at file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:306:35\n    at guardedPhases (file://<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/verdict.mjs:27:16)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:279:25"
+    }
+  ],
+  "events": [
+    {
+      "at": "2026-11-26T02:49:20.597Z",
+      "event": "versions",
+      "detail": {
+        "node": "v22.23.2",
+        "platform": "linux x64",
+        "kernel": "7.2.15-1-omarchy",
+        "pi": "1.6.0",
+        "productionBase": "089ab52ac2deeeac53c59e8597605bcad309127a",
+        "sourceBase": "b55e7f2d663ef5b4c260dad3f48431f82708c113",
+        "fixture": {
+          "driver": "<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/worker.mjs",
+          "yaml": "version: 1\nname: alpha\nrepository:\n  source: ./repo\n  default_branch: main\ndefault_production_line: f\nworktrees:\n  root: \"<USER_HOME>/f124a-k5EVBj/worktrees\"\nrooms:\n  eng:\n    stations:\n      dev:\n        instances: 2\n        isolation: worktree\n        model: crash-124/scripted\n        extensions: [{ path: \"<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/worker.mjs\", tools: [fixture_work] }]\nproduction_lines:\n  f:\n    verify: [\"true\"]\n    stages:\n      - id: implement\n        station: eng.dev\n        writing: true\n      - id: gate\n        station: eng.dev\n        approval: true\n        on_rejection: implement\n",
+          "env": {
+            "PATH":"<REDACTED inherited PATH>",
+            "HOME": "<USER_HOME>/f124a-k5EVBj/user",
+            "TMPDIR": "<USER_HOME>/f124a-k5EVBj/t",
+            "XDG_CONFIG_HOME": "<USER_HOME>/f124a-k5EVBj/user/.config",
+            "XDG_DATA_HOME": "<USER_HOME>/f124a-k5EVBj/user/.local/share",
+            "XDG_CACHE_HOME": "<USER_HOME>/f124a-k5EVBj/user/.cache",
+            "PI_CODING_AGENT_DIR": "<USER_HOME>/f124a-k5EVBj/agent",
+            "PI_OFFLINE": "1",
+            "PI_TELEMETRY": "0",
+            "PROBE_DIR": "<USER_HOME>/f124a-k5EVBj/probe",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_AUTHOR_NAME": "Foundry Fixture",
+            "GIT_AUTHOR_EMAIL": "fixture@foundry.invalid",
+            "GIT_COMMITTER_NAME": "Foundry Fixture",
+            "GIT_COMMITTER_EMAIL": "fixture@foundry.invalid",
+            "FOUNDRY_HOME": "<USER_HOME>/f124a-k5EVBj/unused",
+            "FOUNDRY_WORKER_RUNTIME": "rpc"
+          },
+          "FOUNDRY_PI_BIN": "UNSET; no shim"
+        },
+        "evidenceSourceSha256": {
+          "worker-daemon-crash-postmerge/run-probe.mjs": "3357af2ea09edabddff551a6757614ba6dcde8d0a854ca05b84dca43e41236fe",
+          "worker-daemon-crash-postmerge/worker.mjs": "e5e8ba31302cd07f5925121b3ebf209ece54b70a39ce519e18e386e5dcbbf1a2",
+          "worker-daemon-crash-postmerge/verify.mjs": "f5e5b2cf3c37ae2eb797ebd29ae9e07db690a7ac8d8f97aa8c309d0941d7bbce",
+          "worker-daemon-crash-linux/verdict.mjs": "23f4ec633a6a14f7b66a8a063417bf0df7458fefb5f30e7385bb9418f1372630",
+          "worker-daemon-crash-linux/normalize.mjs": "fbe4e0c480e15a9a0a179f9c8d372a9d56f9dafff1bc9a9b23d0a42d15df5849"
+        }
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:21.200Z",
+      "event": "daemon serving",
+      "detail": {
+        "pid": 3198699,
+        "args": [
+          "<CHECKOUT>/packages/daemon/dist/main.js",
+          "--home",
+          "<USER_HOME>/f124a-k5EVBj/home",
+          "--log-level",
+          "debug",
+          "<USER_HOME>/f124a-k5EVBj/factory.yaml"
+        ],
+        "stderr": "{\"time\":\"2026-11-26T02:49:20.855Z\",\"level\":\"info\",\"runId\":\"9566ba4e-1212-4588-9690-c26ec249d557\",\"msg\":\"factory clone created\",\"factoryId\":\"alpha\",\"detail\":{\"path\":\"<USER_HOME>/f124a-k5EVBj/home/clones/alpha\",\"source\":\"<USER_HOME>/f124a-k5EVBj/repo\"}}\n{\"time\":\"2026-11-26T02:49:20.860Z\",\"level\":\"info\",\"runId\":\"9566ba4e-1212-4588-9690-c26ec249d557\",\"msg\":\"factory configuration loaded\",\"factoryId\":\"alpha\",\"detail\":{\"loadId\":1,\"configHash\":\"sha256:c16b83254c1559d4e936cee734bbfff051ed99f7ee7e654a8a9ba1f1731ff998\"}}\n{\"time\":\"2026-11-26T02:49:21.003Z\",\"level\":\"info\",\"runId\":\"9566ba4e-1212-4588-9690-c26ec249d557\",\"msg\":\"slot started\",\"factoryId\":\"alpha\",\"slotId\":\"dev/1\",\"launchId\":\"fa894bfd-d29d-4c0a-8883-b319f2109a28\"}\n{\"time\":\"2026-11-26T02:49:21.003Z\",\"level\":\"info\",\"runId\":\"9566ba4e-1212-4588-9690-c26ec249d557\",\"msg\":\"slot started\",\"factoryId\":\"alpha\",\"slotId\":\"dev/2\",\"launchId\":\"a7e74a4e-426a-4d6e-bf99-12d8aa7652a0\"}\n{\"time\":\"2026-11-26T02:49:21.007Z\",\"level\":\"info\",\"runId\":\"9566ba4e-1212-4588-9690-c26ec249d557\",\"msg\":\"daemon started\",\"detail\":{\"pid\":3198699,\"stateRoot\":\"<USER_HOME>/f124a-k5EVBj/home\",\"socket\":\"<USER_HOME>/f124a-k5EVBj/home/management.sock\",\"logLevel\":\"debug\"}}\n"
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:21.515Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "submit",
+          "<USER_HOME>/f124a-k5EVBj/spec-1.md",
+          "--home",
+          "<USER_HOME>/f124a-k5EVBj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":1,\"title\":\"Crash durability 1\",\"slug\":\"crash-durability-1\",\"line\":\"f\",\"state\":\"backlog\",\"stage\":null,\"status\":null,\"submittedAt\":\"2026-11-26T02:49:21.494Z\",\"directory\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/1\",\"specPath\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/1/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/1/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":null},\"transitions\":[{\"at\":\"2026-11-26T02:49:21.494Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:21.788Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "submit",
+          "<USER_HOME>/f124a-k5EVBj/spec-2.md",
+          "--home",
+          "<USER_HOME>/f124a-k5EVBj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":2,\"title\":\"Crash durability 2\",\"slug\":\"crash-durability-2\",\"line\":\"f\",\"state\":\"backlog\",\"stage\":null,\"status\":null,\"submittedAt\":\"2026-11-26T02:49:21.767Z\",\"directory\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/2\",\"specPath\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/2/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/2/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":null},\"transitions\":[{\"at\":\"2026-11-26T02:49:21.767Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:22.069Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "show",
+          "2",
+          "--home",
+          "<USER_HOME>/f124a-k5EVBj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":2,\"title\":\"Crash durability 2\",\"slug\":\"crash-durability-2\",\"line\":\"f\",\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\",\"submittedAt\":\"2026-11-26T02:49:21.767Z\",\"directory\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/2\",\"specPath\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/2/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/2/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":{\"path\":\"<USER_HOME>/f124a-k5EVBj/worktrees/alpha/2-crash-durability-2\",\"branch\":\"ticket/2-crash-durability-2\",\"startCommit\":\"b55e7f2d663ef5b4c260dad3f48431f82708c113\"}},\"transitions\":[{\"at\":\"2026-11-26T02:49:21.767Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T02:49:21.792Z\",\"actor\":\"daemon\",\"from\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"to\":{\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\"},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:22.070Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "ticket",
+          "show",
+          "1",
+          "--home",
+          "<USER_HOME>/f124a-k5EVBj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"ticket\":{\"factory\":\"alpha\",\"number\":1,\"title\":\"Crash durability 1\",\"slug\":\"crash-durability-1\",\"line\":\"f\",\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\",\"submittedAt\":\"2026-11-26T02:49:21.494Z\",\"directory\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/1\",\"specPath\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/1/spec.md\",\"evidencePath\":\"<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/1/evidence\",\"rejections\":{\"spent\":0,\"ceiling\":3},\"messages\":{\"spent\":0,\"ceiling\":100},\"worktree\":{\"path\":\"<USER_HOME>/f124a-k5EVBj/worktrees/alpha/1-crash-durability-1\",\"branch\":\"ticket/1-crash-durability-1\",\"startCommit\":\"b55e7f2d663ef5b4c260dad3f48431f82708c113\"}},\"transitions\":[{\"at\":\"2026-11-26T02:49:21.494Z\",\"actor\":\"operator\",\"from\":null,\"to\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]},{\"at\":\"2026-11-26T02:49:21.519Z\",\"actor\":\"daemon\",\"from\":{\"state\":\"backlog\",\"stage\":null,\"status\":null},\"to\":{\"state\":\"stage\",\"stage\":\"implement\",\"status\":\"assigned\"},\"outcome\":null,\"reason\":null,\"commit\":null,\"evidence\":[],\"configLoad\":\"1\",\"voidedTransitions\":[]}]}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:22.077Z",
+      "event": "before worker kill",
+      "detail": {
+        "first": {
+          "identity": {
+            "hostId": "2e3dc804-b30b-424a-b9f1-586973f44a2b",
+            "pid": 3198718,
+            "startedAt": "2026-11-26T02:49:20.973Z",
+            "stateRoot": "<USER_HOME>/f124a-k5EVBj/home",
+            "controlVersion": 5,
+            "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110"
+          },
+          "launches": [
+            {
+              "launchId": "fa894bfd-d29d-4c0a-8883-b319f2109a28",
+              "factoryId": "alpha",
+              "slotId": "dev/1",
+              "pid": 3198730,
+              "pgid": 3198730,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T02:49:20.989Z",
+              "liveness": "live"
+            },
+            {
+              "launchId": "a7e74a4e-426a-4d6e-bf99-12d8aa7652a0",
+              "factoryId": "alpha",
+              "slotId": "dev/2",
+              "pid": 3198737,
+              "pgid": 3198737,
+              "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110",
+              "startedAt": "2026-11-26T02:49:20.999Z",
+              "liveness": "live"
+            }
+          ]
+        },
+        "tempPropagation": [
+          {
+            "pid": 3198699,
+            "tmpdir": "<USER_HOME>/f124a-k5EVBj/t"
+          },
+          {
+            "pid": 3198718,
+            "tmpdir": "<USER_HOME>/f124a-k5EVBj/t"
+          },
+          {
+            "pid": 3198730,
+            "tmpdir": "<USER_HOME>/f124a-k5EVBj/t"
+          },
+          {
+            "pid": 3198737,
+            "tmpdir": "<USER_HOME>/f124a-k5EVBj/t"
+          }
+        ],
+        "artifactsBefore": [
+          {
+            "number": 1,
+            "directory": "<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/1",
+            "specPath": "<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/1/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/1/evidence",
+            "worktree": {
+              "path": "<USER_HOME>/f124a-k5EVBj/worktrees/alpha/1-crash-durability-1",
+              "branch": "ticket/1-crash-durability-1",
+              "startCommit": "b55e7f2d663ef5b4c260dad3f48431f82708c113"
+            },
+            "specHash": "1378b063df8e1245f53569ae3fc5dec980fb3302421b33ff4ffe5d409f2435b5",
+            "body": "COMMITTED_EFFECT ticket=1 assignment=80792f2a-b4eb-444a-917f-f88ebf40f2cc\n",
+            "head": "0bf35c56f6ae877c90c9a6ba87fa76cddee353ac"
+          },
+          {
+            "number": 2,
+            "directory": "<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/2",
+            "specPath": "<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/2/spec.md",
+            "evidencePath": "<USER_HOME>/f124a-k5EVBj/home/tickets/alpha/2/evidence",
+            "worktree": {
+              "path": "<USER_HOME>/f124a-k5EVBj/worktrees/alpha/2-crash-durability-2",
+              "branch": "ticket/2-crash-durability-2",
+              "startCommit": "b55e7f2d663ef5b4c260dad3f48431f82708c113"
+            },
+            "specHash": "b9cd3922b0d9990c76a07153eb1e4dd2693d00561b93f581e7fbadf93d586aa3",
+            "body": "COMMITTED_EFFECT ticket=2 assignment=f85c2dea-fb8a-4072-9bfa-44b1939597d9\n",
+            "head": "e4868e269b9a703e82fe8544fd906490cc11a3b5"
+          }
+        ],
+        "checks": {
+          "freshProtocol5Host": true,
+          "originalWorkActive": true,
+          "privateTempPropagated": true
+        }
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:22.359Z",
+      "event": "command",
+      "detail": {
+        "args": [
+          "message",
+          "send",
+          "eng.dev",
+          "FOU124_BEFORE_WORKER",
+          "--delivery",
+          "when_idle",
+          "--home",
+          "<USER_HOME>/f124a-k5EVBj/home",
+          "--json"
+        ],
+        "code": 0,
+        "signal": null,
+        "stdout": "{\"ok\":true,\"result\":{\"id\":\"42312718-9e49-4ee2-b286-29ed5874e9ee\",\"sequence\":3,\"factoryId\":\"alpha\",\"senderKind\":\"operator\",\"senderSlot\":null,\"recipient\":\"eng.dev\",\"body\":\"FOU124_BEFORE_WORKER\",\"delivery\":\"when_idle\",\"kind\":\"ordinary\",\"ticket\":null,\"requestId\":null,\"delegationId\":null,\"status\":\"unbound\"}}\n",
+        "stderr": ""
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:22.366Z",
+      "event": "first failure",
+      "detail": {
+        "stack": "Error: refusing group 3198730: ownership marker/uid mismatch\n    at killOwnedGroup (file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:167:158)\n    at file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:221:3\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)"
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:22.380Z",
+      "event": "pre-fallback cleanup",
+      "detail": {
+        "shutdownSucceeded": false,
+        "markedPids": [
+          3198699,
+          3198718,
+          3198730,
+          3198737
+        ],
+        "groups": [
+          {
+            "pgid": 3198730,
+            "liveMembers": [
+              3198730
+            ]
+          },
+          {
+            "pgid": 3198737,
+            "liveMembers": [
+              3198737
+            ]
+          }
+        ],
+        "orderly": false
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:22.383Z",
+      "event": "daemon SIGKILL",
+      "detail": {
+        "code": null,
+        "signal": "SIGKILL"
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:22.394Z",
+      "event": "cleanup phase failure",
+      "detail": {
+        "phase": "marker sweep",
+        "error": "Error: refusing group 3198730: ownership marker/uid mismatch\n    at killOwnedGroup (file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:167:158)\n    at file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:289:45\n    at guardedPhases (file://<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/verdict.mjs:27:16)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:279:25"
+      }
+    },
+    {
+      "at": "2026-11-26T02:49:22.396Z",
+      "event": "cleanup phase failure",
+      "detail": {
+        "phase": "private root removal",
+        "error": "Error: preserving private root because marked processes remain or sweep failed\n    at file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:306:35\n    at guardedPhases (file://<CHECKOUT>/docs/evidence/worker-daemon-crash-linux/verdict.mjs:27:16)\n    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)\n    at async file://<CHECKOUT>/docs/evidence/worker-daemon-crash-postmerge/run-probe.mjs:279:25"
+      }
+    }
+  ]
+}
