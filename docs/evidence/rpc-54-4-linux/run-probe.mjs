@@ -37,6 +37,9 @@ const CLI = join(repo, "packages/cli/dist/main.js");
 const PROBE_EXTENSION = join(here, "probe-extension.ts");
 const PI_CLI = join(repo, "node_modules/@earendil-works/pi-coding-agent/dist/cli.js");
 
+// Optional explicit selector lets the SDK sibling reuse this exact process/cleanup probe.
+const runtime = process.argv[3] ?? "rpc";
+if (!["rpc", "sdk"].includes(runtime)) {throw new Error(`unknown runtime: ${runtime}`);}
 const outDir = resolve(process.argv[2] ?? mkdtempSync(join(tmpdir(), "fou122-out-")));
 mkdirSync(outDir, { recursive: true });
 
@@ -53,10 +56,12 @@ writeFileSync(join(agentDir, "settings.json"), JSON.stringify({ enableInstallTel
 const env = {
   PATH: process.env.PATH ?? "",
   HOME: user,
+  TMPDIR: root, // Keep transpiler caches inside this run, including in isolated Pi children.
   XDG_CONFIG_HOME: join(user, ".config"),
   XDG_DATA_HOME: join(user, ".local/share"),
   XDG_CACHE_HOME: join(user, ".cache"),
   PI_CODING_AGENT_DIR: agentDir,
+  FOUNDRY_WORKER_RUNTIME: runtime,
   PI_OFFLINE: "1",
   PI_TELEMETRY: "0",
   FOUNDRY_HOME: join(root, "not-this-one"),
@@ -307,6 +312,7 @@ const checks = {};
 
 try {
   note("versions", {
+    runtime,
     node: process.version,
     pi: execFileSync(process.execPath, [PI_CLI, "--version"], { env, encoding: "utf8" }).trim(),
     platform: `${process.platform} ${process.arch}`,
@@ -389,7 +395,7 @@ try {
   const alphaEscalation = alpha.map((l) => escalationOf(stop.samples, l, childOf(l)));
   note("after stop", {
     escalation: alphaEscalation,
-    hostRecords: afterStop.map(({ factoryId, slotId, pgid, liveness, exit }) => ({ factoryId, slotId, pgid, liveness, exit })),
+    hostRecords: afterStop.map(({ launchId, factoryId, slotId, pid, pgid, liveness, exit }) => ({ launchId, factoryId, slotId, pid, pgid, liveness, exit })),
     alphaGroupsAlive: alpha.map((l) => ({ pgid: l.pgid, alive: groupAlive(l.pgid) })),
     alphaChildrenAlive: alphaChildren.map((pid) => ({ pid, alive: pidAlive(pid) })),
     betaGroupsAlive: beta.map((l) => ({ pgid: l.pgid, alive: groupAlive(l.pgid) })),

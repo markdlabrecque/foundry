@@ -1,0 +1,32 @@
+{
+  "result": "supported",
+  "scope": "PRD 17.2 item 3, Linux explicit stop only; not whole-launcher qualification",
+  "rawResult": "failed",
+  "rawChecks": {
+    "fixtureShape": true,
+    "childrenInWorkerGroups": true,
+    "stopSucceeded": true,
+    "stopNamedOnlyAlpha": true,
+    "escalatedEveryAlphaLaunch": true,
+    "alphaChildOutlivedLeader": false,
+    "alphaGroupsGone": true,
+    "betaSurvivesBeforeShutdown": true,
+    "shutdownSucceeded": true,
+    "betaChildOutlivedLeader": false,
+    "noOwnedGroupsAfterShutdown": true,
+    "hostAndDaemonGone": true,
+    "noRunProcessLeft": true
+  },
+  "checks": {
+    "explicitSdk": true,
+    "activeOwnedFixture": true,
+    "scopedStopBounded": true,
+    "alphaEscalated": true,
+    "alphaAbsentBeforeShutdown": true,
+    "originalBetaSurvives": true,
+    "betaShutdownBoundedAndEscalated": true,
+    "absentBeforeFallbackCleanup": true
+  },
+  "durationBoundMs": 17000,
+  "note": "The raw child-outlives-leader flags remain diagnostic. SDK may keep both leader and child alive until group SIGKILL. All contract checks above must pass independently; raw results are never rewritten."
+}

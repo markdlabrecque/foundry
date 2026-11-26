@@ -1,0 +1,20 @@
+Commands run directly from the repository root; no RTK-filtered linter invocation.
+Product base: 050145655c76a722afc6bce70ae422397e49872c
+npm ci: exit 0 (before probe)
+npm run build: exit 0
+npm run typecheck: exit 0
+./node_modules/.bin/oxlint: exit 0, zero diagnostics
+After git fetch origin && git rebase origin/develop (already up to date):
+TMPDIR=/home/mark/f155-SUvrBu ./node_modules/.bin/vitest run: exit 0, 100 files / 837 tests passed
+TMPDIR=/home/mark/f155-SUvrBu ./node_modules/.bin/vitest run --config vitest.e2e.config.ts: exit 0, 3 files / 5 tests passed
+Post-rebase initial default-TMPDIR attempts: exit 1 each, /tmp inode exhaustion;
+full suite 77 passed / 23 failed files, 690 passed / 147 failed tests;
+e2e 2 passed / 1 failed files, 2 passed / 3 failed tests.
+Post-rebase long checkout-local TMPDIR attempts: exit 1 each, socket-path errors;
+full suite 59 passed / 41 failed files, 696 passed / 141 failed tests;
+e2e 1 passed / 2 failed files, 1 passed / 4 failed tests.
+Earlier pre-commit default-TMPDIR runs passed at the same product base, same counts.
+The failed attempts' logs are retained separately; no product/test code changed.
+Manual process probe: process exit 0 is not a pass verdict; raw summary is failed
+(11/13 checks true; 2 RPC child-outlives-leader assumptions false). See ../summary.json
+and ../../sdk-54-4-linux.md for the separate contract assessment.

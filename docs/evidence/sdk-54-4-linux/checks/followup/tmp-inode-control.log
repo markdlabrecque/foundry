@@ -1,0 +1,3 @@
+{"control":"fresh /tmp file","result":"environment error","code":"ENOSPC","message":"ENOSPC: no space left on device, open '/tmp/fou155-inode-control-2618445'"}
+Filesystem      Inodes   IUsed IFree IUse% Mounted on
+tmpfs          1048576 1048576     0  100% /tmp
