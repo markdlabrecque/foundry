@@ -1,7 +1,7 @@
 {
   "normalization": "Documented path placeholders, not literal raw host output; see ../../sdk-restore-and-prime.md",
-  "base": "050145655c76a722afc6bce70ae422397e49872c",
-  "checkoutHeadAtProbe": "078a1ee351bee9d86bf190f12ab6f11c4ce2111b plus uncommitted evidence-only review fixes",
+  "base": "6dc2a5b5f01b9be13d465bccecedc67f04e8410c",
+  "checkoutHeadAtProbe": "0fe083b318cc4acd9bf1a4a929bb47d9f8d64ab8 (verifier fixes committed; final artifact refresh uncommitted)",
   "node": "v22.23.2",
   "pi": "1.6.0",
   "build": { "command": "npm run build", "exit": 0, "output": "build.log" },

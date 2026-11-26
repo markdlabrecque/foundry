@@ -9,10 +9,10 @@ not ok 1 - orderly shutdown plus empty snapshots and verified root absence passe
   error: |-
     Expected values to be strictly equal:
     + actual - expected
-    
+
     + undefined
     - true
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: true
@@ -31,9 +31,9 @@ not ok 2 - cleanup cannot green: shutdown exception
   failureType: 'testCodeFailure'
   error: |-
     Expected values to be strictly equal:
-    
+
     true !== false
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: false
@@ -53,9 +53,9 @@ not ok 3 - cleanup cannot green: survivor cleaned by fallback
   failureType: 'testCodeFailure'
   error: |-
     Expected values to be strictly equal:
-    
+
     true !== false
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: false
@@ -75,9 +75,9 @@ not ok 4 - cleanup cannot green: surviving group without marked PID list
   failureType: 'testCodeFailure'
   error: |-
     Expected values to be strictly equal:
-    
+
     true !== false
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: false
@@ -97,9 +97,9 @@ not ok 5 - cleanup cannot green: root remains after removal
   failureType: 'testCodeFailure'
   error: |-
     Expected values to be strictly equal:
-    
+
     true !== false
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: false
@@ -119,9 +119,9 @@ not ok 6 - cleanup cannot green: fallback cannot empty owned processes
   failureType: 'testCodeFailure'
   error: |-
     Expected values to be strictly equal:
-    
+
     true !== false
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: false
@@ -141,9 +141,9 @@ not ok 7 - cleanup cannot green: reviewer shutdown exception plus surviving grou
   failureType: 'testCodeFailure'
   error: |-
     Expected values to be strictly equal:
-    
+
     true !== false
-    
+
   code: 'ERR_ASSERTION'
   name: 'AssertionError'
   expected: false

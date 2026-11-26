@@ -90,11 +90,11 @@ TMPDIR="$private_tmp" node docs/evidence/sdk-restore-and-prime/run-probe.mjs "$p
 
 The driver creates disposable HOME, XDG roots, agent/state/session dirs, Git source/worktree/knowledge roots and provider fixture. Environment is allowlisted (PATH only inherited); fixture Git commits disable hooks. No real `~/.pi`, global config, production, operator resources, 1Password, credentials, network provider or paid model. Read-only SQLite observations use `node:sqlite`.
 
-Product base: `050145655c76a722afc6bce70ae422397e49872c`, latest `origin/develop` after fetch/rebase, SDK adapter merged. Fixed-run checkout head: `078a1ee351bee9d86bf190f12ab6f11c4ce2111b` plus uncommitted evidence-only review fixes. Implementation agent `openai/gpt-6.1-sol`.
+Product base: `6dc2a5b5f01b9be13d465bccecedc67f04e8410c`, latest `origin/develop` after fetch/rebase, SDK adapter and sibling stop evidence merged. Fixed-run checkout head: `0fe083b318cc4acd9bf1a4a929bb47d9f8d64ab8` (includes verifier fixes); final artifact/report refresh was uncommitted during execution. Implementation agent `openai/gpt-6.1-sol`.
 
 - Linux: `Linux omarchy 7.2.15-1-omarchy #1 SMP PREEMPT_DYNAMIC Mon, 02 Nov 2026 10:32:17 +0000 x86_64 GNU/Linux`.
 - Node `v22.23.2`, npm `10.9.8`, repository-pinned Pi `1.6.0`.
-- Fixed actual run: 2026-11-26 around `01:07:23Z`–`01:07:32Z`; event timestamps retained. Vitest separately prints local host time.
+- Fixed actual run: 2026-11-26 around `01:12:50Z`–`01:12:59Z`; event timestamps retained. Vitest separately prints local host time.
 - Factory `restore`, station `eng.dev`, slot `dev/1`, `isolation: worktree`.
 - Model `restore-probe/scripted`, credential-free pi-ai faux provider, context 128000, maxTokens 4096. Fixture tool `probe_once` plus fixed Foundry tools.
 - Instructions: `factory.md`, `room.md`, `station.md`, respectively `FACTORY_INSTRUCTION_148\n`, `ROOM_INSTRUCTION_148\n`, `STATION_INSTRUCTION_148\n`. `result.primeExpectation` records the independent ordered inputs. Hashes and full bodies are retained in store/session records.
@@ -110,8 +110,8 @@ Actual host-launched worker argv retains `<repo>/packages/host/dist/sdk-worker.j
 
 | State | Launch | PID / PGID | Conversation |
 |---|---|---|---|
-| Fresh | `709723c7-5a41-417d-a9c9-94717e0383f8` | `2664921` / `2664921` | `4960541b-e92d-40fe-8d12-1ff75b1ab53c` |
-| Recovery and compaction | `46f41bc7-5efa-464e-a773-6dd5ad8737d2` | `2664966` / `2664966` | same |
+| Fresh | `9f6d39e4-8b17-4f34-b913-63a75a62ef47` | `2761024` / `2761024` | `2f9e67ee-33ca-481b-a929-e270f586343a` |
+| Recovery and compaction | `5b2b5d30-ee63-446c-8493-d0000d9eec27` | `2761079` / `2761079` | same |
 
 Sequence: accepted fresh channel → idle prime (no turn/file) → delivered `FIRST_148` → `probe_once` / `ONCE_RESULT_148` → `DONE_FIRST_148` and receipts → marker-verified group SIGKILL → replacement opens same disk history → recovery prime/receipt without execution → delivered `RECOVERED_148` → authenticated `agent_discover` → two padding turns → real manual compaction → compaction prime/receipt, same launch → delivered `AFTER_COMPACT_148` includes prime → successful orderly shutdown → empty pre-fallback/final snapshots → removed root verified absent → final success.
 
@@ -153,7 +153,7 @@ TMPDIR=<private-tmp> FOUNDRY_PI_BIN=<private-tmp>/pi-tmp ./node_modules/.bin/vit
 | `npm run typecheck` | exit 0 |
 | Direct `./node_modules/.bin/oxlint` | **exit 0**, explicitly captured; empty diagnostics |
 | Full Vitest (private parent TMPDIR) | **100 files / 837 tests passed**, exit 0 |
-| Separate e2e (private child-temp shim) | **3 files / 5 tests passed**, exit 0; 11.01 seconds |
+| Separate e2e (private child-temp shim) | **3 files / 5 tests passed**, exit 0; 7.64 seconds |
 
 The normal child-temp suite remains environment-qualified pending the separate shared fix; no testkit/product/test-configuration edits were made to make it pass. These checks do not substitute for the retained actual SDK observations.
 
