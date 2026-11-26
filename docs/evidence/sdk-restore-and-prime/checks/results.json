@@ -1,0 +1,14 @@
+{
+  "base": "050145655c76a722afc6bce70ae422397e49872c",
+  "node": "v22.23.2",
+  "pi": "1.6.0",
+  "npmCiExit": 0,
+  "build": { "command": "npm run build", "exit": 0, "output": "build.log" },
+  "typecheck": { "command": "npm run typecheck", "exit": 0, "output": "typecheck.log" },
+  "lint": { "command": "./node_modules/.bin/oxlint", "exit": 0, "output": "oxlint.log", "diagnostics": "empty" },
+  "vitest": { "command": "TMPDIR=/home/mark/fou148-owned-tmp ./node_modules/.bin/vitest run", "exit": 0, "passedFiles": 100, "passedTests": 837, "output": "vitest.log" },
+  "e2eInitial": { "command": "TMPDIR=/home/mark/fou148-owned-tmp ./node_modules/.bin/vitest run --config vitest.e2e.config.ts", "exit": 1, "passedFiles": 2, "passedTests": 4, "failedFiles": 1, "failedTests": 1, "output": "e2e.log", "classification": "interrupt timeout with /tmp inode exhaustion; no exposed child ENOSPC stack" },
+  "e2eIsolatedTmp": { "command": "TMPDIR=/home/mark/fou148-owned-tmp FOUNDRY_PI_BIN=/home/mark/fou148-owned-tmp/pi-with-tmpdir ./node_modules/.bin/vitest run --config vitest.e2e.config.ts", "exit": 0, "passedFiles": 3, "passedTests": 5, "output": "e2e-isolated-tmp.log", "shim": "sets child TMPDIR only, execs unchanged pinned Pi CLI with unchanged argv; full source in ../../sdk-restore-and-prime.md" },
+  "sdkProbe": { "command": "TMPDIR=/home/mark/fou148-owned-tmp node docs/evidence/sdk-restore-and-prime/run-probe.mjs docs/evidence/sdk-restore-and-prime", "exit": 0, "runtimeSelector": "FOUNDRY_WORKER_RUNTIME=sdk", "piBinOverride": "absent", "outcome": "supported-on-tested-linux-implementation", "output": "../result.json" },
+  "review": "Fresh independent review required; not performed by implementation agent"
+}

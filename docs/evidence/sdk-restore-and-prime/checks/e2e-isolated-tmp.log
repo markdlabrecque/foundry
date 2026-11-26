@@ -1,0 +1,12 @@
+
+ RUN  v5.1.1 /home/mark/worktress/develop/t3-32ecbbb6-951d7cdbc52fd5d3
+
+(node:2572648) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2572645) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ Test Files  3 passed (3)
+      Tests  5 passed (5)
+   Start at  16:56:18
+   Duration  8.35s (tests 87%, import 11%, transform 2%)
