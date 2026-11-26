@@ -1,0 +1,27 @@
+version: 1
+name: alpha
+repository:
+  source: ./repo
+  default_branch: main
+default_production_line: f
+worktrees:
+  root: "/tmp/fou124-VikFuh/worktrees"
+rooms:
+  eng:
+    stations:
+      dev:
+        instances: 2
+        isolation: worktree
+        model: foundry-faux/scripted
+        extensions: ["/home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67/packages/testkit/dist/pi/faux-provider.js", { path: "/home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67/docs/evidence/worker-daemon-crash-linux/worker.ts", tools: [fixture_work] }]
+production_lines:
+  f:
+    verify: ["true"]
+    stages:
+      - id: a
+        station: eng.dev
+        writing: true
+      - id: b
+        station: eng.dev
+        approval: true
+        on_rejection: a

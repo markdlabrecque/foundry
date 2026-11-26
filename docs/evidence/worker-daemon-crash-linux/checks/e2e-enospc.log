@@ -1,0 +1,65 @@
+
+> foundry@0.0.0 test:e2e
+> vitest run --config vitest.e2e.config.ts
+
+
+ RUN  v5.1.1 /home/mark/worktress/develop/t3-a80c2c5f-ea0ca9542bb58d67
+
+(node:2438445) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2438452) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+ ❯ packages/daemon/e2e/worker-channel.e2e.test.ts (3 tests | 3 failed) 627ms
+   × a launched faux-provider Pi worker authenticates and discovers its configured station and slot 230ms
+   × concurrent tickets keep isolated artifacts and the other Pi progresses during pause/resume 170ms
+   × a scripted ticket crosses separate Pi stages and lands only after CLI operator approval 226ms
+
+⎯⎯⎯⎯⎯⎯⎯ Failed Tests 3 ⎯⎯⎯⎯⎯⎯⎯
+
+ FAIL  packages/daemon/e2e/worker-channel.e2e.test.ts > a launched faux-provider Pi worker authenticates and discovers its configured station and slot
+Error: daemon exited 1 before serving: {"time":"2026-11-26T00:49:05.822Z","level":"error","runId":"21b4e775-1ba8-47ff-927b-4bd86537971b","msg":"run not recorded","detail":{"error":"ENOSPC: no space left on device, mkdir '/tmp/foundry-worker-channel-nZjW8v/knowledge'"}}
+foundry daemon: cannot record the run in /tmp/foundry-worker-channel-nZjW8v/home: ENOSPC: no space left on device, mkdir '/tmp/foundry-worker-channel-nZjW8v/knowledge'
+
+ ❯ ChildProcess.<anonymous> packages/daemon/e2e/worker-channel.e2e.test.ts:115:39
+    113|       if (stdout.includes("management API on")) {resolve(child);}
+    114|     });
+    115|     child.on("exit", (code) => reject(new Error(`daemon exited ${code}…
+       |                                       ^
+    116|   });
+    117| };
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[1/3]⎯
+
+ FAIL  packages/daemon/e2e/worker-channel.e2e.test.ts > concurrent tickets keep isolated artifacts and the other Pi progresses during pause/resume
+Error: daemon exited 1 before serving: foundry daemon: cannot claim state root /tmp/foundry-concurrent-3CPdCB/home: ENOSPC: no space left on device, mkdir '/tmp/foundry-concurrent-3CPdCB/home'
+
+ ❯ ChildProcess.<anonymous> packages/daemon/e2e/worker-channel.e2e.test.ts:115:39
+    113|       if (stdout.includes("management API on")) {resolve(child);}
+    114|     });
+    115|     child.on("exit", (code) => reject(new Error(`daemon exited ${code}…
+       |                                       ^
+    116|   });
+    117| };
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[2/3]⎯
+
+ FAIL  packages/daemon/e2e/worker-channel.e2e.test.ts > a scripted ticket crosses separate Pi stages and lands only after CLI operator approval
+Error: daemon exited 1 before serving: {"time":"2026-11-26T00:49:06.219Z","level":"error","runId":"3d9be313-875a-4a88-9b6f-5ebe82ba70eb","msg":"run not recorded","detail":{"error":"ENOSPC: no space left on device, mkdir '/tmp/foundry-ticket-line-H95qUr/knowledge/implement'"}}
+foundry daemon: cannot record the run in /tmp/foundry-ticket-line-H95qUr/home: ENOSPC: no space left on device, mkdir '/tmp/foundry-ticket-line-H95qUr/knowledge/implement'
+
+ ❯ ChildProcess.<anonymous> packages/daemon/e2e/worker-channel.e2e.test.ts:115:39
+    113|       if (stdout.includes("management API on")) {resolve(child);}
+    114|     });
+    115|     child.on("exit", (code) => reject(new Error(`daemon exited ${code}…
+       |                                       ^
+    116|   });
+    117| };
+
+⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯⎯[3/3]⎯
+
+
+ Test Files  1 failed | 2 passed (3)
+      Tests  3 failed | 2 passed (5)
+   Start at  16:49:04
+   Duration  1.40s (tests 43%, import 36%, transform 21%)
+
