@@ -1,0 +1,72 @@
+{
+  "blocked-result.json": {
+    "outcome": "blocked-on-tested-approaches",
+    "phase": "not-recorded",
+    "reason": "file:///REPO/packages/host/dist/sdk-session.js:53\n            throw new Error(`SDK model is not registered: ${inputs.model}`);\n                  ^\n\nError: SDK model is not registered: probe-local/inert\n    at createSdkSession (file:///REPO/packages/host/dist/sdk-session.js:53:19)\n    at async file:///REPO/packages/host/dist/sdk-worker.js:10:21\n\nNode.js v22.23.2\n",
+    "observations": {
+      "ordinary global controls": {
+        "status": "verified"
+      },
+      "inherit/1 configured resources, exclusions and real named call": {
+        "status": "verified"
+      },
+      "skillclear/1 configured resources, exclusions and real named call": {
+        "status": "verified"
+      },
+      "global/repository extensions and MCP excluded in connected workers": {
+        "status": "verified"
+      },
+      "actual SDK launch and neutral cwd": {
+        "status": "unverified",
+        "reason": "AssertionError [ERR_ASSERTION]: no accepted SDK worker: clear/1"
+      },
+      "fully cleared inheritance in a connected unprompted station": {
+        "status": "unverified",
+        "reason": "AssertionError [ERR_ASSERTION]: no accepted clear worker"
+      },
+      "offline fake-auth fixture and deny-fetch active": {
+        "status": "unverified",
+        "reason": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ undefined\n- true\n"
+      },
+      "owned marked processes and groups cleaned": {
+        "status": "unverified",
+        "reason": "AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:\n\nundefined !== []\n"
+      }
+    }
+  },
+  "fixture-error.json": {
+    "outcome": "inconclusive",
+    "phase": "not-recorded",
+    "reason": "Error: timeout: three accepted channels\n    at until (file:///REPO/docs/evidence/rpc-53-2-linux/run-probe.mjs:32:133)\n    at async file:///REPO/docs/evidence/rpc-53-2-linux/run-probe.mjs:90:3",
+    "observations": {
+      "ordinary global controls": {
+        "status": "verified"
+      },
+      "inherit/1 configured resources, exclusions and real named call": {
+        "status": "verified"
+      },
+      "skillclear/1 configured resources, exclusions and real named call": {
+        "status": "verified"
+      },
+      "global/repository extensions and MCP excluded in connected workers": {
+        "status": "verified"
+      },
+      "actual SDK launch and neutral cwd": {
+        "status": "unverified",
+        "reason": "AssertionError [ERR_ASSERTION]: no accepted SDK worker: clear/1"
+      },
+      "fully cleared inheritance in a connected unprompted station": {
+        "status": "unverified",
+        "reason": "AssertionError [ERR_ASSERTION]: no accepted clear worker"
+      },
+      "offline fake-auth fixture and deny-fetch active": {
+        "status": "unverified",
+        "reason": "AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:\n+ actual - expected\n\n+ undefined\n- true\n"
+      },
+      "owned marked processes and groups cleaned": {
+        "status": "unverified",
+        "reason": "AssertionError [ERR_ASSERTION]: no owned worker identity snapshot"
+      }
+    }
+  }
+}

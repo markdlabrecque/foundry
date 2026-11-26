@@ -1,0 +1,15 @@
+{
+  "sourceHead": "cc7ec54471f1b7f50e8c0438288e06736c43bd98",
+  "rebasedOriginDevelop": "6dc2a5b5f01b9be13d465bccecedc67f04e8410c",
+  "artifactTransform": "Logs and pi-temp replace checkout with /REPO, pinned Node root with /NODE, private parent TMPDIR with /CHECK_TMP. Expand placeholders before executing the retained shim. No executable or argument changes beyond child TMPDIR.",
+  "checks": [
+    { "command": "npm run build", "exit": 0 },
+    { "command": "npm run typecheck", "exit": 0 },
+    { "command": "./node_modules/.bin/oxlint", "exit": 0, "diagnostics": "empty" },
+    { "command": "TMPDIR=/CHECK_TMP ./node_modules/.bin/vitest run", "exit": 0, "filesPassed": 101, "testsPassed": 843 },
+    { "command": "TMPDIR=/CHECK_TMP ./node_modules/.bin/vitest run --config vitest.e2e.config.ts", "exit": 1, "filesPassed": 2, "filesFailed": 1, "testsPassed": 4, "testsFailed": 1, "qualification": "interrupt child omits private TMPDIR; /tmp inode exhausted" },
+    { "command": "TMPDIR=/CHECK_TMP FOUNDRY_PI_BIN=/CHECK_TMP/checks/pi-temp ./node_modules/.bin/vitest run --config vitest.e2e.config.ts", "exit": 0, "filesPassed": 3, "testsPassed": 5, "qualification": "pinned-Pi child-TMPDIR-only shim; not the SDK probe launcher" },
+    { "command": "TMPDIR=/CHECK_TMP ./node_modules/.bin/vitest run test/sdk-resource-evidence.test.ts", "exit": 0, "filesPassed": 1, "testsPassed": 6 }
+  ],
+  "tmpControl": { "command": "df -i /tmp", "inodes": 1048576, "used": 1048576, "free": 0 }
+}

@@ -1,0 +1,13 @@
+
+ RUN  v5.1.1 /REPO
+
+(node:2769541) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+(node:2769550) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+ Test Files  3 passed (3)
+      Tests  5 passed (5)
+   Start at  17:13:20
+   Duration  8.38s (tests 87%, import 12%, transform 2%)
+

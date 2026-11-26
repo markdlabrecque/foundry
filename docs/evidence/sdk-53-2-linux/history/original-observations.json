@@ -1,0 +1,12 @@
+{
+  "actual SDK host selection": "verified",
+  "ordinary global extension/MCP/context/defaultTools calibration": "verified",
+  "inherit/1: configured model/resources and excluded ambient resources": "verified",
+  "skillclear/1: configured model/resources and excluded ambient resources": "verified",
+  "global/repository extensions and MCP never loaded in workers": "verified",
+  "cleared extension/skill argv and no configured extension startup": "verified",
+  "reproducible clear-station failure": "verified",
+  "owned marked processes cleaned": "verified",
+  "fully cleared station connects without extension/tools": "unmet: no registered fixture model; no accepted hello",
+  "gate outcome": "blocked-on-tested-approaches; passing criterion remains unmet, SDK capability inconclusive"
+}

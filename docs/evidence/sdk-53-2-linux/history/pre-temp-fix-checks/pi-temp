@@ -1,0 +1,4 @@
+#!/bin/sh
+# Child environment workaround only; product and pinned executable unchanged.
+export TMPDIR=/CHECK_TMP
+exec /NODE/bin/node /REPO/node_modules/@earendil-works/pi-coding-agent/dist/cli.js "$@"
