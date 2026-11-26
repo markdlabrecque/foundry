@@ -1,0 +1,580 @@
+{
+  "result": "blocked",
+  "checks": {
+    "fixtureShape": true,
+    "connectedBeforeKill": true,
+    "daemonKilledAbruptly": true,
+    "workersAndHostSurviveKill": true,
+    "sameHostAfterRestart": true,
+    "workersStillAlive": true,
+    "sameLaunchesInSlots": true,
+    "noReplacement": true,
+    "reconnectedToRestartedDaemon": false,
+    "channelTrafficResumed": false,
+    "shutdownLeavesNothing": true
+  },
+  "log": [
+    {
+      "at": "2026-11-26T00:03:20.722Z",
+      "event": "versions",
+      "node": "v22.23.2",
+      "pi": "1.6.0",
+      "platform": "linux x64",
+      "kernel": "7.2.15-1-omarchy",
+      "foundryCommit": "d3770ba",
+      "uncommitted": []
+    },
+    {
+      "at": "2026-11-26T00:03:21.075Z",
+      "event": "first daemon serving",
+      "pid": 2085183
+    },
+    {
+      "at": "2026-11-26T00:03:29.414Z",
+      "event": "before kill",
+      "host": {
+        "pid": 2085199,
+        "hostId": "76ca46b8-af3b-4e54-8592-78fc3a442886",
+        "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110"
+      },
+      "launches": [
+        {
+          "launchId": "a3792369-8a48-46d8-b58a-1b4de65362fe",
+          "factoryId": "alpha",
+          "slotId": "hold/1",
+          "pid": 2085221,
+          "pgid": 2085221,
+          "liveness": "live"
+        },
+        {
+          "launchId": "a6bbcccb-bc88-48ea-9089-a5f10789b448",
+          "factoryId": "alpha",
+          "slotId": "hold/2",
+          "pid": 2085222,
+          "pgid": 2085222,
+          "liveness": "live"
+        }
+      ],
+      "holds": [
+        {
+          "factoryId": "alpha",
+          "slotId": "hold/1",
+          "launchId": "a3792369-8a48-46d8-b58a-1b4de65362fe",
+          "workerPid": 2085221,
+          "at": "2026-11-26T00:03:22.882Z",
+          "execPath": "<node>",
+          "argv": [
+            "<repo>/node_modules/@earendil-works/pi-coding-agent/dist/bundle/rpc-entry.js",
+            "--mode",
+            "rpc",
+            "--system-prompt",
+            "",
+            "--append-system-prompt",
+            "",
+            "--no-extensions",
+            "--no-mcp",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--session-id",
+            "e99a19f6-ca48-48e1-943d-4e8451a4e4b1",
+            "--model",
+            "probe/busy",
+            "--tools",
+            "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
+            "--extension",
+            "<repo>/packages/extension/dist/index.js",
+            "--extension",
+            "<repo>/docs/evidence/rpc-52-1-linux/probe-extension.ts"
+          ],
+          "cwd": "<tmp>/home/slots/alpha/hold-1"
+        },
+        {
+          "factoryId": "alpha",
+          "slotId": "hold/2",
+          "launchId": "a6bbcccb-bc88-48ea-9089-a5f10789b448",
+          "workerPid": 2085222,
+          "at": "2026-11-26T00:03:22.883Z",
+          "execPath": "<node>",
+          "argv": [
+            "<repo>/node_modules/@earendil-works/pi-coding-agent/dist/bundle/rpc-entry.js",
+            "--mode",
+            "rpc",
+            "--system-prompt",
+            "",
+            "--append-system-prompt",
+            "",
+            "--no-extensions",
+            "--no-mcp",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--session-id",
+            "9a616a4a-0157-43ae-b19e-2c9065b8cfb1",
+            "--model",
+            "probe/busy",
+            "--tools",
+            "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
+            "--extension",
+            "<repo>/packages/extension/dist/index.js",
+            "--extension",
+            "<repo>/docs/evidence/rpc-52-1-linux/probe-extension.ts"
+          ],
+          "cwd": "<tmp>/home/slots/alpha/hold-2"
+        }
+      ],
+      "slots": [
+        {
+          "slotId": "hold/1",
+          "condition": "normal",
+          "freezeCause": null,
+          "launchId": "a3792369-8a48-46d8-b58a-1b4de65362fe",
+          "endedAt": null
+        },
+        {
+          "slotId": "hold/2",
+          "condition": "normal",
+          "freezeCause": null,
+          "launchId": "a6bbcccb-bc88-48ea-9089-a5f10789b448",
+          "endedAt": null
+        }
+      ],
+      "channels": {
+        "a3792369-8a48-46d8-b58a-1b4de65362fe": {
+          "accepted": [
+            "2026-11-26T00:03:21.370Z"
+          ],
+          "lost": [],
+          "frameCounts": {
+            "receipt": 1,
+            "heartbeat": 1
+          },
+          "lastFrameAt": "2026-11-26T00:03:26.371Z"
+        },
+        "a6bbcccb-bc88-48ea-9089-a5f10789b448": {
+          "accepted": [
+            "2026-11-26T00:03:21.374Z"
+          ],
+          "lost": [],
+          "frameCounts": {
+            "receipt": 1,
+            "heartbeat": 1
+          },
+          "lastFrameAt": "2026-11-26T00:03:26.376Z"
+        }
+      },
+      "workerUnixSockets": {
+        "a3792369-8a48-46d8-b58a-1b4de65362fe": [
+          {
+            "inode": "111468225",
+            "peerInode": "111468224",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111468227",
+            "peerInode": "111468226",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111454136",
+            "peerInode": "111466090",
+            "peerPids": [
+              2085183
+            ]
+          },
+          {
+            "inode": "111468229",
+            "peerInode": "111468228",
+            "peerPids": [
+              2085199
+            ]
+          }
+        ],
+        "a6bbcccb-bc88-48ea-9089-a5f10789b448": [
+          {
+            "inode": "111475748",
+            "peerInode": "111475747",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111475750",
+            "peerInode": "111475749",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111475746",
+            "peerInode": "111475745",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111473965",
+            "peerInode": "111473966",
+            "peerPids": [
+              2085183
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-11-26T00:03:31.483Z",
+      "event": "after kill",
+      "killedAt": "2026-11-26T00:03:29.414Z",
+      "daemonExit": {
+        "code": null,
+        "signal": "SIGKILL"
+      },
+      "hostAlive": true,
+      "workersAlive": [
+        {
+          "launchId": "a3792369-8a48-46d8-b58a-1b4de65362fe",
+          "pid": 2085221,
+          "alive": true
+        },
+        {
+          "launchId": "a6bbcccb-bc88-48ea-9089-a5f10789b448",
+          "pid": 2085222,
+          "alive": true
+        }
+      ],
+      "workerUnixSockets": {
+        "a3792369-8a48-46d8-b58a-1b4de65362fe": [
+          {
+            "inode": "111468225",
+            "peerInode": "111468224",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111468227",
+            "peerInode": "111468226",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111468229",
+            "peerInode": "111468228",
+            "peerPids": [
+              2085199
+            ]
+          }
+        ],
+        "a6bbcccb-bc88-48ea-9089-a5f10789b448": [
+          {
+            "inode": "111475748",
+            "peerInode": "111475747",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111475750",
+            "peerInode": "111475749",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111475746",
+            "peerInode": "111475745",
+            "peerPids": [
+              2085199
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "at": "2026-11-26T00:03:31.698Z",
+      "event": "second daemon serving",
+      "pid": 2085685,
+      "restartedAt": "2026-11-26T00:03:31.698Z"
+    },
+    {
+      "at": "2026-11-26T00:04:17.291Z",
+      "event": "after restart",
+      "observedMs": 45042,
+      "host": {
+        "pid": 2085199,
+        "hostId": "76ca46b8-af3b-4e54-8592-78fc3a442886",
+        "bootId": "e4653541-62f1-4746-93c3-19c8d32b3110"
+      },
+      "launches": [
+        {
+          "launchId": "a3792369-8a48-46d8-b58a-1b4de65362fe",
+          "factoryId": "alpha",
+          "slotId": "hold/1",
+          "pid": 2085221,
+          "pgid": 2085221,
+          "liveness": "live"
+        },
+        {
+          "launchId": "a6bbcccb-bc88-48ea-9089-a5f10789b448",
+          "factoryId": "alpha",
+          "slotId": "hold/2",
+          "pid": 2085222,
+          "pgid": 2085222,
+          "liveness": "live"
+        }
+      ],
+      "workersAlive": [
+        {
+          "launchId": "a3792369-8a48-46d8-b58a-1b4de65362fe",
+          "pid": 2085221,
+          "alive": true
+        },
+        {
+          "launchId": "a6bbcccb-bc88-48ea-9089-a5f10789b448",
+          "pid": 2085222,
+          "alive": true
+        }
+      ],
+      "slots": [
+        {
+          "slotId": "hold/1",
+          "condition": "normal",
+          "freezeCause": null,
+          "launchId": "a3792369-8a48-46d8-b58a-1b4de65362fe",
+          "endedAt": null
+        },
+        {
+          "slotId": "hold/2",
+          "condition": "normal",
+          "freezeCause": null,
+          "launchId": "a6bbcccb-bc88-48ea-9089-a5f10789b448",
+          "endedAt": null
+        }
+      ],
+      "holds": {
+        "ok": true,
+        "result": {
+          "holds": []
+        }
+      },
+      "channels": {
+        "a3792369-8a48-46d8-b58a-1b4de65362fe": {
+          "accepted": [],
+          "lost": [],
+          "frameCounts": {},
+          "lastFrameAt": null
+        },
+        "a6bbcccb-bc88-48ea-9089-a5f10789b448": {
+          "accepted": [],
+          "lost": [],
+          "frameCounts": {},
+          "lastFrameAt": null
+        }
+      },
+      "workerUnixSockets": {
+        "a3792369-8a48-46d8-b58a-1b4de65362fe": [
+          {
+            "inode": "111468225",
+            "peerInode": "111468224",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111468227",
+            "peerInode": "111468226",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111468229",
+            "peerInode": "111468228",
+            "peerPids": [
+              2085199
+            ]
+          }
+        ],
+        "a6bbcccb-bc88-48ea-9089-a5f10789b448": [
+          {
+            "inode": "111475748",
+            "peerInode": "111475747",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111475750",
+            "peerInode": "111475749",
+            "peerPids": [
+              2085199
+            ]
+          },
+          {
+            "inode": "111475746",
+            "peerInode": "111475745",
+            "peerPids": [
+              2085199
+            ]
+          }
+        ]
+      },
+      "notableDaemonLog": [
+        {
+          "time": "2026-11-26T00:03:31.698Z",
+          "level": "info",
+          "runId": "82d0bb9f-8e16-4b52-8776-63fa78c12d9b",
+          "msg": "daemon started",
+          "detail": {
+            "pid": 2085685,
+            "stateRoot": "<tmp>/home",
+            "socket": "<tmp>/home/management.sock",
+            "logLevel": "debug"
+          }
+        }
+      ],
+      "probeHoldsNow": [
+        {
+          "factoryId": "alpha",
+          "slotId": "hold/1",
+          "launchId": "a3792369-8a48-46d8-b58a-1b4de65362fe",
+          "workerPid": 2085221,
+          "at": "2026-11-26T00:03:22.882Z",
+          "execPath": "<node>",
+          "argv": [
+            "<repo>/node_modules/@earendil-works/pi-coding-agent/dist/bundle/rpc-entry.js",
+            "--mode",
+            "rpc",
+            "--system-prompt",
+            "",
+            "--append-system-prompt",
+            "",
+            "--no-extensions",
+            "--no-mcp",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--session-id",
+            "e99a19f6-ca48-48e1-943d-4e8451a4e4b1",
+            "--model",
+            "probe/busy",
+            "--tools",
+            "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
+            "--extension",
+            "<repo>/packages/extension/dist/index.js",
+            "--extension",
+            "<repo>/docs/evidence/rpc-52-1-linux/probe-extension.ts"
+          ],
+          "cwd": "<tmp>/home/slots/alpha/hold-1"
+        },
+        {
+          "factoryId": "alpha",
+          "slotId": "hold/2",
+          "launchId": "a6bbcccb-bc88-48ea-9089-a5f10789b448",
+          "workerPid": 2085222,
+          "at": "2026-11-26T00:03:22.883Z",
+          "execPath": "<node>",
+          "argv": [
+            "<repo>/node_modules/@earendil-works/pi-coding-agent/dist/bundle/rpc-entry.js",
+            "--mode",
+            "rpc",
+            "--system-prompt",
+            "",
+            "--append-system-prompt",
+            "",
+            "--no-extensions",
+            "--no-mcp",
+            "--no-skills",
+            "--no-prompt-templates",
+            "--no-themes",
+            "--no-context-files",
+            "--no-approve",
+            "--session-id",
+            "9a616a4a-0157-43ae-b19e-2c9065b8cfb1",
+            "--model",
+            "probe/busy",
+            "--tools",
+            "read,bash,edit,write,agent_discover,agent_status,agent_message,agent_request,agent_reply,agent_delegate,task_transition,human_request,probe_hold",
+            "--extension",
+            "<repo>/packages/extension/dist/index.js",
+            "--extension",
+            "<repo>/docs/evidence/rpc-52-1-linux/probe-extension.ts"
+          ],
+          "cwd": "<tmp>/home/slots/alpha/hold-2"
+        }
+      ]
+    },
+    {
+      "at": "2026-11-26T00:04:17.561Z",
+      "event": "shutdown",
+      "argv": [
+        "foundry",
+        "shutdown",
+        "--home",
+        "<home>",
+        "--json"
+      ],
+      "startedAt": "2026-11-26T00:04:17.291Z",
+      "exitCode": 0,
+      "signal": null,
+      "ms": 270,
+      "body": {
+        "ok": true,
+        "result": {
+          "force": false,
+          "factories": [
+            {
+              "factoryId": "alpha",
+              "state": "stopped",
+              "force": false,
+              "launches": [
+                {
+                  "launchId": "a3792369-8a48-46d8-b58a-1b4de65362fe",
+                  "slotId": "hold/1",
+                  "drained": false,
+                  "escalated": false
+                },
+                {
+                  "launchId": "a6bbcccb-bc88-48ea-9089-a5f10789b448",
+                  "slotId": "hold/2",
+                  "drained": false,
+                  "escalated": false
+                }
+              ]
+            }
+          ],
+          "hostStopped": true
+        }
+      },
+      "stderr": ""
+    },
+    {
+      "at": "2026-11-26T00:04:17.569Z",
+      "event": "after shutdown",
+      "daemonExit": 0,
+      "hostAlive": false,
+      "runProcessesLeft": []
+    },
+    {
+      "at": "2026-11-26T00:04:17.575Z",
+      "event": "state root logs",
+      "files": [
+        "daemon.log",
+        "host.log"
+      ],
+      "copiedTo": "<out>"
+    }
+  ]
+}
