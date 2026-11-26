@@ -1,0 +1,11 @@
+{
+  pi: '1.6.0',
+  node: 'v22.23.2',
+  platform: 'linux 7.2.15-1-omarchy',
+  foundry: '1bde222'
+}
+missing: written <REPO>/docs/evidence/sdk-53-3-linux-acceptance/results/missing.json
+reserved: written <REPO>/docs/evidence/sdk-53-3-linux-acceptance/results/reserved.json
+cleared: written <REPO>/docs/evidence/sdk-53-3-linux-acceptance/results/cleared.json
+foundry: Slot dev/1 stays frozen: tool_set_mismatch still fails its check (hold 1, evidence refreshed)
+agent-name: written <REPO>/docs/evidence/sdk-53-3-linux-acceptance/results/agent-name.json
